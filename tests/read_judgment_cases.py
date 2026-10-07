@@ -253,6 +253,11 @@ def _other_bases_shapes(contig: str, ref: str, alt: str):
             (A + 1, "X", ins[0]),
             (A + 2, "I", ins[1:] + contig[A + 1]),
         ],
+        # Its first inserted base misread as the reference base after the anchor:
+        # the aligner writes it one junction right with no mismatch; it slides back.
+        "the ALT with an error at its first inserted base, written one junction right": [
+            (A + 2, "I", ins[1:] + contig[A + 1]),
+        ],
     }
 
 
@@ -636,6 +641,11 @@ EXPECT = {
     "u+10 | a same-length insert of other bases one junction left": (4, 0, 0),
     "u+10 | a same-length insert of other bases four junctions right": (4, 0, 0),
     "u+10 | the ALT written one junction off with a compensating mismatch": (0, 4, 0),
+    "u+10 | the ALT with an error at its first inserted base, written one junction right": (
+        0,
+        0,
+        4,
+    ),
     "dup+8 | a same-length insert of other bases inside the tract": (0, 0, 4),
 }
 

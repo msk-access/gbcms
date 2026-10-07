@@ -198,7 +198,10 @@ flowchart TD
     WinIn(["→ from CIGAR walk"]):::entry --> CheckWin{"Ins within window?\n(±max(5, repeat_span+2),\nor in the shift region)"}
     CheckWin -->|No| Continue["Continue CIGAR walk"]
     CheckWin -->|Yes| SameLen{"Same length?"}
-    SameLen -->|Yes| Readable{"Any inserted base\nreadable?"}
+    SameLen -->|Yes| Slide["Slide to the equal placement\nnearest the junction\n(a read base must match\nwhere it lands)"]
+    Slide --> AtJ{"At the variant's\njunction?"}
+    AtJ -->|"Yes: its bases\nagainst the ALT"| JudgeJ(["ALT / another allele /\nunreadable, as the strict path"]):::partial
+    AtJ -->|No| Readable{"Any inserted base\nreadable?"}
     Readable -->|"No, inside the\ndiscrimination window"| FlagUR["Flag has_unreadable_insert"]:::partialflag
     Readable -->|"No, outside it:\nseparate event"| Continue
     FlagUR --> Continue
@@ -225,8 +228,8 @@ flowchart TD
     Eval -->|No| URCheck{"has_unreadable_insert?"}
     URCheck -->|Yes| URPartial(["⚪ Neither + partial\n(length, not sequence)"]):::partial
     URCheck -->|No| WLCheck{"has_distinct_allele_nearby\nAND ref coverage?"}
-    WLCheck -->|"Yes, the event slides\n(repeat_span ≥ 2 or a\nwide shift region)"| WLPartial(["⚪ Neither + partial\n(distinct allele)"]):::partial
-    WLCheck -->|"Yes, unique context"| RefPartial(["✅ REF + partial\n(noise surfaced, rd kept)"]):::ref
+    WLCheck -->|"Yes, the read changes\nthe discrimination window"| WLPartial(["⚪ Neither + partial\n(another allele, RJ-7)"]):::partial
+    WLCheck -->|"Yes, outside the window"| RefSep(["✅ REF\n(a separate event, RJ-8)"]):::ref
     WLCheck -->|No| HasRef{"Anchor covered by M?"}
     HasRef -->|Yes| Ref(["✅ REF"]):::ref
     HasRef -->|No| AnchorSpan{"Read spans anchor?\n(e.g. soft-clip at anchor)"}
@@ -254,11 +257,14 @@ Three layers of validation prevent false-positive windowed matches:
 
 !!! note "Two Windowed Flags with Different Outcomes"
     - **An insertion of the right length carrying other readable bases** is judged by its
-      bases (RJ-21, since 6.6.0): ALT when the read's bases across the window spell the ALT
-      (the event written one junction off with a compensating mismatch); otherwise another
-      allele inside the discrimination window (`has_distinct_allele_nearby`), a separate
-      event outside it. Never Phase 3, whose closer haplotype let length win ALT and
-      absorbed other alleles into REF.
+      bases (RJ-21, since 6.6.0), at the placement nearest the junction among those it can
+      equally occupy (it slides a junction when the read base it places onto the reference
+      matches it, so an absorbed sequencing error or a compensating mismatch slides back): at
+      the junction as the strict path judges an insert there; ALT when the read's bases
+      across the window spell the ALT; otherwise another allele when it can sit inside the
+      discrimination window (`another_allele_in_window`), a separate event outside it.
+      Never Phase 3, whose closer haplotype let length win ALT and absorbed other alleles
+      into REF.
     - **`has_distinct_allele_nearby`** — the windowed scan found an insertion of the
       **wrong length** (flagged at any size, so REF can never silently absorb it), or the
       variant's bases placed where they give **another haplotype** inside its discrimination
@@ -439,8 +445,8 @@ flowchart TD
     Spans -->|Yes| IBCheck{"has_in_band_mismatch?"}
     IBCheck -->|Yes| CPXP(["🔄 Phase-3 arbitration\n(partial propagated on non-ALT)"]):::fallback
     IBCheck -->|No| WLCheck{"has_distinct_allele_nearby?"}
-    WLCheck -->|"Yes, the event slides\n(repeat_span ≥ 2 or a\nwide shift region)"| WLPartial(["⚪ Neither + partial\n(distinct slippage allele)"]):::partial
-    WLCheck -->|"Yes, unique context"| RefPartial(["✅ REF + partial\n(noise surfaced, rd kept)"]):::ref
+    WLCheck -->|"Yes, the read changes\nthe discrimination window"| WLPartial(["⚪ Neither + partial\n(another allele, RJ-7)"]):::partial
+    WLCheck -->|"Yes, outside the window"| RefSep(["✅ REF\n(a separate event, RJ-8)"]):::ref
     WLCheck -->|No| Ref(["✅ REF"]):::ref
 
     classDef entry fill:#3498db,color:#fff,stroke:#2471a3,stroke-width:2px;
@@ -520,10 +526,10 @@ as the annotated event inflated VAF several-fold at such loci.
 | Any other wrong-length pure indel at the anchor | **Neither + `partial_alt`** |
 | Same-length insertion with confidently mismatching bases | **Neither + `partial_alt`** (third allele) |
 | Same-length insertion with no readable inserted base (each N or below `--min-baseq`), at the anchor or shifted inside the discrimination window | **Neither + `partial_alt`** (RJ-20: the length, not the sequence) |
-| The same outside the discrimination window | A separate event (RJ-8): **REF** where the window is reference |
-| A shifted same-length insertion of other readable bases | **ALT** when the read's bases spell the ALT across the window; else **neither + `partial_alt`** inside the discrimination window, a separate event (**REF**) outside it (RJ-21) |
-| Windowed wrong-length op, where the event slides (`repeat_span ≥ 2` or a shift region wider than the event), or with an indel of the read inside the discrimination window | **Neither + `partial_alt`** (deletions only when the op is ≥5bp — 1–4bp windowed Ds are alignment noise → plain REF; insertions at any size) |
-| Windowed wrong-length op, unique context, the window free of the read's indels | **REF + `partial_alt`** (same size gate; anchor M is definitive REF, the stray op is surfaced) |
+| The same outside the discrimination window | A separate event (RJ-8): **REF** unless the read has another indel in the window |
+| A shifted same-length insertion of other readable bases | Judged at the placement nearest the junction among those it can equally occupy (RJ-21): at the junction as the strict path would (**ALT** when its bases are the ALT's, else **neither + `partial_alt`**); **ALT** when the read's bases spell the ALT across the window; else **neither + `partial_alt`** inside the discrimination window, a separate event (**REF**) outside it |
+| Windowed wrong-length op inside the discrimination window (any of the read's indels there) | **Neither + `partial_alt`** (RJ-7; deletions only when the op is ≥5bp — 1–4bp windowed Ds are alignment noise → plain REF; insertions at any size) |
+| Windowed wrong-length op outside the window, the window free of the read's indels | **REF**, a separate event with no partial evidence (RJ-8) |
 
 Phase 3 deliberately does **not** arbitrate the definitive wrong-length/wrong-sequence cases:
 its haplotype window is length-blind inside repeat tracts, and alignment scoring promotes a

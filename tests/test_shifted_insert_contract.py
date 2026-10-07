@@ -138,7 +138,6 @@ def test_the_alt_written_one_junction_off_is_alt(tmp_path, backend):
 # census trusts the aligned flank, so it cannot judge these shapes.
 
 
-@pytest.mark.xfail(strict=True, reason="judged where the aligner wrote the insert")
 @pytest.mark.parametrize("backend", BACKENDS)
 def test_an_alt_read_with_an_error_written_off_junction_is_another_allele(tmp_path, backend):
     """The ALT with a sequencing error at its first inserted base (A>G) is written
@@ -153,7 +152,6 @@ def test_an_alt_read_with_an_error_written_off_junction_is_another_allele(tmp_pa
     assert got == (0, 0, 12)
 
 
-@pytest.mark.xfail(strict=True, reason="judged where the aligner wrote the insert")
 @pytest.mark.parametrize("backend", BACKENDS)
 def test_a_masked_compensating_base_slides_back_to_the_alt(tmp_path, backend):
     """The ALT with its first inserted base masked (N at Q2), written one junction
@@ -167,7 +165,6 @@ def test_a_masked_compensating_base_slides_back_to_the_alt(tmp_path, backend):
     assert got == (0, 8, 0)
 
 
-@pytest.mark.xfail(strict=True, reason="judged where the aligner wrote the insert")
 @pytest.mark.parametrize("backend", BACKENDS)
 def test_carriers_written_further_off_are_alt(tmp_path, backend):
     """ALT carriers the aligner wrote two junctions off with two compensating
@@ -188,7 +185,6 @@ def test_carriers_written_further_off_are_alt(tmp_path, backend):
     assert got == (0, 12, 0)
 
 
-@pytest.mark.xfail(strict=True, reason="judged where the aligner wrote the insert")
 @pytest.mark.parametrize("backend", BACKENDS)
 def test_another_allele_written_outside_the_window_is_not_ref(tmp_path, backend):
     """A>AT before a C: a read inserting a C after the C (the A>AC allele, written
