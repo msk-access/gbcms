@@ -2,17 +2,26 @@
 (docs/development/regression-panel.md; the outputs name runs and loci).
 
   attribute.py prepare TIER OUT BASE NEW ATTRIB [--pad 100]
-      For every run whose MAF output changed between BASE and NEW: a reduced variant
-      file holding the changed rows and every row within PAD bp of one (siblings
-      classify together), and ATTRIB/runs.tsv to run each checkpoint build on.
+      For every run whose MAF output changed between BASE and NEW (a changed cell, or a
+      row in one version only): a variant file holding the changed rows and the rows
+      near them, ATTRIB/runs.tsv to run each build on, and ATTRIB/changed.tsv. Near =
+      within PAD bp of a kept row's span, closed transitively (siblings classify
+      together). The arms whose outputs hold Benjamini-Hochberg q-values computed across
+      the run's rows (mfsd, rna) keep their full variant files: a reduced run would
+      change every q-value.
   attribute.py check TIER OUT BASE NEW ATTRIB
-      The reduction must not change a count: BASE and NEW run on the reduced files
-      (run_panel.sh with ATTRIB/runs.tsv into ATTRIB/out) must give
-      the full runs' values for every changed row.
+      The reduction must not change a cell: BASE and NEW run on the reduced files
+      (run_panel.sh with ATTRIB/runs.tsv into ATTRIB/out) must give the full runs'
+      values. gbcms_status_reason is exempt on the context rows only (it names the
+      co-annotation group, which the reduction may cut at its edge), never on a changed
+      row. Exits 1 when a row differs.
   attribute.py attribute TIER OUT BASE NEW ATTRIB CHECKPOINTS
-      Trace each changed cell through BASE, then each checkpoint build in order (named
-      cp_<sha> under ATTRIB/out), and name each interval where its value changes.
-      Writes ATTRIB/attribution_cells.tsv, attribution_summary.tsv, unattributed.tsv.
+      Trace each changed cell through BASE and then each checkpoint build in order
+      (cp_<sha> under ATTRIB/out), and name each interval where its value changes; a
+      row in one version only is traced as its presence, column "(row)". A cell whose
+      trail misses a checkpoint's output, or does not end at NEW's value, is
+      unattributed. Writes ATTRIB/attribution_cells.tsv, attribution_summary.tsv and
+      unattributed.tsv; exits 1 when any cell is unattributed.
 The MAF arms are attributed (the vcf arm's counts are the dna arm's, written as VCF).
 """
 
@@ -23,6 +32,8 @@ import os
 import sys
 
 KEY = ("Chromosome", "Start_Position", "End_Position", "Reference_Allele", "Tumor_Seq_Allele2")
+FULL_ARMS = {"mfsd", "rna"}  # outputs hold BH q-values across the run's rows
+MISSING = "<no output>"
 
 
 def maf(path):
@@ -35,41 +46,70 @@ def out_maf(root, build, rid):
     return f[0] if f else None
 
 
-def runs_of(tier):
-    with open(os.path.join(tier, "runs.tsv")) as fh:
+def runs_of(path):
+    with open(path) as fh:
         return list(csv.DictReader(fh, delimiter="\t"))
 
 
-def changed_rows(rb, rn):
-    """Indexes of rows whose cells differ (columns both builds write)."""
-    out = []
-    for i, (x, y) in enumerate(zip(rb, rn, strict=True)):
-        if any(x[c] != y[c] for c in y if c in x):
-            out.append(i)
+def by_key(rows):
+    """Rows by locus, with the occurrence number for a locus listed twice."""
+    seen, out = collections.Counter(), {}
+    for y in rows:
+        k = tuple(y.get(c, "") for c in KEY)
+        out[k + (seen[k],)] = y
+        seen[k] += 1
     return out
+
+
+def changed_keys(rb, rn):
+    """Loci whose cells differ (columns both versions write), or in one version only."""
+    out = set(rb) ^ set(rn)
+    for k in set(rb) & set(rn):
+        x, y = rb[k], rn[k]
+        if any(x[c] != y[c] for c in y if c in x):
+            out.add(k)
+    return out
+
+
+def span(v):
+    c, s = v["Chromosome"], int(v["Start_Position"])
+    try:
+        e = int(v["End_Position"])
+    except (KeyError, ValueError):
+        e = s
+    return c, min(s, e), max(s, e)
+
+
+def near(a, b, pad):
+    return a[0] == b[0] and max(b[1] - a[2], a[1] - b[2], 0) <= pad
 
 
 def prepare(tier, out, base, new, attrib, pad):
     os.makedirs(os.path.join(attrib, "mafs"), exist_ok=True)
-    keep_runs, n_rows, n_changed = [], 0, 0
-    for r in runs_of(tier):
+    keep_runs, n_rows, n_changed, changed_rows = [], 0, 0, []
+    for r in runs_of(os.path.join(tier, "runs.tsv")):
+        if r["arm"] == "vcf":
+            continue
         fb, fn = out_maf(out, base, r["run_id"]), out_maf(out, new, r["run_id"])
         if not fb or not fn:
             continue
-        rb, rn = maf(fb), maf(fn)
-        idx = changed_rows(rb, rn)
-        if not idx:
+        rb, rn = by_key(maf(fb)), by_key(maf(fn))
+        ch = changed_keys(rb, rn)
+        if not ch:
             continue
         src = maf(os.path.join(tier, r["variants"]))
-        assert len(src) == len(rn), f"{r['run_id']}: output rows do not follow input rows"
-        sites = {(rn[i]["Chromosome"], int(rn[i]["Start_Position"])) for i in idx}
-        keep = [
-            v
-            for v in src
-            if any(
-                v["Chromosome"] == c and abs(int(v["Start_Position"]) - p) <= pad for c, p in sites
-            )
-        ]
+        if r["arm"] in FULL_ARMS:
+            keep = src
+        else:
+            seeds = [span(rn.get(k) or rb[k]) for k in ch]
+            kept, rest = [], [(span(v), v) for v in src]
+            frontier = seeds
+            while frontier:
+                take = [(s, v) for s, v in rest if any(near(s, f, pad) for f in frontier)]
+                rest = [(s, v) for s, v in rest if not any(near(s, f, pad) for f in frontier)]
+                kept += take
+                frontier = [s for s, _ in take]
+            keep = [v for v in src if any(v is w for _, w in kept)]
         path = os.path.join("mafs", f"{r['run_id']}.maf")
         with open(os.path.join(attrib, path), "w") as fh:
             w = csv.DictWriter(
@@ -78,87 +118,87 @@ def prepare(tier, out, base, new, attrib, pad):
             w.writeheader()
             w.writerows(keep)
         keep_runs.append({**r, "variants": os.path.join(os.path.relpath(attrib, tier), path)})
+        changed_rows += [(r["run_id"], *k) for k in sorted(ch)]
         n_rows += len(keep)
-        n_changed += len(idx)
+        n_changed += len(ch)
+    cols = ["run_id", "tag", "arm", "mode", "root", "bam_relpath", "variants", "extra_args"]
     with open(os.path.join(attrib, "runs.tsv"), "w") as fh:
-        cols = ["run_id", "tag", "arm", "mode", "root", "bam_relpath", "variants", "extra_args"]
         w = csv.DictWriter(fh, fieldnames=cols, delimiter="\t", lineterminator="\n")
         w.writeheader()
-        w.writerows([{c: r[c] for c in cols} for r in keep_runs if r["arm"] != "vcf"])
+        w.writerows([{c: r[c] for c in cols} for r in keep_runs])
+    with open(os.path.join(attrib, "changed.tsv"), "w") as fh:
+        fh.write("run_id\t" + "\t".join(KEY) + "\toccurrence\n")
+        for row in changed_rows:
+            fh.write("\t".join(map(str, row)) + "\n")
     print(
         f"runs with changes: {len(keep_runs)}; changed rows: {n_changed}; rows to re-run: {n_rows}"
     )
 
 
-def by_key(rows):
-    """Rows by locus, with the occurrence number for loci listed twice (cohort MAFs)."""
-    seen, out = collections.Counter(), {}
-    for y in rows:
-        k = tuple(y[c] for c in KEY)
-        out[k + (seen[k],)] = y
-        seen[k] += 1
-    return out
-
-
 def check(tier, out, base, new, attrib):
     bad = collections.Counter()
-    for r in csv.DictReader(open(os.path.join(attrib, "runs.tsv")), delimiter="\t"):
+    for r in runs_of(os.path.join(attrib, "runs.tsv")):
+        fb, fn = out_maf(out, base, r["run_id"]), out_maf(out, new, r["run_id"])
+        ch = changed_keys(by_key(maf(fb)), by_key(maf(fn))) if fb and fn else set()
         for build in (base, new):
             full = out_maf(out, build, r["run_id"])
             red = out_maf(os.path.join(attrib, "out"), build, r["run_id"])
             if not full or not red:
-                bad[f"{build}: missing"] += 1
+                bad[f"{build}: missing output"] += 1
                 continue
             f, d = by_key(maf(full)), by_key(maf(red))
             for k, y in d.items():
                 x = f.get(k)
-                if x is None or any(
-                    x[c] != y[c] for c in y if c in x and c not in ("gbcms_status_reason",)
-                ):
+                if x is None:
+                    bad[f"{build}: a reduced row is not in the full run"] += 1
+                    continue
+                exempt = {"gbcms_status_reason"} if k not in ch else set()
+                if any(x[c] != y[c] for c in y if c in x and c not in exempt):
                     bad[f"{build}: a reduced row differs from the full run"] += 1
     print(dict(bad) or "reduction exact: every reduced row equals the full run's")
+    if bad:
+        sys.exit(1)
 
 
 def attribute(tier, out, base, new, attrib, cps_path):
-    cps = list(csv.DictReader((x for x in open(cps_path) if not x.startswith("# ")), delimiter="	"))
+    cps = list(
+        csv.DictReader((x for x in open(cps_path) if not x.startswith("# ")), delimiter="\t")
+    )
     builds = [base] + [f"cp_{c['sha']}" for c in cps]
     label = {f"cp_{c['sha']}": f"{c['label']} [{c['interval_merges']}]" for c in cps}
     aroot = os.path.join(attrib, "out")
     cells_out, summary, unattr = [], collections.Counter(), []
-    for r in csv.DictReader(open(os.path.join(attrib, "runs.tsv")), delimiter="\t"):
+    for r in runs_of(os.path.join(attrib, "runs.tsv")):
         fb, fn = out_maf(out, base, r["run_id"]), out_maf(out, new, r["run_id"])
         rb, rn = by_key(maf(fb)), by_key(maf(fn))
         trail = {}
         for b in builds:
             p = out_maf(aroot, b, r["run_id"])
             trail[b] = by_key(maf(p)) if p else None
-        for k, y in rn.items():
-            x = rb.get(k)
-            if x is None:
-                continue
-            for c in y:
-                if c not in x or x[c] == y[c]:
-                    continue
+        for k in sorted(changed_keys(rb, rn)):
+            x, y = rb.get(k), rn.get(k)
+            if x is None or y is None:  # a row in one version only: trace its presence
+                cols = {"(row)": ("present" if x else "absent", "present" if y else "absent")}
+            else:
+                cols = {c: (x[c], y[c]) for c in y if c in x and x[c] != y[c]}
+            for c, (v_base, v_new) in cols.items():
                 vals = []
                 for b in builds:
                     t = trail[b]
-                    vals.append(t.get(k, {}).get(c) if t is not None else None)
+                    if t is None:
+                        vals.append(MISSING)
+                    elif c == "(row)":
+                        vals.append("present" if k in t else "absent")
+                    else:
+                        vals.append(t[k].get(c, MISSING) if k in t else MISSING)
                 steps = [
                     (builds[i], vals[i - 1], vals[i])
                     for i in range(1, len(builds))
-                    if vals[i] is not None and vals[i - 1] is not None and vals[i] != vals[i - 1]
+                    if vals[i] != vals[i - 1]
                 ]
-                if vals[-1] != y[c] or not steps:
+                if MISSING in vals or vals[-1] != v_new or vals[0] != v_base or not steps:
                     unattr.append(
-                        (
-                            r["run_id"],
-                            r["arm"],
-                            *k[:5],
-                            c,
-                            x[c],
-                            y[c],
-                            "|".join(str(v) for v in vals),
-                        )
+                        (r["run_id"], r["arm"], *k[:5], c, v_base, v_new, " | ".join(vals))
                     )
                     continue
                 for b, _v0, _v1 in steps:
@@ -169,8 +209,8 @@ def attribute(tier, out, base, new, attrib, cps_path):
                         r["arm"],
                         *k[:5],
                         c,
-                        x[c],
-                        y[c],
+                        v_base,
+                        v_new,
                         " ; ".join(f"{label[b]}: {v0} -> {v1}" for b, v0, v1 in steps),
                     )
                 )
@@ -192,10 +232,12 @@ def attribute(tier, out, base, new, attrib, cps_path):
     print(f"changed cells attributed: {len(cells_out)}; unattributed: {len(unattr)}")
     for lab, n in per_cp.most_common():
         print(f"  {n:7d}  {lab}")
+    if unattr:
+        sys.exit(1)
 
 
 def main():
-    cmd = sys.argv[1]
+    cmd = sys.argv[1] if len(sys.argv) > 1 else ""
     a = sys.argv[2:]
     if cmd == "prepare":
         pad = int(a[a.index("--pad") + 1]) if "--pad" in a else 100

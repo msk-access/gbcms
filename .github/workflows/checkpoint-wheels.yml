@@ -93,6 +93,9 @@ jobs:
             elif command -v apt-get &> /dev/null; then
               $SUDO apt-get update && $SUDO apt-get install -y zlib1g-dev libbz2-dev liblzma-dev libcurl4-openssl-dev libssl-dev clang libclang-dev
             fi
+      - name: Keep the commit's dependency lock beside its wheel
+        run: |
+          if [ -f docker/requirements.lock ]; then cp docker/requirements.lock dist/; fi
       - name: Upload the wheel
         uses: actions/upload-artifact@v4
         with:

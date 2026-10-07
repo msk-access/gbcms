@@ -7,16 +7,20 @@
 #SBATCH --array=0-19
 #SBATCH --output=panel_%A_%a.log
 # A regression-panel build as a SLURM array: each task runs every 20th row of the run
-# list (docs/development/regression-panel.md). Edit the CONFIG block, then:
+# list (docs/development/regression-panel.md). The array must be 0-based (0-N). Edit
+# the CONFIG block, then:
 #   sbatch submit_panel.sbatch
-# Re-submitting skips finished runs.
+# Re-submitting skips the runs that finished (exit 0) and retries the rest.
 
 # ---- CONFIG -----------------------------------------------------------------
 SCRIPTS=/path/to/gbcms/scripts/regression_panel   # SLURM runs a spooled copy of this file
 TIER=tier_660                     # the tier folder carried from the selection host
 RUNS=$TIER/runs.tsv               # or an attribution run list: attrib/runs.tsv
 BUILD=6.6.0                       # output label: 6.5.0, 6.6.0, cp_<sha>
-GBCMS="singularity exec docker://ghcr.io/msk-access/gbcms:6.6.0 gbcms"
+# The previous release from its image (bind every path the run reads), the candidate
+# and each checkpoint from its wheel's venv:
+#   GBCMS="singularity exec -B /path/to/dmp_share,/path/to/forte,/path/to/refs docker://ghcr.io/msk-access/gbcms:6.5.0 gbcms"
+GBCMS=/path/to/cp_<candidate sha>/bin/gbcms
 DMP_ROOT=/path/to/dmp_share       # BAMs of runs with root "dmp" (b37)
 FORTE_ROOT=/path/to/forte         # BAMs of runs with root "forte" (hg38)
 FASTA_B37=/path/to/Homo_sapiens_assembly19.fasta

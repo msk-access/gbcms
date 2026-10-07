@@ -86,9 +86,12 @@ def test_compare_sums_access_flavors_and_reports_concordance_by_stratum(tmp_path
         _out(out, build, "r002_dna_simplex", (4, 8, 2))
         _out(out, build, "r001_normal", (0, 0, 0))
         (out / build / "times.0.tsv").write_text(
-            "run_id\tarm\texit\twall_s\tmax_rss_kb\nr001_dna_tumor\tdna\t0\t2.0\t1000\n"
+            "run_id\tarm\texit\twall_s\tmax_rss_kb\tend_epoch\n"
+            + "".join(
+                f"{rid}\t{rid.split('_')[1]}\t0\t2.0\t1000\t1\n"
+                for rid in ("r001_dna_tumor", "r002_dna_duplex", "r002_dna_simplex", "r001_normal")
+            )
         )
-    (out / "new" / "failed.0.txt").write_text("r001_normal\tnormal\n")
     rep = tmp_path / "rep"
     import sys
 
@@ -113,7 +116,7 @@ def test_compare_sums_access_flavors_and_reports_concordance_by_stratum(tmp_path
     assert conc[("shape:INS_1", "matched")]["within_new"] == "1.000"
     assert len(_read(rep / "normals.tsv")) == 3
     gate = (rep / "gate.txt").read_text()
-    assert "failed runs: base 0, new 1" in gate
+    assert "failed runs: base 0, new 0" in gate and "GATE: clean" in gate
 
 
 def test_compare_reads_vcf_output_field_by_field(tmp_path):
@@ -222,7 +225,8 @@ def test_attribution_flags_a_last_checkpoint_that_is_not_new(tmp_path):
         for v, a in zip(VARIANTS[:2], (10, 18), strict=True)
     ]
     _write(attrib / "out" / "cp_aaa1111" / "r001_dna_tumor" / "S.maf", OUT_COLS, rows)
-    attribute.attribute(str(tier), str(out), "base", "new", str(attrib), str(cps))
+    with pytest.raises(SystemExit):  # unattributed cells fail the step
+        attribute.attribute(str(tier), str(out), "base", "new", str(attrib), str(cps))
     un = _read(attrib / "unattributed.tsv")
     assert [u["column"] for u in un if u["column"] == "alt_count"] == ["alt_count"]
 
@@ -303,9 +307,6 @@ def _tier_one(tmp_path, arm="dna", rid="r001_dna_tumor", extra=""):
     return tier
 
 
-@pytest.mark.xfail(
-    strict=True, reason="the mfsd arm is reduced; its BH q-values depend on the row set"
-)
 def test_arms_with_bh_qvalues_are_attributed_on_their_full_variant_files(tmp_path, capsys):
     attribute = _load("attribute")
     tier = _tier_one(tmp_path, "mfsd", "r001_mfsd_duplex", "--mfsd")
@@ -331,7 +332,6 @@ def test_arms_with_bh_qvalues_are_attributed_on_their_full_variant_files(tmp_pat
     assert "reduction exact" in capsys.readouterr().out
 
 
-@pytest.mark.xfail(strict=True, reason="GNU time's status line reaches the time records")
 @pytest.mark.skipif(os.name != "posix", reason="bash runner")
 def test_a_failed_run_under_gnu_time_does_not_crash_compare(tmp_path):
     import subprocess
@@ -374,7 +374,6 @@ def test_a_failed_run_under_gnu_time_does_not_crash_compare(tmp_path):
     assert "failed runs: base 1, new 1" in (tmp_path / "rep" / "gate.txt").read_text()
 
 
-@pytest.mark.xfail(strict=True, reason="a MAF in place counts as finished")
 @pytest.mark.skipif(os.name != "posix", reason="bash runner")
 def test_a_run_that_failed_after_writing_its_maf_is_retried_and_counted(tmp_path):
     import subprocess
@@ -413,7 +412,6 @@ def test_a_run_that_failed_after_writing_its_maf_is_retried_and_counted(tmp_path
     assert "failed runs: base 1, new 1" in (tmp_path / "rep" / "gate.txt").read_text()
 
 
-@pytest.mark.xfail(strict=True, reason="records only in base are not reported")
 def test_compare_reports_vcf_records_only_in_base(tmp_path):
     tier, out = _tier_one(tmp_path, "vcf", "r001_vcf", "--format vcf"), tmp_path / "out"
     head = "##fileformat=VCFv4.2\n#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\tFORMAT\tS\n"
@@ -429,7 +427,6 @@ def test_compare_reports_vcf_records_only_in_base(tmp_path):
     assert summ.get("records only in base") == "1", summ
 
 
-@pytest.mark.xfail(strict=True, reason="rows are matched by position")
 def test_compare_aligns_rows_by_locus_when_row_counts_differ(tmp_path):
     tier, out = _tier_one(tmp_path), tmp_path / "out"
     cols = KEY + ("alt_count",)
@@ -446,7 +443,6 @@ def test_compare_aligns_rows_by_locus_when_row_counts_differ(tmp_path):
     assert summ.get("rows only in new") == "1", summ
 
 
-@pytest.mark.xfail(strict=True, reason="prepare assumes the same rows in both versions")
 def test_attribute_prepare_survives_a_row_count_difference(tmp_path):
     attribute = _load("attribute")
     tier, out = _tier_one(tmp_path), tmp_path / "out"
@@ -461,7 +457,6 @@ def test_attribute_prepare_survives_a_row_count_difference(tmp_path):
     assert len(_read(tmp_path / "attrib" / "runs.tsv")) == 1
 
 
-@pytest.mark.xfail(strict=True, reason="a row only in one version is skipped silently")
 def test_attribute_traces_a_row_present_in_only_one_version(tmp_path):
     attribute = _load("attribute")
     tier, out, attrib = _tier_one(tmp_path), tmp_path / "out", tmp_path / "attrib"
@@ -489,7 +484,6 @@ def test_attribute_traces_a_row_present_in_only_one_version(tmp_path):
     assert {c["column"] for c in cells} == {"(row)"} and len(cells) == 2, cells
 
 
-@pytest.mark.xfail(strict=True, reason="a missing checkpoint output hides its step")
 def test_attribute_does_not_skip_a_missing_checkpoint(tmp_path):
     attribute = _load("attribute")
     tier, out, attrib = _tier_one(tmp_path), tmp_path / "out", tmp_path / "attrib"
@@ -516,12 +510,12 @@ def test_attribute_does_not_skip_a_missing_checkpoint(tmp_path):
     _write(
         attrib / "out" / "cp_ccc3333" / "r001_dna_tumor" / "S.maf", cols, [V3[0] + ("20",)]
     )  # cp2 failed
-    attribute.attribute(str(tier), str(out), "base", "new", str(attrib), str(cps))
+    with pytest.raises(SystemExit):  # unattributed cells fail the step
+        attribute.attribute(str(tier), str(out), "base", "new", str(attrib), str(cps))
     assert _read(attrib / "attribution_cells.tsv") == []
     assert [u["column"] for u in _read(attrib / "unattributed.tsv")] == ["alt_count"]
 
 
-@pytest.mark.xfail(strict=True, reason="gbcms inherits the run list as its stdin")
 @pytest.mark.skipif(os.name != "posix", reason="bash runner")
 def test_a_command_that_reads_stdin_does_not_eat_the_run_list(tmp_path):
     import subprocess

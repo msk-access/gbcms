@@ -48,7 +48,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   (version against version, and each version against the sign-out counts by stratum),
   and **mechanical attribution**: one wheel per count-affecting merge (the new manual
   *Checkpoint wheels* workflow), run on the changed rows, names the merge where each
-  changed cell changed. The gate and its criteria: `docs/development/regression-panel.md`.
+  changed cell changed (the workflow starts by hand, or from a pushed `checkpoint-wheels/X.Y.Z`
+  branch before the release reaches the default branch). The gate and its criteria:
+  `docs/development/regression-panel.md`.
 
 ### Fixed — one allele given twice is not its own sibling (#246)
 
