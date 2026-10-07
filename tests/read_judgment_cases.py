@@ -261,6 +261,27 @@ def _other_bases_shapes(contig: str, ref: str, alt: str):
     }
 
 
+def _behind_substitution_shapes(contig: str, ref: str, alt: str):
+    """The ALT with a substitution next to its insert: at the junction with a
+    substitution in the run (the strict path keeps it), and with the anchor
+    substituted, written one junction left (no slide carries it back): events."""
+    ins = alt[1:]
+    out = {
+        # The aligner's tie: one mismatch either way, at the anchor; the first
+        # inserted base (the read's anchor, then the ALT's first bases) goes left.
+        "the ALT with its anchor substituted, written one junction left": [
+            (A, "I", "T" + ins[:-1]),
+            (A, "X", ins[-1]),
+        ],
+    }
+    if len(set(ins)) == 1:  # in a run: a substitution the slide would absorb
+        out["the ALT at the junction with a substitution in the run"] = [
+            (A + 1, "I", ins),
+            (A + 3, "X", "C"),
+        ]
+    return out
+
+
 def _mask_inserted(read, mask) -> None:
     """Mask the read's inserted bases [first, first + count), in CIGAR order."""
     kind, first, count = mask
@@ -333,6 +354,10 @@ def cases() -> list[Case]:
         motif, ref, alt = PURE[v]
         for shape in _other_bases_shapes(_contig(motif), ref, alt):
             out.append(Case(f"{v} | {shape}", "C36 inserts of other bases", v, shape))
+    for v in ("hp+A", "u+10"):
+        motif, ref, alt = PURE[v]
+        for shape in _behind_substitution_shapes(_contig(motif), ref, alt):
+            out.append(Case(f"{v} | {shape}", "C37 inserts behind a substitution", v, shape))
     return out
 
 
@@ -413,6 +438,8 @@ def run(case: Case, workdir: Path) -> tuple[tuple[int, int, int], str]:
             (events, mask), s0, length = _unreadable_shapes(contig, ref, alt)[case.shape], 0, 100
         elif case.group == "C36 inserts of other bases":
             events, s0, length = _other_bases_shapes(contig, ref, alt)[case.shape], 0, 100
+        elif case.group == "C37 inserts behind a substitution":
+            events, s0, length = _behind_substitution_shapes(contig, ref, alt)[case.shape], 0, 100
         else:
             events, s0, length = _pure_shapes(contig, ref, alt)[case.shape]
         reads = []
@@ -475,6 +502,7 @@ DECISIONS = {
     "read inputs": "decided: a read contributes its molecule's bases, with qualities (C17 #176, C19 #182; C29 #207 a fix)",
     "C35 unreadable inserts": "decided: an insertion's ALT needs one of the read's own inserted bases read (C35 #240)",
     "C36 inserts of other bases": "decided: a same-length insert of other bases is judged by its bases, never Phase 3 (C36 #243)",
+    "C37 inserts behind a substitution": "decided: the junction ALT stays; a carrier behind a substitution is another allele, not REF (C37 #245)",
 }
 
 # (ref_count, alt_count, partial_alt) for the case's four reads.
@@ -647,6 +675,11 @@ EXPECT = {
         4,
     ),
     "dup+8 | a same-length insert of other bases inside the tract": (0, 0, 4),
+    # C37 #245: the strict path keeps its junction ALT; a readable insert whose
+    # fewest-mismatch placement sits inside the window is another allele (RJ-22).
+    "hp+A | the ALT at the junction with a substitution in the run": (0, 4, 0),
+    "hp+A | the ALT with its anchor substituted, written one junction left": (0, 0, 4),
+    "u+10 | the ALT with its anchor substituted, written one junction left": (0, 0, 4),
 }
 
 

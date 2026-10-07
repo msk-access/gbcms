@@ -44,7 +44,6 @@ def test_the_strict_path_keeps_a_junction_alt_with_a_substitution_in_the_tract(t
     assert got == (4, 4, 0)
 
 
-@pytest.mark.xfail(strict=True, reason="a carrier behind a substitution is a separate event (REF)")
 @pytest.mark.parametrize("backend", BACKENDS)
 def test_a_carrier_behind_an_anchor_substitution_is_another_allele(tmp_path, backend):
     """The ALT haplotype with its anchor substituted, the aligner writing the insert one

@@ -1453,17 +1453,33 @@ struct InsertPlacement {
     mismatches: i32,
 }
 
+/// How an insert's slide treats the base it places onto the reference.
+#[derive(Clone, Copy, PartialEq)]
+enum Slide {
+    /// Only onto a base it fits (the same base, or a masked one): the placements the
+    /// insert can take base by base (RJ-21). Every ALT judgment uses these.
+    Fits,
+    /// Onto any base, a readable mismatch costing one: every junction scored by the
+    /// read's readable mismatches there (RJ-22). Only to tell another allele from a
+    /// separate event, never to credit ALT.
+    Scored,
+}
+
 /// Every placement a read's insertion can take as well as the one its aligner wrote:
 /// the best-aligned ones. The read's bases never change; only the junction the insert
 /// is written before. The insert slides one junction left when its last base fits the
 /// reference base it is placed onto (the same base, or one below `min_baseq` or N), and
 /// right likewise with its first base; the read base it takes in may be anything, and
 /// when that base was a read mismatch the alignment loses one. So a sequencing error
-/// the aligner absorbed into the flank, or a compensating mismatch, slides back. Only
-/// the placements with the fewest mismatches are returned: a placement worse than the
-/// best (an insert walked along a run carrying a mismatch the best one resolves) is not
-/// as good. Called only for an insert with a readable base of its own: whether an
-/// insert can be read is its own bases' question (RJ-20), never a placement's.
+/// the aligner absorbed into the flank, or a compensating mismatch, slides back. With
+/// `Slide::Scored` a base that does not fit is placed too, the alignment gaining a
+/// mismatch, so a substitution next to the insert cannot hide a placement as good as
+/// the written one. Only the placements with the fewest mismatches are returned: a
+/// placement worse than the best (an insert walked along a run carrying a mismatch the
+/// best one resolves) is not as good. Called only for an insert with a readable base of
+/// its own: whether an insert can be read is its own bases' question (RJ-20), never a
+/// placement's.
+#[allow(clippy::too_many_arguments)]
 fn insert_placements(
     record: &Record,
     variant: &Variant,
@@ -1472,6 +1488,7 @@ fn insert_placements(
     len: usize,
     quals: &[u8],
     min_baseq: u8,
+    slide: Slide,
 ) -> Vec<InsertPlacement> {
     const MAX_SLIDE: usize = 64;
     let seq = record.seq().as_bytes();
@@ -1492,11 +1509,12 @@ fn insert_placements(
         if cur.q_start == 0 || find_read_pos(record, j - 1) != Some(cur.q_start - 1) {
             break;
         }
-        if !fits(cur.bases[len - 1], cur.quals[len - 1], r) {
+        let placed_fits = fits(cur.bases[len - 1], cur.quals[len - 1], r);
+        if !placed_fits && slide == Slide::Fits {
             break;
         }
         let (b, bq) = (seq[cur.q_start - 1], quals[cur.q_start - 1]);
-        cur.mismatches -= i32::from(!fits(b, bq, r));
+        cur.mismatches += i32::from(!placed_fits) - i32::from(!fits(b, bq, r));
         cur.bases.pop();
         cur.bases.insert(0, b);
         cur.quals.pop();
@@ -1513,11 +1531,12 @@ fn insert_placements(
         if q_after >= seq.len() || find_read_pos(record, j) != Some(q_after) {
             break;
         }
-        if !fits(cur.bases[0], cur.quals[0], r) {
+        let placed_fits = fits(cur.bases[0], cur.quals[0], r);
+        if !placed_fits && slide == Slide::Fits {
             break;
         }
         let (c, cq) = (seq[q_after], quals[q_after]);
-        cur.mismatches -= i32::from(!fits(c, cq, r));
+        cur.mismatches += i32::from(!placed_fits) - i32::from(!fits(c, cq, r));
         cur.bases.remove(0);
         cur.bases.push(c);
         cur.quals.remove(0);
@@ -1561,8 +1580,9 @@ fn scan_windowed_insertion_candidate(
     let expected_ins_len = variant.alt_allele.len() - 1;
     if ins_ref_pos < window_start || ins_ref_pos > window_end {
         // Written past the scan window. A readable insert of the variant's length is
-        // judged by every placement it can take (RJ-21), so it is scanned when one of
-        // them sits inside the discrimination window; anything else is out of reach.
+        // judged by every placement it can take (RJ-21) and by its fewest-mismatch
+        // placements (RJ-22), so it is scanned when one of them sits inside the
+        // discrimination window; anything else is out of reach.
         let seq_len = record.seq().len();
         let (lo, hi) = window::discrimination_window(variant);
         let reaches = ins_len_usize == expected_ins_len
@@ -1572,9 +1592,11 @@ fn scan_windowed_insertion_candidate(
                 &quals[ins_start..ins_start + ins_len_usize],
                 min_baseq,
             ) > 0
-            && insert_placements(record, variant, ins_ref_pos, ins_start, ins_len_usize, quals, min_baseq)
-                .iter()
-                .any(|p| lo < p.junction && p.junction < hi);
+            && [Slide::Fits, Slide::Scored].into_iter().any(|slide| {
+                insert_placements(record, variant, ins_ref_pos, ins_start, ins_len_usize, quals, min_baseq, slide)
+                    .iter()
+                    .any(|p| lo < p.junction && p.junction < hi)
+            });
         if !reaches {
             return;
         }
@@ -1623,7 +1645,7 @@ fn scan_windowed_insertion_candidate(
             // as the aligner's (`insert_placements`), never by where the aligner
             // happened to write it: ALT when one of them shows the ALT by its read
             // bases; otherwise another allele when one can sit inside the window.
-            let places = insert_placements(record, variant, ins_ref_pos, ins_start, ins_len_usize, quals, min_baseq);
+            let places = insert_placements(record, variant, ins_ref_pos, ins_start, ins_len_usize, quals, min_baseq, Slide::Fits);
             let expected = &variant.alt_allele.as_bytes()[1..];
             let q_right = ins_start + ins_len_usize;
             let mut record_match = |at: i64, why: &str| {
@@ -1684,6 +1706,26 @@ fn scan_windowed_insertion_candidate(
                 trace!(
                     "check_insertion: windowed I({}) at pos {} can sit inside the window and \
                      is not the ALT → another allele",
+                    ins_len_usize, ins_ref_pos
+                );
+                return;
+            }
+            // Every placement it can take base by base lies outside the window. Scored at
+            // every junction by its readable mismatches, its fewest-mismatch placements
+            // may still include one inside: a substitution beside the insert (the anchor
+            // read as another base) blocks the slide, one mismatch either way. Then the
+            // read carries another allele there, never REF; and never ALT, though that
+            // placement may show the ALT's bases: a per-read rule cannot tell one
+            // molecule's error from a recurring other allele (RJ-22).
+            if insert_placements(record, variant, ins_ref_pos, ins_start, ins_len_usize, quals, min_baseq, Slide::Scored)
+                .iter()
+                .any(|p| inside(p.junction))
+            {
+                *has_distinct_allele_nearby = true;
+                *another_allele_in_window = true;
+                trace!(
+                    "check_insertion: windowed I({}) at pos {} can sit inside the window at \
+                     its fewest mismatches, past a base it does not fit → another allele",
                     ins_len_usize, ins_ref_pos
                 );
                 return;
