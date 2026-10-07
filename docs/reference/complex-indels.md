@@ -14,7 +14,7 @@ Complex indels fall into four categories that require special handling beyond th
 |:-----|:--------|:-----------|:----|
 | [Del+SNV routing](#case-1-complex-delsnv-sox9) | SOX9 `GC→T`, ABL1 `AG→T` | Deletion-format variant with anchor substitution sent to `check_deletion` | Route to `check_complex` when `alt[0] ≠ ref[0]` |
 | [Clean-CIGAR REF reads](#case-2-nf2-large-deletion-ref-reads-invisible) | NF2 ~100bp delins (large deletion with a short replacement) | REF reads skipped by `is_worth_realignment()` → misclassified as 'neither' | M-block anchor coverage REF fallback in `check_complex` |
-| [Left-alignment shift](#case-3-tp53-12bp-left-alignment-shifted-deletion) | TP53 12bp DEL | BWA anchor 3bp left of CIGAR `D` position → S3 validates wrong bases | `has_shifted_same_length` (del_len ≥ 5) → Phase 3 arbitration |
+| [Left-alignment shift](#case-3-tp53-12bp-left-alignment-shifted-deletion) | TP53 12bp DEL | BWA anchor 3bp left of CIGAR `D` position → S3 validates wrong bases | S3 checks the haplotype a placement gives: the shifted `D(12)` passes as the same event (6.6.0; before, a Phase-3 fallback) |
 | [Wrong-length pure indels](#case-4-wrong-length-pure-indels-distinct-alleles) | Homopolymer 1bp-vs-2bp DEL; repeat-ladder DELs | Every tract-touching indel counted as the annotated event → VAF inflated several-fold | Wrong length → `partial_alt`, never REF/ALT; placement-aware ≥50bp band keeps split representations |
 
 !!! note "Cases 1 and 2 are now judged by the exact-carrier rule"
@@ -185,6 +185,13 @@ Actual CIGAR D(12) position in reads:                chr17:7579312  (+3bp right)
 All 221 ALT reads fail S3 → `alt = 0`, `ref = 775`.
 
 ### The Fix (Fix 4 — `variant_checks.rs` `check_deletion`)
+
+!!! note "Superseded in 6.6.0"
+    S3 now checks the haplotype a placement gives (#189, #191): the shifted `D(12)` gives the
+    variant's haplotype and passes S3 directly as the same event. A same-length deletion that
+    does not is judged by the read's bases (ALT when they spell the ALT across the window,
+    otherwise another allele at 5bp or more), and the flag and Phase-3 fallback described
+    below no longer exist. The original fix is kept here as history.
 
 When a windowed `D(12)` matches in **length** but fails S3, and `del_len ≥ 5`:
 

@@ -80,7 +80,6 @@ def _count(tmp_path, name, reads, pos, ref, alt, backend, with_census=True):
     return counts.rd, counts.ad, counts.partial_alt
 
 
-@pytest.mark.xfail(strict=True, reason="Phase 3 picks the closer haplotype")
 @pytest.mark.parametrize("backend", BACKENDS)
 def test_other_bases_outside_the_window_are_a_separate_event(tmp_path, backend):
     """A non-repeat +8: inserts of other bases one junction left of the variant
@@ -96,7 +95,6 @@ def test_other_bases_outside_the_window_are_a_separate_event(tmp_path, backend):
     assert _count(tmp_path, f"o{backend}", reads, a, ref, alt, backend) == (8, 4, 0)
 
 
-@pytest.mark.xfail(strict=True, reason="Phase 3 picks the closer haplotype")
 @pytest.mark.parametrize("backend", BACKENDS)
 def test_other_bases_inside_a_tract_are_another_allele(tmp_path, backend):
     """G>GCA before (CA)x6: a +GT written at a junction inside the tract is another

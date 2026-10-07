@@ -152,7 +152,9 @@ Common issues and solutions for gbcms. Issues are grouped by phase — work top-
 ??? question "`alt_count` is lower than expected for a deletion ≥5bp"
 
     BWA left-alignment can shift the anchor further left than where the CIGAR `D` appears.
-    The `has_shifted_same_length` Phase 3 fallback handles this for deletions ≥5bp.
+    S3 checks the haplotype a placement gives, so a deletion written elsewhere in its shift
+    region counts ALT; one written elsewhere with compensating mismatches counts ALT when the
+    read's bases spell the ALT across the window.
 
     For deletions <5bp failing S3 sequence validation, CIGAR-definitive REF is used — this is
     intentional. A 1-4bp deletion in the wrong reference context is almost certainly spurious noise,

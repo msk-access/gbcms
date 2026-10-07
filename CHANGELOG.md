@@ -33,6 +33,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   on real inputs (per-sample lists max 29 kb; one input holding a cohort's variants max
   47 kb) and never capped by span. The page no longer cites the retired parity suite.
 
+### Fixed — a same-length insert of other bases is judged by its bases (#243)
+
+- **Phase 3 overrode the bases.** A read whose insertion had the variant's length and
+  other readable bases, near the variant, went to Phase 3, whose closer haplotype let
+  length win ALT against those bases (Smith-Waterman under both bio versions, PairHMM
+  more often under bio 4) and could absorb another allele into REF. On the RC DNA set
+  it was the only way a read reached Phase 3 at an insertion row: 50 of 94,530 calls.
+- **The rule (RJ-21).** Such a read is judged by its bases, never Phase 3: ALT when
+  its bases across the window spell the ALT (the event written one junction off with a
+  compensating mismatch); otherwise another allele inside the discrimination window,
+  a separate event (REF where the window reads REF) outside it. Both backends agree.
+  The deletion side already worked this way.
+
 ### Fixed — an insertion's ALT needs one of the read's own inserted bases read (#240)
 
 - **Reads whose inserted bases nobody can read counted ALT.** A read carrying an

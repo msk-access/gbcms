@@ -150,11 +150,11 @@ flowchart LR
     LenQ -->|Yes| SeqQ{"Seq matches?\n(quality-masked)"}
     SeqQ -->|Yes| StrictAlt(["🔴 ALT — strict"]):::alt
     SeqQ -->|"Confident mismatch"| Third(["⚪ Neither + partial\n(third allele)"]):::partial
-    SeqQ -->|"All bases < min_baseq\nor insert past read end"| FlagSL["Flag has_shifted_same_length"]:::fallback
+    SeqQ -->|"No base readable\n(N or < min_baseq)\nor insert past read end"| FlagURA["Flag has_unreadable_insert"]:::partialflag
     LenQ -->|No| Trunc{"Truncation of expected insert?\n(≥4bp, ≥90% identity,\nboth non-low-complexity)"}
     Trunc -->|Yes| TruncAlt(["🔴 ALT — truncated same event"]):::alt
     Trunc -->|No| WLPartial(["⚪ Neither + partial\n(distinct allele)"]):::partial
-    FlagSL --> RefCov
+    FlagURA --> RefCov
     RefCov --> WinCheck
 
     classDef start fill:#9b59b6,color:#fff,stroke:#7d3c98,stroke-width:2px;
@@ -211,9 +211,12 @@ flowchart TD
     S1 -->|Yes| InDW{"Inside the discrimination\nwindow? (anchor kept)"}
     InDW -->|Yes| FlagWL
     InDW -->|"No: separate event"| Continue
-    S1 -->|No| FlagSL["Flag has_shifted_same_length"]:::fallback
+    S1 -->|No| Spells{"The read's bases spell\nthe ALT across the window?"}
+    Spells -->|Yes| S2
+    Spells -->|No| InDW3{"Inside the discrimination\nwindow?"}
+    InDW3 -->|Yes| FlagWL
+    InDW3 -->|"No: separate event"| Continue
     SameLen -->|No| FlagWL["Flag has_distinct_allele_nearby\n(any size)"]:::partialflag
-    FlagSL --> Continue
     FlagWL --> Continue
     Continue --> MoreOps{"More CIGAR ops?"}
     MoreOps -->|Yes| CheckWin
@@ -221,9 +224,7 @@ flowchart TD
     Eval -->|Yes| WinAlt(["🔴 ALT — windowed"]):::alt
     Eval -->|No| URCheck{"has_unreadable_insert?"}
     URCheck -->|Yes| URPartial(["⚪ Neither + partial\n(length, not sequence)"]):::partial
-    URCheck -->|No| SLCheck{"has_shifted_same_length\nAND ref coverage?"}
-    SLCheck -->|Yes| CPX(["🔄 Phase-3 arbitration\n(partial propagated on non-ALT)"]):::fallback
-    SLCheck -->|No| WLCheck{"has_distinct_allele_nearby\nAND ref coverage?"}
+    URCheck -->|No| WLCheck{"has_distinct_allele_nearby\nAND ref coverage?"}
     WLCheck -->|"Yes, the event slides\n(repeat_span ≥ 2 or a\nwide shift region)"| WLPartial(["⚪ Neither + partial\n(distinct allele)"]):::partial
     WLCheck -->|"Yes, unique context"| RefPartial(["✅ REF + partial\n(noise surfaced, rd kept)"]):::ref
     WLCheck -->|No| HasRef{"Anchor covered by M?"}
@@ -252,10 +253,12 @@ Three layers of validation prevent false-positive windowed matches:
 | **S3** | The placement gives the variant's haplotype: with X the expected insert, Y the read's and S the reference between the two junctions, `X + S = S + Y` (Y right of X) or `S + X = Y + S` (left), and the placement is the read's only change across the discrimination window (another gap, insertion or splice there is another haplotype); read bases below `--min-baseq`, or N, match anything, at least one read. An ALT that also substitutes its anchor base (`A>CCC`) has no equivalent placement | The read's own bases carry the allele wherever the aligner put it in a repeat: the same bases in a homopolymer, a rotation (`AC` for `CA`) in an STR. Before 6.6.0 S3 compared the reference base before the insertion with the anchor base, never equal inside a repeat, so carriers written elsewhere in the repeat counted **REF** (#189) |
 
 !!! note "Two Windowed Flags with Different Outcomes"
-    - **`has_shifted_same_length`** — the windowed scan found an insertion of the **right
-      length** carrying **other bases** (a caller and an aligner may write one event
-      differently). Resolved by **Phase-3 arbitration** (WFA+PairHMM under the default
-      backend); `partial_alt` evidence is propagated when Phase 3 does not confirm ALT.
+    - **An insertion of the right length carrying other readable bases** is judged by its
+      bases (RJ-21, since 6.6.0): ALT when the read's bases across the window spell the ALT
+      (the event written one junction off with a compensating mismatch); otherwise another
+      allele inside the discrimination window (`has_distinct_allele_nearby`), a separate
+      event outside it. Never Phase 3, whose closer haplotype let length win ALT and
+      absorbed other alleles into REF.
     - **`has_distinct_allele_nearby`** — the windowed scan found an insertion of the
       **wrong length** (flagged at any size, so REF can never silently absorb it), or the
       variant's bases placed where they give **another haplotype** inside its discrimination
@@ -354,12 +357,13 @@ Same single-walk strategy as insertion, with four additional features:
    allele** in the same tract → neither + `partial_alt`, never Phase 3. See
    [Wrong-Length Pure Indels](#wrong-length-pure-indels-partial_alt).
 
-3. **Left-alignment Phase 3 fallback** — For deletions ≥5bp where the windowed scan finds a
-   matching-length (or in-band) Del but S3 sequence validation fails (BWA left-alignment
-   shifted the anchor further left than the CIGAR `D` position), the engine flags
-   `has_shifted_same_length` and routes to Phase-3 arbitration. Short deletions (<5bp) with
-   failed S3 remain CIGAR-definitive REF — they are almost certainly unrelated spurious
-   deletions, not left-alignment artifacts. See [Case 3 in the Complex Indels guide](complex-indels.md#case-3-tp53-12bp-left-alignment-shifted-deletion).
+3. **A windowed deletion that fails S3** — an exact-length deletion elsewhere is ALT when the
+   read's bases spell the ALT despite where its gap sits (compensating mismatches); otherwise,
+   at 5bp or more, another allele (`has_distinct_allele_nearby`). Only an **in-band** deletion
+   (≥50bp, another length) whose deleted bases differ flags `has_in_band_mismatch` for
+   Phase-3 arbitration. Short deletions (<5bp) that fail S3 remain CIGAR-definitive REF — they
+   are almost certainly unrelated spurious deletions. See
+   [Case 3 in the Complex Indels guide](complex-indels.md#case-3-tp53-12bp-left-alignment-shifted-deletion).
 
 4. **Haplotype fallback** — When no CIGAR match is found and the read doesn't cover the anchor
    with a Match op (e.g., a soft-clip at the anchor), falls back to Phase 3 for
@@ -404,10 +408,13 @@ flowchart TD
     S3 -->|Yes| Only{"The read's only change\nacross the window?"}
     Only -->|Yes| S2["S2: Track closest"]
     Only -->|No| FlagWL
-    S3 -->|"No, del_len ≥ 5"| FlagSL["Flag has_shifted_same_length"]:::fallback
-    S3 -->|"No, del_len < 5"| Continue
+    S3 -->|No| DSpells{"Exact length and the read's\nbases spell the ALT?"}
+    DSpells -->|Yes| S2
+    DSpells -->|"No, exact length ≥ 5"| FlagWL
+    DSpells -->|"No, in-band ≥ 50bp"| FlagIB["Flag has_in_band_mismatch\n(Phase 3)"]:::fallback
+    DSpells -->|"No, < 5bp"| Continue
     S2 --> Continue
-    FlagSL --> Continue
+    FlagIB --> Continue
     FlagWL --> Continue
     Continue --> MoreOps{"More ops?"}
     MoreOps -->|Yes| CheckWin
@@ -429,9 +436,9 @@ flowchart TD
     Spans -->|No| AnchorSpan{"Read spans anchor?\n(e.g. soft-clip at anchor)"}
     AnchorSpan -->|Yes| CPX(["🔄 Phase 3"]):::fallback
     AnchorSpan -->|No| Neither(["⧯ Neither\n(no variant information)"]):::neither
-    Spans -->|Yes| SLCheck{"has_shifted_same_length?"}
-    SLCheck -->|Yes| CPXP(["🔄 Phase-3 arbitration\n(partial propagated on non-ALT)"]):::fallback
-    SLCheck -->|No| WLCheck{"has_distinct_allele_nearby?"}
+    Spans -->|Yes| IBCheck{"has_in_band_mismatch?"}
+    IBCheck -->|Yes| CPXP(["🔄 Phase-3 arbitration\n(partial propagated on non-ALT)"]):::fallback
+    IBCheck -->|No| WLCheck{"has_distinct_allele_nearby?"}
     WLCheck -->|"Yes, the event slides\n(repeat_span ≥ 2 or a\nwide shift region)"| WLPartial(["⚪ Neither + partial\n(distinct slippage allele)"]):::partial
     WLCheck -->|"Yes, unique context"| RefPartial(["✅ REF + partial\n(noise surfaced, rd kept)"]):::ref
     WLCheck -->|No| Ref(["✅ REF"]):::ref
@@ -453,10 +460,10 @@ Three layers of validation prevent false-positive windowed matches:
 | **S1** | Deleted length matches expected `ref_len − 1` exactly, or is within the ≥50bp ±3bp band | Wrong-length deletions never match; ≥5bp ones flag `has_distinct_allele_nearby` (distinct-allele candidates), <5bp ones are alignment noise (CIGAR-definitive) |
 | **S2** | Closest match wins (minimum distance from anchor) | When multiple candidates exist, picks the most likely |
 | **S3** | An exact-length deletion gives the variant's haplotype: the reference between the two placements repeats with period `len` (the same bases in a homopolymer, a rotation such as `AC` for `CA` in an STR), and it is the read's only change across the discrimination window (otherwise a distinct allele). An in-band (≥50bp) length compares the deleted bases over the overlapping span | Verifies the shifted Del is the same event. Before 6.6.0 S3 compared the deleted bases themselves, so a rotated STR placement under 5bp counted REF (#189) |
-| **del_len ≥ 5 guard** | A same-length Del that fails S3 counts ALT when the read's bases across the window spell the ALT (the aligner misplaced the gap with compensating mismatches); otherwise, at ≥5bp, it is a distinct allele (`has_distinct_allele_nearby`). An in-band (≥50bp) one whose bases differ flags `has_shifted_same_length` | Short (1–4bp) Dels failing S3 are almost certainly spurious noise — CIGAR remains definitive. A same-length one ≥5bp gives another haplotype: Phase 3 called such reads ALT (44–94% of synthetic cases; on the RC set every one it reached was another allele by its bases), so it is partial evidence instead (#191) |
+| **del_len ≥ 5 guard** | A same-length Del that fails S3 counts ALT when the read's bases across the window spell the ALT (the aligner misplaced the gap with compensating mismatches); otherwise, at ≥5bp, it is a distinct allele (`has_distinct_allele_nearby`). An in-band (≥50bp) one whose bases differ flags `has_in_band_mismatch` | Short (1–4bp) Dels failing S3 are almost certainly spurious noise — CIGAR remains definitive. A same-length one ≥5bp gives another haplotype: Phase 3 called such reads ALT (44–94% of synthetic cases; on the RC set every one it reached was another allele by its bases), so it is partial evidence instead (#191) |
 
-!!! note "has_shifted_same_length Phase 3 Fallback"
-    Only an in-band large deletion (≥50bp, another length within 3bp) whose deleted bases differ over the overlap flags `has_shifted_same_length` and goes to Phase-3 haplotype arbitration (WFA+PairHMM under the default backend), propagating `partial_alt` evidence when Phase 3 does not confirm ALT. A same-length deletion that gives another haplotype is judged by the read's bases: ALT when they spell the ALT across the window (the aligner wrote the gap elsewhere with compensating mismatches), otherwise, at ≥5bp, a distinct allele, not Phase 3 (before 6.6.0 Phase 3 often called it ALT; #191). A deletion the aligner wrote elsewhere in the event's shift region (left-alignment moves the caller's anchor left of the reads' `D`) gives the same haplotype and passes S3 directly.
+!!! note "has_in_band_mismatch Phase 3 Fallback"
+    Only an in-band large deletion (≥50bp, another length within 3bp) whose deleted bases differ over the overlap flags `has_in_band_mismatch` and goes to Phase-3 haplotype arbitration (WFA+PairHMM under the default backend), propagating `partial_alt` evidence when Phase 3 does not confirm ALT. A same-length deletion that gives another haplotype is judged by the read's bases: ALT when they spell the ALT across the window (the aligner wrote the gap elsewhere with compensating mismatches), otherwise, at ≥5bp, a distinct allele, not Phase 3 (before 6.6.0 Phase 3 often called it ALT; #191). A deletion the aligner wrote elsewhere in the event's shift region (left-alignment moves the caller's anchor left of the reads' `D`) gives the same haplotype and passes S3 directly.
 
     Example: **TP53 `GACCGTGCAAGT→-` (12bp)** — left-alignment moves the anchor 3bp left of the actual `D(12)` position in reads. That placement gives the same haplotype, so S3 (same haplotype) accepts it; before 6.6.0 S3 compared the deleted bases, failed, and Phase 3 classified these reads as ALT.
 
@@ -514,7 +521,7 @@ as the annotated event inflated VAF several-fold at such loci.
 | Same-length insertion with confidently mismatching bases | **Neither + `partial_alt`** (third allele) |
 | Same-length insertion with no readable inserted base (each N or below `--min-baseq`), at the anchor or shifted inside the discrimination window | **Neither + `partial_alt`** (RJ-20: the length, not the sequence) |
 | The same outside the discrimination window | A separate event (RJ-8): **REF** where the window is reference |
-| A shifted same-length candidate with readable bases failing S3 | **Phase-3 arbitration**, `partial_alt` propagated on non-ALT |
+| A shifted same-length insertion of other readable bases | **ALT** when the read's bases spell the ALT across the window; else **neither + `partial_alt`** inside the discrimination window, a separate event (**REF**) outside it (RJ-21) |
 | Windowed wrong-length op, where the event slides (`repeat_span ≥ 2` or a shift region wider than the event), or with an indel of the read inside the discrimination window | **Neither + `partial_alt`** (deletions only when the op is ≥5bp — 1–4bp windowed Ds are alignment noise → plain REF; insertions at any size) |
 | Windowed wrong-length op, unique context, the window free of the read's indels | **REF + `partial_alt`** (same size gate; anchor M is definitive REF, the stray op is surfaced) |
 
