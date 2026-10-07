@@ -2263,6 +2263,44 @@ properties hides behaviour other data exposes. Add:
 - Report per arm: clip-covered reads outside depth, depth-only fraction in
   repeat strata, and run time at WGS scale.
 
+**Audited and decided (2026-10-07).** A prototype from 2026-09-25 (local harness,
+`regression_panel/`) already selects on 59 strata: `tier_full`, 245 samples (254
+BAM runs, 11,189 variants, 10 matched-normal fillouts), every stratum at target or
+at what the data has (no Y or MT variants are signed out; 2 REF==ALT or placeholder
+rows). Measured against this cycle:
+- **The version comparison cannot be read by eye.** On the RC set, 542 of 1,060 rows
+  change counts between the 6.5.0-era build and develop, every indel row among them.
+  Of the 38 merges since 6.5.0, 33 touch code; about 20 change counts (the rest were
+  byte-identical in their own acceptance).
+- **Strata for this cycle's rules**, available among resolvable samples (and in
+  tier_full now): indel beside another run 6,508 (106), insertion duplicating the
+  reference 4,073 (51), deletion 100+ 2,656 (30), shrinking delins 6,174 (128),
+  growing 1,373 (22), delins span 20+ 1,251 (23), PMS2 1,135 (7), SNV inside an
+  indel's window 616 (46), ACCESS indel in a homopolymer 569 (24), complex row
+  overlapping its component row 80 (12), MNP near an indel 35 (9). No sample's
+  sign-out lists a variant twice.
+
+Decided (operator, 2026-10-07):
+- **Attribution by per-PR checkpoints:** one build per count-affecting merge,
+  run on the rows that changed between 6.5.0 and 6.6.0 plus their siblings; each
+  changed cell names the merge(s) where it changed.
+- **The 11 strata above join the 59**, and the panel is re-selected.
+- **Arms:** FORTE RNA (the 33-sample truth cohort, those patients' IMPACT DNA as
+  anchors) and a cohort-MAF run (a few BAMs genotyped on one MAF holding several
+  samples' variants, recurrent ones repeated). GIAB and TEMPO normals move to 6.7.0.
+- **Configurations** beyond production defaults: mFSD with both Parquet outputs on
+  the ACCESS samples, `--min-mapq 0` for PMS2 variants, an SW-backend subset, a
+  VCF-output subset.
+- **Checkpoint builds:** a manual workflow builds one manylinux wheel per commit
+  with the release recipe; the operator installs each into a venv on HPC.
+- **The PHI-free tools** (runner, comparison, attribution, checkpoint list) live in
+  the repo, `scripts/regression_panel/`, with `docs/development/regression-panel.md`;
+  the selector and the tier folders stay local.
+- **The gate:** no failed runs, an exact reduction check and every changed cell
+  attributed; concordance with the sign-out by stratum, any stratum falling more than
+  5 points and the top discordant rows adjudicated read by read; run time and peak
+  memory per arm within 1.5x of 6.5.0.
+
 ### D6 — One QC-flags reference page (#156) · M
 **Finding.** Every QC flag is documented in `output-formats.md`, but it is
 spread out:
