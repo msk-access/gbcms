@@ -10,10 +10,13 @@ pass through gbcms unchanged). Writes to REPORT_DIR (default OUT_ROOT/compare_BA
   header_diff.tsv             columns only in BASE or only in NEW, per arm and format
   version_summary.tsv         per arm: runs, rows, identical rows, count-changed rows
   version_cells.tsv           changed cells per arm and column
-  version_rows.tsv            every changed cell (run, arm, locus, column, base, new)
+  version_rows.tsv            every changed cell (run, arm, locus, column, base, new);
+                              VCF output field by field (FILTER, INFO:<id>, FORMAT:<id>)
   concordance_by_stratum.tsv  BASE and NEW against the sign-out ALT count, per stratum
-                              and level (read, fragment): n, median delta, fraction
-                              within max(2 reads, 10%), and the change in that fraction
+                              and level (read, fragment, and matched: the level the
+                              sign-out counted, reads for IMPACT and fragments for
+                              ACCESS): n, median delta, fraction within max(2, 10%),
+                              and the change in that fraction
   discordant.tsv              the largest NEW vs sign-out fragment disagreements, and
                               the top 20 per stratum: to adjudicate read by read (the
                               BAM is the truth; the sign-out is a comparison)
@@ -60,12 +63,28 @@ def maf_rows(path):
 
 
 def vcf_records(path):
-    head, recs = [], []
+    """(the INFO and FORMAT IDs the header defines, {record key: {field: value}}): a
+    record keyed by CHROM, POS, REF, ALT (and its occurrence), its fields INFO:<id> and
+    FORMAT:<id> (the first sample)."""
+    ids, recs, seen = set(), {}, collections.Counter()
     for x in open(path):
-        if x.startswith("##"):
+        if x.startswith("##INFO=<ID=") or x.startswith("##FORMAT=<ID="):
+            ids.add(x[2:].split("=", 1)[0] + ":" + x.split("ID=", 1)[1].split(",", 1)[0])
             continue
-        (head if x.startswith("#") else recs).append(x.rstrip("\n"))
-    return head, recs
+        if x.startswith("#"):
+            continue
+        f = x.rstrip("\n").split("\t")
+        k = (f[0], f[1], f[3], f[4])
+        fields = {"FILTER": f[6]}
+        for kv in f[7].split(";"):
+            key, _, val = kv.partition("=")
+            fields["INFO:" + key] = val
+        if len(f) > 9:
+            for key, val in zip(f[8].split(":"), f[9].split(":"), strict=False):
+                fields["FORMAT:" + key] = val
+        recs[k + (seen[k],)] = fields
+        seen[k] += 1
+    return ids, recs
 
 
 def as_int(x):
@@ -104,14 +123,22 @@ def main():
             continue
         summ[arm]["runs"] += 1
         if en == "vcf":
-            hb, rb = vcf_records(fb)
-            hn, rn = vcf_records(fn)
-            summ[arm]["records"] += len(rn)
-            summ[arm]["records changed"] += sum(
-                1 for x, y in zip(rb, rn, strict=False) if x != y
-            ) + abs(len(rb) - len(rn))
-            if hb != hn:
-                hdr[(arm, "vcf")][0].add("column header line differs")
+            ib, vb = vcf_records(fb)
+            in_, vn = vcf_records(fn)
+            hdr[(arm, "vcf")][0].update(ib - in_)
+            hdr[(arm, "vcf")][1].update(in_ - ib)
+            for k, y in vn.items():
+                x = vb.get(k)
+                summ[arm]["records"] += 1
+                if x is None:
+                    summ[arm]["records only in new"] += 1
+                    continue
+                diff = [c for c in y if c in x and x[c] != y[c]]
+                if not diff:
+                    summ[arm]["records identical"] += 1
+                for c in diff:
+                    cells[(arm, c)] += 1
+                    changed.append((rid, arm, k[0], k[1], "", k[2], k[3], c, x[c], y[c]))
             continue
         rb, rn = maf_rows(fb), maf_rows(fn)
         if rb and rn:
@@ -154,6 +181,7 @@ def main():
                 v["so"] = as_int(y.get("signout_t_alt_count"))
                 v["strata"] = y.get("panel_strata", "")
                 v["key"] = tuple(y.get(k, "") for k in KEY)
+                v["access"] = rid.endswith(("_duplex", "_simplex"))
 
     # Concordance by stratum
     conc = {b: collections.defaultdict(list) for b in (base, new)}
@@ -165,6 +193,9 @@ def main():
             for s in [x for x in v["strata"].split(";") if x] + ["all"]:
                 conc[b][(s, "read")].append((v["alt"] - v["so"], v["so"]))
                 conc[b][(s, "fragment")].append((v["altf"] - v["so"], v["so"]))
+                # the level the sign-out counted: reads for IMPACT, fragments for ACCESS
+                m = v["altf"] if v.get("access") else v["alt"]
+                conc[b][(s, "matched")].append((m - v["so"], v["so"]))
             if b == new:
                 disc.append(
                     (
@@ -193,7 +224,7 @@ def main():
             fh.write(
                 f"{k[0]}\t{k[1]}\t{len(dn)}\t{mb:.1f}\t{mn:.1f}\t{wb:.3f}\t{wn:.3f}\t{wn - wb:+.3f}\n"
             )
-            if k[1] == "fragment" and db:
+            if k[1] == "matched" and db:
                 worst.append((wn - wb, k[0], len(dn)))
     with open(os.path.join(rep, "discordant.tsv"), "w") as fh:
         fh.write(

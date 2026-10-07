@@ -77,12 +77,14 @@ python scripts/regression_panel/compare_panel.py TIER OUT 6.5.0 6.6.0
 ```
 
 writes `gate.txt` and the reports it summarises: `version_summary.tsv`,
-`version_cells.tsv`, `version_rows.tsv` (every changed cell), `header_diff.tsv`,
-`concordance_by_stratum.tsv` (each version against the sign-out ALT count, per
-stratum, at read and fragment level: median delta and the fraction within
-max(2 reads, 10%)), `discordant.tsv` (the largest disagreements, and the top 20 per
-stratum), `normals.tsv`, `times.tsv` and `parquet.tsv` (needs `pyarrow`). ACCESS rows
-are compared with the sign-out after summing duplex and simplex.
+`version_cells.tsv`, `version_rows.tsv` (every changed cell; VCF output field by
+field: `FILTER`, `INFO:<id>`, `FORMAT:<id>`), `header_diff.tsv` (columns, or INFO and
+FORMAT IDs, only in one version), `concordance_by_stratum.tsv` (each version against
+the sign-out ALT count, per stratum: median delta and the fraction within
+max(2 reads, 10%), at read and fragment level and at the **matched** level, the one
+the sign-out counted: reads for IMPACT, duplex + simplex fragments for ACCESS),
+`discordant.tsv` (the largest disagreements, and the top 20 per stratum),
+`normals.tsv`, `times.tsv` and `parquet.tsv` (needs `pyarrow`).
 
 ## Attributing every changed cell
 
@@ -118,7 +120,8 @@ The candidate is tagged when:
 - **no run fails** in either build, the reduction check is exact, and **every changed
   cell is attributed** (`unattributed.tsv` empty);
 - **concordance by stratum** is reported for both versions; any stratum whose fraction
-  within max(2 reads, 10%) of the sign-out falls by more than 5 points, and the top
+  within max(2 reads, 10%) of the sign-out (matched level) falls by more than 5 points,
+  and the top
   discordant rows, are adjudicated read by read (the read census, or the reads
   themselves) before the tag;
 - **run time and peak memory** per arm stay within 1.5× of the previous release, or

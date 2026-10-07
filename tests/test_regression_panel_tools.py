@@ -109,9 +109,53 @@ def test_compare_sums_access_flavors_and_reports_concordance_by_stratum(tmp_path
     ins = conc[("shape:INS_1", "fragment")]
     assert ins["n"] == "2" and ins["within_base"] == "0.500" and ins["within_new"] == "1.000"
     assert conc[("all", "read")]["n"] == "6"
+    # Matched: reads for the IMPACT run, duplex + simplex fragments for ACCESS.
+    assert conc[("shape:INS_1", "matched")]["within_new"] == "1.000"
     assert len(_read(rep / "normals.tsv")) == 3
     gate = (rep / "gate.txt").read_text()
     assert "failed runs: base 0, new 1" in gate
+
+
+def test_compare_reads_vcf_output_field_by_field(tmp_path):
+    """A VCF run: a new INFO field is a header difference, not a changed record; a
+    changed FORMAT value is one changed cell."""
+    compare = _load("compare_panel")
+    tier = tmp_path / "tier"
+    _write(tier / "mafs" / "r001.maf", PANEL_COLS, VARIANTS)
+    _write(
+        tier / "runs.tsv",
+        ("run_id", "tag", "arm", "mode", "root", "bam_relpath", "variants", "extra_args"),
+        [("r001_vcf", "r001", "vcf", "dna", "dmp", "a.bam", "mafs/r001.maf", "--format vcf")],
+    )
+    head = '##fileformat=VCFv4.2\n##INFO=<ID=DP,Number=1,Type=Integer,Description="d">\n'
+    cols = "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\tFORMAT\tS\n"
+    for build, extra_head, info, ad in (
+        ("base", "", "DP=60", "50,10"),
+        (
+            "new",
+            '##INFO=<ID=MAF_START,Number=1,Type=Integer,Description="m">\n',
+            "DP=60;MAF_START=100",
+            "50,12",
+        ),
+    ):
+        d = tmp_path / "out" / build / "r001_vcf"
+        d.mkdir(parents=True)
+        (d / "S.vcf").write_text(
+            head + extra_head + cols + f"1\t100\t.\tA\tT\t.\t.\t{info}\tAD\t{ad}\n"
+        )
+    rep = tmp_path / "rep"
+    import sys
+
+    argv = sys.argv
+    sys.argv = ["compare_panel.py", str(tier), str(tmp_path / "out"), "base", "new", str(rep)]
+    try:
+        compare.main()
+    finally:
+        sys.argv = argv
+    cells = _read(rep / "version_rows.tsv")
+    assert [(c["column"], c["base"], c["new"]) for c in cells] == [("FORMAT:AD", "50,10", "50,12")]
+    hdr = {(r["arm"], r["format"]): r for r in _read(rep / "header_diff.tsv")}
+    assert hdr[("vcf", "vcf")]["only_in_new"] == "INFO:MAF_START"
 
 
 def test_attribution_prepare_check_and_trail(tmp_path):
