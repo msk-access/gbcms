@@ -114,6 +114,7 @@ nav:
     - Developer Guide: development/developer-guide.md
     - Testing Guide: development/testing-guide.md
     - Release Guide: development/release-guide.md
+    - Regression Panel: development/regression-panel.md
     - Changelog: development/changelog.md
     - Contributing: development/contributing.md
   
