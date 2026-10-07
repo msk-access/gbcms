@@ -20,7 +20,6 @@ import glob
 import random
 
 import pysam
-import pytest
 from helpers import make_read, read_maf_output
 from typer.testing import CliRunner
 
@@ -79,9 +78,6 @@ def _run(tmp_path, rows, reads):
     return [(int(r["ref_count"]), int(r["alt_count"]), int(r["partial_alt"])) for r in got]
 
 
-@pytest.mark.xfail(
-    strict=True, reason="each twin is the other's sibling: mid-tract carriers count at neither"
-)
 def test_one_allele_given_at_both_ends_of_a_repeat_counts_every_carrier(tmp_path):
     """+CTG given after the anchor A and after the tract's last G (VCF rows in input
     order), and +CTGCTG, a genuinely different allele. Carriers of +CTG: 4 written at
@@ -98,7 +94,6 @@ def test_one_allele_given_at_both_ends_of_a_repeat_counts_every_carrier(tmp_path
     assert _run(tmp_path, rows, reads) == [(6, 10, 3), (6, 10, 3), (6, 3, 10)]
 
 
-@pytest.mark.xfail(strict=True, reason="no twin finder yet")
 def test_twin_rows_are_found_after_normalization():
     """The pipeline's twin finder groups valid rows by their prepared allele."""
     from gbcms.pipeline import duplicate_alleles

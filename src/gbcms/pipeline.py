@@ -428,6 +428,21 @@ def _naming_difference(variants: list[Variant], other_names: list[str]) -> tuple
     return None
 
 
+def _allele_key(variant: Any) -> tuple[str, int, str, str]:
+    """A prepared variant's allele: rows equal here are one allele given twice."""
+    return (variant.chrom, variant.pos, variant.ref_allele.upper(), variant.alt_allele.upper())
+
+
+def duplicate_alleles(prepared: Any, valid_indices: list[int]) -> list[list[int]]:
+    """Groups (two or more, in input order) of valid rows that preparation made one
+    allele, such as an insertion of a repeat unit written at either end of the repeat.
+    Each such row is counted in full and is never another's sibling."""
+    by_allele: dict[tuple[str, int, str, str], list[int]] = {}
+    for i in valid_indices:
+        by_allele.setdefault(_allele_key(prepared[i].variant), []).append(i)
+    return [rows for rows in by_allele.values() if len(rows) > 1]
+
+
 class Pipeline:
     """Main pipeline for processing BAM files and counting bases at variant positions."""
 
@@ -550,6 +565,25 @@ class Pipeline:
             )
         if len(invalid) > 5:
             logger.warning("... and %d more rejected variants", len(invalid) - 5)
+        twins = duplicate_alleles(prepared, valid_indices)
+        for rows in twins[:5]:
+            v = prepared[rows[0]].variant
+            logger.warning(
+                "One allele given %d times: %s are %s:%d %s>%s after normalization; "
+                "each row counts every carrier, none as another's sibling",
+                len(rows),
+                ", ".join(
+                    f"{prepared[i].variant.chrom}:{prepared[i].original_pos + 1} "
+                    f"{prepared[i].original_ref}>{prepared[i].original_alt}"
+                    for i in rows
+                ),
+                v.chrom,
+                v.pos + 1,
+                v.ref_allele,
+                v.alt_allele,
+            )
+        if len(twins) > 5:
+            logger.warning("... and %d more alleles given more than once", len(twins) - 5)
 
         # Log variant type breakdown for transparency. MNPs (same-length
         # multi-base substitutions) are dispatched by allele lengths in the Rust
@@ -734,12 +768,19 @@ class Pipeline:
                 if grp is not None:
                     group_map.setdefault(grp, []).append(vi_pos)
 
+            # A row given twice (one allele written two ways, as a repeat unit inserted
+            # at either end of the repeat) is not its own competitor: each twin would
+            # fit a carrier exactly as the row does, and the guard calls such a read
+            # neither row's. Twins are left out, so each row counts every carrier.
             sibling_variants: list[list] = []
             for vi_pos, vi in enumerate(valid_indices):
                 grp = prepared[vi].multi_allelic_group
                 if grp is not None and grp in group_map:
+                    own = _allele_key(prepared[vi].variant)
                     siblings = [
-                        prepared[valid_indices[j]].variant for j in group_map[grp] if j != vi_pos
+                        prepared[valid_indices[j]].variant
+                        for j in group_map[grp]
+                        if j != vi_pos and _allele_key(prepared[valid_indices[j]].variant) != own
                     ]
                     sibling_variants.append(siblings)
                 else:

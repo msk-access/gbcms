@@ -33,6 +33,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   on real inputs (per-sample lists max 29 kb; one input holding a cohort's variants max
   47 kb) and never capped by span. The page no longer cites the retired parity suite.
 
+### Fixed — one allele given twice is not its own sibling (#246)
+
+- **Carriers lost at both rows.** An input that gives one allele as two rows (a
+  repeat unit inserted at either end of the repeat, as FORTE's indel probes do) had
+  each row treated as the other's sibling after normalization made them one variant.
+  A carrier the aligner wrote at the junction counted at both rows; one written
+  anywhere else in the tract fit both exactly, so the AD guard counted it at
+  neither: +CTG at a (CTG)x11 tract had AD 7 against 62 when counted alone.
+- **The fix.** A sibling identical to the row after preparation is left out of its
+  sibling list (the guards, the Phase-3 haplotype matrix and the observed-allele
+  scan all read that list), so each row counts every carrier; the run warns, naming
+  the rows. A genuinely different allele at the site stays a sibling.
+
 ### Fixed — a same-length insert of other bases is judged by its bases (#243)
 
 - **Phase 3 overrode the bases.** A read whose insertion had the variant's length and

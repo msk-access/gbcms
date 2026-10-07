@@ -1069,6 +1069,8 @@ When multiple variants have overlapping REF spans at the same locus, reads carry
 
 During normalization, `assign_multi_allelic_groups()` groups co-annotated variants with a fixed-point sweep over sorted `(chrom, pos)` coordinates, under two criteria: variants whose REF spans intersect (any types — tagged `MULTI_ALLELIC`), and length-changing variants whose scan windows (`max(5, repeat_span+2)` each side) overlap (tagged `TRACT_CLUSTER` when window-only). Groups close transitively and may be non-contiguous in position order; members share a `multi_allelic_group` ID and the tag is appended to `gbcms_status_reason` (the verdict stays `PASS`). Within a group the engine assigns AD exclusively: a read's ALT call is demoted to `partial_alt` when a sibling explains it strictly better by span-explanation cost, or exactly as well as the row's ALT does (the two alleles differ only at bases the read has masked, so the read is either), and an alignment-phase ALT not confirmed exactly by the read's own span reconstruction is demoted as ambiguous; anchor-exact CIGAR evidence is never contested.
 
+One allele given as two rows (a repeat unit inserted at either end of the repeat, say, which normalization makes one variant) is not its own sibling. Before 6.6.0 each twin was the other's: a carrier the aligner wrote anywhere but the junction fit both exactly, so it counted at neither row, while one written at the junction counted at both. Twins are now left out of each other's sibling lists, so each row counts every carrier; the rows keep their group and tag, and the run warns once, naming them.
+
 ### Phase 2: Sibling ALT Exclusion
 
 During counting, a read classified as **REF** for a variant is checked against the
