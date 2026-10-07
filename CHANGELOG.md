@@ -35,16 +35,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed — one allele given twice is not its own sibling (#246)
 
-- **Carriers lost at both rows.** An input that gives one allele as two rows (a
-  repeat unit inserted at either end of the repeat, as FORTE's indel probes do) had
-  each row treated as the other's sibling after normalization made them one variant.
-  A carrier the aligner wrote at the junction counted at both rows; one written
-  anywhere else in the tract fit both exactly, so the AD guard counted it at
-  neither: +CTG at a (CTG)x11 tract had AD 7 against 62 when counted alone.
-- **The fix.** A sibling identical to the row after preparation is left out of its
-  sibling list (the guards, the Phase-3 haplotype matrix and the observed-allele
-  scan all read that list), so each row counts every carrier; the run warns, naming
-  the rows. A genuinely different allele at the site stays a sibling.
+- **Carriers lost at both rows.** An input that gives one allele on two rows had
+  each row treated as the other's sibling once normalization made them one variant:
+  the same row given verbatim (a cohort MAF listing a recurrent indel once per
+  sample), or one allele written two ways (a repeat unit inserted at either end of
+  the repeat, as FORTE's indel probes do). A carrier the aligner wrote at the
+  junction counted at both rows; one written anywhere else in a repeat fit both
+  exactly, so the AD guard counted it at neither: +CTG at a (CTG)x11 tract had AD 7
+  against 62 when counted alone. Outputs before 6.6.0 undercount such rows' indel
+  carriers written away from the junction (an SNV base read directly was never
+  contested). With `--rescue-mnp`, an MNP given twice was skipped as grouped.
+- **The fix.** A sibling of the row's own allele is left out of its sibling list
+  (the guards, the Phase-3 haplotype matrix and the observed-allele scan all read
+  that list; one entry per other allele), so each row counts every carrier, and
+  the MNP rescue skips only a row whose group holds another allele. A row given
+  verbatim is noted at INFO; one allele given two ways warns, naming the rows. A
+  genuinely different allele at the site stays a sibling.
 
 ### Fixed — a same-length insert of other bases is judged by its bases (#243)
 

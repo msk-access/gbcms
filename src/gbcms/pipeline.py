@@ -443,6 +443,31 @@ def duplicate_alleles(prepared: Any, valid_indices: list[int]) -> list[list[int]
     return [rows for rows in by_allele.values() if len(rows) > 1]
 
 
+def sibling_lists(prepared: Any, valid_indices: list[int]) -> list[list]:
+    """For each valid row (in ``valid_indices`` order), the other alleles of its
+    co-annotated group, one variant per allele. A row given twice (one allele written
+    two ways, as a repeat unit inserted at either end of the repeat, or the same row
+    given verbatim) is not its own competitor: each twin would fit a carrier exactly
+    as the row does, and the guard calls such a read neither row's. Twins are left
+    out, so each row counts every carrier."""
+    keys = {i: _allele_key(prepared[i].variant) for i in valid_indices}
+    groups: dict[int, list[int]] = {}
+    for i in valid_indices:
+        group = prepared[i].multi_allelic_group
+        if group is not None:
+            groups.setdefault(group, []).append(i)
+    out: list[list] = []
+    for i in valid_indices:
+        group = prepared[i].multi_allelic_group
+        seen, siblings = {keys[i]}, []
+        for j in groups.get(group, []) if group is not None else []:
+            if keys[j] not in seen:
+                seen.add(keys[j])
+                siblings.append(prepared[j].variant)
+        out.append(siblings)
+    return out
+
+
 class Pipeline:
     """Main pipeline for processing BAM files and counting bases at variant positions."""
 
@@ -565,25 +590,42 @@ class Pipeline:
             )
         if len(invalid) > 5:
             logger.warning("... and %d more rejected variants", len(invalid) - 5)
-        twins = duplicate_alleles(prepared, valid_indices)
-        for rows in twins[:5]:
+
+        # One allele on several rows: given verbatim (a cohort MAF listing a recurrent
+        # variant once per sample) it is noted; written two ways, it may be an input
+        # error, so it warns. Either way each row counts every carrier.
+        def _row(i: int) -> str:
+            p = prepared[i]
+            return (
+                f"{variants[i].output_chrom}:{p.original_pos + 1} {p.original_ref}>{p.original_alt}"
+            )
+
+        verbatim: list[list[int]] = []
+        two_ways: list[list[int]] = []
+        for rows in duplicate_alleles(prepared, valid_indices):
+            (verbatim if len({_row(i) for i in rows}) == 1 else two_ways).append(rows)
+        if verbatim:
+            logger.info(
+                "%d allele(s) given verbatim on more than one row (e.g. %s, %d rows); "
+                "each row counts every carrier, none as another's sibling",
+                len(verbatim),
+                _row(verbatim[0][0]),
+                len(verbatim[0]),
+            )
+        for rows in two_ways[:5]:
             v = prepared[rows[0]].variant
             logger.warning(
-                "One allele given %d times: %s are %s:%d %s>%s after normalization; "
+                "One allele given %d ways: %s are %s:%d %s>%s after normalization; "
                 "each row counts every carrier, none as another's sibling",
                 len(rows),
-                ", ".join(
-                    f"{prepared[i].variant.chrom}:{prepared[i].original_pos + 1} "
-                    f"{prepared[i].original_ref}>{prepared[i].original_alt}"
-                    for i in rows
-                ),
-                v.chrom,
+                ", ".join(_row(i) for i in rows),
+                variants[rows[0]].output_chrom,
                 v.pos + 1,
                 v.ref_allele,
                 v.alt_allele,
             )
-        if len(twins) > 5:
-            logger.warning("... and %d more alleles given more than once", len(twins) - 5)
+        if len(two_ways) > 5:
+            logger.warning("... and %d more alleles given more than one way", len(two_ways) - 5)
 
         # Log variant type breakdown for transparency. MNPs (same-length
         # multi-base substitutions) are dispatched by allele lengths in the Rust
@@ -757,34 +799,10 @@ class Pipeline:
             # given allele.
             decomposed = [prepared[i].decomposed_variant for i in valid_indices]
 
-            # Build sibling Variant objects for multi-allelic exclusion
-            # For each variant in a multi-allelic group, collect the full Variant
-            # objects of all OTHER variants in the same group. This allows the
-            # Rust-side guard to run the complete classification pipeline
-            # (check_allele_with_qual) for indels/complex/MNPs, not just SNPs.
-            group_map: dict[int, list[int]] = {}
-            for vi_pos, vi in enumerate(valid_indices):
-                grp = prepared[vi].multi_allelic_group
-                if grp is not None:
-                    group_map.setdefault(grp, []).append(vi_pos)
-
-            # A row given twice (one allele written two ways, as a repeat unit inserted
-            # at either end of the repeat) is not its own competitor: each twin would
-            # fit a carrier exactly as the row does, and the guard calls such a read
-            # neither row's. Twins are left out, so each row counts every carrier.
-            sibling_variants: list[list] = []
-            for vi_pos, vi in enumerate(valid_indices):
-                grp = prepared[vi].multi_allelic_group
-                if grp is not None and grp in group_map:
-                    own = _allele_key(prepared[vi].variant)
-                    siblings = [
-                        prepared[valid_indices[j]].variant
-                        for j in group_map[grp]
-                        if j != vi_pos and _allele_key(prepared[valid_indices[j]].variant) != own
-                    ]
-                    sibling_variants.append(siblings)
-                else:
-                    sibling_variants.append([])
+            # Each row's co-annotated other alleles, against which the Rust-side
+            # guards and Phase 3 weigh its reads (the full classification pipeline,
+            # check_allele_with_qual, for indels/complex/MNPs, not just SNPs).
+            sibling_variants = sibling_lists(prepared, valid_indices)
 
             rust_start = time.perf_counter()
             if self.config.alignment.backend != "sw":
@@ -1128,6 +1146,12 @@ class Pipeline:
             pv.gbcms_rescue = ""
 
         rescue_start = time.perf_counter()
+        # A row whose group holds another allele: that row may own its reads. A group
+        # of one allele given twice holds none, so its rows are rescued as if alone.
+        valid = [i for i, p in enumerate(prepared) if p.gbcms_status == "PASS"]
+        contested = {
+            i for i, sibs in zip(valid, sibling_lists(prepared, valid), strict=True) if sibs
+        }
         outcomes: Counter[str] = Counter()
         candidates: list[tuple[int, list[tuple[int, str, str]]]] = []
         for i, (pv, counts) in enumerate(zip(prepared, full_counts, strict=True)):
@@ -1139,7 +1163,7 @@ class Pipeline:
                 continue
             v = pv.variant
             contig = variants[i].output_chrom
-            if pv.multi_allelic_group is not None:
+            if i in contested:
                 pv.gbcms_rescue = format_rescue_audit(OUTCOME_SKIPPED_GROUPED, counts)
                 outcomes[OUTCOME_SKIPPED_GROUPED] += 1
                 logger.debug(

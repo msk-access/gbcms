@@ -20,7 +20,6 @@ import glob
 import random
 
 import pysam
-import pytest
 from helpers import make_read, read_maf_output
 from typer.testing import CliRunner
 
@@ -163,7 +162,6 @@ def test_a_genuine_sibling_still_claims_what_it_explains_as_well(tmp_path):
     assert _run(tmp_path, rows, reads) == [(6, 4, 8), (6, 4, 8), (6, 3, 9)]
 
 
-@pytest.mark.xfail(strict=True, reason="the MNP rescue skips every grouped row, twins included")
 def test_an_mnp_given_twice_is_rescued_as_when_given_once(tmp_path):
     """With --rescue-mnp, an MNP row given twice is rescued at both rows, as when given
     once: its group holds no other allele, so no co-annotated row owns its reads."""
@@ -181,7 +179,6 @@ def test_an_mnp_given_twice_is_rescued_as_when_given_once(tmp_path):
     assert counts([m.MNP_ROW, m.MNP_ROW], "twice") == [alone, alone]
 
 
-@pytest.mark.xfail(strict=True, reason="every duplicate is a warning")
 def test_a_row_given_verbatim_is_noted_and_two_ways_is_warned(tmp_path):
     """A row given verbatim twice (a cohort MAF listing a recurrent indel once per
     sample) is noted at INFO; one allele given two ways is a WARNING naming both."""
