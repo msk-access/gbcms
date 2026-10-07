@@ -2301,6 +2301,22 @@ Decided (operator, 2026-10-07):
   5 points and the top discordant rows adjudicated read by read; run time and peak
   memory per arm within 1.5x of 6.5.0.
 
+**Built (2026-10-07, `feature/d5-regression-panel`).** The selection (local,
+`regression_panel/select_panel_v2.py` → `tier_660/`): 290 samples (9 ACCESS; 46
+anchors: the 24 acceptance samples and 22 FORTE patients' IMPACT DNA), 412 runs (dna
+299, rna 33, sw 25, mq0 19, mfsd 18, normal 10, vcf 5, cohort 3), 14,174 variants,
+all 70 strata at target or at what the data has; the cohort MAF lists 421 of its
+alleles more than once. The tools and the checkpoint-wheels workflow are in the repo
+(`scripts/regression_panel/`, `docs/development/regression-panel.md`); 25 checkpoints
+since 6.5.0. A local smoke run, 6.5.0 against develop on 11 runs covering every arm:
+no failures; the comparison showed every VCF record "changed" (6.6.0 adds MAF_START /
+MAF_REF / MAF_ALT) and fragment concordance at 32% on IMPACT (its sign-out counts
+reads), so VCF output is now compared field by field (107 of 403 records identical)
+and concordance at the sign-out's own level (99%). Attribution with two checkpoints
+(#203 and develop): the reduction exact, all 6,164 changed MAF cells attributed, none
+unattributed. GitHub runs a manual workflow only from the default branch, so the
+checkpoint wheels also start from a pushed `checkpoint-wheels/X.Y.Z` branch.
+
 ### D6 — One QC-flags reference page (#156) · M
 **Finding.** Every QC flag is documented in `output-formats.md`, but it is
 spread out:
