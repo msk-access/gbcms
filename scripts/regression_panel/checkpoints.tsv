@@ -1,0 +1,28 @@
+order	label	sha	interval_merges
+0	6.5.0 (as a wheel: build environment)	d111a57ae2b5205273d12a0f6220f90bc4c09150	6.5.0
+1	#160 fix/c10-c2-discrimination-window	3fa61f36160d3f572acbf0808845820a795cd857	7f1273b4,#117,#158,#160
+2	#164 feature/o4-observed-allele	8fe0611c482161e47c5b8fcff061c23904cd9f7d	#161,#162,#164
+3	#165 feature/c1-exact-carrier	a9a595033bfde587f23da675bcbb0db791618615	#165
+4	#168 feature/c12-clip-carriers	8768112dbd1d42a153cba14be4ad3895296d128e	#168
+5	#169 fix/rna-baq-own-evidence	c4cb03363e6b22794cb39389a2445b4a1d3e6f1d	#169
+6	#181 feature/r1-span-aware-exon-edge-baq	d6129e0a50d3c3645ce268ea32b2c06f482f64bf	#175,#181
+7	#184 feature/c14-records-without-bases	37615f527210ee2b6c0f5d025b6d53b9b722818c	#184
+8	#187 feature/r2-strandedness-observability	dd68b11e80b05856f8adb2d4d0a3b7909ebff3b9	#187
+9	#190 feature/c4-contig-end-windows	28ec2c226eb2b2b4fb1214439eb837a390735d2d	#190
+10	#193 feature/c21-shifted-insertion-carriers	ce7e4c627a54949d5805de9b3ed7e506c916d11f	#193
+11	#203 feature/cluster1-pure-indel-read-judgment	706c44c843d108db399a9846210df1468cdfa862	#197,#203
+12	#205 feature/t1-t2-test-architecture	d9767a3620bbe6582665a6e4b759e075bdda2895	#205
+13	#206 feature/h3-code-quality-sweep	0b69d712b9f859e56fa53a5b6f9cd4264cb78467	#206
+14	#210 feature/c25-c26-read-judgment	5c4eed06942df16f347ac7d91cbfba53796a2f4f	#209,#210
+15	#211 feature/g1-read-inputs	881d6d2dd05aefdfd81d65642559cb69e79ecbc4	#211
+16	#215 feature/g2-read-judgment	0183f48224e464b4f171a1d27c2cdb7945da15ea	#215
+17	#217 feature/g3-rna	5fb7e79a6ed61b1cd35c7dc54882c659b185b3db	#217
+18	#222 feature/g4-input	9c371263a96a926179327d5df24f76098de32349	#222
+19	#226 feature/g5-merge-outputs	39c362fe983d180f0b1f2df43b8ba97619d2caa1	#226
+20	#228 feature/g6-statistics	35634af27ddd37c0fc76b6fdea0578dea9b83581	#228
+21	#241 feature/s3-fisher-deep	f3c1a4c7b665bfe184581f36c253ac2ff2b5f87e	#229,#230,#231,#238,#241
+22	#242 feature/c35-insert-bases	bd9f12e7b5f5d1017dd749226166b959648ef35b	#242
+23	#247 feature/c36-shifted-inserts	a42457ef9f4c83c13fff9aa3b791e8cdcf89826f	#247
+24	#249 feature/c37-carrier-not-ref	cd7cb7b8a8b89cb6f1c9f9030397feba9015822e	#248,#249
+25	#250 feature/c38-guard-twins	bb60aee1dddb8441f8cfb1fbf29504decb5695b3	#250
+26	release/6.6.0 (the candidate; no counting change since the previous row)	09612675dcda285530d0a4143049a93fed798e9e	#251,1f6cde46,09612675
