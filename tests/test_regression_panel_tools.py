@@ -271,3 +271,295 @@ def test_the_runner_shards_and_skips_finished_runs(tmp_path):
     run(0)
     run(1)
     assert sum(len(_read(p)) for p in (out / "b").glob("times.*.tsv")) == 4
+
+
+# ── From the review: each asserts the correct behaviour ─────────────────────────
+RUN_COLS = ("run_id", "tag", "arm", "mode", "root", "bam_relpath", "variants", "extra_args")
+V3 = [("1", "100", "100", "A", "T"), ("1", "130", "131", "-", "G"), ("1", "160", "160", "C", "G")]
+
+
+def _compare(tier, out, rep):
+    import sys
+
+    compare = _load("compare_panel")
+    argv = sys.argv
+    sys.argv = ["compare_panel.py", str(tier), str(out), "base", "new", str(rep)]
+    try:
+        compare.main()
+    except SystemExit:
+        pass
+    finally:
+        sys.argv = argv
+
+
+def _tier_one(tmp_path, arm="dna", rid="r001_dna_tumor", extra=""):
+    tier = tmp_path / "tier"
+    _write(tier / "mafs" / "r001.maf", KEY, V3)
+    _write(
+        tier / "runs.tsv",
+        RUN_COLS,
+        [(rid, "r001", arm, "dna", "dmp", "a.bam", "mafs/r001.maf", extra)],
+    )
+    return tier
+
+
+@pytest.mark.xfail(
+    strict=True, reason="the mfsd arm is reduced; its BH q-values depend on the row set"
+)
+def test_arms_with_bh_qvalues_are_attributed_on_their_full_variant_files(tmp_path, capsys):
+    attribute = _load("attribute")
+    tier = _tier_one(tmp_path, "mfsd", "r001_mfsd_duplex", "--mfsd")
+    out, attrib = tmp_path / "out", tmp_path / "attrib"
+    cols = KEY + ("alt_count", "mfsd_pval_alt_ref", "mfsd_qval_alt_ref")
+    full_b = [
+        V3[0] + ("5", "0.01", "0.03"),
+        V3[1] + ("7", "0.02", "0.03"),
+        V3[2] + ("1", "0.04", "0.04"),
+    ]
+    full_n = [
+        V3[0] + ("5", "0.01", "0.03"),
+        V3[1] + ("9", "0.02", "0.03"),
+        V3[2] + ("1", "0.04", "0.04"),
+    ]
+    for b, rows in (("base", full_b), ("new", full_n)):
+        _write(out / b / "r001_mfsd_duplex" / "S.maf", cols, rows)
+        _write(attrib / "out" / b / "r001_mfsd_duplex" / "S.maf", cols, rows)
+    attribute.prepare(str(tier), str(out), "base", "new", str(attrib), 20)  # pad 20 would drop 160
+    runs = _read(attrib / "runs.tsv")
+    assert len(_read(tier / runs[0]["variants"])) == 3
+    attribute.check(str(tier), str(out), "base", "new", str(attrib))
+    assert "reduction exact" in capsys.readouterr().out
+
+
+@pytest.mark.xfail(strict=True, reason="GNU time's status line reaches the time records")
+@pytest.mark.skipif(os.name != "posix", reason="bash runner")
+def test_a_failed_run_under_gnu_time_does_not_crash_compare(tmp_path):
+    import subprocess
+
+    fake_time = tmp_path / "gnu_time"  # GNU time: a status line on failure, then the format
+    fake_time.write_text(
+        "#!/bin/sh\n"
+        'if [ "$1" = "-f" ] && [ "$#" -eq 3 ]; then exit 0; fi\n'
+        'fmt=$2; o=$4; shift 4; "$@"; rc=$?\n'
+        '[ $rc -ne 0 ] && echo "Command exited with non-zero status $rc" > "$o" || : > "$o"\n'
+        'echo "$fmt" | sed "s/%e/0.01/; s/%M/1234/" >> "$o"; exit $rc\n'
+    )
+    fake_time.chmod(0o755)
+    runner = tmp_path / "run_panel.sh"
+    runner.write_text((TOOLS / "run_panel.sh").read_text().replace("/usr/bin/time", str(fake_time)))
+    stub = tmp_path / "gbcms"
+    stub.write_text("#!/bin/sh\nexit 1\n")
+    stub.chmod(0o755)
+    tier, out = _tier_one(tmp_path), tmp_path / "out"
+    for b in ("base", "new"):
+        subprocess.run(
+            [
+                "bash",
+                str(runner),
+                str(tier),
+                str(tier / "runs.tsv"),
+                b,
+                str(stub),
+                "/d",
+                "/f",
+                "a",
+                "b",
+                "g",
+                str(out),
+            ],
+            check=True,
+            capture_output=True,
+        )
+    _compare(tier, out, tmp_path / "rep")
+    assert "failed runs: base 1, new 1" in (tmp_path / "rep" / "gate.txt").read_text()
+
+
+@pytest.mark.xfail(strict=True, reason="a MAF in place counts as finished")
+@pytest.mark.skipif(os.name != "posix", reason="bash runner")
+def test_a_run_that_failed_after_writing_its_maf_is_retried_and_counted(tmp_path):
+    import subprocess
+
+    stub = tmp_path / "gbcms"
+    stub.write_text(
+        '#!/bin/sh\nwhile [ $# -gt 0 ]; do [ "$1" = "-o" ] && o=$2; shift; done\n'
+        'mkdir -p "$o"; touch "$o/S.maf"; exit 1\n'
+    )
+    stub.chmod(0o755)
+    tier = _tier_one(tmp_path, "mfsd", "r001_mfsd_duplex", "--mfsd --mfsd-parquet")
+    out = tmp_path / "out"
+    for b in ("base", "new", "new"):  # the operator re-submits the candidate
+        subprocess.run(
+            [
+                "bash",
+                str(TOOLS / "run_panel.sh"),
+                str(tier),
+                str(tier / "runs.tsv"),
+                b,
+                str(stub),
+                "/d",
+                "/f",
+                "a",
+                "b",
+                "g",
+                str(out),
+            ],
+            check=True,
+            capture_output=True,
+        )
+    assert (
+        sum(len(_read(p)) for p in (out / "new").glob("times.*.tsv")) == 2
+    ), "the failed run was not retried"
+    _compare(tier, out, tmp_path / "rep")
+    assert "failed runs: base 1, new 1" in (tmp_path / "rep" / "gate.txt").read_text()
+
+
+@pytest.mark.xfail(strict=True, reason="records only in base are not reported")
+def test_compare_reports_vcf_records_only_in_base(tmp_path):
+    tier, out = _tier_one(tmp_path, "vcf", "r001_vcf", "--format vcf"), tmp_path / "out"
+    head = "##fileformat=VCFv4.2\n#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\tFORMAT\tS\n"
+    recs = {
+        "base": "1\t100\t.\tA\tT\t.\tPASS\tDP=60\tAD\t50,10\n1\t160\t.\tC\tG\t.\tPASS\tDP=60\tAD\t50,10\n",
+        "new": "1\t100\t.\tA\tT\t.\tPASS\tDP=60\tAD\t50,10\n",
+    }
+    for b, body in recs.items():
+        (out / b / "r001_vcf").mkdir(parents=True)
+        (out / b / "r001_vcf" / "S.vcf").write_text(head + body)
+    _compare(tier, out, tmp_path / "rep")
+    summ = _read(tmp_path / "rep" / "version_summary.tsv")[0]
+    assert summ.get("records only in base") == "1", summ
+
+
+@pytest.mark.xfail(strict=True, reason="rows are matched by position")
+def test_compare_aligns_rows_by_locus_when_row_counts_differ(tmp_path):
+    tier, out = _tier_one(tmp_path), tmp_path / "out"
+    cols = KEY + ("alt_count",)
+    _write(out / "base" / "r001_dna_tumor" / "S.maf", cols, [V3[0] + ("5",), V3[2] + ("3",)])
+    _write(
+        out / "new" / "r001_dna_tumor" / "S.maf",
+        cols,
+        [V3[0] + ("5",), V3[1] + ("4",), V3[2] + ("3",)],
+    )
+    _compare(tier, out, tmp_path / "rep")
+    changed = {r["column"] for r in _read(tmp_path / "rep" / "version_rows.tsv")}
+    assert not changed & set(KEY), f"key columns reported as changed cells: {changed}"
+    summ = _read(tmp_path / "rep" / "version_summary.tsv")[0]
+    assert summ.get("rows only in new") == "1", summ
+
+
+@pytest.mark.xfail(strict=True, reason="prepare assumes the same rows in both versions")
+def test_attribute_prepare_survives_a_row_count_difference(tmp_path):
+    attribute = _load("attribute")
+    tier, out = _tier_one(tmp_path), tmp_path / "out"
+    cols = KEY + ("alt_count",)
+    _write(out / "base" / "r001_dna_tumor" / "S.maf", cols, [V3[0] + ("5",), V3[2] + ("3",)])
+    _write(
+        out / "new" / "r001_dna_tumor" / "S.maf",
+        cols,
+        [V3[0] + ("6",), V3[1] + ("4",), V3[2] + ("3",)],
+    )
+    attribute.prepare(str(tier), str(out), "base", "new", str(tmp_path / "attrib"), 100)
+    assert len(_read(tmp_path / "attrib" / "runs.tsv")) == 1
+
+
+@pytest.mark.xfail(strict=True, reason="a row only in one version is skipped silently")
+def test_attribute_traces_a_row_present_in_only_one_version(tmp_path):
+    attribute = _load("attribute")
+    tier, out, attrib = _tier_one(tmp_path), tmp_path / "out", tmp_path / "attrib"
+    cols = KEY + ("alt_count",)
+    moved = ("1", "130", "130", "-", "G")  # NEW writes End_Position differently
+    _write(out / "base" / "r001_dna_tumor" / "S.maf", cols, [V3[0] + ("5",), V3[1] + ("4",)])
+    _write(out / "new" / "r001_dna_tumor" / "S.maf", cols, [V3[0] + ("5",), moved + ("9",)])
+    _write(
+        attrib / "runs.tsv",
+        RUN_COLS,
+        [("r001_dna_tumor", "r001", "dna", "dna", "dmp", "a.bam", "x", "")],
+    )
+    cps = tmp_path / "cps.tsv"
+    _write(cps, ("order", "label", "sha", "interval_merges"), [("1", "#1 a", "aaa1111", "#1")])
+    _write(
+        attrib / "out" / "base" / "r001_dna_tumor" / "S.maf", cols, [V3[0] + ("5",), V3[1] + ("4",)]
+    )
+    _write(
+        attrib / "out" / "cp_aaa1111" / "r001_dna_tumor" / "S.maf",
+        cols,
+        [V3[0] + ("5",), moved + ("9",)],
+    )
+    attribute.attribute(str(tier), str(out), "base", "new", str(attrib), str(cps))
+    cells = _read(attrib / "attribution_cells.tsv")
+    assert {c["column"] for c in cells} == {"(row)"} and len(cells) == 2, cells
+
+
+@pytest.mark.xfail(strict=True, reason="a missing checkpoint output hides its step")
+def test_attribute_does_not_skip_a_missing_checkpoint(tmp_path):
+    attribute = _load("attribute")
+    tier, out, attrib = _tier_one(tmp_path), tmp_path / "out", tmp_path / "attrib"
+    cols = KEY + ("alt_count",)
+    _write(out / "base" / "r001_dna_tumor" / "S.maf", cols, [V3[0] + ("12",)])
+    _write(out / "new" / "r001_dna_tumor" / "S.maf", cols, [V3[0] + ("20",)])
+    _write(
+        attrib / "runs.tsv",
+        RUN_COLS,
+        [("r001_dna_tumor", "r001", "dna", "dna", "dmp", "a.bam", "x", "")],
+    )
+    cps = tmp_path / "cps.tsv"
+    _write(
+        cps,
+        ("order", "label", "sha", "interval_merges"),
+        [
+            ("1", "#1 a", "aaa1111", "#1"),
+            ("2", "#2 b", "bbb2222", "#2"),
+            ("3", "#3 c", "ccc3333", "#3"),
+        ],
+    )
+    _write(attrib / "out" / "base" / "r001_dna_tumor" / "S.maf", cols, [V3[0] + ("12",)])
+    _write(attrib / "out" / "cp_aaa1111" / "r001_dna_tumor" / "S.maf", cols, [V3[0] + ("15",)])
+    _write(
+        attrib / "out" / "cp_ccc3333" / "r001_dna_tumor" / "S.maf", cols, [V3[0] + ("20",)]
+    )  # cp2 failed
+    attribute.attribute(str(tier), str(out), "base", "new", str(attrib), str(cps))
+    assert _read(attrib / "attribution_cells.tsv") == []
+    assert [u["column"] for u in _read(attrib / "unattributed.tsv")] == ["alt_count"]
+
+
+@pytest.mark.xfail(strict=True, reason="gbcms inherits the run list as its stdin")
+@pytest.mark.skipif(os.name != "posix", reason="bash runner")
+def test_a_command_that_reads_stdin_does_not_eat_the_run_list(tmp_path):
+    import subprocess
+
+    stub = tmp_path / "gbcms"
+    stub.write_text(
+        "#!/bin/sh\ncat > /dev/null\n"
+        'while [ $# -gt 0 ]; do [ "$1" = "-o" ] && mkdir -p "$2" && touch "$2/S.maf"; shift; done\n'
+    )
+    stub.chmod(0o755)
+    tier, out = tmp_path / "t i–er", tmp_path / "o u–t"  # spaces and an en-dash
+    _write(tier / "mafs" / "r001.maf", KEY, V3)
+    _write(
+        tier / "runs.tsv",
+        RUN_COLS,
+        [
+            ("r001_dna_tumor", "r001", "dna", "dna", "dmp", "a.bam", "mafs/r001.maf", ""),
+            ("r002_dna_tumor", "r002", "dna", "dna", "dmp", "b.bam", "mafs/r001.maf", ""),
+            ("f001_rna", "f001", "rna", "rna", "forte", "c.bam", "mafs/r001.maf", ""),
+        ],
+    )
+    subprocess.run(
+        [
+            "bash",
+            str(TOOLS / "run_panel.sh"),
+            str(tier),
+            str(tier / "runs.tsv"),
+            "b",
+            str(stub),
+            "/d m p",
+            "/f",
+            "a",
+            "b",
+            "g",
+            str(out),
+        ],
+        check=True,
+        capture_output=True,
+    )
+    done = sorted(p.name for p in (out / "b").iterdir() if p.is_dir())
+    assert done == ["f001_rna", "r001_dna_tumor", "r002_dna_tumor"], done
