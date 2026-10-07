@@ -111,7 +111,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed — Rust dependencies on their current releases (#139)
 
 The Rust dependencies move to their current releases, one per commit
-(`CYCLE_6.6.0_PLAN.md`, "D4 PR B"). No output changes. bio stays at 3.0 for now.
+(`CYCLE_6.6.0_PLAN.md`, "D4 PR B"). No output changes. bio follows once C35
+(#240) and C36 (#243) are in.
 - **pyo3 0.29** (from 0.27). The API migration: `allow_threads` is now `detach`,
   and `Variant` and `BaseCounts` opt in to the by-value conversion that Python
   passes back. The module keeps the GIL on a free-threaded interpreter, as before;
@@ -123,14 +124,21 @@ The Rust dependencies move to their current releases, one per commit
 - **wfa2lib-rs moves to upstream's current commit without its default features.**
   Those only built its benchmark binary, so clap, tracing and mimalloc leave the
   build.
-- **bio is held at 3.0.** bio 4.1 fixes how the PairHMM scores the bases of an
-  extended gap.
-  - For reads whose inserted bases are N or below the base-quality floor, that moves
-    gbcms's LLR across the ±2.3 threshold (synthetic reads: 1.8 → 5.0).
-  - gbcms already credits ALT to such reads at non-repeat insertions, so bio 4 waits
-    for a gate that requires the inserted bases to carry the ALT.
-  - bio 4's other change, the Smith-Waterman gap rule, needs the open penalty moved
-    from −5 to −6 to keep every score; that ships with the bio upgrade.
+- **bio 4.2.1** (from 3.0), held until C35 (#240) and C36 (#243) landed.
+  - The PairHMM: bio 4.1 fixes how it scores the bases of an extended read
+    insertion (rust-bio#701). That moved reads decided in Phase 3: ones whose
+    inserted bases are N or below the base-quality floor crossed ±2.3 (synthetic:
+    1.8 → 5.0), and same-length inserts of other bases leaned to ALT. Since C35 and
+    C36 neither reaches the PairHMM (RJ-20, RJ-21): no pure insertion is decided in
+    Phase 3 on the measured sets.
+  - Smith-Waterman: bio 4 counts a gap's first base in the open penalty
+    (rust-bio#660), so `SW_GAP_OPEN` moves from −5 to −6 and every score is
+    unchanged.
+  - `Cargo.toml` caps bio at `~4.2` (its minor releases have changed numerics). bio
+    keeps its own statrs 0.18; the new crates in the lock are unused optional ones.
+  - On develop with C36, bio 4 changes no output: the local FORTE sample (9,536 rows,
+    both backends, every Parquet table) and the cluster RC sets (144 files) are
+    byte-identical.
 - **Unchanged output:**
   - Local FORTE sample (RNA and DNA modes, both alignment backends, 9,536 rows
     including 806 indels observed in the reads): compared after step 1, after steps

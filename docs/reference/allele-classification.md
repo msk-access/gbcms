@@ -951,7 +951,7 @@ Runs Smith-Waterman directly on every Phase 3 read (no WFA pre-filter):
 |:----------|:----------|:-----|
 | Fast-path | WFA edit-distance (~70-80% resolved) | None (every read goes to full alignment) |
 | Confidence score | LLR (quality-weighted) | Score margin ≥ 2 |
-| Tunable gap probs | Yes (`--gap-open-prob` etc.) | Fixed affine: open −5, extend −1 |
+| Tunable gap probs | Yes (`--gap-open-prob` etc.) | Fixed affine: a k-base gap scores −5 − k |
 | Default threshold | `--llr-threshold 2.3` | Margin ≥ 2 |
 
 !!! note "When to use `sw`"
@@ -1094,7 +1094,10 @@ apply the same rule.
 ## SW Gap Penalties
 
 Phase 3's Smith-Waterman aligners use fixed affine gap penalties:
-`SW_GAP_OPEN = -5`, `SW_GAP_EXTEND = -1` (match +1, mismatch −1, N scores 0).
+`SW_GAP_OPEN = -6`, `SW_GAP_EXTEND = -1` (match +1, mismatch −1, N scores 0). bio 4
+counts a gap's first base in the open penalty (a k-base gap scores
+`SW_GAP_OPEN + SW_GAP_EXTEND·(k − 1)`, rust-bio#660), so −6 is bio 3's −5 open plus one
+extension: a k-base gap scores −5 − k, as it did.
 They are documented constants, not tuned per locus: an earlier
 `dynamic_sw_gap_extend` logistic curve rounded to −1 for every `repeat_span`,
 and traced real runs (ACCESS duplex, MSI-high) confirmed SW scores nothing

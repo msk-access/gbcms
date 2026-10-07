@@ -16,8 +16,11 @@ use crate::types::Variant;
 use super::utils::{median_qual, build_haplotypes, ClassifyResult, ClassifyPhase, MIN_USABLE_BASES};
 
 /// Smith-Waterman affine gap-open penalty (integer scoring: match +1,
-/// mismatch −1, N scores 0).
-pub const SW_GAP_OPEN: i32 = -5;
+/// mismatch −1, N scores 0). A gap of k bases scores
+/// `SW_GAP_OPEN + SW_GAP_EXTEND · (k − 1)`: bio ≥ 4 counts the gap's first base in
+/// the open penalty (rust-bio#660), so −6 here is bio 3's −5 open plus one −1
+/// extension, and every alignment score is what it was.
+pub const SW_GAP_OPEN: i32 = -6;
 
 /// Smith-Waterman affine gap-extend penalty — a documented constant.
 ///

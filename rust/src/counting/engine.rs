@@ -4538,12 +4538,12 @@ mod tests {
         let scoring_fn = |a: u8, b: u8| if a == b { 1i32 } else { -1i32 };
 
         let mut alt_a1 = Aligner::with_capacity_and_scoring(
-            200, 200, bio::alignment::pairwise::Scoring::new(-5, -1, &scoring_fn)
+            200, 200, bio::alignment::pairwise::Scoring::new(SW_GAP_OPEN, SW_GAP_EXTEND, &scoring_fn)
                 .xclip(bio::alignment::pairwise::MIN_SCORE)
                 .yclip(0),
         );
         let mut ref_a1 = Aligner::with_capacity_and_scoring(
-            200, 200, bio::alignment::pairwise::Scoring::new(-5, -1, &scoring_fn)
+            200, 200, bio::alignment::pairwise::Scoring::new(SW_GAP_OPEN, SW_GAP_EXTEND, &scoring_fn)
                 .xclip(bio::alignment::pairwise::MIN_SCORE)
                 .yclip(0),
         );
@@ -4656,11 +4656,11 @@ mod tests {
         let variant = build_variant_with_context(4, "A", "T", "GGGGAGGGGG", 0);
         let scoring_fn = |a: u8, b: u8| if a == b { 1i32 } else { -1i32 };
         let mut alt_a = Aligner::with_capacity_and_scoring(
-            200, 200, bio::alignment::pairwise::Scoring::new(-5, -1, &scoring_fn)
+            200, 200, bio::alignment::pairwise::Scoring::new(SW_GAP_OPEN, SW_GAP_EXTEND, &scoring_fn)
                 .xclip(bio::alignment::pairwise::MIN_SCORE).yclip(0),
         );
         let mut ref_a = Aligner::with_capacity_and_scoring(
-            200, 200, bio::alignment::pairwise::Scoring::new(-5, -1, &scoring_fn)
+            200, 200, bio::alignment::pairwise::Scoring::new(SW_GAP_OPEN, SW_GAP_EXTEND, &scoring_fn)
                 .xclip(bio::alignment::pairwise::MIN_SCORE).yclip(0),
         );
 
@@ -4712,11 +4712,11 @@ mod tests {
         let variant = build_variant_with_context(2, "AT", "CG", "GGATGGGGGG", 0);
         let scoring_fn = |a: u8, b: u8| if a == b { 1i32 } else { -1i32 };
         let mut alt_a = Aligner::with_capacity_and_scoring(
-            200, 200, bio::alignment::pairwise::Scoring::new(-5, -1, &scoring_fn)
+            200, 200, bio::alignment::pairwise::Scoring::new(SW_GAP_OPEN, SW_GAP_EXTEND, &scoring_fn)
                 .xclip(bio::alignment::pairwise::MIN_SCORE).yclip(0),
         );
         let mut ref_a = Aligner::with_capacity_and_scoring(
-            200, 200, bio::alignment::pairwise::Scoring::new(-5, -1, &scoring_fn)
+            200, 200, bio::alignment::pairwise::Scoring::new(SW_GAP_OPEN, SW_GAP_EXTEND, &scoring_fn)
                 .xclip(bio::alignment::pairwise::MIN_SCORE).yclip(0),
         );
 
@@ -4783,11 +4783,11 @@ mod tests {
         let variant = build_variant_with_context(5, "TC", "GA", "GGGGGTCGGGGG", 0);
         let scoring_fn = |a: u8, b: u8| if a == b { 1i32 } else { -1i32 };
         let mut alt_a = Aligner::with_capacity_and_scoring(
-            200, 200, bio::alignment::pairwise::Scoring::new(-5, -1, &scoring_fn)
+            200, 200, bio::alignment::pairwise::Scoring::new(SW_GAP_OPEN, SW_GAP_EXTEND, &scoring_fn)
                 .xclip(bio::alignment::pairwise::MIN_SCORE).yclip(0),
         );
         let mut ref_a = Aligner::with_capacity_and_scoring(
-            200, 200, bio::alignment::pairwise::Scoring::new(-5, -1, &scoring_fn)
+            200, 200, bio::alignment::pairwise::Scoring::new(SW_GAP_OPEN, SW_GAP_EXTEND, &scoring_fn)
                 .xclip(bio::alignment::pairwise::MIN_SCORE).yclip(0),
         );
 
@@ -4825,11 +4825,11 @@ mod tests {
         let variant = build_variant_with_context(10, &ref_allele, "A", &context, 0);
         let scoring_fn = |a: u8, b: u8| if a == b { 1i32 } else { -1i32 };
         let mut alt_a = Aligner::with_capacity_and_scoring(
-            200, 200, bio::alignment::pairwise::Scoring::new(-5, -1, &scoring_fn)
+            200, 200, bio::alignment::pairwise::Scoring::new(SW_GAP_OPEN, SW_GAP_EXTEND, &scoring_fn)
                 .xclip(bio::alignment::pairwise::MIN_SCORE).yclip(0),
         );
         let mut ref_a = Aligner::with_capacity_and_scoring(
-            200, 200, bio::alignment::pairwise::Scoring::new(-5, -1, &scoring_fn)
+            200, 200, bio::alignment::pairwise::Scoring::new(SW_GAP_OPEN, SW_GAP_EXTEND, &scoring_fn)
                 .xclip(bio::alignment::pairwise::MIN_SCORE).yclip(0),
         );
         let result = check_complex(
@@ -4855,11 +4855,11 @@ mod tests {
         let variant = build_variant_with_context(5, "TCC", "GA", "GGGGGTCCGGGGG", 0);
         let scoring_fn = |a: u8, b: u8| if a == b { 1i32 } else { -1i32 };
         let mut alt_a = Aligner::with_capacity_and_scoring(
-            200, 200, bio::alignment::pairwise::Scoring::new(-5, -1, &scoring_fn)
+            200, 200, bio::alignment::pairwise::Scoring::new(SW_GAP_OPEN, SW_GAP_EXTEND, &scoring_fn)
                 .xclip(bio::alignment::pairwise::MIN_SCORE).yclip(0),
         );
         let mut ref_a = Aligner::with_capacity_and_scoring(
-            200, 200, bio::alignment::pairwise::Scoring::new(-5, -1, &scoring_fn)
+            200, 200, bio::alignment::pairwise::Scoring::new(SW_GAP_OPEN, SW_GAP_EXTEND, &scoring_fn)
                 .xclip(bio::alignment::pairwise::MIN_SCORE).yclip(0),
         );
 
@@ -4908,11 +4908,11 @@ mod tests {
         let variant = build_variant_with_context(14, "A", "ACC", "GGGGAGGGGG", 10);
         let scoring_fn = |a: u8, b: u8| if a == b { 1i32 } else { -1i32 };
         let mut alt_a = Aligner::with_capacity_and_scoring(
-            200, 200, bio::alignment::pairwise::Scoring::new(-5, -1, &scoring_fn)
+            200, 200, bio::alignment::pairwise::Scoring::new(SW_GAP_OPEN, SW_GAP_EXTEND, &scoring_fn)
                 .xclip(bio::alignment::pairwise::MIN_SCORE).yclip(0),
         );
         let mut ref_a = Aligner::with_capacity_and_scoring(
-            200, 200, bio::alignment::pairwise::Scoring::new(-5, -1, &scoring_fn)
+            200, 200, bio::alignment::pairwise::Scoring::new(SW_GAP_OPEN, SW_GAP_EXTEND, &scoring_fn)
                 .xclip(bio::alignment::pairwise::MIN_SCORE).yclip(0),
         );
 
@@ -4946,11 +4946,11 @@ mod tests {
         let variant = build_variant_with_context(14, "A", "ACC", "GGGGAGGGGG", 10);
         let scoring_fn = |a: u8, b: u8| if a == b { 1i32 } else { -1i32 };
         let mut alt_a = Aligner::with_capacity_and_scoring(
-            200, 200, bio::alignment::pairwise::Scoring::new(-5, -1, &scoring_fn)
+            200, 200, bio::alignment::pairwise::Scoring::new(SW_GAP_OPEN, SW_GAP_EXTEND, &scoring_fn)
                 .xclip(bio::alignment::pairwise::MIN_SCORE).yclip(0),
         );
         let mut ref_a = Aligner::with_capacity_and_scoring(
-            200, 200, bio::alignment::pairwise::Scoring::new(-5, -1, &scoring_fn)
+            200, 200, bio::alignment::pairwise::Scoring::new(SW_GAP_OPEN, SW_GAP_EXTEND, &scoring_fn)
                 .xclip(bio::alignment::pairwise::MIN_SCORE).yclip(0),
         );
 
@@ -4986,11 +4986,11 @@ mod tests {
         let variant = build_variant_with_context(14, "A", "ACC", "GGGGAGGGGG", 10);
         let scoring_fn = |a: u8, b: u8| if a == b { 1i32 } else { -1i32 };
         let mut alt_a = Aligner::with_capacity_and_scoring(
-            200, 200, bio::alignment::pairwise::Scoring::new(-5, -1, &scoring_fn)
+            200, 200, bio::alignment::pairwise::Scoring::new(SW_GAP_OPEN, SW_GAP_EXTEND, &scoring_fn)
                 .xclip(bio::alignment::pairwise::MIN_SCORE).yclip(0),
         );
         let mut ref_a = Aligner::with_capacity_and_scoring(
-            200, 200, bio::alignment::pairwise::Scoring::new(-5, -1, &scoring_fn)
+            200, 200, bio::alignment::pairwise::Scoring::new(SW_GAP_OPEN, SW_GAP_EXTEND, &scoring_fn)
                 .xclip(bio::alignment::pairwise::MIN_SCORE).yclip(0),
         );
 
@@ -5035,11 +5035,11 @@ mod tests {
         let variant = build_variant_with_context(14, "A", "ACC", "GGGGAGGGGG", 10);
         let scoring_fn = |a: u8, b: u8| if a == b { 1i32 } else { -1i32 };
         let mut alt_a = Aligner::with_capacity_and_scoring(
-            200, 200, bio::alignment::pairwise::Scoring::new(-5, -1, &scoring_fn)
+            200, 200, bio::alignment::pairwise::Scoring::new(SW_GAP_OPEN, SW_GAP_EXTEND, &scoring_fn)
                 .xclip(bio::alignment::pairwise::MIN_SCORE).yclip(0),
         );
         let mut ref_a = Aligner::with_capacity_and_scoring(
-            200, 200, bio::alignment::pairwise::Scoring::new(-5, -1, &scoring_fn)
+            200, 200, bio::alignment::pairwise::Scoring::new(SW_GAP_OPEN, SW_GAP_EXTEND, &scoring_fn)
                 .xclip(bio::alignment::pairwise::MIN_SCORE).yclip(0),
         );
 
@@ -5085,11 +5085,11 @@ mod tests {
         let variant = build_variant_with_context(15, "A", "ACC", "GGGGGAGGGGG", 10);
         let scoring_fn = |a: u8, b: u8| if a == b { 1i32 } else { -1i32 };
         let mut alt_a = Aligner::with_capacity_and_scoring(
-            200, 200, bio::alignment::pairwise::Scoring::new(-5, -1, &scoring_fn)
+            200, 200, bio::alignment::pairwise::Scoring::new(SW_GAP_OPEN, SW_GAP_EXTEND, &scoring_fn)
                 .xclip(bio::alignment::pairwise::MIN_SCORE).yclip(0),
         );
         let mut ref_a = Aligner::with_capacity_and_scoring(
-            200, 200, bio::alignment::pairwise::Scoring::new(-5, -1, &scoring_fn)
+            200, 200, bio::alignment::pairwise::Scoring::new(SW_GAP_OPEN, SW_GAP_EXTEND, &scoring_fn)
                 .xclip(bio::alignment::pairwise::MIN_SCORE).yclip(0),
         );
 
@@ -5156,11 +5156,11 @@ mod tests {
         let variant = build_variant_with_context(14, "A", "ACC", "GGGGGAGGGGG", 10);
         let scoring_fn = |a: u8, b: u8| if a == b { 1i32 } else { -1i32 };
         let mut alt_a = Aligner::with_capacity_and_scoring(
-            200, 200, bio::alignment::pairwise::Scoring::new(-5, -1, &scoring_fn)
+            200, 200, bio::alignment::pairwise::Scoring::new(SW_GAP_OPEN, SW_GAP_EXTEND, &scoring_fn)
                 .xclip(bio::alignment::pairwise::MIN_SCORE).yclip(0),
         );
         let mut ref_a = Aligner::with_capacity_and_scoring(
-            200, 200, bio::alignment::pairwise::Scoring::new(-5, -1, &scoring_fn)
+            200, 200, bio::alignment::pairwise::Scoring::new(SW_GAP_OPEN, SW_GAP_EXTEND, &scoring_fn)
                 .xclip(bio::alignment::pairwise::MIN_SCORE).yclip(0),
         );
 
@@ -5211,11 +5211,11 @@ mod tests {
         );
         let scoring_fn = |a: u8, b: u8| if a == b { 1i32 } else { -1i32 };
         let mut alt_a = Aligner::with_capacity_and_scoring(
-            200, 200, bio::alignment::pairwise::Scoring::new(-5, -1, &scoring_fn)
+            200, 200, bio::alignment::pairwise::Scoring::new(SW_GAP_OPEN, SW_GAP_EXTEND, &scoring_fn)
                 .xclip(bio::alignment::pairwise::MIN_SCORE).yclip(0),
         );
         let mut ref_a = Aligner::with_capacity_and_scoring(
-            200, 200, bio::alignment::pairwise::Scoring::new(-5, -1, &scoring_fn)
+            200, 200, bio::alignment::pairwise::Scoring::new(SW_GAP_OPEN, SW_GAP_EXTEND, &scoring_fn)
                 .xclip(bio::alignment::pairwise::MIN_SCORE).yclip(0),
         );
 

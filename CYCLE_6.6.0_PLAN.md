@@ -1850,7 +1850,7 @@ page from the CHANGELOG section in the release workflow.
   | arrow / parquet | 53 → 60 | upgraded; the Parquet companions are identical by content (string column-chunk statistics truncate at 64 bytes now) |
   | pyo3 (+ pyo3-log) | 0.27 → 0.29.3 (0.13.4) | upgraded: `allow_threads` → `detach`; `Variant`/`BaseCounts` opt in to `from_py_object`, the output-only types opt out; `gil_used = true` keeps the module's GIL behaviour |
   | wfa2lib-rs | rev 7d6ec921 → cb8aa3d6 | upgraded, `default-features = false`: clap, tracing and mimalloc (the benchmark binary's) leave the build |
-  | bio | 3.0 (4.2.1 available) | **held** (operator, 2026-10-06); see below |
+  | bio | 3.0 (4.2.1 available) | **held** (operator, 2026-10-06); see below. Upgraded to 4.2.1 after C35 and C36 ("bio 4.2.1 after C35 and C36") |
   | noodles-gtf, bincode, serde | — | removed in #230 |
   | flate2 | 1.1.10 | zlib-rs backend since #230 |
   | coitrees 0.4, bio-types 1.0.4 | — | already current |
@@ -1987,6 +1987,15 @@ page from the CHANGELOG section in the release workflow.
     only with masked identity (an N counted as a mismatch), 24 fail both; FORTE 17
     fail both. The band stays as it is (operator, 2026-10-06: the identity-band
     rule), with a readable base required.
+  BAM check after the PR (#242 comment): an oracle sharing no code with gbcms,
+  reading each read's bases with the decided rules, equals the fix on 15 of 18
+  changed RC rows (reads and fragments); the other three differ by 1–2 reads (5 of
+  4,107 ALT reads). cBio's ACCESS counts are fragments over duplex + simplex and sit
+  below even the fully readable count; its IMPACT counts are reads, near an
+  exact-junction string count. Reads deciding on their last base: third base 0 of 348
+  (ACCESS), 1 of 71 (IMPACT) against 32 and 13 terminal ALT reads. Decided (operator,
+  2026-10-06): the terminal ALT rule stays (RJ-3; REJECTED REJ-20261006-001); the
+  third-base control is a validation check, not a rule.
 - **C36 #243: a same-length insert of other bases (2026-10-06).** Found in the bio 4
   review. A read whose insertion has the variant's length and other readable bases,
   near the variant, went to Phase 3, whose closer haplotype let length win ALT
@@ -2041,6 +2050,24 @@ page from the CHANGELOG section in the release workflow.
   carrier counts ALT on both rows (the SNV row's aligned base is never contested), and a
   slid-to-junction ALT is contested by the sibling guard where a junction-written one is
   not.
+- **bio 4.2.1 after C35 and C36 (#139, 2026-10-06).** The held commit from D4 PR B,
+  onto develop with C35, then C36: `SW_GAP_OPEN` −5 → −6 (bio 4's gap rule, rust-bio#660; every
+  score unchanged) and the PairHMM forward fix (rust-bio#701: extended read-insertion
+  bases now cost their emission). bio keeps statrs 0.18; new transitive crates:
+  borsh, toml_edit/toml_parser/toml_datetime, proc-macro-crate, winnow, cfg_aliases.
+  - The reviewer's synthetic case: both backends now give ALT 10, partial 20 at the
+    homopolymer and the non-repeat insertion (bio 4 before C35: the homopolymer's N
+    and Q2 groups crossed to ALT). The C35 contract tests pass under bio 4.
+  - Acceptance against develop's outputs (the C35 tree): the local FORTE sample
+    (9,536 rows, both backends, 8 Parquet tables) and the cluster sets (28 RC DNA, 33
+    RNA truth, 3 probes, 80 WES; 144 files) are byte-identical.
+  - The bio 4 review then found PairHMM crediting same-length inserts of other bases
+    ALT on synthetic reads: C36 #243 (#247). Rebased onto develop with C36
+    (a42457ef) and re-measured: the reviewer's five reads give no ALT under either
+    backend, and acceptance against develop's outputs is byte-identical again (9,536
+    local rows, 8 Parquet tables; 144 cluster files). Docker image built and ran
+    (`gbcms --version`, `pip check`) before the rebase; the rebase changed no
+    dependency.
 - **P3 #152: doc the floor.** Measured by replaying the bin rule: `BIN_WINDOW` (10 kb)
   is a floor, not a maximum — each member extends the end by its span plus half a
   window, and the 200-variant cap stops dense inputs. Per-sample signed-out lists
