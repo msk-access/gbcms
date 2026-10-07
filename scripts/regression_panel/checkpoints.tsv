@@ -1,0 +1,41 @@
+order	label	sha	interval_merges
+0	6.3.1 (as a wheel: build environment)	e50014bd52dc1b32c8c1c1db2c626b7d2bf5daae	6.3.1
+1	#90 fix/secondary-read-level-leak	66df963638ec74418c7f0bab5392d51d928f9c48	#90
+2	#93 fix/wrong-length-indel-partial	75062d65042cc0565933cfb8153ba33f5b90a4bc	#93
+3	#95 fix/orchestration-fail-fast	17f3fff18d7af75b20132d544173ab72b6564104	ed70a0c7,cf1b395d,3f226cfc,#95
+4	#96 fix/rna-splice-aware-counting	0523206023913dfdfd0f9abac672acb7d646575e	#96
+5	chore: back-merge release 6.4.0 into develop	67ce598d806beac1c5daf8ad3c4ed97570617449	7c1edd29,1e942be2,67ce598d
+6	#99 feature/cluster-exclusive-assignment	1640f9ac1a9f5b619cab4473a86945202ac3dab1	#99
+7	#100 feature/asjd-2	fa3493578528877b7a3fde6c6c1ac09372b40a7f	#100
+8	#102 feature/observability	33acfb739d84b7ff7f83714b553c991711528814	#102
+9	#101 feature/mnp-rescue-gate	61da9ae81d2cc3ffea24643d1b33233803ba34f8	#101
+10	#104 feature/contig-naming	c5a6ca4f0d5f334c756f03fc905983b65409e95e	#104
+11	#105 feature/t6-boundary-baq	5b10aa9a55b2156c5b65402bd541b5c0f49870a8	#105
+12	#113 feature/t10-decomposed-twin	3ed1a4d3fb12138629c2fd93f35ca2d7509bdfb2	#108,#109,#113
+13	#116 fix/variant-representation	851119f3db6b1a83a5a1c8f4f44b690988a080cb	#115,#116
+14	#160 fix/c10-c2-discrimination-window	3fa61f36160d3f572acbf0808845820a795cd857	7f1273b4,#117,#158,#160
+15	#164 feature/o4-observed-allele	8fe0611c482161e47c5b8fcff061c23904cd9f7d	#161,#162,#164
+16	#165 feature/c1-exact-carrier	a9a595033bfde587f23da675bcbb0db791618615	#165
+17	#168 feature/c12-clip-carriers	8768112dbd1d42a153cba14be4ad3895296d128e	#168
+18	#169 fix/rna-baq-own-evidence	c4cb03363e6b22794cb39389a2445b4a1d3e6f1d	#169
+19	#181 feature/r1-span-aware-exon-edge-baq	d6129e0a50d3c3645ce268ea32b2c06f482f64bf	#175,#181
+20	#184 feature/c14-records-without-bases	37615f527210ee2b6c0f5d025b6d53b9b722818c	#184
+21	#187 feature/r2-strandedness-observability	dd68b11e80b05856f8adb2d4d0a3b7909ebff3b9	#187
+22	#190 feature/c4-contig-end-windows	28ec2c226eb2b2b4fb1214439eb837a390735d2d	#190
+23	#193 feature/c21-shifted-insertion-carriers	ce7e4c627a54949d5805de9b3ed7e506c916d11f	#193
+24	#203 feature/cluster1-pure-indel-read-judgment	706c44c843d108db399a9846210df1468cdfa862	#197,#203
+25	#205 feature/t1-t2-test-architecture	d9767a3620bbe6582665a6e4b759e075bdda2895	#205
+26	#206 feature/h3-code-quality-sweep	0b69d712b9f859e56fa53a5b6f9cd4264cb78467	#206
+27	#210 feature/c25-c26-read-judgment	5c4eed06942df16f347ac7d91cbfba53796a2f4f	#209,#210
+28	#211 feature/g1-read-inputs	881d6d2dd05aefdfd81d65642559cb69e79ecbc4	#211
+29	#215 feature/g2-read-judgment	0183f48224e464b4f171a1d27c2cdb7945da15ea	#215
+30	#217 feature/g3-rna	5fb7e79a6ed61b1cd35c7dc54882c659b185b3db	#217
+31	#222 feature/g4-input	9c371263a96a926179327d5df24f76098de32349	#222
+32	#226 feature/g5-merge-outputs	39c362fe983d180f0b1f2df43b8ba97619d2caa1	#226
+33	#228 feature/g6-statistics	35634af27ddd37c0fc76b6fdea0578dea9b83581	#228
+34	#241 feature/s3-fisher-deep	f3c1a4c7b665bfe184581f36c253ac2ff2b5f87e	#229,#230,#231,#238,#241
+35	#242 feature/c35-insert-bases	bd9f12e7b5f5d1017dd749226166b959648ef35b	#242
+36	#247 feature/c36-shifted-inserts	a42457ef9f4c83c13fff9aa3b791e8cdcf89826f	#247
+37	#249 feature/c37-carrier-not-ref	cd7cb7b8a8b89cb6f1c9f9030397feba9015822e	#248,#249
+38	#250 feature/c38-guard-twins	bb60aee1dddb8441f8cfb1fbf29504decb5695b3	#250
+39	release/6.6.0 (the candidate; no counting change since the previous row)	09612675dcda285530d0a4143049a93fed798e9e	#251,1f6cde46,09612675
