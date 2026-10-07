@@ -242,3 +242,18 @@ def test_an_insert_written_past_the_scan_window_is_judged_by_its_placements(tmp_
     reads += [ref_read(f"r{i}", i, a) for i in range(4)]
     got = _count(tmp_path, f"sw{backend}", reads, a, ref, alt, backend, with_census=False)
     assert got == (4, 0, 12)
+
+
+# ── Fourth review: the walk's last check honours the scan's separate event ───
+@pytest.mark.xfail(strict=True, reason="resolve_walk reads the aligner's placement again")
+@pytest.mark.parametrize("backend", BACKENDS)
+def test_a_separate_event_by_its_best_placement_stays_separate(tmp_path, backend):
+    """G>GA before A10 then C5 T: the read is REF with a T duplicated after the C run,
+    written as an inserted A inside the A run with two mismatches its slide resolves.
+    Its best placement (the T after the C run) is outside the window: a separate
+    event, REF, as the same read written there is."""
+    a, ref, alt = Z, "G", "GA"
+    reads = [read(f"d{i}", i, a, "A", a + 5, sub=[(a + 10, "C"), (a + 15, "T")]) for i in range(4)]
+    reads += [read(f"t{i}", i, a, "T", a + 16) for i in range(4)]
+    got = _count(tmp_path, f"td{backend}", reads, a, ref, alt, backend, with_census=False)
+    assert got == (8, 0, 0)
