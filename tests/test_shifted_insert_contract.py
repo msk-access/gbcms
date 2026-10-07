@@ -26,7 +26,7 @@ from helpers import count_checked, make_read, write_contig
 from gbcms import _rs
 
 L = 100
-U, R, Q, P = 300, 700, 500, 850  # +8 unique; +CA in (CA)x6; A>AT before C; +A in A10
+U, R, Q, P, Z = 300, 700, 500, 850, 920  # +8; +CA in (CA)x6; A>AT; +A in A10; A10 C5
 INS8 = "ATGGACTC"
 BACKENDS = ["pairhmm", "sw"]
 
@@ -38,6 +38,7 @@ def _contig():
     c[R - 1 : R + 14] = "TG" + "CA" * 6 + "T"  # G>GCA left-aligned at R
     c[Q - 1 : Q + 3] = "GACG"  # A>AT at Q: ...G A | T | C G...
     c[P - 1 : P + 12] = "TG" + "A" * 10 + "C"  # G>GA left-aligned at P
+    c[Z - 1 : Z + 17] = "TG" + "A" * 10 + "C" * 5 + "T"  # G>GA at Z, a C run after
     return "".join(c)
 
 
@@ -225,3 +226,20 @@ def test_a_carrier_with_a_masked_end_base_slides_back(tmp_path, backend):
     ]
     got = _count(tmp_path, f"b2{backend}", reads, a, ref, alt, backend, with_census=False)
     assert got == (0, 4, 0)
+
+
+# ── Third review: the scan window, too, is judged by placements ──────────────
+@pytest.mark.xfail(strict=True, reason="an insert written past the scan window never slides")
+@pytest.mark.parametrize("backend", BACKENDS)
+def test_an_insert_written_past_the_scan_window_is_judged_by_its_placements(tmp_path, backend):
+    """G>GA before A10 then C5: one read sequence, an extra C in the C run, written at
+    the run's first junction, two bases in and at its end (the last two past the scan
+    window). The +C can sit at the A/C boundary, inside the variant's window, so it is
+    another allele wherever the aligner wrote it."""
+    a, ref, alt = Z, "G", "GA"
+    reads = [
+        read(f"c{k}_{i}", i, a, "C", a + j) for k, j in enumerate((11, 13, 16)) for i in range(4)
+    ]
+    reads += [ref_read(f"r{i}", i, a) for i in range(4)]
+    got = _count(tmp_path, f"sw{backend}", reads, a, ref, alt, backend, with_census=False)
+    assert got == (4, 0, 12)
