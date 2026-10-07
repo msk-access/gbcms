@@ -1442,23 +1442,28 @@ fn resolve_anchor_insertion_candidate(
 }
 
 /// A placement of a read's insertion: the junction it sits before, the query offset
-/// of its first base, and its bases and qualities there.
+/// of its first base, its bases and qualities there, and its read mismatches against
+/// the reference relative to the aligner's placement.
 #[derive(Clone)]
 struct InsertPlacement {
     junction: i64,
     q_start: usize,
     bases: Vec<u8>,
     quals: Vec<u8>,
+    mismatches: i32,
 }
 
-/// Every placement a read's insertion can take as well as the one its aligner wrote.
-/// The read's bases never change; only the junction the insert is written before. The
-/// insert slides one junction left when its last base fits the reference base it is
-/// placed onto (the same base, or one below `min_baseq` or N), and right likewise with
-/// its first base; the read base it takes in may be anything. So a sequencing error
-/// the aligner absorbed into the flank, or a compensating mismatch, slides back.
-/// Called only for an insert with a readable base of its own: whether an insert can be
-/// read is its own bases' question (RJ-20), never a placement's.
+/// Every placement a read's insertion can take as well as the one its aligner wrote:
+/// the best-aligned ones. The read's bases never change; only the junction the insert
+/// is written before. The insert slides one junction left when its last base fits the
+/// reference base it is placed onto (the same base, or one below `min_baseq` or N), and
+/// right likewise with its first base; the read base it takes in may be anything, and
+/// when that base was a read mismatch the alignment loses one. So a sequencing error
+/// the aligner absorbed into the flank, or a compensating mismatch, slides back. Only
+/// the placements with the fewest mismatches are returned: a placement worse than the
+/// best (an insert walked along a run carrying a mismatch the best one resolves) is not
+/// as good. Called only for an insert with a readable base of its own: whether an
+/// insert can be read is its own bases' question (RJ-20), never a placement's.
 fn insert_placements(
     record: &Record,
     variant: &Variant,
@@ -1477,6 +1482,7 @@ fn insert_placements(
         q_start: ins_start,
         bases: seq[ins_start..ins_start + len].to_vec(),
         quals: quals[ins_start..ins_start + len].to_vec(),
+        mismatches: 0,
     };
     let mut out = vec![written.clone()];
     let mut cur = written.clone();
@@ -1490,6 +1496,7 @@ fn insert_placements(
             break;
         }
         let (b, bq) = (seq[cur.q_start - 1], quals[cur.q_start - 1]);
+        cur.mismatches -= i32::from(!fits(b, bq, r));
         cur.bases.pop();
         cur.bases.insert(0, b);
         cur.quals.pop();
@@ -1510,6 +1517,7 @@ fn insert_placements(
             break;
         }
         let (c, cq) = (seq[q_after], quals[q_after]);
+        cur.mismatches -= i32::from(!fits(c, cq, r));
         cur.bases.remove(0);
         cur.bases.push(c);
         cur.quals.remove(0);
@@ -1518,6 +1526,8 @@ fn insert_placements(
         cur.junction += 1;
         out.push(cur.clone());
     }
+    let best = out.iter().map(|p| p.mismatches).min().unwrap_or(0);
+    out.retain(|p| p.mismatches == best);
     out
 }
 
@@ -1544,10 +1554,30 @@ fn scan_windowed_insertion_candidate(
     another_allele_in_window: &mut bool,
 ) {
     let anchor_pos = variant.pos;
-    if ins_ref_pos < window_start || ins_ref_pos > window_end || ins_ref_pos == anchor_pos + 1 {
+    if ins_ref_pos == anchor_pos + 1 {
         return;
     }
     let expected_ins_len = variant.alt_allele.len() - 1;
+    if ins_ref_pos < window_start || ins_ref_pos > window_end {
+        // Written past the scan window. A readable insert of the variant's length is
+        // judged by every placement it can take (RJ-21), so it is scanned when one of
+        // them sits inside the discrimination window; anything else is out of reach.
+        let seq_len = record.seq().len();
+        let (lo, hi) = window::discrimination_window(variant);
+        let reaches = ins_len_usize == expected_ins_len
+            && ins_start + ins_len_usize <= seq_len
+            && readable_bases(
+                &record.seq().as_bytes()[ins_start..ins_start + ins_len_usize],
+                &quals[ins_start..ins_start + ins_len_usize],
+                min_baseq,
+            ) > 0
+            && insert_placements(record, variant, ins_ref_pos, ins_start, ins_len_usize, quals, min_baseq)
+                .iter()
+                .any(|p| lo < p.junction && p.junction < hi);
+        if !reaches {
+            return;
+        }
+    }
 
     // The length check: the inserted length must match
     if ins_len_usize == expected_ins_len {
@@ -1563,8 +1593,8 @@ fn scan_windowed_insertion_candidate(
                 // wrote it). Inside the discrimination window it may be the variant at
                 // another placement: partial unless the variant is written readably
                 // elsewhere in the read; never Phase 3, where length alone wins ALT.
-                // Outside it, it cannot be: a separate event, as a readable insert
-                // there is (another allele when the read also changes the window).
+                // Outside it, it cannot be: a separate event (RJ-8; another allele
+                // when the read also changes the window).
                 if inside(ins_ref_pos) {
                     *has_unreadable_insert = true;
                     trace!(

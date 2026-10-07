@@ -48,9 +48,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   bases (at the variant's junction, judged as the strict path judges an insert there,
   or the variant's haplotype in a repeat) or its bases across the window spell the ALT;
   otherwise another allele when a placement sits inside the discrimination window,
-  and a separate event (RJ-8) when none does. An insert with no readable base of its
-  own does not slide (RJ-20). Both backends agree. The deletion side already judged by
-  bases.
+  and a separate event (RJ-8) when none does. Only the best-aligned placements count
+  (a slide that takes in a read mismatch resolves it). An insert with no readable base
+  of its own does not slide (RJ-20). Both backends agree. The deletion side already
+  judged by bases.
 
 ### Fixed — an insertion's ALT needs one of the read's own inserted bases read (#240)
 
@@ -70,8 +71,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **The rule (RJ-20).** A read whose inserted bases are all unreadable is neither,
   with partial evidence, on every path: at the junction, at another placement inside
   the discrimination window, across several ops, after a deleted anchor, and as a
-  truncation. Outside the window such an insert is a separate event, as a readable one
-  is. "Readable" means not N and at or above `--min-baseq`, the gate SNV bases pass.
+  truncation. Written outside the window such an insert is a separate event (RJ-8). "Readable" means not N and at or above `--min-baseq`, the gate SNV bases pass.
   A read whose readable inserted bases match the ALT stays ALT, however many are
   masked. The read census holds the same rule. The post-splice path already counted
   such reads this way.

@@ -229,7 +229,6 @@ def test_a_carrier_with_a_masked_end_base_slides_back(tmp_path, backend):
 
 
 # ── Third review: the scan window, too, is judged by placements ──────────────
-@pytest.mark.xfail(strict=True, reason="an insert written past the scan window never slides")
 @pytest.mark.parametrize("backend", BACKENDS)
 def test_an_insert_written_past_the_scan_window_is_judged_by_its_placements(tmp_path, backend):
     """G>GA before A10 then C5: one read sequence, an extra C in the C run, written at

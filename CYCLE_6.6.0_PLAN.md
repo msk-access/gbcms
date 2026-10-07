@@ -2018,6 +2018,12 @@ page from the CHANGELOG section in the release workflow.
   ALT by read bases; otherwise another allele when one sits inside the window; else a
   separate event. Readability stays its own bases' question (RJ-20; no slide for an
   unreadable insert). The census trusts the aligned flank and cannot judge slid inserts.
+  A third round (no blockers): the scan-window gate read the aligner's placement (now
+  any placement reaching the window); an existing test then showed a slide walking an
+  insert along a run with a mismatch the best placement resolves, so only the
+  best-aligned placements count. Left as documented: an unreadable insert does not
+  slide while a readable one with a masked edge base does (RJ-20's homopolymer
+  decision requires it; REF versus partial only, rare).
   Found, not in scope (an issue, pending): at an SNV sibling a compensating-mismatch
   carrier counts ALT on both rows (the SNV row's aligned base is never contested), and a
   slid-to-junction ALT is contested by the sibling guard where a junction-written one is
