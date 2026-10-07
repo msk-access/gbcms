@@ -1390,6 +1390,8 @@
       
         
       
+        
+      
     
     
     
@@ -1508,6 +1510,34 @@
     
   
     Release Guide
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../development/regression-panel/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Regression Panel
   
 
     
@@ -2168,6 +2198,17 @@
     <span class="md-ellipsis">
       
         Release Guide
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#development-regression-panel" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Regression Panel
       
     </span>
   </a>
@@ -17639,6 +17680,8 @@ varies it further. For pure indels, <code>tests/census.py</code> judges each rea
 <li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled=""><span class="task-list-indicator"></span></label> All <abbr title="Continuous Integration - Automated build and test system">CI</abbr> checks pass on <code>develop</code></li>
 <li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled=""><span class="task-list-indicator"></span></label> All features for the release are merged to <code>develop</code></li>
 <li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled=""><span class="task-list-indicator"></span></label> No blocking issues in milestone</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled=""><span class="task-list-indicator"></span></label> The <a href="#development-regression-panel">regression panel</a> has passed its gate: the candidate
+      against the previous release on <abbr title="High-Performance Computing - Cluster computing environment">HPC</abbr>, every changed cell attributed</li>
 </ul>
 <hr>
 <h2 id="development-release-guide-version-locations">Version Locations<a class="headerlink" href="#development-release-guide-version-locations" title="Permanent link">¶</a></h2>
@@ -18044,7 +18087,215 @@ on <code>develop</code> fails until it is done.</p>
 </ul>
 <!-- Abbreviation definitions for gbcms documentation -->
 <!-- These provide hover tooltips for technical acronyms -->
-<p><span hidden="">abbreviations</span></p></div></body></html></section><section class="print-page" id="development-changelog" heading-number="6.4"><html><head>
+<p><span hidden="">abbreviations</span></p></div></body></html></section><section class="print-page" id="development-regression-panel" heading-number="6.4"><html><head>
+        <script type="text/javascript">
+        document.addEventListener('DOMContentLoaded', function () {
+            remove_material_navigation();remove_mkdocs_theme_navigation();
+        })
+        </script>
+        </head><body><div><h1 id="regression-panel-the-release-gate">Regression Panel (the release gate)<a class="headerlink" href="#development-regression-panel-regression-panel-the-release-gate" title="Permanent link">¶</a></h1>
+<p>Before a release is tagged, the release candidate and the previous release genotype
+the same panel of real samples on <abbr title="High-Performance Computing - Cluster computing environment">HPC</abbr>, and the two outputs are compared:</p>
+<ul>
+<li><strong>version against version:</strong> every changed cell is attributed to the merge (or the
+  interval of merges) where it changed;</li>
+<li><strong>each version against the sign-out counts,</strong> by stratum. The <abbr title="Binary Alignment Map - Compressed sequence alignment file format">BAM</abbr> is the truth, so
+  disagreements are adjudicated read by read.</li>
+</ul>
+<p>The panel is chosen for code-path coverage, not by hand. Every signed-out variant is
+tagged with the strata that exercise distinct code paths, and a greedy set cover
+picks the fewest samples that bring every stratum to its target (25 variants; 4
+samples for a sample stratum), starting from the existing acceptance samples. The
+selection reads the clinical sign-out dump and names samples and <abbr title="Binary Alignment Map - Compressed sequence alignment file format">BAM</abbr> paths, so the
+selector and its output (the <em>tier folder</em>) stay on the selection host and on <abbr title="High-Performance Computing - Cluster computing environment">HPC</abbr>.
+The tools that run and compare a panel (<code>scripts/regression_panel/</code>) hold no patient
+data.</p>
+<h2 id="development-regression-panel-strata">Strata<a class="headerlink" href="#development-regression-panel-strata" title="Permanent link">¶</a></h2>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">Group</th>
+<th style="text-align: left;">Strata</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;">Allele shape and size</td>
+<td style="text-align: left;">SNV, DNP, TNP, ONP; insertions and deletions of 1, 2–5, 6–19, 20–49 and 50+ bases (deletions also 100+); delins with and without a shared first base, growing or shrinking, spanning 20+ bases</td>
+</tr>
+<tr>
+<td style="text-align: left;">Repeat context (every non-SNV)</td>
+<td style="text-align: left;">homopolymer (6+), STR (3+ copies of a 2–6 bp unit), unique; an indel in a run beside another run; an insertion duplicating the reference after it (6+ bases)</td>
+</tr>
+<tr>
+<td style="text-align: left;">Co-annotated structure</td>
+<td style="text-align: left;">length-changing variants within 50 bp (tract clusters); same-position rows; an SNV between two indels, or inside an indel's window; an <abbr title="Multi-Nucleotide Polymorphism - Multiple adjacent base substitutions">MNP</abbr> within 10 bp of an indel; a delins overlapping a deletion or insertion row; homopolymer-twin candidates; FLT3-ITDs</td>
+</tr>
+<tr>
+<td style="text-align: left;">Signal</td>
+<td style="text-align: left;">sign-out <abbr title="Variant Allele Frequency - Fraction of reads supporting the variant allele">VAF</abbr> (&lt; 2%, 2–10%, 10–40%, ≥ 40%) and depth (&lt; 100, 100–500, 500–2,000, ≥ 2,000)</td>
+</tr>
+<tr>
+<td style="text-align: left;">Loci</td>
+<td style="text-align: left;">X, Y, MT; PMS2 (run at <code>--min-mapq 0</code>); REF == ALT and placeholder rows</td>
+</tr>
+<tr>
+<td style="text-align: left;">Samples</td>
+<td style="text-align: left;">assay (each IMPACT panel, IMPACT-HEME, ACCESS duplex + simplex), <abbr title="Microsatellite Instability - Instability in short tandem repeat regions">MSI</abbr>-high, TMB ≥ 20, ACCESS indels in homopolymers (duplex-masked bases)</td>
+</tr>
+</tbody>
+</table>
+<h2 id="development-regression-panel-arms-and-configurations">Arms and configurations<a class="headerlink" href="#development-regression-panel-arms-and-configurations" title="Permanent link">¶</a></h2>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">Arm</th>
+<th style="text-align: left;">Runs</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;"><code>dna</code></td>
+<td style="text-align: left;">every panel <abbr title="Binary Alignment Map - Compressed sequence alignment file format">BAM</abbr> at production defaults (<abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> out, <abbr title="Pair Hidden Markov Model - Probabilistic alignment using base quality scores">PairHMM</abbr>, <abbr title="Mapping Quality - Confidence score for read alignment">MAPQ</abbr> 20); ACCESS as duplex and simplex</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>mfsd</code></td>
+<td style="text-align: left;">the ACCESS BAMs with <code>--mfsd --mfsd-parquet --observations-parquet</code></td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>mq0</code></td>
+<td style="text-align: left;">the PMS2 rows of samples that have them, at <code>--min-mapq 0</code></td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>sw</code></td>
+<td style="text-align: left;">~25 samples chosen for indel strata, <code>--alignment-backend sw</code></td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>vcf</code></td>
+<td style="text-align: left;">a few samples, <code>--format vcf</code></td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>normal</code></td>
+<td style="text-align: left;">matched normals genotyped on their tumor's variants (fillout)</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>cohort</code></td>
+<td style="text-align: left;">a few BAMs genotyped on one <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> holding several samples' variants, a variant shared by two samples listed twice (fillout-style input)</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>rna</code></td>
+<td style="text-align: left;">the FORTE RNA truth cohort, RNA mode with the Ensembl GTF (hg38)</td>
+</tr>
+</tbody>
+</table>
+<h2 id="development-regression-panel-the-tier-folder">The tier folder<a class="headerlink" href="#development-regression-panel-the-tier-folder" title="Permanent link">¶</a></h2>
+<p>What a selector hands to <abbr title="High-Performance Computing - Cluster computing environment">HPC</abbr> (any selector that writes this works):</p>
+<ul>
+<li><code>runs.tsv</code>, one gbcms call per row: <code>run_id</code>, <code>tag</code>, <code>arm</code>, <code>mode</code> (<code>dna</code>/<code>rna</code>),
+  <code>root</code> (<code>dmp</code>: b37 BAMs; <code>forte</code>: hg38), <code>bam_relpath</code> (under the root),
+  <code>variants</code> (relative to the tier folder), <code>extra_args</code>.</li>
+<li><code>mafs/&lt;tag&gt;.maf</code>: the sample's signed-out variants, with the sign-out counts as
+  <code>signout_t_ref_count</code>, <code>signout_t_alt_count</code>, <code>signout_n_ref_count</code>,
+  <code>signout_n_alt_count</code> (never a gbcms output name, so no <code>--column-prefix</code> can
+  overwrite them) and the variant's strata as <code>panel_strata</code> (<code>;</code>-separated). gbcms
+  passes both through to its <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> output.</li>
+<li><code>coverage.tsv</code> (every stratum: available, target, covered) and <code>panel.tsv</code>.</li>
+</ul>
+<p>The strata approximate the code paths they name (a tract cluster is length-changing
+variants within 50 bp, not the engine's own grouping); they choose samples, and the
+comparison then judges every row whatever its strata.</p>
+<h2 id="development-regression-panel-running-a-build">Running a build<a class="headerlink" href="#development-regression-panel-running-a-build" title="Permanent link">¶</a></h2>
+<p><code>run_panel.sh</code> runs one build over a run list. A run that exits 0 leaves
+<code>&lt;run&gt;.ok</code>; re-running skips those and retries every other run, so a run that failed
+after writing its <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> is not taken as finished. Every attempt is a row of
+<code>times.&lt;shard&gt;.tsv</code> (exit code, wall time, peak memory, end time), and a run's latest
+attempt is its outcome. <code>submit_panel.sbatch</code> runs it as a SLURM array (0-based; edit
+its CONFIG block):</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#development-regression-panel-__codelineno-0-1"></a>sbatch<span class="w"> </span>scripts/regression_panel/submit_panel.sbatch<span class="w">   </span><span class="c1"># BUILD=6.5.0, the release image</span>
+<a id="__codelineno-0-2" name="__codelineno-0-2" href="#development-regression-panel-__codelineno-0-2"></a>sbatch<span class="w"> </span>scripts/regression_panel/submit_panel.sbatch<span class="w">   </span><span class="c1"># BUILD=6.6.0, the candidate</span>
+</code></pre></div>
+<p>The previous release runs from its image
+(<code>singularity exec -B &lt;every path the run reads&gt; docker://ghcr.io/msk-access/gbcms:X.Y.Z gbcms</code>).
+The candidate runs from its checkpoint wheel, the last row of <code>checkpoints.tsv</code>
+(below): the commit the release ships.</p>
+<h2 id="development-regression-panel-comparing">Comparing<a class="headerlink" href="#development-regression-panel-comparing" title="Permanent link">¶</a></h2>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#development-regression-panel-__codelineno-1-1"></a>python<span class="w"> </span>scripts/regression_panel/compare_panel.py<span class="w"> </span>TIER<span class="w"> </span>OUT<span class="w"> </span><span class="m">6</span>.5.0<span class="w"> </span><span class="m">6</span>.6.0
+</code></pre></div>
+<p>matches rows by locus (and occurrence, for a locus listed twice), never by position,
+leaves failed runs out (their latest attempt did not exit 0) and writes <code>gate.txt</code>
+and the reports it summarises: <code>version_summary.tsv</code> (with rows or records in one
+version only),
+<code>version_cells.tsv</code>, <code>version_rows.tsv</code> (every changed cell; <abbr title="Variant Call Format - Standard variant call file format">VCF</abbr> output field by
+field: <code>FILTER</code>, <code>INFO:&lt;id&gt;</code>, <code>FORMAT:&lt;id&gt;</code>), <code>header_diff.tsv</code> (columns, or INFO and
+FORMAT IDs, only in one version), <code>concordance_by_stratum.tsv</code> (each version against
+the sign-out ALT count, per stratum: median delta and the fraction within
+max(2 reads, 10%), at read and fragment level and at the <strong>matched</strong> level, the one
+the sign-out counted: reads for IMPACT, duplex + simplex fragments for ACCESS),
+<code>discordant.tsv</code> (the largest disagreements at the matched level, and the top 20 per
+stratum), <code>normals.tsv</code>, <code>times.tsv</code> and <code>parquet.tsv</code> (needs <code>pyarrow</code>). PMS2's
+concordance at <code>--min-mapq 0</code> comes from the mq0 arm (strata prefixed <code>mq0:</code>); an
+ACCESS sample missing one flavour is left out of concordance and counted. <code>gate.txt</code>
+ends with <code>GATE: clean</code> or <code>GATE: ATTENTION</code> and the reasons (failed or missing runs, a
+stratum that fell more than 5 points, an arm 1.5× slower or larger), and the script
+then exits 1. The rna arm's FORTE MAFs carry no sign-out counts, so it is compared
+version against version only; the vcf arm's counts are the dna arm's.</p>
+<h2 id="development-regression-panel-attributing-every-changed-cell">Attributing every changed cell<a class="headerlink" href="#development-regression-panel-attributing-every-changed-cell" title="Permanent link">¶</a></h2>
+<p>A release changes many cells at once (6.6.0's read-judgment work changed every
+indel row of the acceptance set), so attribution is mechanical: one build per
+count-affecting merge since the previous release, run on the changed rows only.</p>
+<ol>
+<li><strong>The checkpoints.</strong> <code>checkpoints.py REPO 6.5.0 develop &gt; checkpoints.tsv</code> lists
+   one build per commit on develop (in practice each merged PR) that touches counting
+   code, skipping those whose own acceptance was byte-identical (<code>NEUTRAL</code> in the
+   script). Each row names every commit in its interval, so a change landing in a
+   skipped one is still named. Row 0 is the previous release built as a wheel, so a
+   difference between its image and a wheel build is named as such; the last row is
+   the commit the release ships.</li>
+<li><strong>The wheels.</strong> One manylinux wheel per commit, built as the release builds it
+   (the <em>Checkpoint wheels</em> workflow; each wheel is an artifact named <code>wheel-&lt;sha&gt;</code>).
+   Before a release the workflow is not yet on the default branch, where GitHub
+   requires a manually run workflow to be, so start it with a push: a branch
+   <code>checkpoint-wheels/X.Y.Z</code> that commits the list as
+   <code>scripts/regression_panel/checkpoints.tsv</code>. Once it is on the default branch,
+   <em>Run workflow</em> with the <code>sha</code> column works too. Each artifact carries its commit's
+   <code>requirements.lock</code> when the commit has one; install with it, so every checkpoint
+   gets the dependencies its commit pinned:
+   <code>python3.11 -m venv cp_&lt;sha&gt; &amp;&amp; cp_&lt;sha&gt;/bin/pip install --require-hashes -r requirements.lock &amp;&amp; cp_&lt;sha&gt;/bin/pip install --no-deps gbcms-*.whl</code>.</li>
+<li><strong>The reduced runs.</strong> <code>attribute.py prepare TIER OUT 6.5.0 6.6.0 ATTRIB</code> writes, for
+   every run with changes (a changed cell, or a row in one version only), a variant file
+   holding the changed rows and every row within 100 bp of a kept row's span, closed
+   transitively (siblings classify together), and <code>ATTRIB/runs.tsv</code>. The mfsd and rna
+   arms keep their full variant files: their Benjamini–Hochberg q-values are computed
+   across the run's rows.</li>
+<li><strong>Each build on them</strong>, into <code>ATTRIB/out</code>: the two versions first, then every
+   checkpoint as <code>cp_&lt;sha&gt;</code> (<code>run_panel.sh TIER ATTRIB/runs.tsv cp_&lt;sha&gt; cp_&lt;sha&gt;/bin/gbcms … ATTRIB/out</code>).</li>
+<li><strong><code>attribute.py check</code></strong> confirms the reduction changed nothing: every reduced row
+   equals the full run's, in both versions. <code>gbcms_status_reason</code> is exempt on context
+   rows only (it names the co-annotation group, which the reduction may cut at its
+   edge), never on a changed row. It exits 1 when a row differs.</li>
+<li><strong><code>attribute.py attribute TIER OUT 6.5.0 6.6.0 ATTRIB checkpoints.tsv</code></strong> traces each
+   changed cell through the checkpoints: <code>attribution_cells.tsv</code> (each cell and the
+   intervals where it changed; a row in one version only is traced as its presence,
+   column <code>(row)</code>), <code>attribution_summary.tsv</code> (per checkpoint, arm and column),
+   <code>unattributed.tsv</code> (cells whose trail misses a checkpoint's output or does not end at
+   the candidate's value). It exits 1 when any cell is unattributed.</li>
+</ol>
+<h2 id="development-regression-panel-the-gate">The gate<a class="headerlink" href="#development-regression-panel-the-gate" title="Permanent link">¶</a></h2>
+<p>The candidate is tagged when:</p>
+<ul>
+<li><strong>no run fails</strong> in either build, the reduction check is exact, and <strong>every changed
+  cell is attributed</strong> (<code>unattributed.tsv</code> empty);</li>
+<li><strong>concordance by stratum</strong> is reported for both versions; any stratum whose fraction
+  within max(2 reads, 10%) of the sign-out (matched level) falls by more than 5 points,
+  and the top discordant rows, are adjudicated read by read (the read census, or the
+  reads themselves) before the tag;</li>
+<li><strong>run time and peak memory</strong> per arm stay within 1.5× of the previous release, or
+  the excess is explained (wall time summed over the runs paired across the builds that
+  took 10 s or more, at least 3 per arm; peak memory over paired runs).</li>
+</ul>
+<!-- Abbreviation definitions for gbcms documentation -->
+<!-- These provide hover tooltips for technical acronyms -->
+<p><span hidden="">abbreviations</span></p></div></body></html></section><section class="print-page" id="development-changelog" heading-number="6.5"><html><head>
         <script type="text/javascript">
         document.addEventListener('DOMContentLoaded', function () {
             remove_material_navigation();remove_mkdocs_theme_navigation();
@@ -18086,6 +18337,25 @@ and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semant
   minimum span that dense variants chain past, bounded by the 200-variant cap; measured
   on real inputs (per-sample lists max 29 kb; one input holding a cohort's variants max
   47 kb) and never capped by span. The page no longer cites the retired parity suite.</li>
+</ul>
+<h3 id="development-changelog-added-the-regression-panel-the-release-gate-155">Added — the regression panel, the release gate (#155)<a class="headerlink" href="#development-changelog-added-the-regression-panel-the-release-gate-155" title="Permanent link">¶</a></h3>
+<ul>
+<li><strong>A panel chosen for coverage</strong> replaces the hand-picked 56-sample <abbr title="High-Performance Computing - Cluster computing environment">HPC</abbr> matrix: every
+  signed-out variant is tagged with the strata that exercise distinct code paths (70,
+  including this release's: delins size and direction, indels beside another run,
+  tandem-duplication inserts, PMS2 at <code>--min-mapq 0</code>, MNPs near indels, a delins
+  overlapping its component row, ACCESS indels in homopolymers), and a greedy set
+  cover picks the samples. Arms beyond the IMPACT/ACCESS panels: the FORTE RNA truth
+  cohort and a cohort-<abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> fillout; configurations beyond production defaults: <abbr title="Mutant Fragment Size Distribution - Insert-size analysis for REF vs ALT fragments">mFSD</abbr>
+  with both Parquet outputs, the <abbr title="Smith-Waterman - Edit-distance based local sequence alignment algorithm">SW</abbr> backend, <abbr title="Variant Call Format - Standard variant call file format">VCF</abbr> output.</li>
+<li><strong>The tools</strong> (<code>scripts/regression_panel/</code>, no patient data): a run-list runner
+  (resumable, SLURM-array shards, wall time and peak memory per run), a comparison
+  (version against version, and each version against the sign-out counts by stratum),
+  and <strong>mechanical attribution</strong>: one wheel per count-affecting merge (the new manual
+  <em>Checkpoint wheels</em> workflow), run on the changed rows, names the merge where each
+  changed cell changed (the workflow starts by hand, or from a pushed <code>checkpoint-wheels/X.Y.Z</code>
+  branch before the release reaches the default branch). The gate and its criteria:
+  <code>docs/development/regression-panel.md</code>.</li>
 </ul>
 <h3 id="development-changelog-fixed-one-allele-given-twice-is-not-its-own-sibling-246">Fixed — one allele given twice is not its own sibling (#246)<a class="headerlink" href="#development-changelog-fixed-one-allele-given-twice-is-not-its-own-sibling-246" title="Permanent link">¶</a></h3>
 <ul>
@@ -21151,7 +21421,7 @@ This major release changes several output behaviours:
 <p>Previous versions (1.x) used a pure Python implementation. See git history for details.</p>
 <!-- Abbreviation definitions for gbcms documentation -->
 <!-- These provide hover tooltips for technical acronyms -->
-<p><span hidden="">abbreviations</span></p></div></body></html></section><section class="print-page" id="development-contributing" heading-number="6.5"><html><head>
+<p><span hidden="">abbreviations</span></p></div></body></html></section><section class="print-page" id="development-contributing" heading-number="6.6"><html><head>
         <script type="text/javascript">
         document.addEventListener('DOMContentLoaded', function () {
             remove_material_navigation();remove_mkdocs_theme_navigation();
@@ -21971,14 +22241,19 @@ genuinely has nothing to count.</p>
                 .print-site-enumerate-headings #development-release-guide h2:before { content: '6.3.' counter(counter-development-release-guide-2) ' ' }
                 .print-site-enumerate-headings #development-release-guide h2 {  counter-increment: counter-development-release-guide-2 }
             
-.print-site-enumerate-headings #development-changelog > h1:before { content: '6.4 ' }
+.print-site-enumerate-headings #development-regression-panel > h1:before { content: '6.4 ' }
 
-                .print-site-enumerate-headings #development-changelog h2:before { content: '6.4.' counter(counter-development-changelog-2) ' ' }
+                .print-site-enumerate-headings #development-regression-panel h2:before { content: '6.4.' counter(counter-development-regression-panel-2) ' ' }
+                .print-site-enumerate-headings #development-regression-panel h2 {  counter-increment: counter-development-regression-panel-2 }
+            
+.print-site-enumerate-headings #development-changelog > h1:before { content: '6.5 ' }
+
+                .print-site-enumerate-headings #development-changelog h2:before { content: '6.5.' counter(counter-development-changelog-2) ' ' }
                 .print-site-enumerate-headings #development-changelog h2 {  counter-increment: counter-development-changelog-2 }
             
-.print-site-enumerate-headings #development-contributing > h1:before { content: '6.5 ' }
+.print-site-enumerate-headings #development-contributing > h1:before { content: '6.6 ' }
 
-                .print-site-enumerate-headings #development-contributing h2:before { content: '6.5.' counter(counter-development-contributing-2) ' ' }
+                .print-site-enumerate-headings #development-contributing h2:before { content: '6.6.' counter(counter-development-contributing-2) ' ' }
                 .print-site-enumerate-headings #development-contributing h2 {  counter-increment: counter-development-contributing-2 }
             
 .print-site-enumerate-headings #section-7 > h1:before { content: '7 ' }

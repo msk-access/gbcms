@@ -9,31 +9,31 @@
         <meta name="author" content="MSK-ACCESS">
       
       
-        <link rel="canonical" href="https://msk-access.github.io/gbcms/dev/cli/">
+        <link rel="canonical" href="https://msk-access.github.io/gbcms/dev/development/regression-panel/">
       
       
-        <link rel="prev" href="../getting-started/quickstart/">
+        <link rel="prev" href="../release-guide/">
       
       
-        <link rel="next" href="dna/">
+        <link rel="next" href="../changelog/">
       
       
         
       
       
-      <link rel="icon" href="../assets/images/favicon.png">
+      <link rel="icon" href="../../assets/images/favicon.png">
       <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.7">
     
     
       
-        <title>Overview - gbcms</title>
+        <title>Regression Panel - gbcms</title>
       
     
     
-      <link rel="stylesheet" href="../assets/stylesheets/main.ec1eaa64.min.css">
+      <link rel="stylesheet" href="../../assets/stylesheets/main.ec1eaa64.min.css">
       
         
-        <link rel="stylesheet" href="../assets/stylesheets/palette.ab4e12ef.min.css">
+        <link rel="stylesheet" href="../../assets/stylesheets/palette.ab4e12ef.min.css">
       
       
 
@@ -52,23 +52,23 @@
       
     
     
-      <link rel="stylesheet" href="../css/print-site.css">
+      <link rel="stylesheet" href="../../css/print-site.css">
     
-      <link rel="stylesheet" href="../css/print-site-material.css">
+      <link rel="stylesheet" href="../../css/print-site-material.css">
     
-      <link rel="stylesheet" href="../css/timeago.css">
+      <link rel="stylesheet" href="../../css/timeago.css">
     
-      <link rel="stylesheet" href="../stylesheets/extra.css">
+      <link rel="stylesheet" href="../../stylesheets/extra.css">
     
-      <link rel="stylesheet" href="../assets/stylesheets/panzoom.css">
+      <link rel="stylesheet" href="../../assets/stylesheets/panzoom.css">
     
-    <script>__md_scope=new URL("..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    <script>__md_scope=new URL("../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
     
       
 
     
     
-  <link href="../assets/stylesheets/glightbox.min.css" rel="stylesheet"><script src="../assets/javascripts/glightbox.min.js"></script><style id="glightbox-style">
+  <link href="../../assets/stylesheets/glightbox.min.css" rel="stylesheet"><script src="../../assets/javascripts/glightbox.min.js"></script><style id="glightbox-style">
             html.glightbox-open { overflow: initial; height: 100%; }
             .gslide-title { margin-top: 0px; user-select: text; }
             .gslide-desc { color: #666; user-select: text; }
@@ -98,7 +98,7 @@
     <div data-md-component="skip">
       
         
-        <a href="#cli-reference" class="md-skip">
+        <a href="#regression-panel-the-release-gate" class="md-skip">
           Skip to content
         </a>
       
@@ -118,7 +118,7 @@
 
 <header class="md-header md-header--shadow" data-md-component="header">
   <nav class="md-header__inner md-grid" aria-label="Header">
-    <a href=".." title="gbcms" class="md-header__button md-logo" aria-label="gbcms" data-md-component="logo">
+    <a href="../.." title="gbcms" class="md-header__button md-logo" aria-label="gbcms" data-md-component="logo">
       
   
   <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"></path></svg>
@@ -138,7 +138,7 @@
         <div class="md-header__topic" data-md-component="header-topic">
           <span class="md-ellipsis">
             
-              Overview
+              Regression Panel
             
           </span>
         </div>
@@ -256,7 +256,7 @@
 
 <nav class="md-nav md-nav--primary" aria-label="Navigation" data-md-level="0">
   <label class="md-nav__title" for="__drawer">
-    <a href=".." title="gbcms" class="md-nav__button md-logo" aria-label="gbcms" data-md-component="logo">
+    <a href="../.." title="gbcms" class="md-nav__button md-logo" aria-label="gbcms" data-md-component="logo">
       
   
   <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"></path></svg>
@@ -286,7 +286,7 @@
   
   
     <li class="md-nav__item">
-      <a href=".." class="md-nav__link">
+      <a href="../.." class="md-nav__link">
         
   
   
@@ -342,7 +342,7 @@
         
           
           <div class="md-nav__link md-nav__container">
-            <a href="../getting-started/" class="md-nav__link ">
+            <a href="../../getting-started/" class="md-nav__link ">
               
   
   
@@ -386,7 +386,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../getting-started/installation/" class="md-nav__link">
+      <a href="../../getting-started/installation/" class="md-nav__link">
         
   
   
@@ -414,7 +414,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../getting-started/quickstart/" class="md-nav__link">
+      <a href="../../getting-started/quickstart/" class="md-nav__link">
         
   
   
@@ -446,8 +446,6 @@
       
   
   
-    
-  
   
   
     
@@ -476,15 +474,17 @@
       
     
     
-    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
       
         
         
-        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3" checked="">
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_3">
         
           
           <div class="md-nav__link md-nav__container">
-            <a href="./" class="md-nav__link md-nav__link--active">
+            <a href="../../cli/" class="md-nav__link ">
               
   
   
@@ -502,13 +502,13 @@
             </a>
             
               
-              <label class="md-nav__link md-nav__link--active" for="__nav_3" id="__nav_3_label" tabindex="">
+              <label class="md-nav__link " for="__nav_3" id="__nav_3_label" tabindex="">
                 <span class="md-nav__icon md-icon"></span>
               </label>
             
           </div>
         
-        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="true">
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="false">
           <label class="md-nav__title" for="__nav_3">
             <span class="md-nav__icon md-icon"></span>
             
@@ -528,7 +528,7 @@
   
   
     <li class="md-nav__item">
-      <a href="dna/" class="md-nav__link">
+      <a href="../../cli/dna/" class="md-nav__link">
         
   
   
@@ -556,7 +556,7 @@
   
   
     <li class="md-nav__item">
-      <a href="rna/" class="md-nav__link">
+      <a href="../../cli/rna/" class="md-nav__link">
         
   
   
@@ -584,7 +584,7 @@
   
   
     <li class="md-nav__item">
-      <a href="merge/" class="md-nav__link">
+      <a href="../../cli/merge/" class="md-nav__link">
         
   
   
@@ -612,7 +612,7 @@
   
   
     <li class="md-nav__item">
-      <a href="normalize/" class="md-nav__link">
+      <a href="../../cli/normalize/" class="md-nav__link">
         
   
   
@@ -640,7 +640,7 @@
   
   
     <li class="md-nav__item">
-      <a href="convert/" class="md-nav__link">
+      <a href="../../cli/convert/" class="md-nav__link">
         
   
   
@@ -706,7 +706,7 @@
         
           
           <div class="md-nav__link md-nav__container">
-            <a href="../nextflow/" class="md-nav__link ">
+            <a href="../../nextflow/" class="md-nav__link ">
               
   
   
@@ -750,7 +750,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../nextflow/samplesheet/" class="md-nav__link">
+      <a href="../../nextflow/samplesheet/" class="md-nav__link">
         
   
   
@@ -778,7 +778,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../nextflow/parameters/" class="md-nav__link">
+      <a href="../../nextflow/parameters/" class="md-nav__link">
         
   
   
@@ -806,7 +806,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../nextflow/examples/" class="md-nav__link">
+      <a href="../../nextflow/examples/" class="md-nav__link">
         
   
   
@@ -929,7 +929,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../reference/architecture/" class="md-nav__link">
+      <a href="../../reference/architecture/" class="md-nav__link">
         
   
   
@@ -957,7 +957,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../reference/input-formats/" class="md-nav__link">
+      <a href="../../reference/input-formats/" class="md-nav__link">
         
   
   
@@ -985,7 +985,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../reference/output-formats/" class="md-nav__link">
+      <a href="../../reference/output-formats/" class="md-nav__link">
         
   
   
@@ -1013,7 +1013,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../reference/qc-flags/" class="md-nav__link">
+      <a href="../../reference/qc-flags/" class="md-nav__link">
         
   
   
@@ -1041,7 +1041,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../reference/variant-normalization/" class="md-nav__link">
+      <a href="../../reference/variant-normalization/" class="md-nav__link">
         
   
   
@@ -1069,7 +1069,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../reference/read-filters/" class="md-nav__link">
+      <a href="../../reference/read-filters/" class="md-nav__link">
         
   
   
@@ -1097,7 +1097,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../reference/rna-splice-handling/" class="md-nav__link">
+      <a href="../../reference/rna-splice-handling/" class="md-nav__link">
         
   
   
@@ -1125,7 +1125,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../reference/rna-annotation/" class="md-nav__link">
+      <a href="../../reference/rna-annotation/" class="md-nav__link">
         
   
   
@@ -1153,7 +1153,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../reference/allele-classification/" class="md-nav__link">
+      <a href="../../reference/allele-classification/" class="md-nav__link">
         
   
   
@@ -1181,7 +1181,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../reference/read-judgment/" class="md-nav__link">
+      <a href="../../reference/read-judgment/" class="md-nav__link">
         
   
   
@@ -1209,7 +1209,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../reference/counting-metrics/" class="md-nav__link">
+      <a href="../../reference/counting-metrics/" class="md-nav__link">
         
   
   
@@ -1237,7 +1237,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../reference/mfsd-report/" class="md-nav__link">
+      <a href="../../reference/mfsd-report/" class="md-nav__link">
         
   
   
@@ -1265,7 +1265,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../reference/molecule-observations/" class="md-nav__link">
+      <a href="../../reference/molecule-observations/" class="md-nav__link">
         
   
   
@@ -1293,7 +1293,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../reference/complex-indels/" class="md-nav__link">
+      <a href="../../reference/complex-indels/" class="md-nav__link">
         
   
   
@@ -1321,7 +1321,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../reference/bam-evidence-caveats/" class="md-nav__link">
+      <a href="../../reference/bam-evidence-caveats/" class="md-nav__link">
         
   
   
@@ -1349,7 +1349,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../reference/glossary/" class="md-nav__link">
+      <a href="../../reference/glossary/" class="md-nav__link">
         
   
   
@@ -1381,8 +1381,10 @@
       
   
   
+    
   
   
+  
     
     
       
@@ -1407,13 +1409,11 @@
       
     
     
-    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
       
         
         
-          
-        
-        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_6">
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_6" checked="">
         
           
           <label class="md-nav__link" for="__nav_6" id="__nav_6_label" tabindex="">
@@ -1434,7 +1434,7 @@
             <span class="md-nav__icon md-icon"></span>
           </label>
         
-        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_6_label" aria-expanded="false">
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_6_label" aria-expanded="true">
           <label class="md-nav__title" for="__nav_6">
             <span class="md-nav__icon md-icon"></span>
             
@@ -1452,7 +1452,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../development/developer-guide/" class="md-nav__link">
+      <a href="../developer-guide/" class="md-nav__link">
         
   
   
@@ -1480,7 +1480,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../development/testing-guide/" class="md-nav__link">
+      <a href="../testing-guide/" class="md-nav__link">
         
   
   
@@ -1508,7 +1508,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../development/release-guide/" class="md-nav__link">
+      <a href="../release-guide/" class="md-nav__link">
         
   
   
@@ -1533,10 +1533,37 @@
                 
   
   
+    
   
   
-    <li class="md-nav__item">
-      <a href="../development/regression-panel/" class="md-nav__link">
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Regression Panel
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
         
   
   
@@ -1552,6 +1579,103 @@
   
 
       </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix="">
+      
+        <li class="md-nav__item">
+  <a href="#strata" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Strata
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#arms-and-configurations" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Arms and configurations
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#the-tier-folder" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The tier folder
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#running-a-build" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Running a build
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#comparing" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Comparing
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#attributing-every-changed-cell" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Attributing every changed cell
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#the-gate" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The gate
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
     </li>
   
 
@@ -1564,7 +1688,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../development/changelog/" class="md-nav__link">
+      <a href="../changelog/" class="md-nav__link">
         
   
   
@@ -1592,7 +1716,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../development/contributing/" class="md-nav__link">
+      <a href="../contributing/" class="md-nav__link">
         
   
   
@@ -1687,7 +1811,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../resources/troubleshooting/" class="md-nav__link">
+      <a href="../../resources/troubleshooting/" class="md-nav__link">
         
   
   
@@ -1715,7 +1839,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../resources/citation/" class="md-nav__link">
+      <a href="../../resources/citation/" class="md-nav__link">
         
   
   
@@ -1770,10 +1894,10 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix="">
       
         <li class="md-nav__item">
-  <a href="#commands" class="md-nav__link">
+  <a href="#strata" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Commands
+        Strata
       
     </span>
   </a>
@@ -1781,10 +1905,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#quick-example" class="md-nav__link">
+  <a href="#arms-and-configurations" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Quick Example
+        Arms and configurations
       
     </span>
   </a>
@@ -1792,10 +1916,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#getting-help" class="md-nav__link">
+  <a href="#the-tier-folder" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Getting Help
+        The tier folder
       
     </span>
   </a>
@@ -1803,10 +1927,43 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#related" class="md-nav__link">
+  <a href="#running-a-build" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Related
+        Running a build
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#comparing" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Comparing
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#attributing-every-changed-cell" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Attributing every changed cell
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#the-gate" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The gate
       
     </span>
   </a>
@@ -1838,7 +1995,7 @@
   
   
     <li class="md-path__item">
-      <a href=".." class="md-path__link">
+      <a href="../.." class="md-path__link">
         
   <span class="md-ellipsis">
     Home
@@ -1856,10 +2013,10 @@
     
     
       <li class="md-path__item">
-        <a href="./" class="md-path__link">
+        <a href="../developer-guide/" class="md-path__link">
           
   <span class="md-ellipsis">
-    CLI Reference
+    Development
   </span>
 
         </a>
@@ -1881,71 +2038,205 @@
   
 
 
-<div><h1 id="cli-reference"><abbr title="Command Line Interface - Terminal-based program interface">CLI</abbr> Reference<a class="headerlink" href="#cli-reference" title="Permanent link">¶</a></h1>
-<p>The <code>gbcms</code> command-line interface provides two primary commands for variant counting — one for DNA/<abbr title="Cell-free DNA - Circulating DNA fragments in blood plasma">cfDNA</abbr> and one for RNA-seq — plus merge and normalization utilities.</p>
-<h2 id="commands">Commands<a class="headerlink" href="#commands" title="Permanent link">¶</a></h2>
+<div><h1 id="regression-panel-the-release-gate">Regression Panel (the release gate)<a class="headerlink" href="#regression-panel-the-release-gate" title="Permanent link">¶</a></h1>
+<p>Before a release is tagged, the release candidate and the previous release genotype
+the same panel of real samples on <abbr title="High-Performance Computing - Cluster computing environment">HPC</abbr>, and the two outputs are compared:</p>
+<ul>
+<li><strong>version against version:</strong> every changed cell is attributed to the merge (or the
+  interval of merges) where it changed;</li>
+<li><strong>each version against the sign-out counts,</strong> by stratum. The <abbr title="Binary Alignment Map - Compressed sequence alignment file format">BAM</abbr> is the truth, so
+  disagreements are adjudicated read by read.</li>
+</ul>
+<p>The panel is chosen for code-path coverage, not by hand. Every signed-out variant is
+tagged with the strata that exercise distinct code paths, and a greedy set cover
+picks the fewest samples that bring every stratum to its target (25 variants; 4
+samples for a sample stratum), starting from the existing acceptance samples. The
+selection reads the clinical sign-out dump and names samples and <abbr title="Binary Alignment Map - Compressed sequence alignment file format">BAM</abbr> paths, so the
+selector and its output (the <em>tier folder</em>) stay on the selection host and on <abbr title="High-Performance Computing - Cluster computing environment">HPC</abbr>.
+The tools that run and compare a panel (<code>scripts/regression_panel/</code>) hold no patient
+data.</p>
+<h2 id="strata">Strata<a class="headerlink" href="#strata" title="Permanent link">¶</a></h2>
 <table>
 <thead>
 <tr>
-<th style="text-align: left;">Command</th>
-<th style="text-align: left;">Description</th>
+<th style="text-align: left;">Group</th>
+<th style="text-align: left;">Strata</th>
 </tr>
 </thead>
 <tbody>
 <tr>
-<td style="text-align: left;"><a href="dna/"><strong>dna</strong></a></td>
-<td style="text-align: left;">Count alleles in DNA/<abbr title="Cell-free DNA - Circulating DNA fragments in blood plasma">cfDNA</abbr> <abbr title="Binary Alignment Map - Compressed sequence alignment file format">BAM</abbr>/CRAM files</td>
+<td style="text-align: left;">Allele shape and size</td>
+<td style="text-align: left;">SNV, DNP, TNP, ONP; insertions and deletions of 1, 2–5, 6–19, 20–49 and 50+ bases (deletions also 100+); delins with and without a shared first base, growing or shrinking, spanning 20+ bases</td>
 </tr>
 <tr>
-<td style="text-align: left;"><a href="rna/"><strong>rna</strong></a></td>
-<td style="text-align: left;">Count alleles in RNA-seq <abbr title="Binary Alignment Map - Compressed sequence alignment file format">BAM</abbr>/CRAM files with transcriptome-aware filtering</td>
+<td style="text-align: left;">Repeat context (every non-SNV)</td>
+<td style="text-align: left;">homopolymer (6+), STR (3+ copies of a 2–6 bp unit), unique; an indel in a run beside another run; an insertion duplicating the reference after it (6+ bases)</td>
 </tr>
 <tr>
-<td style="text-align: left;"><a href="merge/"><strong>merge</strong></a></td>
-<td style="text-align: left;">Merge per-<abbr title="Binary Alignment Map - Compressed sequence alignment file format">BAM</abbr>-type MAFs into a single type-prefixed output</td>
+<td style="text-align: left;">Co-annotated structure</td>
+<td style="text-align: left;">length-changing variants within 50 bp (tract clusters); same-position rows; an SNV between two indels, or inside an indel's window; an <abbr title="Multi-Nucleotide Polymorphism - Multiple adjacent base substitutions">MNP</abbr> within 10 bp of an indel; a delins overlapping a deletion or insertion row; homopolymer-twin candidates; FLT3-ITDs</td>
 </tr>
 <tr>
-<td style="text-align: left;"><a href="normalize/"><strong>normalize</strong></a></td>
-<td style="text-align: left;">Standalone variant normalization (no counting)</td>
+<td style="text-align: left;">Signal</td>
+<td style="text-align: left;">sign-out <abbr title="Variant Allele Frequency - Fraction of reads supporting the variant allele">VAF</abbr> (&lt; 2%, 2–10%, 10–40%, ≥ 40%) and depth (&lt; 100, 100–500, 500–2,000, ≥ 2,000)</td>
 </tr>
 <tr>
-<td style="text-align: left;"><a href="convert/"><strong>convert</strong></a></td>
-<td style="text-align: left;"><abbr title="Variant Call Format - Standard variant call file format">VCF</abbr> ↔ <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> conversion as vcf2maf / maf2vcf write it (no counting)</td>
+<td style="text-align: left;">Loci</td>
+<td style="text-align: left;">X, Y, MT; PMS2 (run at <code>--min-mapq 0</code>); REF == ALT and placeholder rows</td>
 </tr>
 <tr>
-<td style="text-align: left;"><strong>build-gtf-cache</strong></td>
-<td style="text-align: left;">Deprecated in 6.6.0: does nothing and warns; removed in 6.7.0. The GTF loads in a few seconds, so there is no cache to build.</td>
+<td style="text-align: left;">Samples</td>
+<td style="text-align: left;">assay (each IMPACT panel, IMPACT-HEME, ACCESS duplex + simplex), <abbr title="Microsatellite Instability - Instability in short tandem repeat regions">MSI</abbr>-high, TMB ≥ 20, ACCESS indels in homopolymers (duplex-masked bases)</td>
 </tr>
 </tbody>
 </table>
-<h2 id="quick-example">Quick Example<a class="headerlink" href="#quick-example" title="Permanent link">¶</a></h2>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="c1"># DNA/cfDNA counting</span>
-<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>gbcms<span class="w"> </span>dna<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a><span class="w">    </span>--variants<span class="w"> </span>mutations.maf<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a><span class="w">    </span>--bam<span class="w"> </span>sample1:sample1.bam<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a><span class="w">    </span>--bam<span class="w"> </span>sample2:sample2.bam<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a><span class="w">    </span>--fasta<span class="w"> </span>reference.fa<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a><span class="w">    </span>--output-dir<span class="w"> </span>results/
-<a id="__codelineno-0-8" name="__codelineno-0-8" href="#__codelineno-0-8"></a>
-<a id="__codelineno-0-9" name="__codelineno-0-9" href="#__codelineno-0-9"></a><span class="c1"># RNA-seq counting</span>
-<a id="__codelineno-0-10" name="__codelineno-0-10" href="#__codelineno-0-10"></a>gbcms<span class="w"> </span>rna<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-0-11" name="__codelineno-0-11" href="#__codelineno-0-11"></a><span class="w">    </span>--variants<span class="w"> </span>mutations.vcf<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-0-12" name="__codelineno-0-12" href="#__codelineno-0-12"></a><span class="w">    </span>--bam<span class="w"> </span>rna_sample:star_aligned.bam<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-0-13" name="__codelineno-0-13" href="#__codelineno-0-13"></a><span class="w">    </span>--fasta<span class="w"> </span>reference.fa<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-0-14" name="__codelineno-0-14" href="#__codelineno-0-14"></a><span class="w">    </span>--output-dir<span class="w"> </span>results/
-</code></pre></div>
-<h2 id="getting-help">Getting Help<a class="headerlink" href="#getting-help" title="Permanent link">¶</a></h2>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>gbcms<span class="w"> </span>--help
-<a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a>gbcms<span class="w"> </span>dna<span class="w"> </span>--help
-<a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a>gbcms<span class="w"> </span>rna<span class="w"> </span>--help
-<a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a>gbcms<span class="w"> </span>normalize<span class="w"> </span>--help
-<a id="__codelineno-1-5" name="__codelineno-1-5" href="#__codelineno-1-5"></a>gbcms<span class="w"> </span>convert<span class="w"> </span>--help
-</code></pre></div>
-<h2 id="related">Related<a class="headerlink" href="#related" title="Permanent link">¶</a></h2>
+<h2 id="arms-and-configurations">Arms and configurations<a class="headerlink" href="#arms-and-configurations" title="Permanent link">¶</a></h2>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">Arm</th>
+<th style="text-align: left;">Runs</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;"><code>dna</code></td>
+<td style="text-align: left;">every panel <abbr title="Binary Alignment Map - Compressed sequence alignment file format">BAM</abbr> at production defaults (<abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> out, <abbr title="Pair Hidden Markov Model - Probabilistic alignment using base quality scores">PairHMM</abbr>, <abbr title="Mapping Quality - Confidence score for read alignment">MAPQ</abbr> 20); ACCESS as duplex and simplex</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>mfsd</code></td>
+<td style="text-align: left;">the ACCESS BAMs with <code>--mfsd --mfsd-parquet --observations-parquet</code></td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>mq0</code></td>
+<td style="text-align: left;">the PMS2 rows of samples that have them, at <code>--min-mapq 0</code></td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>sw</code></td>
+<td style="text-align: left;">~25 samples chosen for indel strata, <code>--alignment-backend sw</code></td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>vcf</code></td>
+<td style="text-align: left;">a few samples, <code>--format vcf</code></td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>normal</code></td>
+<td style="text-align: left;">matched normals genotyped on their tumor's variants (fillout)</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>cohort</code></td>
+<td style="text-align: left;">a few BAMs genotyped on one <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> holding several samples' variants, a variant shared by two samples listed twice (fillout-style input)</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>rna</code></td>
+<td style="text-align: left;">the FORTE RNA truth cohort, RNA mode with the Ensembl GTF (hg38)</td>
+</tr>
+</tbody>
+</table>
+<h2 id="the-tier-folder">The tier folder<a class="headerlink" href="#the-tier-folder" title="Permanent link">¶</a></h2>
+<p>What a selector hands to <abbr title="High-Performance Computing - Cluster computing environment">HPC</abbr> (any selector that writes this works):</p>
 <ul>
-<li><a href="../getting-started/quickstart/">Quick Start</a> — Common usage patterns</li>
-<li><a href="../nextflow/">Nextflow Pipeline</a> — For processing many samples</li>
-<li><a href="../reference/input-formats/">Input Formats</a> — <abbr title="Variant Call Format - Standard variant call file format">VCF</abbr>/<abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> specifications</li>
+<li><code>runs.tsv</code>, one gbcms call per row: <code>run_id</code>, <code>tag</code>, <code>arm</code>, <code>mode</code> (<code>dna</code>/<code>rna</code>),
+  <code>root</code> (<code>dmp</code>: b37 BAMs; <code>forte</code>: hg38), <code>bam_relpath</code> (under the root),
+  <code>variants</code> (relative to the tier folder), <code>extra_args</code>.</li>
+<li><code>mafs/&lt;tag&gt;.maf</code>: the sample's signed-out variants, with the sign-out counts as
+  <code>signout_t_ref_count</code>, <code>signout_t_alt_count</code>, <code>signout_n_ref_count</code>,
+  <code>signout_n_alt_count</code> (never a gbcms output name, so no <code>--column-prefix</code> can
+  overwrite them) and the variant's strata as <code>panel_strata</code> (<code>;</code>-separated). gbcms
+  passes both through to its <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> output.</li>
+<li><code>coverage.tsv</code> (every stratum: available, target, covered) and <code>panel.tsv</code>.</li>
+</ul>
+<p>The strata approximate the code paths they name (a tract cluster is length-changing
+variants within 50 bp, not the engine's own grouping); they choose samples, and the
+comparison then judges every row whatever its strata.</p>
+<h2 id="running-a-build">Running a build<a class="headerlink" href="#running-a-build" title="Permanent link">¶</a></h2>
+<p><code>run_panel.sh</code> runs one build over a run list. A run that exits 0 leaves
+<code>&lt;run&gt;.ok</code>; re-running skips those and retries every other run, so a run that failed
+after writing its <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> is not taken as finished. Every attempt is a row of
+<code>times.&lt;shard&gt;.tsv</code> (exit code, wall time, peak memory, end time), and a run's latest
+attempt is its outcome. <code>submit_panel.sbatch</code> runs it as a SLURM array (0-based; edit
+its CONFIG block):</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>sbatch<span class="w"> </span>scripts/regression_panel/submit_panel.sbatch<span class="w">   </span><span class="c1"># BUILD=6.5.0, the release image</span>
+<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>sbatch<span class="w"> </span>scripts/regression_panel/submit_panel.sbatch<span class="w">   </span><span class="c1"># BUILD=6.6.0, the candidate</span>
+</code></pre></div>
+<p>The previous release runs from its image
+(<code>singularity exec -B &lt;every path the run reads&gt; docker://ghcr.io/msk-access/gbcms:X.Y.Z gbcms</code>).
+The candidate runs from its checkpoint wheel, the last row of <code>checkpoints.tsv</code>
+(below): the commit the release ships.</p>
+<h2 id="comparing">Comparing<a class="headerlink" href="#comparing" title="Permanent link">¶</a></h2>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>python<span class="w"> </span>scripts/regression_panel/compare_panel.py<span class="w"> </span>TIER<span class="w"> </span>OUT<span class="w"> </span><span class="m">6</span>.5.0<span class="w"> </span><span class="m">6</span>.6.0
+</code></pre></div>
+<p>matches rows by locus (and occurrence, for a locus listed twice), never by position,
+leaves failed runs out (their latest attempt did not exit 0) and writes <code>gate.txt</code>
+and the reports it summarises: <code>version_summary.tsv</code> (with rows or records in one
+version only),
+<code>version_cells.tsv</code>, <code>version_rows.tsv</code> (every changed cell; <abbr title="Variant Call Format - Standard variant call file format">VCF</abbr> output field by
+field: <code>FILTER</code>, <code>INFO:&lt;id&gt;</code>, <code>FORMAT:&lt;id&gt;</code>), <code>header_diff.tsv</code> (columns, or INFO and
+FORMAT IDs, only in one version), <code>concordance_by_stratum.tsv</code> (each version against
+the sign-out ALT count, per stratum: median delta and the fraction within
+max(2 reads, 10%), at read and fragment level and at the <strong>matched</strong> level, the one
+the sign-out counted: reads for IMPACT, duplex + simplex fragments for ACCESS),
+<code>discordant.tsv</code> (the largest disagreements at the matched level, and the top 20 per
+stratum), <code>normals.tsv</code>, <code>times.tsv</code> and <code>parquet.tsv</code> (needs <code>pyarrow</code>). PMS2's
+concordance at <code>--min-mapq 0</code> comes from the mq0 arm (strata prefixed <code>mq0:</code>); an
+ACCESS sample missing one flavour is left out of concordance and counted. <code>gate.txt</code>
+ends with <code>GATE: clean</code> or <code>GATE: ATTENTION</code> and the reasons (failed or missing runs, a
+stratum that fell more than 5 points, an arm 1.5× slower or larger), and the script
+then exits 1. The rna arm's FORTE MAFs carry no sign-out counts, so it is compared
+version against version only; the vcf arm's counts are the dna arm's.</p>
+<h2 id="attributing-every-changed-cell">Attributing every changed cell<a class="headerlink" href="#attributing-every-changed-cell" title="Permanent link">¶</a></h2>
+<p>A release changes many cells at once (6.6.0's read-judgment work changed every
+indel row of the acceptance set), so attribution is mechanical: one build per
+count-affecting merge since the previous release, run on the changed rows only.</p>
+<ol>
+<li><strong>The checkpoints.</strong> <code>checkpoints.py REPO 6.5.0 develop &gt; checkpoints.tsv</code> lists
+   one build per commit on develop (in practice each merged PR) that touches counting
+   code, skipping those whose own acceptance was byte-identical (<code>NEUTRAL</code> in the
+   script). Each row names every commit in its interval, so a change landing in a
+   skipped one is still named. Row 0 is the previous release built as a wheel, so a
+   difference between its image and a wheel build is named as such; the last row is
+   the commit the release ships.</li>
+<li><strong>The wheels.</strong> One manylinux wheel per commit, built as the release builds it
+   (the <em>Checkpoint wheels</em> workflow; each wheel is an artifact named <code>wheel-&lt;sha&gt;</code>).
+   Before a release the workflow is not yet on the default branch, where GitHub
+   requires a manually run workflow to be, so start it with a push: a branch
+   <code>checkpoint-wheels/X.Y.Z</code> that commits the list as
+   <code>scripts/regression_panel/checkpoints.tsv</code>. Once it is on the default branch,
+   <em>Run workflow</em> with the <code>sha</code> column works too. Each artifact carries its commit's
+   <code>requirements.lock</code> when the commit has one; install with it, so every checkpoint
+   gets the dependencies its commit pinned:
+   <code>python3.11 -m venv cp_&lt;sha&gt; &amp;&amp; cp_&lt;sha&gt;/bin/pip install --require-hashes -r requirements.lock &amp;&amp; cp_&lt;sha&gt;/bin/pip install --no-deps gbcms-*.whl</code>.</li>
+<li><strong>The reduced runs.</strong> <code>attribute.py prepare TIER OUT 6.5.0 6.6.0 ATTRIB</code> writes, for
+   every run with changes (a changed cell, or a row in one version only), a variant file
+   holding the changed rows and every row within 100 bp of a kept row's span, closed
+   transitively (siblings classify together), and <code>ATTRIB/runs.tsv</code>. The mfsd and rna
+   arms keep their full variant files: their Benjamini–Hochberg q-values are computed
+   across the run's rows.</li>
+<li><strong>Each build on them</strong>, into <code>ATTRIB/out</code>: the two versions first, then every
+   checkpoint as <code>cp_&lt;sha&gt;</code> (<code>run_panel.sh TIER ATTRIB/runs.tsv cp_&lt;sha&gt; cp_&lt;sha&gt;/bin/gbcms … ATTRIB/out</code>).</li>
+<li><strong><code>attribute.py check</code></strong> confirms the reduction changed nothing: every reduced row
+   equals the full run's, in both versions. <code>gbcms_status_reason</code> is exempt on context
+   rows only (it names the co-annotation group, which the reduction may cut at its
+   edge), never on a changed row. It exits 1 when a row differs.</li>
+<li><strong><code>attribute.py attribute TIER OUT 6.5.0 6.6.0 ATTRIB checkpoints.tsv</code></strong> traces each
+   changed cell through the checkpoints: <code>attribution_cells.tsv</code> (each cell and the
+   intervals where it changed; a row in one version only is traced as its presence,
+   column <code>(row)</code>), <code>attribution_summary.tsv</code> (per checkpoint, arm and column),
+   <code>unattributed.tsv</code> (cells whose trail misses a checkpoint's output or does not end at
+   the candidate's value). It exits 1 when any cell is unattributed.</li>
+</ol>
+<h2 id="the-gate">The gate<a class="headerlink" href="#the-gate" title="Permanent link">¶</a></h2>
+<p>The candidate is tagged when:</p>
+<ul>
+<li><strong>no run fails</strong> in either build, the reduction check is exact, and <strong>every changed
+  cell is attributed</strong> (<code>unattributed.tsv</code> empty);</li>
+<li><strong>concordance by stratum</strong> is reported for both versions; any stratum whose fraction
+  within max(2 reads, 10%) of the sign-out (matched level) falls by more than 5 points,
+  and the top discordant rows, are adjudicated read by read (the read census, or the
+  reads themselves) before the tag;</li>
+<li><strong>run time and peak memory</strong> per arm stay within 1.5× of the previous release, or
+  the excess is explained (wall time summed over the runs paired across the builds that
+  took 10 s or more, at least 3 per arm; peak memory over paired runs).</li>
 </ul>
 <!-- Abbreviation definitions for gbcms documentation -->
 <!-- These provide hover tooltips for technical acronyms -->
@@ -1972,7 +2263,7 @@
     <span class="md-icon" title="Last update">
       <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M21 13.1c-.1 0-.3.1-.4.2l-1 1 2.1 2.1 1-1c.2-.2.2-.6 0-.8l-1.3-1.3c-.1-.1-.2-.2-.4-.2m-1.9 1.8-6.1 6V23h2.1l6.1-6.1zM12.5 7v5.2l4 2.4-1 1L11 13V7zM11 21.9c-5.1-.5-9-4.8-9-9.9C2 6.5 6.5 2 12 2c5.3 0 9.6 4.1 10 9.3-.3-.1-.6-.2-1-.2s-.7.1-1 .2C19.6 7.2 16.2 4 12 4c-4.4 0-8 3.6-8 8 0 4.1 3.1 7.5 7.1 7.9l-.1.2z"></path></svg>
     </span>
-    <span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-timeago" title="October 6, 2026 02:25:59 UTC"><span class="timeago" datetime="2026-10-06T02:25:59+00:00" locale="en"></span></span><span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-iso_date" title="October 6, 2026 02:25:59 UTC">2026-10-06</span>
+    <span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-timeago" title="October 7, 2026 21:30:59 UTC"><span class="timeago" datetime="2026-10-07T21:30:59+00:00" locale="en"></span></span><span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-iso_date" title="October 7, 2026 21:30:59 UTC">2026-10-07</span>
   </span>
 
     
@@ -1982,7 +2273,7 @@
     <span class="md-icon" title="Created">
       <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M14.47 15.08 11 13V7h1.5v5.25l3.08 1.83c-.41.28-.79.62-1.11 1m-1.39 4.84c-.36.05-.71.08-1.08.08-4.42 0-8-3.58-8-8s3.58-8 8-8 8 3.58 8 8c0 .37-.03.72-.08 1.08.69.1 1.33.32 1.92.64.1-.56.16-1.13.16-1.72 0-5.5-4.5-10-10-10S2 6.5 2 12s4.47 10 10 10c.59 0 1.16-.06 1.72-.16-.32-.59-.54-1.23-.64-1.92M18 15v3h-3v2h3v3h2v-3h3v-2h-3v-3z"></path></svg>
     </span>
-    <span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-timeago" title="February 6, 2026 16:48:48 UTC"><span class="timeago" datetime="2026-02-06T16:48:48+00:00" locale="en"></span></span><span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-iso_date" title="February 6, 2026 16:48:48 UTC">2026-02-06</span>
+    <span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-timeago" title="October 7, 2026 18:34:27 UTC"><span class="timeago" datetime="2026-10-07T18:34:27+00:00" locale="en"></span></span><span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-iso_date" title="October 7, 2026 18:34:27 UTC">2026-10-07</span>
   </span>
 
     
@@ -2056,24 +2347,24 @@ Built with <a href="https://antigravity.google/">Antigravity</a> |
     
       
       
-      <script id="__config" type="application/json">{"annotate": null, "base": "..", "features": ["navigation.instant", "navigation.tracking", "navigation.sections", "navigation.expand", "navigation.top", "navigation.indexes", "navigation.path", "toc.follow", "content.code.copy", "content.code.annotate", "search.suggest", "search.highlight"], "search": "../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": {"default": "stable", "provider": "mike"}}</script>
+      <script id="__config" type="application/json">{"annotate": null, "base": "../..", "features": ["navigation.instant", "navigation.tracking", "navigation.sections", "navigation.expand", "navigation.top", "navigation.indexes", "navigation.path", "toc.follow", "content.code.copy", "content.code.annotate", "search.suggest", "search.highlight"], "search": "../../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": {"default": "stable", "provider": "mike"}}</script>
     
     
-      <script src="../assets/javascripts/bundle.d7400e89.min.js"></script>
+      <script src="../../assets/javascripts/bundle.d7400e89.min.js"></script>
       
-        <script src="../js/print-site.js"></script>
+        <script src="../../js/print-site.js"></script>
       
-        <script src="../js/timeago.min.js"></script>
+        <script src="../../js/timeago.min.js"></script>
       
-        <script src="../js/timeago_mkdocs_material.js"></script>
+        <script src="../../js/timeago_mkdocs_material.js"></script>
       
-        <script src="../javascripts/mathjax.js"></script>
+        <script src="../../javascripts/mathjax.js"></script>
       
         <script src="https://unpkg.com/mathjax@3/es5/tex-mml-chtml.js"></script>
       
-        <script src="../assets/javascripts/panzoom.min.js"></script>
+        <script src="../../assets/javascripts/panzoom.min.js"></script>
       
-        <script src="../assets/javascripts/zoompan.js"></script>
+        <script src="../../assets/javascripts/zoompan.js"></script>
       
     
   

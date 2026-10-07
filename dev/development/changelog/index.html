@@ -4,7 +4,7 @@
 <meta content="High-performance variant counting from BAM files" name="description">
 <meta content="MSK-ACCESS" name="author">
 <link href="https://msk-access.github.io/gbcms/dev/development/changelog/" rel="canonical">
-<link href="../release-guide/" rel="prev">
+<link href="../regression-panel/" rel="prev">
 <link href="../contributing/" rel="next">
 <link href="../../assets/images/favicon.png" rel="icon">
 <meta content="mkdocs-1.6.1, mkdocs-material-9.7.7" name="generator">
@@ -646,6 +646,18 @@
   </span>
 </a>
 </li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="../regression-panel/">
+<span class="md-ellipsis">
+    
+  
+    Regression Panel
+  
+
+    
+  </span>
+</a>
+</li>
 <li class="md-nav__item md-nav__item--active">
 <input class="md-nav__toggle md-toggle" id="__toc" type="checkbox">
 <a class="md-nav__link md-nav__link--active" href="./">
@@ -793,6 +805,25 @@ and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semant
   minimum span that dense variants chain past, bounded by the 200-variant cap; measured
   on real inputs (per-sample lists max 29 kb; one input holding a cohort's variants max
   47 kb) and never capped by span. The page no longer cites the retired parity suite.</li>
+</ul>
+<h3 id="added-the-regression-panel-the-release-gate-155">Added — the regression panel, the release gate (#155)<a class="headerlink" href="#added-the-regression-panel-the-release-gate-155" title="Permanent link">¶</a></h3>
+<ul>
+<li><strong>A panel chosen for coverage</strong> replaces the hand-picked 56-sample <abbr title="High-Performance Computing - Cluster computing environment">HPC</abbr> matrix: every
+  signed-out variant is tagged with the strata that exercise distinct code paths (70,
+  including this release's: delins size and direction, indels beside another run,
+  tandem-duplication inserts, PMS2 at <code>--min-mapq 0</code>, MNPs near indels, a delins
+  overlapping its component row, ACCESS indels in homopolymers), and a greedy set
+  cover picks the samples. Arms beyond the IMPACT/ACCESS panels: the FORTE RNA truth
+  cohort and a cohort-<abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> fillout; configurations beyond production defaults: <abbr title="Mutant Fragment Size Distribution - Insert-size analysis for REF vs ALT fragments">mFSD</abbr>
+  with both Parquet outputs, the <abbr title="Smith-Waterman - Edit-distance based local sequence alignment algorithm">SW</abbr> backend, <abbr title="Variant Call Format - Standard variant call file format">VCF</abbr> output.</li>
+<li><strong>The tools</strong> (<code>scripts/regression_panel/</code>, no patient data): a run-list runner
+  (resumable, SLURM-array shards, wall time and peak memory per run), a comparison
+  (version against version, and each version against the sign-out counts by stratum),
+  and <strong>mechanical attribution</strong>: one wheel per count-affecting merge (the new manual
+  <em>Checkpoint wheels</em> workflow), run on the changed rows, names the merge where each
+  changed cell changed (the workflow starts by hand, or from a pushed <code>checkpoint-wheels/X.Y.Z</code>
+  branch before the release reaches the default branch). The gate and its criteria:
+  <code>docs/development/regression-panel.md</code>.</li>
 </ul>
 <h3 id="fixed-one-allele-given-twice-is-not-its-own-sibling-246">Fixed — one allele given twice is not its own sibling (#246)<a class="headerlink" href="#fixed-one-allele-given-twice-is-not-its-own-sibling-246" title="Permanent link">¶</a></h3>
 <ul>
