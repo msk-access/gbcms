@@ -33,6 +33,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   on real inputs (per-sample lists max 29 kb; one input holding a cohort's variants max
   47 kb) and never capped by span. The page no longer cites the retired parity suite.
 
+### Added — the regression panel, the release gate (#155)
+
+- **A panel chosen for coverage** replaces the hand-picked 56-sample HPC matrix: every
+  signed-out variant is tagged with the strata that exercise distinct code paths (70,
+  including this release's: delins size and direction, indels beside another run,
+  tandem-duplication inserts, PMS2 at `--min-mapq 0`, MNPs near indels, a delins
+  overlapping its component row, ACCESS indels in homopolymers), and a greedy set
+  cover picks the samples. Arms beyond the IMPACT/ACCESS panels: the FORTE RNA truth
+  cohort and a cohort-MAF fillout; configurations beyond production defaults: mFSD
+  with both Parquet outputs, the SW backend, VCF output.
+- **The tools** (`scripts/regression_panel/`, no patient data): a run-list runner
+  (resumable, SLURM-array shards, wall time and peak memory per run), a comparison
+  (version against version, and each version against the sign-out counts by stratum),
+  and **mechanical attribution**: one wheel per count-affecting merge (the new manual
+  *Checkpoint wheels* workflow), run on the changed rows, names the merge where each
+  changed cell changed (the workflow starts by hand, or from a pushed `checkpoint-wheels/X.Y.Z`
+  branch before the release reaches the default branch). The gate and its criteria:
+  `docs/development/regression-panel.md`.
+
 ### Fixed — one allele given twice is not its own sibling (#246)
 
 - **Carriers lost at both rows.** An input that gives one allele on two rows had

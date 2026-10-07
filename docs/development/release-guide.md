@@ -9,6 +9,8 @@ Before starting a release, ensure:
 - [ ] All CI checks pass on `develop`
 - [ ] All features for the release are merged to `develop`
 - [ ] No blocking issues in milestone
+- [ ] The [regression panel](regression-panel.md) has passed its gate: the candidate
+      against the previous release on HPC, every changed cell attributed
 
 ---
 

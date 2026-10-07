@@ -1,0 +1,103 @@
+name: Checkpoint wheels
+
+# One manylinux x86_64 wheel per commit, built with the release recipe, for the
+# regression panel's attribution (docs/development/regression-panel.md): each
+# checkpoint is installed into its own venv on HPC and run on the changed rows.
+# Publishes nothing (wheels are workflow artifacts). Two ways to start it:
+# - push a branch checkpoint-wheels/<release> that commits
+#   scripts/regression_panel/checkpoints.tsv: a push runs the workflow in the pushed
+#   commit, so this works before the workflow reaches the default branch;
+# - Actions -> Run workflow with the commits (once the file is on the default branch).
+
+on:
+  push:
+    branches: ['checkpoint-wheels/**']
+  workflow_dispatch:
+    inputs:
+      shas:
+        description: "Commits to build, space- or comma-separated (checkpoints.tsv's sha column)"
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+env:
+  PYTHON_VERSION: '3.11'
+
+jobs:
+  plan:
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.matrix.outputs.matrix }}
+    steps:
+      - uses: actions/checkout@v5
+        if: github.event_name == 'push'
+      - name: Validate the commit list
+        id: matrix
+        env:
+          SHAS: ${{ inputs.shas }}
+        run: |
+          python3 - <<'EOF' >> "$GITHUB_OUTPUT"
+          import csv, json, os, re
+          if os.environ.get("GITHUB_EVENT_NAME") == "push":
+              with open("scripts/regression_panel/checkpoints.tsv") as fh:
+                  rows = csv.DictReader((x for x in fh if not x.startswith("# ")), delimiter="\t")
+                  shas = [r["sha"] for r in rows]
+          else:
+              shas = [s for s in re.split(r"[\s,]+", os.environ["SHAS"]) if s]
+          bad = [s for s in shas if not re.fullmatch(r"[0-9a-f]{7,40}", s)]
+          if not shas or bad:
+              raise SystemExit(f"not commit SHAs: {bad or 'none given'}")
+          print("matrix=" + json.dumps({"sha": sorted(set(shas), key=shas.index)}))
+          EOF
+
+  wheel:
+    needs: plan
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      max-parallel: 8
+      matrix: ${{ fromJSON(needs.plan.outputs.matrix) }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+      - name: Check out the checkpoint
+        id: rev
+        env:
+          SHA: ${{ matrix.sha }}
+        run: |
+          git checkout --detach "$SHA"
+          echo "full=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+      - uses: actions/setup-python@v6
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+      - name: Build the wheel
+        uses: PyO3/maturin-action@v1
+        with:
+          command: build
+          args: --release --out dist -i python3.11
+          manylinux: manylinux_2_34
+          # GBCMS_BUILD_COMMIT: the checkpoint's commit for output provenance (rust/build.rs)
+          docker-options: -e OPENSSL_NO_VENDOR=1 -e GBCMS_BUILD_COMMIT=${{ steps.rev.outputs.full }}
+          before-script-linux: |
+            SUDO=""
+            if [ "$(id -u)" -ne 0 ] && command -v sudo &> /dev/null; then
+              SUDO="sudo"
+            fi
+            if command -v dnf &> /dev/null; then
+              $SUDO dnf install -y zlib-devel bzip2-devel xz-devel libcurl-devel openssl-devel clang llvm-devel
+            elif command -v yum &> /dev/null; then
+              $SUDO yum install -y zlib-devel bzip2-devel xz-devel libcurl-devel openssl-devel clang llvm-devel
+            elif command -v apt-get &> /dev/null; then
+              $SUDO apt-get update && $SUDO apt-get install -y zlib1g-dev libbz2-dev liblzma-dev libcurl4-openssl-dev libssl-dev clang libclang-dev
+            fi
+      - name: Keep the commit's dependency lock beside its wheel
+        run: |
+          if [ -f docker/requirements.lock ]; then cp docker/requirements.lock dist/; fi
+      - name: Upload the wheel
+        uses: actions/upload-artifact@v4
+        with:
+          name: wheel-${{ matrix.sha }}
+          path: dist

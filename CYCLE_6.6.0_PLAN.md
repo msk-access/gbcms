@@ -2263,6 +2263,82 @@ properties hides behaviour other data exposes. Add:
 - Report per arm: clip-covered reads outside depth, depth-only fraction in
   repeat strata, and run time at WGS scale.
 
+**Audited and decided (2026-10-07).** A prototype from 2026-09-25 (local harness,
+`regression_panel/`) already selects on 59 strata: `tier_full`, 245 samples (254
+BAM runs, 11,189 variants, 10 matched-normal fillouts), every stratum at target or
+at what the data has (no Y or MT variants are signed out; 2 REF==ALT or placeholder
+rows). Measured against this cycle:
+- **The version comparison cannot be read by eye.** On the RC set, 542 of 1,060 rows
+  change counts between the 6.5.0-era build and develop, every indel row among them.
+  Of the 38 merges since 6.5.0, 33 touch code; about 20 change counts (the rest were
+  byte-identical in their own acceptance).
+- **Strata for this cycle's rules**, available among resolvable samples (and in
+  tier_full now): indel beside another run 6,508 (106), insertion duplicating the
+  reference 4,073 (51), deletion 100+ 2,656 (30), shrinking delins 6,174 (128),
+  growing 1,373 (22), delins span 20+ 1,251 (23), PMS2 1,135 (7), SNV inside an
+  indel's window 616 (46), ACCESS indel in a homopolymer 569 (24), complex row
+  overlapping its component row 80 (12), MNP near an indel 35 (9). No sample's
+  sign-out lists a variant twice.
+
+Decided (operator, 2026-10-07):
+- **Attribution by per-PR checkpoints:** one build per count-affecting merge,
+  run on the rows that changed between 6.5.0 and 6.6.0 plus their siblings; each
+  changed cell names the merge(s) where it changed.
+- **The 11 strata above join the 59**, and the panel is re-selected.
+- **Arms:** FORTE RNA (the 33-sample truth cohort, those patients' IMPACT DNA as
+  anchors) and a cohort-MAF run (a few BAMs genotyped on one MAF holding several
+  samples' variants, recurrent ones repeated). GIAB and TEMPO normals move to 6.7.0.
+- **Configurations** beyond production defaults: mFSD with both Parquet outputs on
+  the ACCESS samples, `--min-mapq 0` for PMS2 variants, an SW-backend subset, a
+  VCF-output subset.
+- **Checkpoint builds:** a manual workflow builds one manylinux wheel per commit
+  with the release recipe; the operator installs each into a venv on HPC.
+- **The PHI-free tools** (runner, comparison, attribution, checkpoint list) live in
+  the repo, `scripts/regression_panel/`, with `docs/development/regression-panel.md`;
+  the selector and the tier folders stay local.
+- **The gate:** no failed runs, an exact reduction check and every changed cell
+  attributed; concordance with the sign-out by stratum, any stratum falling more than
+  5 points and the top discordant rows adjudicated read by read; run time and peak
+  memory per arm within 1.5x of 6.5.0.
+
+**Built (2026-10-07, `feature/d5-regression-panel`).** The selection (local,
+`regression_panel/select_panel_v2.py` → `tier_660/`): 290 samples (9 ACCESS; 46
+anchors: the 24 acceptance samples and 22 FORTE patients' IMPACT DNA), 412 runs (dna
+299, rna 33, sw 25, mq0 19, mfsd 18, normal 10, vcf 5, cohort 3), 14,174 variants,
+all 70 strata at target or at what the data has; the cohort MAF lists 421 of its
+alleles more than once. The tools and the checkpoint-wheels workflow are in the repo
+(`scripts/regression_panel/`, `docs/development/regression-panel.md`); 25 checkpoints
+since 6.5.0. A local smoke run, 6.5.0 against develop on 11 runs covering every arm:
+no failures; the comparison showed every VCF record "changed" (6.6.0 adds MAF_START /
+MAF_REF / MAF_ALT) and fragment concordance at 32% on IMPACT (its sign-out counts
+reads), so VCF output is now compared field by field (107 of 403 records identical)
+and concordance at the sign-out's own level (99%). Attribution with two checkpoints
+(#203 and develop): the reduction exact, all 6,164 changed MAF cells attributed, none
+unattributed. GitHub runs a manual workflow only from the default branch, so the
+checkpoint wheels also start from a pushed `checkpoint-wheels/X.Y.Z` branch.
+
+**Adversarial review (2026-10-07), fixed red-first.** Two blockers: the mfsd and rna
+arms' Benjamini-Hochberg q-values are computed across the run's rows, so a reduced run
+could never check exact (those arms now keep their full variant files); GNU time's
+failure line reached the time records and crashed the comparison (a tagged line now).
+Should-fix: a run that failed after writing its MAF counted as finished (runs now
+leave a success marker, and the latest attempt in the time records is the outcome);
+VCF records dropped by the candidate and rows present in one version only went
+unreported or untraced; rows were matched by position (now by locus); a missing
+checkpoint output hid its step; the reduction could cut a co-annotation group
+(span-aware and transitive now, with `gbcms_status_reason` exempt on context rows
+only); concordance ranked IMPACT by fragments, and the gate listed rises as falls; the
+gate could test an earlier commit than the release (the shipped commit is always the
+last checkpoint, and the base tag as a wheel row 0); gbcms read the run list as its
+stdin. The selector's sample-stratum gain and anchor labels were fixed and the panel
+re-selected: 289 samples, 411 runs, 13,323 variants, 70 strata at target.
+The reworked chain on real data (the same 11-run smoke; a mount drop mid-run was
+recorded as failed runs and the gate said so; the resumed run repeated only those):
+no failed runs, the reduction exact (681 rows re-run for 562 changed), all 5,965
+changed MAF cells attributed, none unattributed. Its run-time flag fired on
+second-scale runs over the SFTP mount (paired runs match: 127 against 129 s), so wall
+time is now judged over paired runs of 10 s or more, at least 3 per arm: GATE clean.
+
 ### D6 — One QC-flags reference page (#156) · M
 **Finding.** Every QC flag is documented in `output-formats.md`, but it is
 spread out:
