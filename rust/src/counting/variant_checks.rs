@@ -1441,6 +1441,96 @@ fn resolve_anchor_insertion_candidate(
     ))
 }
 
+/// A placement of a read's insertion: the junction it sits before, the query offset
+/// of its first base, its bases and qualities there, and its read mismatches against
+/// the reference relative to the aligner's placement.
+#[derive(Clone)]
+struct InsertPlacement {
+    junction: i64,
+    q_start: usize,
+    bases: Vec<u8>,
+    quals: Vec<u8>,
+    mismatches: i32,
+}
+
+/// Every placement a read's insertion can take as well as the one its aligner wrote:
+/// the best-aligned ones. The read's bases never change; only the junction the insert
+/// is written before. The insert slides one junction left when its last base fits the
+/// reference base it is placed onto (the same base, or one below `min_baseq` or N), and
+/// right likewise with its first base; the read base it takes in may be anything, and
+/// when that base was a read mismatch the alignment loses one. So a sequencing error
+/// the aligner absorbed into the flank, or a compensating mismatch, slides back. Only
+/// the placements with the fewest mismatches are returned: a placement worse than the
+/// best (an insert walked along a run carrying a mismatch the best one resolves) is not
+/// as good. Called only for an insert with a readable base of its own: whether an
+/// insert can be read is its own bases' question (RJ-20), never a placement's.
+fn insert_placements(
+    record: &Record,
+    variant: &Variant,
+    ins_ref_pos: i64,
+    ins_start: usize,
+    len: usize,
+    quals: &[u8],
+    min_baseq: u8,
+) -> Vec<InsertPlacement> {
+    const MAX_SLIDE: usize = 64;
+    let seq = record.seq().as_bytes();
+    let fits = |b: u8, q: u8, r: u8| q < min_baseq || b == b'N' || b == b'n' || b.eq_ignore_ascii_case(&r);
+    let ref_at = |p: i64| window::reference_span(variant, p, p + 1).map(|v| v[0]);
+    let written = InsertPlacement {
+        junction: ins_ref_pos,
+        q_start: ins_start,
+        bases: seq[ins_start..ins_start + len].to_vec(),
+        quals: quals[ins_start..ins_start + len].to_vec(),
+        mismatches: 0,
+    };
+    let mut out = vec![written.clone()];
+    let mut cur = written.clone();
+    for _ in 0..MAX_SLIDE {
+        let j = cur.junction;
+        let Some(r) = ref_at(j - 1) else { break };
+        if cur.q_start == 0 || find_read_pos(record, j - 1) != Some(cur.q_start - 1) {
+            break;
+        }
+        if !fits(cur.bases[len - 1], cur.quals[len - 1], r) {
+            break;
+        }
+        let (b, bq) = (seq[cur.q_start - 1], quals[cur.q_start - 1]);
+        cur.mismatches -= i32::from(!fits(b, bq, r));
+        cur.bases.pop();
+        cur.bases.insert(0, b);
+        cur.quals.pop();
+        cur.quals.insert(0, bq);
+        cur.q_start -= 1;
+        cur.junction -= 1;
+        out.push(cur.clone());
+    }
+    let mut cur = written;
+    for _ in 0..MAX_SLIDE {
+        let j = cur.junction;
+        let q_after = cur.q_start + len;
+        let Some(r) = ref_at(j) else { break };
+        if q_after >= seq.len() || find_read_pos(record, j) != Some(q_after) {
+            break;
+        }
+        if !fits(cur.bases[0], cur.quals[0], r) {
+            break;
+        }
+        let (c, cq) = (seq[q_after], quals[q_after]);
+        cur.mismatches -= i32::from(!fits(c, cq, r));
+        cur.bases.remove(0);
+        cur.bases.push(c);
+        cur.quals.remove(0);
+        cur.quals.push(cq);
+        cur.q_start += 1;
+        cur.junction += 1;
+        out.push(cur.clone());
+    }
+    let best = out.iter().map(|p| p.mismatches).min().unwrap_or(0);
+    out.retain(|p| p.mismatches == best);
+    out
+}
+
 /// Evaluate a windowed (non-junction) I candidate at `ins_ref_pos`.
 ///
 /// Shared by the M-arm windowed scan and the post-N inspection; mutates the
@@ -1459,15 +1549,36 @@ fn scan_windowed_insertion_candidate(
     window_start: i64,
     window_end: i64,
     best_windowed_match: &mut Option<u64>,
-    has_shifted_same_length: &mut bool,
     has_distinct_allele_nearby: &mut bool,
     has_unreadable_insert: &mut bool,
+    another_allele_in_window: &mut bool,
+    separate_insertions: &mut Vec<i64>,
 ) {
     let anchor_pos = variant.pos;
-    if ins_ref_pos < window_start || ins_ref_pos > window_end || ins_ref_pos == anchor_pos + 1 {
+    if ins_ref_pos == anchor_pos + 1 {
         return;
     }
     let expected_ins_len = variant.alt_allele.len() - 1;
+    if ins_ref_pos < window_start || ins_ref_pos > window_end {
+        // Written past the scan window. A readable insert of the variant's length is
+        // judged by every placement it can take (RJ-21), so it is scanned when one of
+        // them sits inside the discrimination window; anything else is out of reach.
+        let seq_len = record.seq().len();
+        let (lo, hi) = window::discrimination_window(variant);
+        let reaches = ins_len_usize == expected_ins_len
+            && ins_start + ins_len_usize <= seq_len
+            && readable_bases(
+                &record.seq().as_bytes()[ins_start..ins_start + ins_len_usize],
+                &quals[ins_start..ins_start + ins_len_usize],
+                min_baseq,
+            ) > 0
+            && insert_placements(record, variant, ins_ref_pos, ins_start, ins_len_usize, quals, min_baseq)
+                .iter()
+                .any(|p| lo < p.junction && p.junction < hi);
+        if !reaches {
+            return;
+        }
+    }
 
     // The length check: the inserted length must match
     if ins_len_usize == expected_ins_len {
@@ -1475,16 +1586,17 @@ fn scan_windowed_insertion_candidate(
             let ins_seq = &record.seq().as_bytes()[ins_start..ins_start + ins_len_usize];
             let ins_quals = &quals[ins_start..ins_start + ins_len_usize];
             let dw = window::discrimination_window(variant);
+            let inside = |j: i64| dw.0 < j && j < dw.1;
             if readable_bases(ins_seq, ins_quals, min_baseq) == 0 {
                 // No inserted base readable (a duplex-masked base inside a run,
                 // which the aligner writes as the insertion): the length, not the
-                // sequence. Inside the discrimination window it may be the variant at
+                // sequence (RJ-20, judged on the insert's own bases where the aligner
+                // wrote it). Inside the discrimination window it may be the variant at
                 // another placement: partial unless the variant is written readably
                 // elsewhere in the read; never Phase 3, where length alone wins ALT.
-                // Outside it, it cannot be: a separate event, as a readable insert
-                // there is (another allele when the read also changes the window).
-                let (dw_lo, dw_hi) = dw;
-                if dw_lo < ins_ref_pos && ins_ref_pos < dw_hi {
+                // Outside it, it cannot be: a separate event (RJ-8; another allele
+                // when the read also changes the window).
+                if inside(ins_ref_pos) {
                     *has_unreadable_insert = true;
                     trace!(
                         "check_insertion: windowed I({}) at pos {}: no inserted base readable \
@@ -1507,74 +1619,83 @@ fn scan_windowed_insertion_candidate(
                 }
                 return;
             }
-            // The haplotype check: the placement gives the variant's haplotype (its
-            // own bases, or a rotation of them, elsewhere in the repeat) and is the
-            // read's only change across the discrimination window.
-            if same_insertion_haplotype(variant, ins_ref_pos, ins_seq, ins_quals, min_baseq) {
-                let q_right = ins_start + ins_len_usize;
-                if only_change_in_window(record, dw, ins_ref_pos, ins_start, ins_ref_pos, q_right) {
-                    // Track the closest windowed match
-                    let distance = (ins_ref_pos - (anchor_pos + 1)).unsigned_abs();
-                    if best_windowed_match.is_none_or(|prev| distance < prev) {
-                        *best_windowed_match = Some(distance);
+            // A readable insert is judged over every placement it can take as well
+            // as the aligner's (`insert_placements`), never by where the aligner
+            // happened to write it: ALT when one of them shows the ALT by its read
+            // bases; otherwise another allele when one can sit inside the window.
+            let places = insert_placements(record, variant, ins_ref_pos, ins_start, ins_len_usize, quals, min_baseq);
+            let expected = &variant.alt_allele.as_bytes()[1..];
+            let q_right = ins_start + ins_len_usize;
+            let mut record_match = |at: i64, why: &str| {
+                let distance = (at - (anchor_pos + 1)).unsigned_abs();
+                if best_windowed_match.is_none_or(|prev| distance < prev) {
+                    *best_windowed_match = Some(distance);
+                }
+                trace!(
+                    "check_insertion: windowed I({}) written at pos {} {} → windowed match",
+                    ins_len_usize, ins_ref_pos, why
+                );
+            };
+            // At the variant's junction: judged as the strict path judges an insert there.
+            if let Some(p) = places.iter().find(|p| p.junction == anchor_pos + 1) {
+                if matches!(masked_single_compare(&p.bases, &p.quals, expected, min_baseq), (0, r) if r > 0)
+                    && !other_indel_in_window(record, dw, ins_ref_pos, true)
+                {
+                    record_match(p.junction, "can sit at the junction, its bases the ALT's");
+                    return;
+                }
+            }
+            // The variant's haplotype at a placement (its bases or a rotation of them
+            // elsewhere in a repeat), the read's only change across the window.
+            let mut variant_elsewhere = false;
+            for p in &places {
+                if same_insertion_haplotype(variant, p.junction, &p.bases, &p.quals, min_baseq) {
+                    if only_change_in_window(record, dw, ins_ref_pos, ins_start, ins_ref_pos, q_right) {
+                        record_match(p.junction, "gives the variant's haplotype");
+                        return;
                     }
-                } else {
-                    // The variant written here with another gap, insertion or
-                    // splice across the window: another haplotype.
-                    *has_distinct_allele_nearby = true;
-                    trace!(
-                        "check_insertion: windowed I({}) at pos {} is the variant written \
-                         elsewhere, with another change in its window → distinct-allele candidate",
-                        ins_len_usize, ins_ref_pos
-                    );
+                    variant_elsewhere = true;
                 }
-            } else if matches!(
-                masked_single_compare(ins_seq, ins_quals, &variant.alt_allele.as_bytes()[1..], min_baseq),
-                (0, reliable) if reliable > 0
-            ) {
-                // The variant's bases written where they give another haplotype.
-                // Inside the discrimination window the read carries another allele
-                // there: a distinct allele, as a wrong-length insertion is (never REF
-                // or ALT in a repeat; Phase 3 must not arbitrate it). Outside it the
-                // read shows the window as reference, unless it deletes or inserts
-                // there too (M D I M beside the window: the pair is another allele),
-                // and the insertion is a separate event.
-                let (dw_lo, dw_hi) = dw;
-                let in_window = dw_lo < ins_ref_pos && ins_ref_pos < dw_hi;
-                if in_window || other_indel_in_window(record, dw, ins_ref_pos, true) {
-                    *has_distinct_allele_nearby = true;
-                    trace!(
-                        "check_insertion: windowed I({}) at pos {} carries the variant's \
-                         bases but not its haplotype → distinct-allele candidate",
-                        ins_len_usize, ins_ref_pos
-                    );
-                } else {
-                    trace!(
-                        "check_insertion: windowed I({}) at pos {} carries the variant's \
-                         bases outside its discrimination window → separate event",
-                        ins_len_usize, ins_ref_pos
-                    );
-                }
-            } else if other_indel_in_window(record, dw, ins_ref_pos, true) {
-                // Same length, other bases, beside another gap or insertion in the
-                // window (M D I M): the read's length change is not the ALT's, so
-                // it cannot be the event written differently. Another allele.
+            }
+            if variant_elsewhere || other_indel_in_window(record, dw, ins_ref_pos, true) {
+                // The variant written here with another gap, insertion or splice across
+                // the window, or an insert of other bases beside one (M D I M): another
+                // haplotype, another allele (RJ-7).
                 *has_distinct_allele_nearby = true;
                 trace!(
-                    "check_insertion: windowed I({}) at pos {} of other bases with \
-                     another indel in the window → distinct-allele candidate",
+                    "check_insertion: windowed I({}) at pos {} with another change in the \
+                     window → distinct-allele candidate",
                     ins_len_usize, ins_ref_pos
                 );
-            } else {
-                // Same length, other bases: the caller and the aligner may write
-                // one event differently; Phase 3 arbitrates.
-                *has_shifted_same_length = true;
-                trace!(
-                    "check_insertion: windowed I({}) at pos {} seq mismatch, \
-                     flagging for Phase 3 fallback",
-                    ins_len_usize, ins_ref_pos
-                );
+                return;
             }
+            if window::read_spells_alt(record, variant, quals, min_baseq) {
+                // The read's bases across the window spell the ALT (a compensating
+                // mismatch no slide undoes): judged by its bases, never Phase 3's closer
+                // haplotype (where REF pays for the gap, so length wins).
+                record_match(ins_ref_pos, "of other bases, but the read's bases spell the ALT");
+                return;
+            }
+            if places.iter().any(|p| inside(p.junction)) {
+                // Not the ALT by its bases, and able to sit inside the discrimination
+                // window: the read carries another allele there (never REF, never ALT).
+                *has_distinct_allele_nearby = true;
+                *another_allele_in_window = true;
+                trace!(
+                    "check_insertion: windowed I({}) at pos {} can sit inside the window and \
+                     is not the ALT → another allele",
+                    ins_len_usize, ins_ref_pos
+                );
+                return;
+            }
+            // Every placement outside the window: not the variant; a separate event
+            // (RJ-8). The walk's last check must not read it where the aligner wrote it.
+            separate_insertions.push(ins_ref_pos);
+            trace!(
+                "check_insertion: windowed I({}) at pos {} outside the discrimination window \
+                 → separate event",
+                ins_len_usize, ins_ref_pos
+            );
         }
     } else {
         // Different-length insertion in window: I(n) where n ≠ expected — a
@@ -1622,11 +1743,14 @@ fn scan_windowed_insertion_candidate(
 ///    tract (neither + partial evidence, never Phase 3). The dispatcher sends
 ///    only anchor-preserving one-base-REF variants here; one whose ALT changes
 ///    the anchor (A>CCC) is a delins, judged by the exact-carrier rule.
-/// 5. **Phase 3 haplotype fallback:** When a length-matching insertion of other
-///    bases exists nearby (e.g., same biological event represented differently
-///    by caller vs aligner), or no gap is recognised on a read spanning the
-///    anchor, falls back to `phase3_classify` for haplotype comparison (under
-///    PairHMM the pangenomic route first, else `check_complex`).
+/// 5. **A same-length insertion of other bases** nearby is judged by the read's
+///    bases, never Phase 3's closer haplotype: ALT when its bases across the
+///    window spell the ALT (the event written one junction off with a
+///    compensating mismatch); otherwise another allele inside the discrimination
+///    window, a separate event outside it (RJ-21).
+///    **Phase 3 fallback:** only a read spanning the anchor with no gap the walk
+///    recognised goes to `phase3_classify` (under PairHMM the pangenomic route
+///    first, else `check_complex`).
 /// 6. **Unreadable insert:** an I of the variant's length (at the junction or
 ///    elsewhere in the scan window) none of whose bases can be read (each N or
 ///    below `min_baseq`) carries the length, not the sequence: partial evidence,
@@ -1666,10 +1790,6 @@ pub fn check_insertion<F: Fn(u8, u8) -> i32>(
     let mut found_ref_coverage = false;
     let mut anchor_read_pos: Option<usize> = None; // read position of anchor base
     let mut best_windowed_match: Option<u64> = None; // distance of best windowed match
-    // Windowed I with the RIGHT length and other bases: the caller and aligner
-    // may represent the same event differently — Phase 3 arbitrates after the
-    // walk.
-    let mut has_shifted_same_length = false;
     // Windowed I with the WRONG length: a distinct-allele candidate,
     // resolved after the walk. Flagged at ANY length — unlike the deletion
     // side's ≥5bp noise gate — because wrong-length insertions must never be
@@ -1678,6 +1798,12 @@ pub fn check_insertion<F: Fn(u8, u8) -> i32>(
     // An I of the variant's length none of whose bases can be read: the length,
     // not the sequence. Partial, unless the variant is written readably elsewhere.
     let mut has_unreadable_insert = false;
+    // An I of the variant's length and other bases that can sit inside the
+    // discrimination window, wherever the aligner wrote it: another allele there.
+    let mut another_allele_in_window = false;
+    // Inserts of the variant's length judged separate events by their placements,
+    // where the aligner wrote them: the walk's last check skips them.
+    let mut separate_insertions: Vec<i64> = Vec::new();
 
     for (i, op) in cigar_view.iter().enumerate() {
         match op {
@@ -1763,9 +1889,10 @@ pub fn check_insertion<F: Fn(u8, u8) -> i32>(
                         read_pos + *len as usize,
                         quals, min_baseq, window_start, window_end,
                         &mut best_windowed_match,
-                        &mut has_shifted_same_length,
                         &mut has_distinct_allele_nearby,
                         &mut has_unreadable_insert,
+                        &mut another_allele_in_window,
+                        &mut separate_insertions,
                     );
                 }
 
@@ -1809,9 +1936,10 @@ pub fn check_insertion<F: Fn(u8, u8) -> i32>(
                         read_pos, // D consumes no read bases
                         quals, min_baseq, window_start, window_end,
                         &mut best_windowed_match,
-                        &mut has_shifted_same_length,
                         &mut has_distinct_allele_nearby,
                         &mut has_unreadable_insert,
+                        &mut another_allele_in_window,
+                        &mut separate_insertions,
                     );
                 }
             }
@@ -1853,9 +1981,10 @@ pub fn check_insertion<F: Fn(u8, u8) -> i32>(
                             read_pos, // N consumes no read bases
                             quals, min_baseq, window_start, window_end,
                             &mut best_windowed_match,
-                            &mut has_shifted_same_length,
                             &mut has_distinct_allele_nearby,
                             &mut has_unreadable_insert,
+                            &mut another_allele_in_window,
+                            &mut separate_insertions,
                         );
                     }
                 }
@@ -1880,12 +2009,14 @@ pub fn check_insertion<F: Fn(u8, u8) -> i32>(
             found_ref_coverage,
             anchor_qual,
             windowed_match: best_windowed_match.is_some(),
-            // A same-length insertion of other readable bases near the anchor:
-            // perhaps the same event written differently.
-            phase3_candidate: has_shifted_same_length,
-            phase3_reason: "a same-length insertion near the anchor whose bases differ",
+            // Every insertion candidate is settled by its bases during the walk;
+            // none is left for Phase 3.
+            phase3_candidate: false,
+            phase3_reason: "",
             distinct_allele_nearby: has_distinct_allele_nearby,
             unreadable_insert: has_unreadable_insert,
+            another_allele_in_window,
+            separate_insertions,
         },
     )
 }
@@ -1911,13 +2042,20 @@ struct WalkFindings {
     /// An insertion of the variant's length none of whose bases can be read (each
     /// N or below min BQ): the read carries the length, not the sequence.
     unreadable_insert: bool,
+    /// An insertion of the variant's length and other bases that can sit inside the
+    /// discrimination window, wherever the aligner wrote it: another allele there.
+    another_allele_in_window: bool,
+    /// Insertions judged separate events by their placements (every one outside the
+    /// window), at the reference junction the aligner wrote each at.
+    separate_insertions: Vec<i64>,
 }
 
 /// The call after an insertion or deletion check's CIGAR walk:
 /// - a windowed match is ALT (structural);
 /// - an insertion of the variant's length with no readable inserted base, at the
 ///   junction or inside the discrimination window, is neither with partial
-///   evidence (the length, not the sequence; never Phase 3);
+///   evidence (the length, not the sequence; never Phase 3); so is one of other
+///   bases that can sit inside the window, wherever the aligner wrote it;
 /// - a read with no aligned base on the anchor goes to Phase 3 when it spans the
 ///   anchor (a soft clip there, or no gap the walk recognised), and is neither
 ///   otherwise (no information about the variant);
@@ -1954,6 +2092,16 @@ fn resolve_walk<F: Fn(u8, u8) -> i32>(
         trace!(
             "check_{}: an insertion of the variant's length after {} with no readable \
              inserted base (N or below min_baseq) → neither + partial evidence",
+            w.kind, anchor_pos
+        );
+        return ClassifyResult::neither_with_nearby(w.anchor_qual, ClassifyPhase::Structural);
+    }
+    if w.another_allele_in_window {
+        // Its insert, of the variant's length and other bases, can sit inside the
+        // window as well as where the aligner wrote it: another allele there.
+        trace!(
+            "check_{}: an insertion of other bases that can sit inside the window after {} → \
+             neither + partial evidence",
             w.kind, anchor_pos
         );
         return ClassifyResult::neither_with_nearby(w.anchor_qual, ClassifyPhase::Structural);
@@ -2003,7 +2151,7 @@ fn resolve_walk<F: Fn(u8, u8) -> i32>(
         }
         return result;
     }
-    if other_indel_in_window(record, window::discrimination_window(variant), i64::MIN, false) {
+    if other_indel_in_window_except(record, window::discrimination_window(variant), &w.separate_insertions) {
         trace!(
             "check_{}: another insertion or deletion inside the window after {} → neither + \
              partial evidence",
@@ -2107,6 +2255,32 @@ fn other_indel_in_window(record: &Record, (lo, hi): (i64, i64), at: i64, own_is_
             }
             Cigar::Del(n) => {
                 if rp < hi && rp + *n as i64 > lo && !is_own(false, rp) {
+                    return true;
+                }
+                rp += *n as i64;
+            }
+            _ => {}
+        }
+    }
+    false
+}
+
+/// `other_indel_in_window` for the walk's last check: any insertion or deletion of the
+/// read inside the window, except insertions the windowed scan judged separate events
+/// by their placements (written inside the window by the aligner, but best placed
+/// outside it).
+fn other_indel_in_window_except(record: &Record, (lo, hi): (i64, i64), separate_insertions: &[i64]) -> bool {
+    let mut rp = record.pos();
+    for op in record.cigar().iter() {
+        match op {
+            Cigar::Match(n) | Cigar::Equal(n) | Cigar::Diff(n) | Cigar::RefSkip(n) => rp += *n as i64,
+            Cigar::Ins(_) => {
+                if lo < rp && rp < hi && !separate_insertions.contains(&rp) {
+                    return true;
+                }
+            }
+            Cigar::Del(n) => {
+                if rp < hi && rp + *n as i64 > lo {
                     return true;
                 }
                 rp += *n as i64;
@@ -2926,6 +3100,8 @@ pub fn check_deletion<F: Fn(u8, u8) -> i32>(
                             differ or could not be verified",
             distinct_allele_nearby: has_distinct_allele_nearby,
             unreadable_insert: false,
+            another_allele_in_window: false,
+            separate_insertions: Vec::new(),
         },
     )
 }

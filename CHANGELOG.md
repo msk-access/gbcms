@@ -33,6 +33,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   on real inputs (per-sample lists max 29 kb; one input holding a cohort's variants max
   47 kb) and never capped by span. The page no longer cites the retired parity suite.
 
+### Fixed — a same-length insert of other bases is judged by its bases (#243)
+
+- **Phase 3 overrode the bases.** A read whose insertion had the variant's length and
+  other readable bases, near the variant, went to Phase 3, whose closer haplotype let
+  length win ALT against those bases (Smith-Waterman under both bio versions, PairHMM
+  more often under bio 4) and could absorb another allele into REF. On the RC DNA set
+  it was the only way a read reached Phase 3 at an insertion row: 50 of 94,530 calls.
+- **The rule (RJ-21).** Such a read is judged by its bases, never Phase 3, and over
+  every placement its insert can take, not only the aligner's: the insert slides a
+  junction when the base it places onto the reference fits it (the same base, or a
+  masked one), so a sequencing error the aligner absorbed into the flank, or a
+  compensating mismatch, slides back. It is ALT when a placement shows the ALT by read
+  bases (at the variant's junction, judged as the strict path judges an insert there,
+  or the variant's haplotype in a repeat) or its bases across the window spell the ALT;
+  otherwise another allele when a placement sits inside the discrimination window,
+  and a separate event (RJ-8) when none does. Only the best-aligned placements count
+  (a slide that takes in a read mismatch resolves it). An insert with no readable base
+  of its own does not slide (RJ-20). Both backends agree. The deletion side already
+  judged by bases.
+
 ### Fixed — an insertion's ALT needs one of the read's own inserted bases read (#240)
 
 - **Reads whose inserted bases nobody can read counted ALT.** A read carrying an
@@ -51,9 +71,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **The rule (RJ-20).** A read whose inserted bases are all unreadable is neither,
   with partial evidence, on every path: at the junction, at another placement inside
   the discrimination window, across several ops, after a deleted anchor, and as a
-  truncation. Outside the window such an insert is a separate event, as a readable one
-  is. "Readable" means not N and at or above `--min-baseq`, the gate SNV bases pass.
-  A read whose readable inserted bases match the ALT stays ALT, however many are
+  truncation. Written outside the window such an insert is a separate event (RJ-8).
+  "Readable" means not N and at or above `--min-baseq`, the gate SNV bases pass. A
+  read whose readable inserted bases match the ALT stays ALT, however many are
   masked. The read census holds the same rule. The post-splice path already counted
   such reads this way.
 - **Community practice.** Likelihood callers (GATK, bcftools, Strelka2) credit ALT on

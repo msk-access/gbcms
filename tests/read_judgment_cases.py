@@ -239,6 +239,28 @@ def _unreadable_shapes(contig: str, ref: str, alt: str):
     }
 
 
+def _other_bases_shapes(contig: str, ref: str, alt: str):
+    """Same-length inserts of other bases near a pure insertion, and the ALT written
+    one junction off with a compensating mismatch: read-judgment events."""
+    ins = alt[1:]
+    other = "CTTAGCCTAG"[: len(ins)]
+    if len(ins) == 8:  # dup+8: inside its duplicated tract
+        return {"a same-length insert of other bases inside the tract": [(A + 3, "I", other)]}
+    return {
+        "a same-length insert of other bases one junction left": [(A, "I", other)],
+        "a same-length insert of other bases four junctions right": [(A + 5, "I", other)],
+        "the ALT written one junction off with a compensating mismatch": [
+            (A + 1, "X", ins[0]),
+            (A + 2, "I", ins[1:] + contig[A + 1]),
+        ],
+        # Its first inserted base misread as the reference base after the anchor:
+        # the aligner writes it one junction right with no mismatch; it slides back.
+        "the ALT with an error at its first inserted base, written one junction right": [
+            (A + 2, "I", ins[1:] + contig[A + 1]),
+        ],
+    }
+
+
 def _mask_inserted(read, mask) -> None:
     """Mask the read's inserted bases [first, first + count), in CIGAR order."""
     kind, first, count = mask
@@ -307,6 +329,10 @@ def cases() -> list[Case]:
         motif, ref, alt = PURE[v]
         for shape in _unreadable_shapes(_contig(motif), ref, alt):
             out.append(Case(f"{v} | {shape}", "C35 unreadable inserts", v, shape))
+    for v in ("u+10", "dup+8"):
+        motif, ref, alt = PURE[v]
+        for shape in _other_bases_shapes(_contig(motif), ref, alt):
+            out.append(Case(f"{v} | {shape}", "C36 inserts of other bases", v, shape))
     return out
 
 
@@ -385,6 +411,8 @@ def run(case: Case, workdir: Path) -> tuple[tuple[int, int, int], str]:
             events, s0, length = [(snv_at, "X", snv_alt)], 0, 100
         elif case.group == "C35 unreadable inserts":
             (events, mask), s0, length = _unreadable_shapes(contig, ref, alt)[case.shape], 0, 100
+        elif case.group == "C36 inserts of other bases":
+            events, s0, length = _other_bases_shapes(contig, ref, alt)[case.shape], 0, 100
         else:
             events, s0, length = _pure_shapes(contig, ref, alt)[case.shape]
         reads = []
@@ -446,6 +474,7 @@ DECISIONS = {
     "C25 long events": "decided: junction windows read on through the read (C25 #199)",
     "read inputs": "decided: a read contributes its molecule's bases, with qualities (C17 #176, C19 #182; C29 #207 a fix)",
     "C35 unreadable inserts": "decided: an insertion's ALT needs one of the read's own inserted bases read (C35 #240)",
+    "C36 inserts of other bases": "decided: a same-length insert of other bases is judged by its bases, never Phase 3 (C36 #243)",
 }
 
 # (ref_count, alt_count, partial_alt) for the case's four reads.
@@ -608,6 +637,16 @@ EXPECT = {
     "u+10 | an insert below min BQ": (0, 0, 4),
     "u+10 | a partly masked insert": (0, 4, 0),
     "u+10 | anchor deleted, the insert unreadable": (0, 0, 4),
+    # C36 #243: same-length inserts of other bases, judged by their bases.
+    "u+10 | a same-length insert of other bases one junction left": (4, 0, 0),
+    "u+10 | a same-length insert of other bases four junctions right": (4, 0, 0),
+    "u+10 | the ALT written one junction off with a compensating mismatch": (0, 4, 0),
+    "u+10 | the ALT with an error at its first inserted base, written one junction right": (
+        0,
+        0,
+        4,
+    ),
+    "dup+8 | a same-length insert of other bases inside the tract": (0, 0, 4),
 }
 
 

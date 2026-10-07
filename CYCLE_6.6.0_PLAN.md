@@ -1987,6 +1987,60 @@ page from the CHANGELOG section in the release workflow.
     only with masked identity (an N counted as a mismatch), 24 fail both; FORTE 17
     fail both. The band stays as it is (operator, 2026-10-06: the identity-band
     rule), with a readable base required.
+- **C36 #243: a same-length insert of other bases (2026-10-06).** Found in the bio 4
+  review. A read whose insertion has the variant's length and other readable bases,
+  near the variant, went to Phase 3, whose closer haplotype let length win ALT
+  against the bases (Smith-Waterman under bio 3 and 4; PairHMM more often under bio 4)
+  and absorbed other alleles into REF. Measured on develop (`harness/c36/`), every
+  read call traced with one thread and each Phase-3 read judged by its bases:
+  - Phase 3 is reached at insertion rows only this way: RC 50 of 94,530 calls (2 ALT
+    and 31 partial whose bases read REF, 16 partial another allele, 1 sibling); FORTE
+    RNA 103 (2 ALT reading REF, 49 REF carrying another allele, 38 partial reading
+    REF); FORTE DNA mode 27 under PairHMM and 25 under SW (SW: 6 ALT against the
+    bases). Deletion rows: no Phase 3 (1 read of 521,213).
+  - Survey: sequence-keyed counters (GetBaseCountsMultiSample's exact junction match,
+    VarDict, bam-readcount) call such a read another allele or noise; GATK's
+    likelihood is the closer haplotype gbcms's Phase 3 computes.
+
+  Decided (operator, 2026-10-06), bases first, never Phase 3: a read whose bases
+  across the window spell the ALT (one junction off with a compensating mismatch) is
+  ALT; otherwise inside the discrimination window it is another allele (partial),
+  outside it a separate event (REF where the window reads REF, RJ-8). Then bio 4
+  (`feature/g7-bio4`) is rebased on top.
+
+  Two review rounds refined how: the first found "inside or outside" decided by the
+  aligner's placement (an ALT read with an absorbed sequencing error counted REF; carriers
+  written further off lost ALT); the second found a slide to a single placement
+  misjudged readability (a readable insert sliding onto a masked run base counted
+  partial: local acceptance ALT -16 in RNA mode). Final rule (RJ-21): a readable insert
+  is judged over every placement it can take as well as the aligner's (it slides a
+  junction when the base it places onto the reference fits it); ALT when one shows the
+  ALT by read bases; otherwise another allele when one sits inside the window; else a
+  separate event. Readability stays its own bases' question (RJ-20; no slide for an
+  unreadable insert). The census trusts the aligned flank and cannot judge slid inserts.
+  A third round (no blockers): the scan-window gate read the aligner's placement (now
+  any placement reaching the window); an existing test then showed a slide walking an
+  insert along a run with a mismatch the best placement resolves, so only the
+  best-aligned placements count. Left as documented: an unreadable insert does not
+  slide while a readable one with a masked edge base does (RJ-20's homopolymer
+  decision requires it; REF versus partial only, rare).
+  A fourth round on those two changes (no blockers): the walk's last check read the
+  aligner's placement of an insert the scan had judged a separate event (now skipped,
+  red-first). Measured for the operator: the strict path keeps junction ALT reads a
+  slide would place better elsewhere (a realigner forcing a read onto the known indel):
+  FORTE 0 of 2,850 such reads, RC 28 of 12,015 (better placed inside the tract, 1-2
+  mismatches resolved). Final acceptance (a5d62594 vs develop): RC 4 rows (ALT +2,
+  partial -3, REF +1), WES 7 rows (ALT +2, REF -2), FORTE DNA PairHMM 6 rows (REF -14),
+  SW 4 rows (ALT -5), RNA 14 rows (REF -52, ALT +1); truth and probes unchanged.
+  Decided after the reviews (operator, 2026-10-06): stutter of the variant's length in
+  a neighbouring homopolymer that can sit at the shared boundary junction is another
+  allele (partial), by RJ-7's window; the strict path's junction ALT with a better
+  placement elsewhere and the sibling double count are filed for 6.6.0, measured
+  first.
+  Found, not in scope (an issue, pending): at an SNV sibling a compensating-mismatch
+  carrier counts ALT on both rows (the SNV row's aligned base is never contested), and a
+  slid-to-junction ALT is contested by the sibling guard where a junction-written one is
+  not.
 - **P3 #152: doc the floor.** Measured by replaying the bin rule: `BIN_WINDOW` (10 kb)
   is a floor, not a maximum — each member extends the end by its span plus half a
   window, and the 200-variant cap stops dense inputs. Per-sample signed-out lists

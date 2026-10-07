@@ -49,6 +49,11 @@ with two limits:
   a masked base inside the window can make the two differ.
 - The census knows two haplotypes. A read carrying a third allele that ends before
   that allele differs from the ALT fits the ALT, while the engine reads its CIGAR.
+- It trusts the aligned flank bases. A readable insert written just outside the
+  variant's window that can sit inside it (an absorbed sequencing error, another
+  allele in an adjacent run) reads as REF here, and a carrier written one junction off
+  with a compensating mismatch on the flank reads as REF too, while the engine judges
+  the insert over the placements it can take (C36 #243, RJ-21).
 """
 
 from __future__ import annotations
