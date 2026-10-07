@@ -31,7 +31,7 @@
             body[data-md-color-scheme="slate"] .gslide-title { color: var(--md-default-fg-color); }
             body[data-md-color-scheme="slate"] .gslide-desc { color: var(--md-default-fg-color); }
         </style><meta name="panzoom-theme" content="material">
-<meta name="panzoom-data" content='{"selectors": [".d2", ".mermaid"], "initial_zoom_level": 1.0}'> </head>
+<meta name="panzoom-data" content='{"selectors": [".mermaid", ".d2"], "initial_zoom_level": 1.0}'> </head>
 <body data-md-color-accent="custom" data-md-color-primary="custom" data-md-color-scheme="default" dir="ltr">
 <input autocomplete="off" class="md-toggle" data-md-toggle="drawer" id="__drawer" type="checkbox">
 <input autocomplete="off" class="md-toggle" data-md-toggle="search" id="__search" type="checkbox">
@@ -794,6 +794,26 @@ and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semant
   on real inputs (per-sample lists max 29 kb; one input holding a cohort's variants max
   47 kb) and never capped by span. The page no longer cites the retired parity suite.</li>
 </ul>
+<h3 id="fixed-a-same-length-insert-of-other-bases-is-judged-by-its-bases-243">Fixed — a same-length insert of other bases is judged by its bases (#243)<a class="headerlink" href="#fixed-a-same-length-insert-of-other-bases-is-judged-by-its-bases-243" title="Permanent link">¶</a></h3>
+<ul>
+<li><strong>Phase 3 overrode the bases.</strong> A read whose insertion had the variant's length and
+  other readable bases, near the variant, went to Phase 3, whose closer haplotype let
+  length win ALT against those bases (Smith-Waterman under both bio versions, <abbr title="Pair Hidden Markov Model - Probabilistic alignment using base quality scores">PairHMM</abbr>
+  more often under bio 4) and could absorb another allele into REF. On the RC DNA set
+  it was the only way a read reached Phase 3 at an insertion row: 50 of 94,530 calls.</li>
+<li><strong>The rule (RJ-21).</strong> Such a read is judged by its bases, never Phase 3, and over
+  every placement its insert can take, not only the aligner's: the insert slides a
+  junction when the base it places onto the reference fits it (the same base, or a
+  masked one), so a sequencing error the aligner absorbed into the flank, or a
+  compensating mismatch, slides back. It is ALT when a placement shows the ALT by read
+  bases (at the variant's junction, judged as the strict path judges an insert there,
+  or the variant's haplotype in a repeat) or its bases across the window spell the ALT;
+  otherwise another allele when a placement sits inside the discrimination window,
+  and a separate event (RJ-8) when none does. Only the best-aligned placements count
+  (a slide that takes in a read mismatch resolves it). An insert with no readable base
+  of its own does not slide (RJ-20). Both backends agree. The deletion side already
+  judged by bases.</li>
+</ul>
 <h3 id="fixed-an-insertions-alt-needs-one-of-the-reads-own-inserted-bases-read-240">Fixed — an insertion's ALT needs one of the read's own inserted bases read (#240)<a class="headerlink" href="#fixed-an-insertions-alt-needs-one-of-the-reads-own-inserted-bases-read-240" title="Permanent link">¶</a></h3>
 <ul>
 <li><strong>Reads whose inserted bases nobody can read counted ALT.</strong> A read carrying an
@@ -812,9 +832,9 @@ and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semant
 <li><strong>The rule (RJ-20).</strong> A read whose inserted bases are all unreadable is neither,
   with partial evidence, on every path: at the junction, at another placement inside
   the discrimination window, across several ops, after a deleted anchor, and as a
-  truncation. Outside the window such an insert is a separate event, as a readable one
-  is. "Readable" means not N and at or above <code>--min-baseq</code>, the gate SNV bases pass.
-  A read whose readable inserted bases match the ALT stays ALT, however many are
+  truncation. Written outside the window such an insert is a separate event (RJ-8).
+  "Readable" means not N and at or above <code>--min-baseq</code>, the gate SNV bases pass. A
+  read whose readable inserted bases match the ALT stays ALT, however many are
   masked. The read census holds the same rule. The post-splice path already counted
   such reads this way.</li>
 <li><strong>Community practice.</strong> Likelihood callers (GATK, bcftools, Strelka2) credit ALT on
