@@ -11,6 +11,8 @@ architecture page states that the bin window is a floor, not a maximum.
 import importlib.metadata
 import importlib.util
 import re
+import subprocess
+import sys
 from pathlib import Path
 
 import pytest
@@ -168,6 +170,23 @@ def _ancestors(jobs, job):
 
 def _runs(job):
     return "\n".join(str(s.get("run", "")) + str(s.get("uses", "")) for s in job.get("steps", []))
+
+
+def test_the_stable_docs_deploy_labels_the_site_with_the_cargo_version():
+    """main's docs are deployed under the released version. pyproject's version is
+    dynamic (maturin reads Cargo.toml), so a deploy step that read pyproject failed at
+    6.6.0 and left the release's docs unpublished. The step's own command must print
+    the version the release checker reads."""
+    wf = yaml.safe_load((ROOT / ".github" / "workflows" / "deploy-docs.yml").read_text())
+    run = next(
+        s["run"] for s in wf["jobs"]["build"]["steps"] if s.get("name") == "Deploy stable docs"
+    )
+    m = re.search(r"VERSION=\$\((.+?)\)\s*$", run, re.M)
+    assert m, run
+    cmd = m.group(1).replace("python ", f"{sys.executable} ", 1)
+    out = subprocess.run(["bash", "-c", cmd], cwd=ROOT, capture_output=True, text=True)
+    assert out.returncode == 0, out.stderr
+    assert out.stdout.strip() == _release().cargo_version(ROOT)
 
 
 def test_the_release_workflow_publishes_nothing_before_the_version_check():
