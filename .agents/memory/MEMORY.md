@@ -19,7 +19,7 @@ One line per memory. Full content lives in the linked file. Keep this index tigh
 ## References
 - [Claudelicious harness](claudelicious-reference.md) — the upstream pattern this project's harness follows.
 - [Fragmentomics (Tsui et al., MSK)](fragmentomics-reference.md) — the prior for mFSD and the CH-vs-tumor question; cite for S1 #153 / S2 #154.
-- [Downstream org repos](downstream-org-containers-modules.md) — after a release, the mskcc-omics-workflows containers repo builds the org image and the modules repo's gbcmsrs modules pin it; bump both after the tag.
+- [Downstream org repos](downstream-org-containers-modules.md) — mskcc-omics-workflows containers image (6.3.1) and gbcmsrs modules; not a release step; the operator starts the switch when satisfied it's production-ready (2026-10-07).
 
 ## Project facts (from the 2026-06-26 code review)
 - [Bin fetch-end must cover the anchor variant](bin-anchor-coverage.md) — CR-1; pinned by the bin property test and binning-invariance tests.
@@ -38,6 +38,7 @@ One line per memory. Full content lives in the linked file. Keep this index tigh
 - [maturin develop: repo root only](maturin-develop-repo-root-only.md) — `-m rust/Cargo.toml` bypasses [tool.maturin] and leaves a stale src/gbcms/_rs.so shadowing every rebuild.
 - [Harness cleanup after merge](harness-cleanup-after-merge.md) — delete the ticket's `src_*` builds (rebuildable from BUILT_FROM; patch prototypes first), gzip traces, `cargo clean` when rust/target bloats.
 - [Long runs visible](long-runs-visible.md) — pair every detached nohup harness run with a tracked background waiter; runs over a network mount go one at a time, grouped by file.
+- [HPC partitions](hpc-partitions.md) — never run on the head node (srun/salloc shell, check hostname); cmobic_short ≤3 h + priority QOS, cmobic_cpu (7-day) for longer.
 - [No `timeout` on this Mac](macos-no-timeout-command.md) — `timeout N cmd && ok || fail` always says fail; check SFTP mounts with a plain read.
 - [Pipes mask gate exit codes](pipe-masks-gate-exit.md) — `pytest | tail && git commit` commits on failure; capture `$?` or use pipefail.
 

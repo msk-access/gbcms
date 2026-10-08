@@ -3,38 +3,55 @@
 > Tactical state that must survive a closed laptop or a context summary.
 > Update the **Now** and **Next** sections as work progresses.
 
-_Last updated: 2026-10-07_
+_Last updated: 2026-10-08_
 
 ## Now
-**6.6.0 release in progress.** `release/6.6.0` is cut from develop c01749ab: version
-6.6.0 in `rust/Cargo.toml`, its lock and the Nextflow manifest; the CHANGELOG section
-dated; the cycle plan removed at this cut (a private copy in `~/test/gbcms/plans/`).
-Every 6.6.0 work item is merged (tracker #140); what the release holds is the
-CHANGELOG's 6.6.0 section. One item is open: the release gate, D5 #155.
+**6.6.0 is released** (2026-10-08): #252 merged to main (merge commit 67c45989, tree
+identical to the gated candidate 09612675), annotated tag `6.6.0`, main back-merged
+into develop, develop at `6.7.0-dev.0`. The release workflow publishes PyPI, GHCR, the
+docs and the GitHub Release page (now automatic). The docs deploy on main failed at
+6.6.0 (the stable step read pyproject's version, dynamic since #229); #256 reads it
+from Cargo.toml via `release.py version` and deployed the 6.6.0 docs.
 
-The gate (`docs/development/regression-panel.md`), before the release PR merges:
-1. Checkpoint wheels: `checkpoints.tsv` (6.5.0 to the release head), committed on a
-   pushed `checkpoint-wheels/6.6.0` branch, builds one wheel per checkpoint (CI
-   artifacts, each with its commit's `requirements.lock`).
-2. On HPC: the panel (the local tier `~/test/gbcms/harness/regression_panel/tier_660/`,
-   PHI, carried by the operator: 289 samples, 411 runs) for 6.5.0 from its image and
-   the candidate from its wheel; `compare_panel.py`; `attribute.py` (prepare, the
-   checkpoints on the reduced runs, check, attribute); adjudicate any flagged stratum.
-3. Then: merge the release PR (a merge commit), tag `6.6.0`, check the GitHub Release
-   page, back-merge main into develop, move develop to `6.7.0-dev.0`, clean up.
-4. After the tag: the mskcc-omics-workflows containers repo (`gbcms/6.6.0`
-   Dockerfile) and the modules repo's gbcms modules.
+The gate (#155) measured from **6.3.1**, the last release compared on HPC; 6.4.0 and
+6.5.0 were untested midpoints, so their merges were checkpoints inside one interval
+(operator decision, 2026-10-07). Results are on #252 (aggregates). Local record:
+`~/test/gbcms/harness/regression_panel/gate_660/ADJUDICATION.md` (PHI); the HPC kit is
+`kit_660/` (local copy beside it; on HPC under the operator's test folder).
+- 6.6.0 411/411 runs; 6.3.1 407 (4 mfsd crash on a rejected variant, fixed in 6.4.0 #95).
+- 73,649 changed cells attributed over 40 checkpoints, none unattributed, reduction exact.
+- Concordance with sign-out 98.4% -> 98.1%; the 19 strata that fell were adjudicated
+  read by read: no 6.6.0 defect. Peak memory per task 4.74 -> 0.66 GB (median).
+- The origin events (AR 9 bp GGC-repeat deletion, FLT3 2 bp A-run deletion, IMPACT BAM
+  SW*211-T): 6.6.0 counts exactly the read census (AR 17/15, FLT3 183/7 REF/ALT); 6.3.1
+  gave 167/24 and 249/259 (it credited FLT3's 1 bp deletion carriers). Local record:
+  `~/test/gbcms/harness/origin_events/README.md`.
+- Lessons kept in the kit's RUNBOOK: run scripts from a Python 3.11 venv (system python3
+  is older); the manylinux_2_34 wheels run inside `python:3.11-slim-bookworm` on RHEL 8
+  (glibc 2.28); index FORTE's genome.fa in the kit; set aside failed runs' partial MAFs
+  before `attribute.py prepare` (#255); peak memory from `sacct` MaxRSS (no GNU time).
 
 Working rules (carried into 6.7.0): measure first, red-first tests, an adversarial
 review, real-data acceptance per read on a matrix of data types (gbcms is a
 genotyper, not a caller), mount runs one at a time, and community practice as a
-floor, not a ceiling.
+floor, not a ceiling. The mskcc-omics-workflows containers and gbcmsrs modules are not
+a release step: the operator starts that switch when satisfied it is production-ready.
 
 ## Next → 6.7.0
-The 6.7.0 milestone and tracker #196 hold the deferred work, among it per-locus gap
-parameters (#244), the sibling shapes measured for #246, and the panel's GIAB and
-TEMPO arms. A 6.7.0 plan is added to develop after the back-merge.
+Tracker #196 and the 6.7.0 milestone hold the work. From the 6.6.0 gate:
+- #253 long delins under the discrimination window (spanning 20+ bp: 59% -> 6%
+  agreement with sign-out; short-anchored exact carriers withdrawn by design);
+- #254 clipped exact-junction reads of deletions longer than a read;
+- #255 `attribute.py prepare` skips runs whose latest attempt failed.
+Also deferred: per-locus gap parameters (#244), the sibling shapes measured for #246,
+the panel's GIAB and TEMPO arms, and the `build-gtf-cache` removal. A 6.7.0 plan is
+added to develop next.
 
+### Previous: 6.6.0 release
+`release/6.6.0` was cut from develop c01749ab on 2026-10-07: version bump, the cycle
+plan removed (private copy in `~/test/gbcms/plans/`), the Docker lock refreshed
+(polars 2.0.0). The commit guard learned to admit the checkpoint list (09612675).
+Contents: the CHANGELOG's 6.6.0 section (tracker #140).
 
 ### Previous: 6.5.0 release
 **6.5.0 is released** (2026-09-25): #118 merged to main, bare tag `6.5.0`, and
