@@ -755,7 +755,16 @@
       
     </span>
 </a>
-<nav aria-label="[Unreleased]" class="md-nav">
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#660-2026-10-07-every-read-judged-by-its-own-bases">
+<span class="md-ellipsis">
+      
+        [6.6.0] - 2026-10-07 — every read judged by its own bases
+      
+    </span>
+</a>
+<nav aria-label="[6.6.0] - 2026-10-07 — every read judged by its own bases" class="md-nav">
 <ul class="md-nav__list">
 <li class="md-nav__item">
 <a class="md-nav__link" href="#changed-release-infrastructure-136-137-152">
@@ -2722,6 +2731,7 @@
 <p>The format is based on <a href="https://keepachangelog.com/en/1.0.0/">Keep a Changelog</a>,
 and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semantic Versioning</a>.</p>
 <h2 id="unreleased">[Unreleased]<a class="headerlink" href="#unreleased" title="Permanent link">¶</a></h2>
+<h2 id="660-2026-10-07-every-read-judged-by-its-own-bases">[6.6.0] - 2026-10-07 — every read judged by its own bases<a class="headerlink" href="#660-2026-10-07-every-read-judged-by-its-own-bases" title="Permanent link">¶</a></h2>
 <h3 id="changed-release-infrastructure-136-137-152">Changed — release infrastructure (#136, #137, #152)<a class="headerlink" href="#changed-release-infrastructure-136-137-152" title="Permanent link">¶</a></h3>
 <ul>
 <li><strong>One version source per ecosystem (#136).</strong> The Python package takes its version
@@ -2884,9 +2894,8 @@ and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semant
 <li><strong>statrs</strong> leaves the direct dependencies.</li>
 </ul>
 <h3 id="changed-rust-dependencies-on-their-current-releases-139">Changed — Rust dependencies on their current releases (#139)<a class="headerlink" href="#changed-rust-dependencies-on-their-current-releases-139" title="Permanent link">¶</a></h3>
-<p>The Rust dependencies move to their current releases, one per commit
-(<code>CYCLE_6.6.0_PLAN.md</code>, "D4 PR B"). No output changes. bio follows once C35
-(#240) and C36 (#243) are in.
+<p>The Rust dependencies move to their current releases, one per commit (PR #238).
+No output changes. bio follows once C35 (#240) and C36 (#243) are in.
 - <strong>pyo3 0.29</strong> (from 0.27). The API migration: <code>allow_threads</code> is now <code>detach</code>,
   and <code>Variant</code> and <code>BaseCounts</code> opt in to the by-value conversion that Python
   passes back. The module keeps the GIL on a free-threaded interpreter, as before;
@@ -2920,7 +2929,7 @@ and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semant
   - RC sets on the cluster (28 <abbr title="Cell-free DNA - Circulating DNA fragments in blood plasma">cfDNA</abbr> DNA, 33 RNA truth, 3 probe samples and 80 WES
     loci; 2,212 rows): byte-identical.</p>
 <h3 id="changed-dependencies-ci-coverage-and-the-image-139">Changed — dependencies, <abbr title="Continuous Integration - Automated build and test system">CI</abbr> coverage and the image (#139)<a class="headerlink" href="#changed-dependencies-ci-coverage-and-the-image-139" title="Permanent link">¶</a></h3>
-<p>Measured first (<code>CYCLE_6.6.0_PLAN.md</code>, "D4 PR A"). Nothing changes at runtime.
+<p>Measured first (PR #231). Nothing changes at runtime.
 - <strong>The dependency floors are true.</strong> At the declared floors the <abbr title="Command Line Interface - Terminal-based program interface">CLI</abbr> crashed: typer
   0.9.0 cannot read its <code>list[...]</code> options. pysam 0.21.0 has no macOS arm64 wheel
   and an sdist that fails on current setuptools. Bisected one package at a time, the
@@ -2949,10 +2958,13 @@ and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semant
 - <strong>The image installs a hash-pinned lock.</strong> It resolved its dependencies afresh at
   each build. <code>docker/requirements.lock</code> (linux/amd64, Python 3.11) is installed
   with <code>--require-hashes --no-deps</code>, then <code>pip check</code>, and is refreshed at each
-  release (release guide step 4). <abbr title="Continuous Integration - Automated build and test system">CI</abbr> now runs the image (<code>--version</code>, <code>pip check</code>).</p>
+  release (release guide step 4). <abbr title="Continuous Integration - Automated build and test system">CI</abbr> now runs the image (<code>--version</code>, <code>pip check</code>).
+  The 6.6.0 lock takes polars 2.0, released the day before the cut: none of the
+  APIs it removed are used, and the suite passes on it. gbcms uses polars only in
+  <code>gbcms merge</code>, the <abbr title="Mutant Fragment Size Distribution - Insert-size analysis for REF vs ALT fragments">mFSD</abbr> report and the batch IO helpers, never to count.</p>
 <h3 id="changed-gtf-loading-139">Changed — GTF loading (#139)<a class="headerlink" href="#changed-gtf-loading-139" title="Permanent link">¶</a></h3>
-<p>Measured on GRCh38.111 (<code>CYCLE_6.6.0_PLAN.md</code>, "D4 GTF loading"). Only <code>--gtf</code> runs
-are affected, and their output is unchanged for well-formed GTFs.
+<p>Measured on GRCh38.111 (PR #230). Only <code>--gtf</code> runs are affected, and their output
+is unchanged for well-formed GTFs.
 - <strong>The GTF loads in 2 s instead of 9 s, plain or <code>.gtf.gz</code>.</strong> noodles-gtf parsed
   every line before reading its feature column. A byte-level parser reads each
   line's feature and chromosome first and checks only the exon lines it keeps.
