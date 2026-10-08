@@ -172,9 +172,6 @@ def _runs(job):
     return "\n".join(str(s.get("run", "")) + str(s.get("uses", "")) for s in job.get("steps", []))
 
 
-@pytest.mark.xfail(
-    strict=True, reason="the stable docs deploy reads a version pyproject no longer has"
-)
 def test_the_stable_docs_deploy_labels_the_site_with_the_cargo_version():
     """main's docs are deployed under the released version. pyproject's version is
     dynamic (maturin reads Cargo.toml), so a deploy step that read pyproject failed at

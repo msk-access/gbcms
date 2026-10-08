@@ -73,6 +73,9 @@ jobs:
       - name: Deploy stable docs
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         run: |
-          VERSION=$(python -c "import tomllib; print(tomllib.load(open('pyproject.toml','rb'))['project']['version'])")
+          # The version lives in rust/Cargo.toml (pyproject's is dynamic); the release
+          # checker reads it, so the site is labelled with what the release shipped.
+          VERSION=$(python scripts/release.py version)
+          test -n "$VERSION"
           mike deploy --push --update-aliases "$VERSION" stable
           mike set-default --push stable

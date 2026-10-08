@@ -16,10 +16,12 @@ section) older than a dev package; on develop, a released package version means 
 post-release bump was missed. With ``--tag`` it gates the release workflow before anything publishes:
 the tag is a bare ``X.Y.Z`` and Cargo.toml, the lock and the manifest all equal it,
 with a dated CHANGELOG section. ``notes`` writes a release's title and body from its
-CHANGELOG section (the GitHub Release page).
+CHANGELOG section (the GitHub Release page). ``version`` prints the package version,
+which labels the deployed docs.
 
 usage: release.py check [--tag X.Y.Z] [--branch NAME]
        release.py notes --tag X.Y.Z --title-out FILE --notes-out FILE
+       release.py version
        release.py manifest-version
 """
 
@@ -285,12 +287,16 @@ def main(argv: list[str] | None = None) -> int:
     )
     c.add_argument("--tag")
     c.add_argument("--branch", help="the branch being checked (develop: no released version)")
+    sub.add_parser("version", help="print the package version (rust/Cargo.toml)")
     sub.add_parser("manifest-version", help="print the Nextflow manifest version")
     n = sub.add_parser("notes", help="write a release's title and body from the CHANGELOG")
     n.add_argument("--tag", required=True)
     n.add_argument("--title-out", required=True)
     n.add_argument("--notes-out", required=True)
     args = ap.parse_args(argv)
+    if args.cmd == "version":
+        print(cargo_version(ROOT) or "")
+        return 0
     if args.cmd == "manifest-version":
         print(manifest_version(ROOT) or "")
         return 0
