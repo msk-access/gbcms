@@ -17,6 +17,26 @@ regenerating a section.
 
 ---
 
+## [LRN-20261008-001] rule-body | a VAF claim follows the documented definition
+- **Status:** resolved (rule promoted)
+- **Cause:** rule-body
+- **Summary:** asked how to read the AR 9 bp GGC-repeat deletion (6.6.0: RD 17, AD 15,
+  DP 191), I said to compute VAF as ALT/depth (7.9%). The operator asked whether not
+  using depth was right. It is: gbcms's `vaf` is AD/(RD+AD) (documented in
+  docs/index.md and architecture.md); DP includes the reads that end inside the
+  tract and cannot be judged, so AD/DP is biased low. The informative VAF is 48% in
+  the tumor and 0% in the matched normal: a high-fraction somatic event the clinical
+  6.6% understated. Same failure family as LRN-20260923-002: a claim stated without
+  checking the documented definition.
+- **Promotion target:** `DONE:` new memory `.agents/memory/vaf-informative-reads.md`
+  and its MEMORY.md index line (the rule in the line itself, so it is in view each
+  session). The docs were already right; nothing in the code to change. 6.7.0
+  candidates noted to the operator: the two meanings of `total_count` (per-sample DP
+  vs merged ref+alt) in the output docs, spanning bias in repeats (#253), and a
+  diagnostic when RD+AD is a small share of DP.
+
+---
+
 ## [LRN-20261005-002] rule-trigger | a review-agent prompt names the venv maturin installs into
 - **Status:** resolved (rule promoted)
 - **Cause:** rule-trigger
