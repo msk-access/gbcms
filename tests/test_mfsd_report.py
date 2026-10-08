@@ -117,10 +117,10 @@ class TestSummaryCards:
     """Verify the summary dashboard section."""
 
     def test_report_summary_cards(self, multi_report: Path) -> None:
-        """Report should contain Fragment Origin Signal classification cards."""
+        """Report should contain the fragment-size evidence cards."""
         html = multi_report.read_text()
-        assert "TUMOR-LIKE" in html
-        assert "Fragment Origin Signal" in html or "Per-Variant Analysis" in html
+        assert "LEANS-SOMATIC" in html
+        assert "Fragment-size evidence" in html or "Per-Variant Analysis" in html
 
 
 class TestFiltering:
@@ -223,11 +223,11 @@ class TestTooltips:
 
 
 class TestClassifyOrigin:
-    """ME-9: TUMOR-LIKE/CH-LIKE require a valid KS test."""
+    """ME-9: a graded class requires a valid KS test."""
 
     def test_invalid_ks_is_insufficient(self) -> None:
         """No valid KS test (ks_valid=False) → INSUFFICIENT, not a guessed label —
-        even a CH gene with low enrichment that would otherwise read CH-LIKE."""
+        even for a CH gene with low enrichment."""
         from gbcms.report.mfsd_report import _classify_origin
 
         nan = float("nan")
@@ -237,14 +237,14 @@ class TestClassifyOrigin:
 
     def test_max_enriched_when_ref_has_no_short_fragments(self) -> None:
         """ME-10: ALT has sub-nucleosomal fragments but REF has none → the ratio is
-        undefined (NaN), yet it is a maximal ctDNA-like signal, so a non-CH gene with
-        a significant valid KS reads TUMOR-LIKE rather than being lost as AMBIGUOUS."""
+        undefined (NaN), yet it is a maximal ctDNA-like signal, so a significant valid
+        KS reads LEANS-SOMATIC rather than being lost."""
         from gbcms.report.mfsd_report import _classify_origin
 
         nan = float("nan")
         # enrichment=NaN, ref_short=0.0, alt_short=0.4, valid significant KS.
         signal, _ = _classify_origin("NOTACHGENE", nan, 0.0, 0.4, 0.01, True, 20, 3)
-        assert signal == "TUMOR-LIKE"
+        assert signal == "LEANS-SOMATIC"
 
 
 class TestDisplayFormatters:

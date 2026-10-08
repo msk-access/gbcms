@@ -6,12 +6,15 @@
 //!
 //! ## Submodules
 //!
-//! - [`engine`] — Core orchestration: `count_bam`, `count_single_variant`, `check_allele_with_qual`
+//! - [`engine`] — Core orchestration: `count_bam_binned` (bins, the shared read loop), `check_allele_with_qual`
 //! - [`fragment`] — Re-export of `shared::fragment` (FragmentEvidence, QNAME hashing)
 //! - [`alignment`] — Smith-Waterman alignment backend (Phase 3)
 //! - [`pairhmm`] — PairHMM alignment backend (probabilistic Phase 3 alternative)
 //! - [`variant_checks`] — Per-variant-type classification (SNP, MNP, Ins, Del, Complex)
 //! - [`utils`] — Classification types, haplotype helpers, masked comparison
+//! - [`window`] — Discrimination windows: what a read must span to tell alleles apart
+//! - [`observed`] — The allele the reads carry when it is not the given one (diagnostic)
+//! - [`carrier`] — Exact-carrier classification for complex variants
 //! - [`mfsd`] — Mutant Fragment Size Distribution statistics (KS test, LLR, mean)
 //! - [`rna`] — RNA-seq-specific alignment filters and utilities
 //! - [`parquet_writer`] — Parquet output for fragment size distributions
@@ -23,18 +26,18 @@ pub mod pairhmm;
 pub(crate) mod pangenome;
 pub(crate) mod wfa_router;
 mod variant_checks;
+pub(crate) mod window;
+mod observed;
+pub(crate) mod carrier;
 mod utils;
 pub(crate) mod mfsd;
 pub(crate) mod rna;
 pub(crate) mod parquet_writer;
 
-// Re-export the PyO3 entry points so lib.rs can call counting::count_bam / count_bam_binned
-#[cfg(feature = "legacy-parity")]
-pub use engine::count_bam;
+// Re-export the PyO3 entry points so lib.rs can register them
 pub use engine::count_bam_binned;
 pub use engine::count_bam_binned_observations;
-pub use engine::build_gtf_cache;
 pub use parquet_writer::write_fsd_parquet;
 
-// Re-export AlignmentBackend for sibling modules (used by pairhmm tests)
+// Re-export AlignmentBackend for sibling modules (variant_checks dispatches on it)
 pub use engine::AlignmentBackend;

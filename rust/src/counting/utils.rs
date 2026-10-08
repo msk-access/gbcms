@@ -2,14 +2,14 @@
 //!
 //! Contains variant-specific helpers (classification types, haplotype
 //! construction, masked sequence comparison) and re-exports of shared
-//! BAM utilities (`find_read_pos`, `median_qual`) from `shared::bam_utils`.
+//! BAM utilities (`find_read_pos`, `median_qual`, `ref_end`) from `shared::bam_utils`.
 
 use log::trace;
 
 use crate::types::Variant;
 
 // Re-export shared BAM utilities so existing `super::utils::*` imports work.
-pub use crate::shared::bam_utils::{find_read_pos, median_qual};
+pub use crate::shared::bam_utils::{find_read_pos, median_qual, ref_end, soft_clips};
 
 /// Minimum number of usable (base-quality ≥ `min_baseq`) read bases required to
 /// attempt allele classification. Below this, there is too little high-quality
@@ -81,12 +81,14 @@ pub struct ClassifyResult {
     /// Whether the checker found structural evidence of the variant but the
     /// final classification was REF or neither. Set by:
     /// - `check_insertion`/`check_deletion`: right-length INDEL, wrong sequence
+    ///   (Phase 3 arbitrates; the flag is kept on non-ALT results)
     /// - `check_insertion`/`check_deletion`: WRONG-length pure indel at/near
-    ///   the anchor — a distinct allele in the same tract (lone op →
-    ///   `neither_with_nearby`; split-suspect → Phase 3 with this flag
-    ///   propagated on non-ALT results)
+    ///   the anchor — a distinct allele in the same tract, resolved without
+    ///   Phase 3 (`neither_with_nearby`; REF with this flag in unique context)
     /// - `check_complex` Levenshtein: ALT edit distance close to REF
     /// - `classify_by_alignment`: ALT alignment score close to REF
+    /// - the exact-carrier rule: a read holding the windows, carrying neither
+    ///   allele, closer to ALT
     ///
     /// Consumed by engine to increment `partial_alt`/`any_alt`.
     pub has_nearby_evidence: bool,
@@ -106,10 +108,11 @@ pub struct ClassifyResult {
     /// REF, the structural ALT wins unconditionally — the quality comparison
     /// is meaningless because both measure anchor BQ, not INDEL confidence.
     pub is_structural: bool,
-    /// Whether the read observes the locus at all. `false` only from the
-    /// splice-skip triage: a CIGAR `N` (RefSkip) asserts spliced-out
-    /// reference over the variant's discriminating span, so the read has no
-    /// aligned bases there and cannot distinguish REF from ALT. The engine
+    /// Whether the read observes the locus at all. `false` from the
+    /// splice-skip triage (and for a record without bases): a CIGAR `N`
+    /// (RefSkip) asserts spliced-out reference over the variant's
+    /// discriminating span, so the read has no aligned bases there and
+    /// cannot distinguish REF from ALT. The engine
     /// excludes such reads from DP and fragment depth entirely (they are not
     /// "neither at the locus"; they are not at the locus). At skipped
     /// positions this matches samtools pileup's zero coverage exactly; at an
@@ -119,10 +122,17 @@ pub struct ClassifyResult {
     /// event, and keeping it in DP would deflate VAF with unobservant reads.
     pub covers_locus: bool,
     /// Whether an MNP ALT call read every discriminating base (none masked
-    /// for base quality, none N). Set only by the MNP dispatch; false for
-    /// every other variant type and for MNP reads classified by the complex
-    /// path. Accumulated into `BaseCounts::mnp_confirmed_alt`.
+    /// for base quality, none N). Set by the MNP dispatch, and by the
+    /// exact-carrier rule for MNP reads it judges (every window base read);
+    /// false for every other variant type and for MNP reads the previous
+    /// complex classifier judges. Accumulated into `BaseCounts::mnp_confirmed_alt`.
     pub mnp_confirmed: bool,
+    /// The exact-carrier rule decided this read (REF or ALT) from its own bases,
+    /// soft-clipped ones included, every one inside the read's fragment (clipped
+    /// bases past the fragment end are adapter), and the fragment is well
+    /// defined. Such a read counts although its aligned span stops short of the
+    /// variant position; the engine admits it in DNA only.
+    pub clip_admissible: bool,
     /// Whether the PairHMM backend's pangenomic haplotype matrix could not
     /// evaluate this read (reference context missing, or not containing the
     /// variant), so it was scored by the Smith-Waterman fallback — or, where SW
@@ -130,6 +140,39 @@ pub struct ClassifyResult {
     /// backend, where SW is the chosen scorer. Counted per variant (DP reads
     /// only) as `BaseCounts::sw_fallback_reads`.
     pub sw_fallback: bool,
+    /// Whether the read cannot tell the alleles apart. Set when a REF call on a
+    /// pure indel is withdrawn because the read spans neither informative window
+    /// (`ref_needs_the_window`); when an ALT call on a pure indel is withdrawn
+    /// because the read spans neither ALT-side window and its own bases fit both
+    /// alleles or could not be judged (`alt_needs_the_window`); and by the
+    /// exact-carrier rule for a read that holds no window pair or is spliced
+    /// through the event. Such a read counts toward depth only. The sibling REF
+    /// guard still checks it (a sibling's allele it carries is partial evidence
+    /// here), and a fragment whose reads are all like this is left out of the mFSD
+    /// classes.
+    pub uninformative: bool,
+    /// An ALT call on a pure indel withdrawn because the read spans neither
+    /// ALT-side window and its bases could not be judged: no prepared reference
+    /// holds the event (an unprepared variant), or the deciding base lies past the
+    /// prepared reference's end. Counted per variant (DP reads) and warned once,
+    /// so the loss is never silent.
+    pub alt_unjudged: bool,
+    /// The exact-carrier rule could not judge this read (the prepared reference
+    /// does not hold the event with its flank) and the previous complex
+    /// classifier did. Counted per variant (DP reads) and warned once.
+    pub carrier_fallback: bool,
+    // Which rule decided the read, tallied per variant and per pass
+    // (`DecisionTally`); they change no count.
+    /// A REF call withdrawn: the read spans neither informative window.
+    pub ref_withdrawn: bool,
+    /// An ALT call withdrawn: the read spans neither ALT-side window and its
+    /// bases fit both alleles or could not be judged (`alt_unjudged`).
+    pub alt_withdrawn: bool,
+    /// An ALT call kept because the read's own bases tell the alleles apart,
+    /// though it spans neither ALT-side window.
+    pub alt_by_bases: bool,
+    /// The exact-carrier rule judged the read.
+    pub carrier_judged: bool,
 }
 
 impl ClassifyResult {
@@ -153,7 +196,15 @@ impl ClassifyResult {
             is_structural: false,
             covers_locus: true,
             mnp_confirmed: false,
+            clip_admissible: false,
             sw_fallback: false,
+            uninformative: false,
+            alt_unjudged: false,
+            carrier_fallback: false,
+            ref_withdrawn: false,
+            alt_withdrawn: false,
+            alt_by_bases: false,
+            carrier_judged: false,
         }
     }
 
@@ -179,10 +230,8 @@ impl ClassifyResult {
     /// indel that is a distinct allele in the same tract (slippage ladder),
     /// not the reference and not the queried ALT. Consumed by the engine to
     /// increment `partial_alt`/`any_alt` (PARTIAL_DOMINANT diagnostics).
-    /// The anchor quality is carried for the legacy path's N heuristic
-    /// (`base_qual == 0 && neither` reads as N-class): a real anchor quality
-    /// keeps these reads out of the N bucket. Fragment consensus ignores the
-    /// qual of neither results.
+    /// The anchor quality is carried with it; fragment consensus ignores the qual
+    /// of neither results, and the N class comes from `has_n_base`, not from qual.
     #[inline]
     pub fn neither_with_nearby(qual: u8, phase: ClassifyPhase) -> Self {
         Self { qual, has_nearby_evidence: true, ..Self::neither(phase) }
@@ -225,8 +274,9 @@ impl ClassifyResult {
     /// variant's discriminating positions with no aligned base and no D op
     /// there. The aligner asserts splicing — no evidence for REF or ALT —
     /// and the engine excludes the read from DP/DPF entirely, matching
-    /// samtools pileup's zero coverage at skipped positions. Only the
-    /// splice-skip triage returns this.
+    /// samtools pileup's zero coverage at skipped positions. Returned by the
+    /// splice-skip triage, and by the exact-carrier rule for a record stored
+    /// without its bases (SEQ `*`).
     #[inline]
     pub fn no_coverage(phase: ClassifyPhase) -> Self {
         Self { covers_locus: false, ..Self::neither(phase) }
@@ -311,6 +361,17 @@ pub fn masked_dual_compare(
     }
 
     (mm_a, mm_b, reliable)
+}
+
+/// How many of `bases` can be read: not N and at or above `min_baseq`, the mask
+/// `masked_single_compare` applies. An insertion's ALT needs one of the read's own
+/// inserted bases readable; length alone is not its sequence.
+pub fn readable_bases(bases: &[u8], quals: &[u8], min_baseq: u8) -> usize {
+    bases
+        .iter()
+        .zip(quals)
+        .filter(|&(&b, &q)| q >= min_baseq && b != b'N' && b != b'n')
+        .count()
 }
 
 /// Masked comparison against a single allele.

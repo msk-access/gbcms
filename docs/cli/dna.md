@@ -55,7 +55,7 @@ short-fragment enrichment associated with tumor-derived cfDNA
 |:-------|:--------|:------------|
 | `--mfsd` | `false` | Enable mFSD analysis. Adds 41 mFSD columns (KS test, LLR, mean sizes, pairwise comparisons, derived metrics) to MAF output and 13 `MFSD_*` INFO fields to VCF. |
 | `--mfsd-parquet` | `false` | Write a companion `<sample>.fsd.parquet` with per-variant raw fragment size arrays (`ref_sizes`, `alt_sizes`). Enables downstream visualizations. **Requires `--mfsd`**. |
-| `--mfsd-report` | `false` | Generate an interactive HTML report (`<sample>.mfsd_report.html`) with per-variant fragment size distributions, dual-axis histograms, and Fragment Origin Signal classification. **Implies `--mfsd` and `--mfsd-parquet`** (both are auto-enabled). See [mFSD Report](../reference/mfsd-report.md). |
+| `--mfsd-report` | `false` | Generate an interactive HTML report (`<sample>.mfsd_report.html`) with per-variant fragment size distributions, dual-axis histograms, and graded fragment-size evidence (leans somatic, no size evidence, insufficient). **Implies `--mfsd` and `--mfsd-parquet`** (both are auto-enabled). See [mFSD Report](../reference/mfsd-report.md). |
 | `--mfsd-report-min-alt` | `3` | Minimum ALT fragment count to include a variant in the HTML report. |
 | `--mfsd-report-max-variants` | `20` | Maximum variants in the HTML report (selected by highest ALT count). Use `-1` for no limit. |
 
@@ -147,10 +147,10 @@ for the full design.
 | `--rescue-mnp-threshold` | `1.0` | Maximum discriminating/length ratio for MNP rescue eligibility (0.0–1.0). `1.0` = all MNPs are eligible (C++ gbcms compatible, default). `0.5` = conservative sparse-only mode (≤50% discriminating positions). `0.0` = disable rescue eligibility (MNP_DISC_RATIO diagnostics are still emitted). Only used when `--rescue-mnp` is enabled. |
 
 !!! info "Diagnostic Flags"
-    Two diagnostic flags are emitted for every MNP variant, with or without `--rescue-mnp`:
-
-    - **`MNP_DISC_RATIO(n/m)`** — Always emitted. Shows the ratio of discriminating positions to total MNP length.
-    - **`MNP_RESCUE_ELIGIBLE`** — Emitted only when disc/len ≤ `--rescue-mnp-threshold`. Marks the variant as eligible; rescue additionally requires `partial_alt > alt_count`. Both flags describe the annotated MNP's shape, so a rescued row keeps them next to `RESCUED_COMPONENT(...)`; rows still awaiting review after a rescue run are `MNP_RESCUE_ELIGIBLE` without `RESCUED_COMPONENT`.
+    Every MNP row carries `MNP_DISC_RATIO(n/m)`, with or without `--rescue-mnp`, and
+    `MNP_RESCUE_ELIGIBLE` when `n/m` is at most `--rescue-mnp-threshold`. Both describe
+    the annotated MNP's shape, so a rescued row keeps them next to `RESCUED_COMPONENT`.
+    Definitions: [QC Flags → Diagnostics](../reference/qc-flags.md#diagnostics).
 
 !!! warning "A rescued row reports a component, not the annotated MNP"
     When reads show the whole MNP (e.g. a somatic change on top of a germline SNP), rescue
@@ -167,6 +167,19 @@ for the full design.
     # Conservative — rescue only sparse MNPs (≤50% discriminating positions)
     gbcms dna --rescue-mnp --rescue-mnp-threshold 0.5 --variants input.maf --bam sample:sample.bam --fasta ref.fa -o out/
     ```
+
+## Homopolymer Twin Option
+
+| Option | Default | Description |
+|:-------|:--------|:------------|
+| `--rescue-homopolymer` | `false` | Dual-count the [homopolymer twin](../reference/variant-normalization.md#step-5-homopolymer-decomposition-detection). For a delins whose REF is a run of one base and whose ALT is the base after the run (`CCCCCC>T`), also count the run with its last base replaced (`CCCCCT`), and report whichever form has more ALT reads, flagged `WARN_HOMOPOLYMER_DECOMP`. |
+
+!!! warning "Off by default: the row counts the given allele"
+    Both forms accept near-matches, so the winner can report another allele's reads under
+    the row's label. By default gbcms counts the allele it is given, and when the reads carry
+    a different one, `gbcms_diagnostic` names it: `OBSERVED_ALLELE` when no read carries the
+    given allele, `COEXISTING_ALLELE` when it is present beside a more frequent one (see
+    [output formats](../reference/output-formats.md)).
 
 ## Debugging Options
 

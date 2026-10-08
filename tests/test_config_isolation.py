@@ -241,3 +241,24 @@ def test_rescue_mnp_threshold_rejects_below_0():
             {"rescue_mnp_threshold": -0.1},
             context={"_skip_file_validation": True},
         )
+
+
+# ── Input Files ──────────────────────────────────────────────────────────
+
+
+@pytest.mark.parametrize("make", ["dot", "dir"])
+def test_a_directory_is_not_a_reference(tmp_path, make, monkeypatch):
+    """The reference is read by index, so it must be a file: a directory (an empty
+    `--fasta ""` becomes `.`) is refused at config time, not deep in the engine."""
+    from pathlib import Path
+
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / "v.vcf").write_text("")
+    (tmp_path / "s.bam").write_text("")
+    with pytest.raises(ValidationError, match="reference"):
+        GbcmsDnaConfig(
+            variant_file=tmp_path / "v.vcf",
+            bam_files={"s": tmp_path / "s.bam"},
+            reference_fasta=Path("") if make == "dot" else tmp_path,
+            output=OutputConfig(directory=tmp_path / "out"),
+        )

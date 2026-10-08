@@ -49,9 +49,9 @@ fi
 # Step 3: Install package
 echo
 echo "Step 3: Installing GetBaseCounts..."
-echo "Installing with dev and all dependencies..."
+echo "Installing with the dev dependency group..."
 
-if uv pip install -e ".[dev,all]"; then
+if uv pip install -e ".[all]" --group dev; then
     echo -e "${GREEN}✅ Installation successful${NC}"
 else
     echo -e "${RED}❌ Installation failed${NC}"

@@ -1,6 +1,6 @@
 ---
 name: counting-engine
-description: Reference for the gbcms counting core — genomic binning (10kb bins, one fetch per bin), the 4-phase variant-check pipeline, and alignment-backend dispatch. Use when modifying engine.rs or variant_checks.rs, debugging count discrepancies, or reasoning about binning and binned↔legacy parity. For fragment/consensus see fragment-counting; for filters/quality see read-filters-qc.
+description: Reference for the gbcms counting core — genomic binning (10kb bins, one fetch per bin), the 4-phase variant-check pipeline, and alignment-backend dispatch. Use when modifying engine.rs or variant_checks.rs, debugging count discrepancies, or reasoning about binning and binning invariance. For fragment/consensus see fragment-counting; for filters/quality see read-filters-qc.
 ---
 
 # Counting Engine Patterns
@@ -16,8 +16,8 @@ Variants are grouped into ~10kb bins for efficient BAM traversal:
 **Invariant (load-bearing):** a bin's fetch-end must cover the *anchor* (leftmost)
 variant's full ref span, not just `bin_start + window`. A bin anchored by a large
 deletion/DelIns whose `ref_allele.len()` exceeds the window will otherwise
-under-fetch its right tail and undercount AD/ADF. Any binning change needs a
-binned↔legacy parity test including large deletions and complex DelIns.
+under-fetch its right tail and undercount AD/ADF. Any binning change must keep
+`tests/test_binning_invariance.py` and the `build_genomic_bins` property test green.
 
 ## Variant Check Pipeline
 
@@ -41,10 +41,27 @@ inserts to ALT. Same-event escapes that stay ALT:
   artifact-SIZE prior: artifacts are small, a ≥50bp op is a real deletion),
 - insertion **truncation containment** (≥4bp, ≥90% identity, both sequences
   non-low-complexity).
-Same-length S3-fail / unverifiable-bases candidates keep Phase-3 arbitration
-via `has_shifted_same_length` (partial propagated on non-ALT). Windowed
-wrong-length (dels ≥5bp only — 1–4bp windowed Ds are noise → plain REF; ins any
-size): repeat tract → neither+partial; unique context → REF+partial.
+Windowed S3 = same haplotype (`same_insertion_haplotype`: X+S == S+Y, never for
+an anchor-substituting ALT; `same_deletion_haplotype`: the stretch between
+placements has period len) and the read's only change across the discrimination
+window (`only_change_in_window`; else distinct allele), so a carrier written
+anywhere in the repeat (or rotated) is ALT (#189); `window::scan_window` reaches
+every placement in `shift_region` (deletions: starts up to hi − len), and
+tract-cluster grouping's `window_pad` reaches as far. The variant's bases at a non-equivalent
+spot are a distinct allele (`has_distinct_allele_nearby`) inside the
+discrimination window, a separate event (REF) outside it; other bases keep
+Phase-3 arbitration via `has_shifted_same_length` (partial propagated on non-ALT).
+A same-length deletion ≥5bp of another haplotype is a distinct allele (not Phase 3;
+only in-band ≥50bp ones keep Phase 3). The strict path also needs no other I/D in
+the window (an I/D pair is inspected in either order). An ALT read spanning
+neither ALT-side window (`window::alt_read_is_informative`: a deletion's are an
+insertion's, its extent counts its own gap) must discriminate by its bases
+(`alt_needs_the_window` / `window::alt_bases_discriminate`), else `uninformative`
+(depth only). "In a repeat" for distinct alleles = `repeat_span >= 2 ||
+window::slides`. One-base-REF ALTs that change the anchor (A>CCC) go to the
+exact-carrier rule, like Del+SNV (cluster 1: #188, #191, #192, #121). Windowed wrong-length
+(dels ≥5bp only — 1–4bp windowed Ds are noise → plain REF; ins any size):
+repeat tract → neither+partial; unique context → REF+partial.
 Delins stay `check_complex` (Phase-3 realignment is CORRECT for them).
 Contract battery: `tests/test_wrong_length_contract.py` (parity-oracle).
 
@@ -56,7 +73,7 @@ discriminating positions**. CIGAR `N` = asserted splicing = no observation:
 `ClassifyResult::no_coverage` (`covers_locus=false`) when the N spans ALL of
 them — deletion span `[pos+1, pos+ref_len)`, insertion flanks `[pos, pos+2)`,
 else `[pos, pos+ref_len)` — and the engine **excludes the read from DP/DPF
-entirely** (samtools-pileup semantics; mirrored binned + legacy + per-transcript;
+entirely** (samtools-pileup semantics; the main and per-transcript read loops;
 `splice_skip_excluded=` in the Phase-stats debug line). `D` is deletion
 evidence, `N` never is (no D-vs-N representation flip). Indel ops directly
 after an N get the same anchor/windowed inspection as after an M (shared

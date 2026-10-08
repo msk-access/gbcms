@@ -1,13 +1,17 @@
 //! Variant normalization: left-alignment, MAF anchor resolution, REF validation.
 //!
 //! Consolidates all FASTA-dependent variant preparation into a single pass:
-//! 1. MAF→VCF anchor base fetch (if `is_maf`)
-//! 2. REF allele validation against reference
-//! 3. bcftools-style left-alignment (`realign_left`)
-//! 4. `ref_context` fetch for Smith-Waterman haplotype alignment
+//! 1. Malformed-allele rejection (EMPTY_ALLELE, NON_SEQUENCE_ALLELE, ALT_EQUALS_REF)
+//! 2. MAF→VCF anchor base fetch (if `is_maf`)
+//! 3. REF allele validation against reference, and ALT N-base rejection
+//! 4. bcftools-style left-alignment (`realign_left`)
+//! 5. `ref_context` fetch for Phase-3 haplotype alignment (adaptively padded)
+//! 6. Homopolymer twin (only with `rescue_homopolymer`)
+//! 7. `repeat_span`, the shift region and the event reference (`event_ref`)
 //!
-//! Uses rayon `par_iter().map_init()` with thread-local FASTA readers,
-//! matching the pattern in `counting::engine::count_bam()`.
+//! then groups co-annotated variants (MULTI_ALLELIC / TRACT_CLUSTER).
+//!
+//! Uses rayon `par_iter().map_init()` with thread-local FASTA readers.
 //!
 //! ## Submodules
 //!

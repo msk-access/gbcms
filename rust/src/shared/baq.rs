@@ -13,7 +13,6 @@
 //!
 //! Used by:
 //! - `counting/engine.rs` — Phase 0 quality adjustment before classification
-//! - `hla/router.rs` (future) — quality adjustment before PairHMM scoring
 
 use rust_htslib::bam::record::Cigar;
 use rust_htslib::bam::Record;
@@ -36,7 +35,14 @@ const BAQ_PENALTY: u8 = 20;
 /// This function is intentionally allocation-free for reads without
 /// indels/splice junctions (the common case), only allocating the Vec
 /// when adjustment is needed.
-pub fn apply_heuristic_baq(record: &Record) -> Option<Vec<u8>> {
+///
+/// `spare` is the genomic span `[lo, hi]` of the variant being counted: a read's
+/// insertion or deletion touching it IS that variant's evidence, not an
+/// alignment artifact beside it, so its bases are not penalized (at Q37 the
+/// penalty would put every ALT read of a small indel below min BQ, while REF
+/// reads, with no indel, keep full quality). Splice junctions and indels
+/// elsewhere in the read are penalized as before.
+pub fn apply_heuristic_baq(record: &Record, spare: Option<(i64, i64)>) -> Option<Vec<u8>> {
     let cigar = record.cigar();
 
     // Quick scan: does this read have any indels or splice junctions?
@@ -73,13 +79,22 @@ pub fn apply_heuristic_baq(record: &Record) -> Option<Vec<u8>> {
     let read_len = adjusted.len();
 
     // Walk CIGAR to find read-coordinate positions of indel/splice boundaries.
-    // `read_pos` tracks the current position on the read (query) sequence.
+    // `read_pos` tracks the current position on the read (query) sequence and
+    // `ref_pos` on the reference, to tell the variant's own indel from others.
     let mut read_pos: usize = 0;
+    let mut ref_pos = record.pos();
+    let mut changed = false;
+    let own = |start: i64, end: i64| spare.is_some_and(|(lo, hi)| start <= hi && end >= lo);
     for op in cigar.iter() {
         match op {
             Cigar::Match(len) | Cigar::Equal(len) | Cigar::Diff(len) => {
                 read_pos += *len as usize;
+                ref_pos += *len as i64;
             }
+            // The variant's own insertion: its bases are the evidence.
+            Cigar::Ins(len) if own(ref_pos, ref_pos) => read_pos += *len as usize,
+            // The variant's own deletion.
+            Cigar::Del(len) if own(ref_pos, ref_pos + *len as i64) => ref_pos += *len as i64,
             Cigar::Ins(len) => {
                 // Insertion: penalize BAQ_RADIUS bases before the insertion start
                 // and after the insertion end on the read.
@@ -92,9 +107,10 @@ pub fn apply_heuristic_baq(record: &Record) -> Option<Vec<u8>> {
                 for q in adjusted[pen_start..pen_end].iter_mut() {
                     *q = q.saturating_sub(BAQ_PENALTY);
                 }
+                changed = true;
                 read_pos = ins_end;
             }
-            Cigar::Del(_) | Cigar::RefSkip(_) => {
+            Cigar::Del(len) | Cigar::RefSkip(len) => {
                 // Deletion or splice junction: penalize BAQ_RADIUS bases
                 // on either side of the boundary on the read.
                 // For RefSkip (RNA splice junctions), this serves as a
@@ -107,6 +123,8 @@ pub fn apply_heuristic_baq(record: &Record) -> Option<Vec<u8>> {
                 for q in adjusted[pen_start..pen_end].iter_mut() {
                     *q = q.saturating_sub(BAQ_PENALTY);
                 }
+                changed = true;
+                ref_pos += *len as i64;
             }
             Cigar::SoftClip(len) => {
                 read_pos += *len as usize;
@@ -117,5 +135,5 @@ pub fn apply_heuristic_baq(record: &Record) -> Option<Vec<u8>> {
         }
     }
 
-    Some(adjusted)
+    changed.then_some(adjusted)
 }

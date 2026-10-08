@@ -10,10 +10,36 @@ env:
   PYTHON_VERSION: '3.11'
   REGISTRY: ghcr.io
 
+# The default token reads only; each job that writes asks for its own permissions.
+permissions:
+  contents: read
+
 jobs:
+  # Nothing builds or publishes until the version sources agree with the tag:
+  # rust/Cargo.toml (the package), Cargo.lock, the Nextflow manifest (the pipeline's
+  # image) and a dated CHANGELOG section. Publishing runs only on a tag push; a manual
+  # run (workflow_dispatch) builds and checks but publishes nothing. The ref name
+  # reaches the shell through env, never pasted into the script.
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+      - name: Check version sources against the tag
+        if: startsWith(github.ref, 'refs/tags/')
+        env:
+          TAG: ${{ github.ref_name }}
+        run: python scripts/release.py check --tag "$TAG"
+      - name: Check version sources
+        if: ${{ !startsWith(github.ref, 'refs/tags/') }}
+        run: python scripts/release.py check
+
   # Build unified wheels (Python + Rust bundled) for Linux
   linux:
     runs-on: ubuntu-latest
+    needs: [verify]
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-python@v6
@@ -26,15 +52,15 @@ jobs:
           command: build
           # Don't pass --manifest-path here; it's in pyproject.toml [tool.maturin]
           # Passing it on CLI causes maturin to use Cargo package name instead of pyproject.toml name
-          # --no-default-features drops `legacy-parity` so the published wheel omits the
-          # test-only `count_bam` parity oracle (see rust/Cargo.toml).
-          args: --release --no-default-features --out dist -i python3.11
+          args: --release --out dist -i python3.11
           # manylinux_2_34 uses AlmaLinux 9 with OpenSSL 3.0+ (compatible with curl-sys 0.4.85+)
           # RHEL 8 users should install from source in a conda env or use Docker
           manylinux: manylinux_2_34
           # docker-options ensures env vars are passed directly to the container
           # (before-script exports don't persist to cargo build phase)
-          docker-options: -e OPENSSL_NO_VENDOR=1
+          # GBCMS_BUILD_COMMIT: the commit for output provenance (rust/build.rs);
+          # the manylinux container may not see the checkout's .git.
+          docker-options: -e OPENSSL_NO_VENDOR=1 -e GBCMS_BUILD_COMMIT=${{ github.sha }}
           before-script-linux: |
             SUDO=""
             if [ "$(id -u)" -ne 0 ] && command -v sudo &> /dev/null; then
@@ -58,6 +84,7 @@ jobs:
   # Build source distribution (for macOS/Windows users to build from source)
   sdist:
     runs-on: ubuntu-latest
+    needs: [verify]
     steps:
       - uses: actions/checkout@v5
       - name: Build sdist
@@ -76,7 +103,7 @@ jobs:
     name: Release to PyPI
     runs-on: ubuntu-latest
     needs: [linux, sdist]
-    if: startsWith(github.ref, 'refs/tags/')
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/')
     permissions:
       id-token: write  # Required for PyPI Trusted Publisher OIDC
     steps:
@@ -100,7 +127,7 @@ jobs:
   docker:
     name: Build Docker Image
     runs-on: ubuntu-latest
-    needs: [linux]
+    needs: [verify, linux]
     permissions:
       contents: read
       packages: write
@@ -121,24 +148,84 @@ jobs:
           images: ${{ env.REGISTRY }}/${{ github.repository }}
           tags: |
             type=ref,event=tag
-            type=raw,value=latest,enable=${{ startsWith(github.ref, 'refs/tags/') }}
+            type=raw,value=latest,enable=${{ github.event_name == 'push' && startsWith(github.ref, 'refs/tags/') }}
       
       - name: Build and push Docker image
         uses: docker/build-push-action@v5
         with:
           context: .
-          push: ${{ startsWith(github.ref, 'refs/tags/') }}
+          push: ${{ github.event_name == 'push' && startsWith(github.ref, 'refs/tags/') }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
+          build-args: GBCMS_BUILD_COMMIT=${{ github.sha }}
 
-  # Summary
-  summary:
+  # The GitHub Release page, once PyPI and the image are published: the title and
+  # notes from the tag's CHANGELOG section, the wheels and sdist attached with their
+  # SHA-256 sums, and a build-provenance attestation for each artifact.
+  github-release:
+    name: Create GitHub Release
     runs-on: ubuntu-latest
     needs: [release, docker]
-    if: always() && startsWith(github.ref, 'refs/tags/')
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/')
+    permissions:
+      contents: write           # create the release and upload assets
+      id-token: write           # sign the attestations (OIDC)
+      attestations: write       # store them
+      artifact-metadata: write  # the artifact storage records actions/attest creates
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: wheels-*
+          merge-multiple: true
+          path: dist
+      - name: Checksums
+        run: cd dist && sha256sum * > SHA256SUMS && cat SHA256SUMS
+      - name: Attest build provenance
+        uses: actions/attest-build-provenance@v4  # a wrapper on actions/attest (SLSA provenance)
+        with:
+          subject-path: 'dist/*.whl, dist/*.tar.gz'
+      - name: Release notes from the CHANGELOG
+        env:
+          TAG: ${{ github.ref_name }}
+        run: python scripts/release.py notes --tag "$TAG" --title-out title.txt --notes-out notes.md
+      - name: Create or update the release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          title="$(cat title.txt)"
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release edit "$TAG" --title "$title" --notes-file notes.md
+            gh release upload "$TAG" dist/* --clobber
+          else
+            gh release create "$TAG" dist/* --title "$title" --notes-file notes.md --verify-tag
+          fi
+
+  # Summary: what each publishing job did (re-run only the failed jobs: re-running all
+  # rebuilds the wheel, whose checksums would no longer match the file PyPI kept).
+  summary:
+    runs-on: ubuntu-latest
+    needs: [release, docker, github-release]
+    if: always() && github.event_name == 'push' && startsWith(github.ref, 'refs/tags/')
     steps:
       - name: Show release summary
+        env:
+          TAG: ${{ github.ref_name }}
+          REPO: ${{ github.repository }}
+          PYPI: ${{ needs.release.result }}
+          DOCKER: ${{ needs.docker.result }}
+          PAGE: ${{ needs.github-release.result }}
         run: |
-          echo "✅ Release completed!"
-          echo "📦 PyPI: https://pypi.org/project/gbcms/${{ github.ref_name }}/"
-          echo "🐳 Docker: ${{ env.REGISTRY }}/${{ github.repository }}:${{ github.ref_name }}"
+          echo "PyPI:           $PYPI  https://pypi.org/project/gbcms/$TAG/"
+          echo "Docker:         $DOCKER  ghcr.io/$REPO:$TAG"
+          echo "GitHub Release: $PAGE  https://github.com/$REPO/releases/tag/$TAG"
+          if [ "$PYPI $DOCKER $PAGE" = "success success success" ]; then
+            echo "Release $TAG completed."
+          else
+            echo "Release $TAG incomplete: re-run the failed jobs."
+            exit 1
+          fi

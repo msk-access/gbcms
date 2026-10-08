@@ -5,17 +5,30 @@ This module provides classes to write processed variants and their counts
 to output files, handling format-specific columns and headers.
 """
 
+import contextlib
 import csv
 import logging
 import math
 from pathlib import Path
-from typing import Any
+from typing import IO, Any
 
 from ..core.kernel import CoordinateKernel
 from ..models.core import Variant
+from .atomic import commit_partial, discard_partial, write_target
 from .reference import ReferenceBases
 
-__all__ = ["OutputWriter", "MafWriter", "VcfWriter"]
+__all__ = [
+    "OutputWriter",
+    "MafWriter",
+    "VcfWriter",
+    "maf_vcf_record",
+    "maf_origin_info",
+    "is_sequence_allele",
+    "gbcms_column_basenames",
+    "gbcms_prefixed_basenames",
+    "build_identity",
+    "provenance_line",
+]
 
 logger = logging.getLogger(__name__)
 
@@ -54,7 +67,7 @@ def _fmt(v: float) -> str:
 
     NaN/Inf → 'NA' (standard missing value for tabular formats).
     Guards against both NaN and Inf which can arise from Fisher strand
-    bias when ALT total ≤ 1 (OR undefined, see issue #19).
+    bias when ALT total ≤ 1 (OR undefined).
     """
     if isinstance(v, float) and (math.isnan(v) or math.isinf(v)):
         return "NA"
@@ -134,14 +147,191 @@ def vcf_contig_lines(contigs: list[tuple[str, int | None]]) -> list[str]:
     ]
 
 
+#: The VCF ALT written for a MAF allele that is not a base sequence; the record's
+#: REF is then the reference base at POS, as for any symbolic allele.
+NON_SEQUENCE_ALT = "<NON_SEQUENCE>"
+NON_SEQUENCE_HEADER = (
+    '##ALT=<ID=NON_SEQUENCE,Description="The MAF row has no VCF allele (an allele that is not '
+    "a base sequence, or a deletion spanning its whole contig): the row is FAIL, the reason in "
+    'GSR, and is not counted">'
+)
+#: The MAF row a VCF record of MAF input came from, so a result can be looked up
+#: by its input (as VCF input's MAF output carries vcf_pos, vcf_ref and vcf_alt).
+MAF_ORIGIN_HEADERS = [
+    '##INFO=<ID=MAF_START,Number=1,Type=Integer,Description="Start_Position of the MAF row '
+    'this record came from">',
+    '##INFO=<ID=MAF_REF,Number=1,Type=String,Description="Reference_Allele of the MAF row this '
+    "record came from, as written (percent-encoded; '.' when empty)\">",
+    "##INFO=<ID=MAF_ALT,Number=1,Type=String,Description=\"The MAF row's variant allele as "
+    "written: Tumor_Seq_Allele2, or Tumor_Seq_Allele1 when Allele2 is empty or the reference "
+    "(percent-encoded; '.' when empty)\">",
+]
+# Characters a VCF INFO value cannot hold as written (VCF 4.3 percent-encoding),
+# plus whitespace, which no INFO value may contain.
+_INFO_ESCAPES = {c: f"%{ord(c):02X}" for c in "%:;=,\t\n\r "}
+
+
+def is_sequence_allele(allele: str) -> bool:
+    """A base sequence (A, C, G, T, N in either case) or a MAF ``-`` allele: the
+    alleles preparation counts (anything else is FAIL NON_SEQUENCE_ALLELE)."""
+    return allele == "-" or (bool(allele) and set(allele) <= set("ACGTNacgtn"))
+
+
+def _info_value(text: str) -> str:
+    """``text`` as a VCF INFO value: percent-encoded, the missing value ``.`` when
+    empty, and a literal ``.`` encoded so that ``.`` only ever means missing."""
+    if not text:
+        return "."
+    if text == ".":
+        return "%2E"
+    return "".join(_INFO_ESCAPES.get(c, c) for c in text)
+
+
+class _NoBase(LookupError):
+    """A record needs a reference base past its contig's end."""
+
+
+def maf_vcf_record(variant: Variant, base: Any, length: int | None = None) -> tuple[int, str, str]:
+    """(POS, REF, ALT) for a MAF-input row: maf2vcf's record, or the symbolic
+    ``<NON_SEQUENCE>`` record at Start (REF the reference base there), which keeps
+    the VCF valid, for a row with no VCF allele: an allele that is not a base
+    sequence, or a deletion spanning its whole contig (no base before or after
+    it to anchor the record). ``base(pos)`` returns the reference base at a
+    1-based position; ``length`` is the contig's length, when known."""
+    pos = variant.pos + 1
+    if not (is_sequence_allele(variant.ref) and is_sequence_allele(variant.alt)):
+        return pos, base(pos), NON_SEQUENCE_ALT
+
+    def bounded(at: int) -> str:
+        if length is not None and at > length:
+            raise _NoBase(at)
+        return str(base(at))
+
+    try:
+        return CoordinateKernel.maf_to_vcf(pos, variant.ref, variant.alt, bounded)
+    except _NoBase:
+        return pos, base(pos), NON_SEQUENCE_ALT
+
+
+def maf_origin_info(variant: Variant) -> list[str]:
+    """INFO entries naming the MAF row a VCF record came from: its Start and its
+    alleles as the row writes them (a placeholder such as ``0`` or ``--`` too,
+    which preparation reads as ``-``), so a record can be looked up by its row."""
+    row = variant.metadata or {}
+    ref = row.get("Reference_Allele", variant.ref)
+    allele1, allele2 = row.get("Tumor_Seq_Allele1") or "", row.get("Tumor_Seq_Allele2", variant.alt)
+    # The row's variant allele is Allele1 when MafReader read it from there.
+    from_allele1 = CoordinateKernel.maf_alleles(ref, allele1, allele2) != (
+        CoordinateKernel.maf_alleles(ref, "", allele2)
+    )
+    return [
+        f"MAF_START={variant.pos + 1}",
+        f"MAF_REF={_info_value(ref)}",
+        f"MAF_ALT={_info_value(allele1 if from_allele1 else allele2)}",
+    ]
+
+
+def gbcms_prefixed_basenames() -> frozenset[str]:
+    """The columns the writer's ``--column-prefix`` applies to (the counts and
+    the normalization columns); status, strand bias, mFSD and RNA columns are
+    written unprefixed. ``gbcms merge`` finds each column under that name."""
+    probe = "PREFIX_"
+    names: set[str] = set()
+    for mfsd in (False, True):
+        for mode, has_gtf in (("dna", False), ("rna", False), ("rna", True)):
+            for flags in (False, True):
+                cols = MafWriter.column_names(
+                    column_prefix=probe,
+                    mfsd=mfsd,
+                    mode=mode,
+                    rescue_mnp=flags,
+                    has_gtf=has_gtf,
+                    show_normalization=flags,
+                )
+                names.update(c[len(probe) :] for c in cols if c.startswith(probe))
+    return frozenset(names)
+
+
+def build_identity() -> str:
+    """``gbcms v<version>``, with the build's commit when known
+    (``gbcms v6.6.0.dev0 (9c371263)``): two builds of one version differ."""
+    from .. import __version__
+    from .._rs import build_commit
+
+    commit = build_commit()
+    return f"gbcms v{__version__}" + (f" ({commit})" if commit else "")
+
+
+def provenance_line() -> str:
+    """The first line of every MAF gbcms writes (``#gbcms v...``)."""
+    return f"#{build_identity()}"
+
+
+def gbcms_column_basenames() -> frozenset[str]:
+    """Every column a MafWriter can add, in any mode, unprefixed: the columns
+    ``gbcms merge`` keeps per input (one source of truth with the writer)."""
+    names: set[str] = set()
+    for mfsd in (False, True):
+        for mode, has_gtf in (("dna", False), ("rna", False), ("rna", True)):
+            for flags in (False, True):
+                names.update(
+                    MafWriter.column_names(
+                        mfsd=mfsd,
+                        mode=mode,
+                        rescue_mnp=flags,
+                        has_gtf=has_gtf,
+                        show_normalization=flags,
+                    )
+                )
+    return frozenset(names)
+
+
 class OutputWriter:
-    """Abstract base class for output writers."""
+    """Abstract base class for output writers.
+
+    A writer writes to a temp file beside its output (see :mod:`gbcms.io.atomic`):
+    :meth:`close` renames it into place, :meth:`abort` removes it. Used as a
+    context manager, a clean exit closes and an exception aborts, so a failed run
+    leaves no partial output.
+    """
+
+    file: IO[str]
 
     def write(self, variant: Variant, counts: Any):
         raise NotImplementedError
 
     def close(self):
         pass
+
+    def abort(self):
+        """Discard the output after a failure: nothing is left at its path."""
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc, tb):
+        if exc_type is None:
+            self.close()
+        else:
+            self.abort()
+        return False
+
+    def _finish(self, path: Path) -> None:
+        """Flush and close the temp file, then rename it over ``path`` (fsynced).
+        Any failure here (a full disk surfaces at flush or close) removes the
+        temp file before it is raised."""
+        try:
+            self.file.flush()
+            self.file.close()
+            commit_partial(path)
+        except BaseException:
+            self._discard(path)
+            raise
+
+    def _discard(self, path: Path) -> None:
+        with contextlib.suppress(OSError):
+            self.file.close()
+        discard_partial(path)
 
 
 class MafWriter(OutputWriter):
@@ -194,6 +384,9 @@ class MafWriter(OutputWriter):
         Variant_Type, plus the VCF record it came from."""
         vcf_pos = variant.pos + 1
         fields = CoordinateKernel.vcf_to_maf(vcf_pos, variant.ref, variant.alt)
+        # The heterozygous convention (MSK's sign-out sets it on every row; maf2vcf
+        # reads an empty Allele1 as the reference): gbcms genotypes no sample GT.
+        fields["Tumor_Seq_Allele1"] = fields["Reference_Allele"]
         fields.update(
             Chromosome=variant.output_chrom,
             vcf_id=variant.original_id or "",
@@ -242,14 +435,12 @@ class MafWriter(OutputWriter):
         self.rescue_mnp = rescue_mnp
         self.has_gtf = has_gtf
         self.command_line = command_line
-        self.file = open(path, "w")
+        self.file = open(write_target(path), "w")
 
-        # Write provenance comment headers before TSV data (issue #19).
+        # Write provenance comment headers before TSV data.
         # These are #-prefixed lines that downstream readers skip via
         # comment_prefix="#" (e.g., Polars read_maf in batch.py).
-        from .. import __version__
-
-        self.file.write(f"#gbcms v{__version__}\n")
+        self.file.write(f"{provenance_line()}\n")
         if self.command_line:
             self.file.write(f"#command {self.command_line}\n")
 
@@ -269,8 +460,28 @@ class MafWriter(OutputWriter):
         )
 
     def _gbcms_column_names(self) -> list[str]:
+        """The gbcms columns this writer adds (see :meth:`column_names`)."""
+        return self.column_names(
+            column_prefix=self.column_prefix,
+            mfsd=self.mfsd,
+            mode=self.mode,
+            rescue_mnp=self.rescue_mnp,
+            # GTF columns exist only in RNA mode (has_gtf is read only there).
+            has_gtf=self.mode == "rna" and self.has_gtf,
+            show_normalization=self.show_normalization,
+        )
+
+    @staticmethod
+    def column_names(
+        column_prefix: str = "",
+        mfsd: bool = False,
+        mode: str = "dna",
+        rescue_mnp: bool = False,
+        has_gtf: bool = False,
+        show_normalization: bool = False,
+    ) -> list[str]:
         """
-        Build the list of gbcms-generated count column names with the configured prefix.
+        Build the list of gbcms-generated count column names with the given prefix.
 
         Column order (v5.1):
           1. Status & diagnostic flags
@@ -288,7 +499,7 @@ class MafWriter(OutputWriter):
         Returns:
             Ordered list of gbcms column names.
         """
-        p = self.column_prefix
+        p = column_prefix
 
         # ── 1. Status & diagnostic flags ──────────────────────────────────────
         cols = [
@@ -297,7 +508,7 @@ class MafWriter(OutputWriter):
             "gbcms_diagnostic",
         ]
         # gbcms_rescue column is only present when --rescue-mnp is enabled (design §5)
-        if self.rescue_mnp:
+        if rescue_mnp:
             cols.append("gbcms_rescue")
 
         cols.extend(
@@ -337,7 +548,7 @@ class MafWriter(OutputWriter):
                 "fragment_strand_bias_odds_ratio",
             ]
         )
-        if self.mfsd:
+        if mfsd:
             # ── mFSD: Mutant Fragment Size Distribution (40 columns) ──────────
             # Only appended when --mfsd is set. Without the flag these columns
             # are completely absent from output (not NA-filled or zero-filled).
@@ -392,13 +603,20 @@ class MafWriter(OutputWriter):
                 # CH gene flag (computed in Python from Hugo_Symbol)
                 "mfsd_ch_flag",
             ]
-        if self.show_normalization:
-            cols.extend(self._norm_column_names())
+        if show_normalization:
+            cols.extend(
+                [
+                    f"{p}norm_Start_Position",
+                    f"{p}norm_End_Position",
+                    f"{p}norm_Reference_Allele",
+                    f"{p}norm_Tumor_Seq_Allele2",
+                ]
+            )
 
         # ── RNA-specific columns (5) ──────────────────────────────────────────
         # Only appended in RNA mode. These replace mFSD as the RNA-specific
         # diagnostic columns. When mode="dna" these are completely absent.
-        if self.mode == "rna":
+        if mode == "rna":
             cols += [
                 "rna_sense_depth",
                 "rna_antisense_depth",
@@ -407,7 +625,7 @@ class MafWriter(OutputWriter):
                 "rna_splice_spanning",
             ]
             # GTF annotation columns — only present when --gtf is provided
-            if self.has_gtf:
+            if has_gtf:
                 cols += [
                     "exon_boundary_dist",
                     "transcript_read_counts",
@@ -430,16 +648,6 @@ class MafWriter(OutputWriter):
                 ]
 
         return cols
-
-    def _norm_column_names(self) -> list[str]:
-        """Normalization columns (only appended when --show-normalization)."""
-        p = self.column_prefix
-        return [
-            f"{p}norm_Start_Position",
-            f"{p}norm_End_Position",
-            f"{p}norm_Reference_Allele",
-            f"{p}norm_Tumor_Seq_Allele2",
-        ]
 
     def _init_writer(self, original_headers: list[str]) -> None:
         """
@@ -525,7 +733,7 @@ class MafWriter(OutputWriter):
             f"{p}alt_count_fragment": str(counts.adf),
             f"{p}total_count_fragment": str(counts.dpf),
             f"{p}vaf_fragment": f"{vaf_frag:.4f}",
-            # Strand bias (unprefixed) — use _fmt/_fmt_sci guards for NaN/Inf (#19)
+            # Strand bias (unprefixed) — use _fmt/_fmt_sci guards for NaN/Inf
             "strand_bias_p_value": _fmt_sci(counts.sb_pval),
             "strand_bias_odds_ratio": _fmt(counts.sb_or),
             "fragment_strand_bias_p_value": _fmt_sci(counts.fsb_pval),
@@ -612,11 +820,13 @@ class MafWriter(OutputWriter):
                 if not (mfsd_n_rate != mfsd_n_rate or mfsd_error_rate != mfsd_error_rate)
                 else _nan
             )
-            # Categorical confidence based on ALT fragment count
+            # How much ALT data there is, not how reliable a call is: TESTABLE once the
+            # class reaches the KS minimum (5), SPARSE below, NONE without fragments.
+            # At 5 fragments a real size shift is detected only about 8% of the time.
             if counts.mfsd_alt_count >= 5:
-                mfsd_alt_confidence = "HIGH"
+                mfsd_alt_confidence = "TESTABLE"
             elif counts.mfsd_alt_count >= 1:
-                mfsd_alt_confidence = "LOW"
+                mfsd_alt_confidence = "SPARSE"
             else:
                 mfsd_alt_confidence = "NONE"
             # KS test validity: the Rust D-statistic (mfsd_ks_alt_ref) is NaN exactly
@@ -767,9 +977,12 @@ class MafWriter(OutputWriter):
         self.writer.writerow(row)
 
     def close(self) -> None:
-        """Close the output file."""
-        self.file.close()
+        """Finish the output file: renamed into place from its temp file."""
+        self._finish(self.path)
         logger.debug("MafWriter closed: %s", self.path)
+
+    def abort(self) -> None:
+        self._discard(self.path)
 
 
 class VcfWriter(OutputWriter):
@@ -805,7 +1018,7 @@ class VcfWriter(OutputWriter):
         self.command_line = command_line
         self.reference_fasta = reference_fasta
         self.contigs = contigs or []
-        self.file = open(path, "w")
+        self.file = open(write_target(path), "w")
         self._headers_written = False
         # Opened on the first MAF-input row that needs an anchor base.
         self._reference: ReferenceBases | None = None
@@ -821,20 +1034,19 @@ class VcfWriter(OutputWriter):
             has_gtf,
         )
 
-    def _write_header(self):
-        """Write VCF header lines.
+    def _write_header(self, maf_input: bool = False):
+        """Write VCF header lines (with the MAF-origin INFO fields and the
+        ``<NON_SEQUENCE>`` ALT for MAF input).
 
         Includes provenance (version, command), reference, contig, and FILTER
         headers per VCF 4.2 spec. mFSD ##INFO fields (7 lines) are only
         included when self.mfsd is True.
         """
-        from .. import __version__
-
         headers = [
             "##fileformat=VCFv4.2",
-            f"##source=gbcms v{__version__}",
+            f"##source={build_identity()}",
         ]
-        # Provenance headers (issue #19)
+        # Provenance headers
         if self.command_line:
             headers.append(f"##gbcms_command={self.command_line}")
         if self.reference_fasta:
@@ -845,6 +1057,9 @@ class VcfWriter(OutputWriter):
         headers.extend(vcf_contig_lines(self.contigs))
         # FILTER header — required by VCF 4.2 spec even when only PASS is used
         headers.append('##FILTER=<ID=PASS,Description="All filters passed">')
+        if maf_input:
+            headers.append(NON_SEQUENCE_HEADER)
+            headers.extend(MAF_ORIGIN_HEADERS)
         # INFO fields
         headers.extend(
             [
@@ -879,13 +1094,13 @@ class VcfWriter(OutputWriter):
                     '##INFO=<ID=MFSD_DELTA_ALT_REF,Number=1,Type=Float,Description="mFSD mean(ALT) − mean(REF) fragment size delta (bp)">',
                     '##INFO=<ID=MFSD_KS_ALT_REF,Number=1,Type=Float,Description="mFSD 2-sample KS D-statistic (ALT vs REF)">',
                     '##INFO=<ID=MFSD_PVAL_ALT_REF,Number=1,Type=Float,Description="mFSD KS p-value (ALT vs REF)">',
-                    '##INFO=<ID=MFSD_QVAL_ALT_REF,Number=1,Type=Float,Description="mFSD KS q-value (Benjamini-Hochberg FDR across variants, ALT vs REF; drives TUMOR-LIKE/CH-LIKE)">',
-                    '##INFO=<ID=MFSD_ALT_LLR,Number=1,Type=Float,Description="mFSD LLR for ALT fragments: Σ log(P_tumor/P_healthy); positive=tumor-like">',
-                    '##INFO=<ID=MFSD_REF_LLR,Number=1,Type=Float,Description="mFSD LLR for REF fragments">',
+                    '##INFO=<ID=MFSD_QVAL_ALT_REF,Number=1,Type=Float,Description="mFSD KS q-value (Benjamini-Hochberg FDR across variants, ALT vs REF; drives the LEANS-SOMATIC class in the mFSD report)">',
+                    '##INFO=<ID=MFSD_ALT_LLR,Number=1,Type=Float,Description="mFSD log-likelihood ratio for ALT fragments, mean per fragment: log(P_tumor/P_healthy) under fixed cfDNA size models; positive=shorter, tumor-like">',
+                    '##INFO=<ID=MFSD_REF_LLR,Number=1,Type=Float,Description="mFSD log-likelihood ratio for REF fragments, mean per fragment">',
                     '##INFO=<ID=MFSD_ALT_COUNT,Number=1,Type=Integer,Description="ALT-classified fragments in mFSD window (50–1000 bp)">',
                     '##INFO=<ID=MFSD_REF_COUNT,Number=1,Type=Integer,Description="REF-classified fragments in mFSD window (50–1000 bp)">',
-                    # ME-1: sub/mono-nucleosomal fractions — were computed and written to MAF
-                    # but omitted from VCF; added here so the VCF mFSD surface matches MAF.
+                    # Sub/mono-nucleosomal fractions, declared as in MAF so the VCF mFSD
+                    # surface matches MAF.
                     '##INFO=<ID=MFSD_SUB_NUC_REF_FRAC,Number=1,Type=Float,Description="mFSD sub-nucleosomal (<150 bp) fraction of REF fragments">',
                     '##INFO=<ID=MFSD_SUB_NUC_ALT_FRAC,Number=1,Type=Float,Description="mFSD sub-nucleosomal (<150 bp) fraction of ALT fragments">',
                     '##INFO=<ID=MFSD_SUB_NUC_ENRICHMENT,Number=1,Type=Float,Description="mFSD sub-nucleosomal enrichment (ALT frac / REF frac); ctDNA indicator">',
@@ -906,7 +1121,7 @@ class VcfWriter(OutputWriter):
             headers.extend(
                 [
                     '##INFO=<ID=SEN,Number=1,Type=Integer,Description="Reads on the transcript sense strand">',
-                    '##INFO=<ID=ANT,Number=1,Type=Integer,Description="Reads on the antisense strand">',
+                    '##INFO=<ID=ANT,Number=1,Type=Integer,Description="REF and ALT reads on the antisense strand, tallied even where strandedness enforcement keeps them out of every count">',
                     '##INFO=<ID=ASEN,Number=1,Type=Integer,Description="ALT reads on the transcript sense strand">',
                     '##INFO=<ID=RED,Number=0,Type=Flag,Description="Locus is a candidate A-to-I RNA editing site (A>G on + strand or T>C on - strand)">',
                     '##INFO=<ID=SPL,Number=1,Type=Integer,Description="ALT reads spanning a splice junction (CIGAR N)">',
@@ -916,7 +1131,7 @@ class VcfWriter(OutputWriter):
             if self.has_gtf:
                 headers.extend(
                     [
-                        '##INFO=<ID=EBD,Number=1,Type=Integer,Description="Distance (bp) to nearest annotated exon boundary. Missing (.) when the contig has no annotation in the GTF.">',
+                        '##INFO=<ID=EBD,Number=1,Type=Integer,Description="Distance (bp) from the REF span to the nearest annotated exon boundary; 0 when a boundary lies inside the span. Missing (.) when the contig has no annotation in the GTF.">',
                         '##INFO=<ID=TXRC,Number=1,Type=String,Description="Per-transcript read counts. Format: ENST:AD,RD,DP|ENST:AD,RD,DP. Empty when no GTF or no overlap.">',
                         '##INFO=<ID=TXFC,Number=1,Type=String,Description="Per-transcript fragment counts. Format: ENST:ADF,RDF,DPF|ENST:ADF,RDF,DPF. Empty when no GTF or no overlap.">',
                         # ASJD INFO headers
@@ -959,7 +1174,7 @@ class VcfWriter(OutputWriter):
             headers.extend(
                 [
                     '##FORMAT=<ID=SEN,Number=1,Type=Integer,Description="Sense strand depth">',
-                    '##FORMAT=<ID=ANT,Number=1,Type=Integer,Description="Antisense strand depth">',
+                    '##FORMAT=<ID=ANT,Number=1,Type=Integer,Description="REF and ALT reads on the antisense strand, tallied even where strandedness enforcement keeps them out of every count">',
                     '##FORMAT=<ID=ASEN,Number=1,Type=Integer,Description="ALT sense strand count">',
                     '##FORMAT=<ID=SPL,Number=1,Type=Integer,Description="Splice-spanning ALT count">',
                 ]
@@ -984,12 +1199,12 @@ class VcfWriter(OutputWriter):
         record for MAF input."""
         if not variant.metadata:
             return variant.pos + 1, variant.ref, variant.alt
-        return CoordinateKernel.maf_to_vcf(
-            variant.pos + 1,
-            variant.ref,
-            variant.alt,
-            lambda pos: self._anchor_base(variant.chrom, pos),
-        )
+        # The contig's length bounds the anchor lookup (a whole-contig deletion has
+        # no base after it); without a FASTA, SNVs and MNPs still need none.
+        if self._reference is None and self.reference_fasta:
+            self._reference = ReferenceBases(self.reference_fasta)
+        length = self._reference.length(variant.chrom) if self._reference is not None else None
+        return maf_vcf_record(variant, lambda pos: self._anchor_base(variant.chrom, pos), length)
 
     def write(
         self,
@@ -1003,7 +1218,7 @@ class VcfWriter(OutputWriter):
         norm_variant: Variant | None = None,
     ):
         if not self._headers_written:
-            self._write_header()
+            self._write_header(maf_input=bool(variant.metadata))
 
         pos, ref, alt = self._record(variant)
 
@@ -1036,6 +1251,8 @@ class VcfWriter(OutputWriter):
                 f"FSB_OR={_fmt_vcf(counts.fsb_or)}",
             ]
         )
+        if variant.metadata:
+            info_parts.extend(maf_origin_info(variant))
         if self.mfsd:
             # mFSD primary diagnostic INFO fields (7 values).
             # Only populated when --mfsd is set; '.' for NaN per VCF spec.
@@ -1049,7 +1266,7 @@ class VcfWriter(OutputWriter):
                     f"MFSD_REF_LLR={_fmt_vcf(counts.mfsd_ref_llr)}",
                     f"MFSD_ALT_COUNT={counts.mfsd_alt_count}",
                     f"MFSD_REF_COUNT={counts.mfsd_ref_count}",
-                    # ME-1: sub/mono-nucleosomal fractions (VCF↔MAF parity).
+                    # Sub/mono-nucleosomal fractions (VCF↔MAF parity).
                     f"MFSD_SUB_NUC_REF_FRAC={_fmt_vcf(counts.mfsd_sub_nuc_ref_frac)}",
                     f"MFSD_SUB_NUC_ALT_FRAC={_fmt_vcf(counts.mfsd_sub_nuc_alt_frac)}",
                     f"MFSD_SUB_NUC_ENRICHMENT={_fmt_vcf(counts.mfsd_sub_nuc_enrichment)}",
@@ -1082,8 +1299,8 @@ class VcfWriter(OutputWriter):
                 # EBD: exon boundary distance (GTF-informed, '.' when no GTF)
                 ebd = counts.exon_boundary_dist
                 info_parts.append(f"EBD={ebd if ebd is not None else '.'}")
-                # TXRC/TXFC: per-transcript counts, already '|'-separated by the engine
-                # (ME-2), so VCF-safe as-is; empty → '.'.
+                # TXRC/TXFC: per-transcript counts, already '|'-separated by the engine,
+                # so VCF-safe as-is; empty → '.'.
                 txrc = counts.transcript_read_counts
                 txfc = counts.transcript_fragment_counts
                 info_parts.append(f"TXRC={txrc if txrc else '.'}")
@@ -1165,4 +1382,10 @@ class VcfWriter(OutputWriter):
     def close(self):
         if self._reference is not None:
             self._reference.close()
-        self.file.close()
+        self._finish(self.path)
+
+    def abort(self):
+        if self._reference is not None:
+            with contextlib.suppress(Exception):
+                self._reference.close()
+        self._discard(self.path)

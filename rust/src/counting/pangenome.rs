@@ -35,7 +35,7 @@
 //! // Feed to wfa_fast_path() then classify_by_marginalized_pairhmm()
 //! ```
 
-use log::{debug, trace};
+use log::trace;
 use crate::types::Variant;
 
 /// Maximum haplotype length to prevent PairHMM O(N²) memory bloat
@@ -267,7 +267,7 @@ pub fn build_haplotype_matrix(
         // keeps only the nearest MAX_SIBS siblings; farther co-annotations
         // are not modeled as haplotypes here (the engine's AD-claiming guard
         // still contests them individually).
-        debug!(
+        trace!(
             "build_haplotype_matrix: {} valid siblings at {}:{} exceed MAX_SIBS={} — keeping the {} nearest",
             valid_siblings.len(), variant.chrom, variant.pos + 1, MAX_SIBS, MAX_SIBS,
         );
@@ -366,7 +366,7 @@ pub fn build_haplotype_matrix(
         return None;
     }
 
-    debug!(
+    trace!(
         "build_haplotype_matrix: {} haplotypes for {}:{} ({} valid siblings of {} total)",
         matrix.len(), variant.chrom, variant.pos + 1,
         valid_siblings.len().min(MAX_SIBS), siblings.len(),
@@ -433,6 +433,9 @@ mod tests {
             ref_context_start: ctx_start,
             repeat_span: 0,
             gene_strand: None,
+            shift_region: None,
+            event_ref: None,
+            boundary_span: None,
         }
     }
 
@@ -473,6 +476,9 @@ mod tests {
             ref_context_start: 0,
             repeat_span: 0,
             gene_strand: None,
+            shift_region: None,
+            event_ref: None,
+            boundary_span: None,
         };
         assert!(build_haplotype_matrix(&v, &[]).is_none());
     }

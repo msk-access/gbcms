@@ -18,9 +18,10 @@ use rust_htslib::bam::Record;
 /// Check if an RNA-seq alignment passes quality filters.
 ///
 /// Standard MAPQ threshold applies first. If it fails, reads with
-/// NH:i:1 (uniquely mapping) are rescued — STAR assigns MAPQ=255 for
-/// unique mappers in most cases, but novel splice junctions and
-/// multi-mapping loci get MAPQ=0-3 despite being unique.
+/// NH:i:1 (uniquely mapping) are rescued. STAR's MAPQ depends only on the
+/// number of loci (255 for one, 3 for two, 1 for three or four, 0 for five or
+/// more), so a STAR read with NH:i:1 never falls below the floor; the rescue
+/// keeps unique mappers from aligners that score MAPQ by alignment quality.
 ///
 /// ## NH Tag Rescue Logic
 ///
@@ -40,9 +41,9 @@ pub fn is_valid_rna_alignment(record: &Record, min_mapq: u8) -> bool {
         return true;
     }
 
-    // Rescue uniquely-mapped reads (NH == 1) that fall below the MAPQ floor:
-    // STAR/HISAT2 assign low MAPQ to reads at novel splice junctions even when
-    // they map to exactly one locus. The NH tag's integer width varies by writer
+    // Rescue uniquely-mapped reads (NH == 1) that fall below the MAPQ floor: an
+    // aligner that scores MAPQ by alignment quality can give a unique mapper a low
+    // one. The NH tag's integer width varies by writer
     // (U8/U16/U32/I8/I16/I32), so accept any integer encoding rather than only a
     // couple of widths — otherwise valid unique mappers are silently dropped.
     if nh_tag_value(record) == Some(1) {
@@ -213,6 +214,15 @@ pub fn extract_splice_junctions(record: &Record) -> Vec<(i64, i64)> {
     }
 
     junctions
+}
+
+/// The read's splice junctions of nonzero length (genomic [start, end)) that
+/// overlap `[lo, hi)`.
+pub(crate) fn splice_junctions_in(record: &Record, (lo, hi): (i64, i64)) -> Vec<(i64, i64)> {
+    extract_splice_junctions(record)
+        .into_iter()
+        .filter(|&(s, e)| e > s && s < hi && e > lo)
+        .collect()
 }
 /// Build an O(1) lookup set of known RNA editing sites from REDIportal TABLE1.
 ///

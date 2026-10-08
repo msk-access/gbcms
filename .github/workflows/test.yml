@@ -23,8 +23,14 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, macos-latest]
-        python-version: ['3.11', '3.12']
+        # The ends of the supported range (3.10 with every runtime dependency at its
+        # declared floor, so the floors stay true; 3.14), the Docker image's 3.11, and
+        # macOS. The monthly latest-deps workflow runs every version.
+        include:
+          - {os: ubuntu-latest, python-version: '3.10', floors: true}
+          - {os: ubuntu-latest, python-version: '3.11'}
+          - {os: ubuntu-latest, python-version: '3.14'}
+          - {os: macos-latest, python-version: '3.12'}
 
     steps:
       - name: Checkout code
@@ -73,16 +79,29 @@ jobs:
           curl -LsSf https://astral.sh/uv/install.sh | sh
 
       - name: Install package and test basic functionality
+        env:
+          FLOORS: ${{ matrix.floors }}
         run: |
           # Install maturin to build the unified Python+Rust package
           uv pip install --system maturin
-          
+
           # Build wheel and install (works without virtualenv)
           maturin build --release --out dist
-          uv pip install --system dist/*.whl
-          
-          # Install dev dependencies  
-          uv pip install --system pytest pytest-cov pytest-mock pyarrow
+          if [ "$FLOORS" = "true" ]; then
+            # Every runtime dependency at its declared floor, first: lowest-direct
+            # keeps an installed version that satisfies a floor. Then the test tools,
+            # a check that the floors are what is installed, and gbcms on top
+            # without re-resolving them.
+            uv pip install --system --resolution lowest-direct -r pyproject.toml
+            uv pip install --system --group test
+            python scripts/check_floors.py
+            uv pip install --system --no-deps dist/*.whl
+          else
+            uv pip install --system --group test
+            uv pip install --system dist/*.whl
+          fi
+          python -m pip check
+          python -m pip list --format=freeze | grep -i -E '^(pysam|typer|click|rich|pydantic|polars)=='
           gbcms --help
 
       - name: Run tests with coverage
@@ -92,19 +111,15 @@ jobs:
       - name: Upload coverage to Codecov
         if: matrix.os == 'ubuntu-latest' && matrix.python-version == '3.11'
         uses: codecov/codecov-action@v4
+        # A Codecov outage must not fail the tests' job: fail_ci_if_error covers
+        # upload errors, but the action can crash before it applies (a TLS
+        # handshake failure to Codecov, 2026-10-05).
+        continue-on-error: true
         with:
           file: ./coverage.xml
           flags: unittests
           name: codecov-umbrella
           fail_ci_if_error: false
-
-      - name: Run integration tests (Ubuntu only)
-        if: matrix.os == 'Linux'
-        run: |
-          chmod +x scripts/test_vcf_workflow.sh scripts/test_maf_workflow.sh scripts/test_docker.sh
-          # Skip integration tests that require cyvcf2 on Ubuntu
-          echo "⚠️  Skipping integration tests on Ubuntu due to htslib dependency issues"
-          # bash scripts/test_docker.sh  # Only run Docker test
 
   lint:
     runs-on: ubuntu-latest
@@ -118,6 +133,13 @@ jobs:
         with:
           python-version: '3.11'
 
+      # One version source per ecosystem (rust/Cargo.toml for the package, the
+      # Nextflow manifest for the pipeline); the release guide lists the locations.
+      - name: Check version sources
+        env:
+          BRANCH: ${{ github.base_ref || github.ref_name }}
+        run: python scripts/release.py check --branch "$BRANCH"
+
       - name: Install uv
         run: |
           curl -LsSf https://astral.sh/uv/install.sh | sh
@@ -129,7 +151,7 @@ jobs:
 
       - name: Install dependencies
         run: |
-          uv pip install --system scipy-stubs maturin
+          uv pip install --system maturin
           
           # Build and install the Rust extension
           cd rust
@@ -137,7 +159,7 @@ jobs:
           uv pip install --system target/wheels/*.whl
           cd ..
           
-          uv pip install --system -e ".[dev]"
+          uv pip install --system -e . --group dev
 
       - name: Run black
         run: |
@@ -152,14 +174,10 @@ jobs:
           mypy src/
 
       # Rust lint gate. Clippy is check-only (no final link), so it runs cleanly on
-      # Linux. Both feature configs are linted: default (dev/test, `legacy-parity` on)
-      # and the shipped-wheel config (`--no-default-features`). Warnings fail the build.
-      - name: Run clippy (default features)
+      # Linux. Warnings fail the build.
+      - name: Run clippy
         run: |
           cd rust && cargo clippy --all-targets -- -D warnings
-      - name: Run clippy (no-default-features — shipped-wheel config)
-        run: |
-          cd rust && cargo clippy --lib --no-default-features -- -D warnings
 
   rust-test:
     name: Rust unit tests (cargo test)
@@ -167,9 +185,10 @@ jobs:
     # binaries the way the shipped extension does, and on Linux the test binary can't
     # resolve the Python symbols (no libpython host at link time), so the ~210 Rust
     # `#[cfg(test)]` unit tests run here. The ARM runner also exercises the Neon COITree
-    # backend the GTF cache rebuilds. (Linux compilation is covered by the maturin builds
-    # in the `test`/`docker-test` jobs; the binned↔legacy *parity* assertions are
-    # Python-level — helpers.count_both — and already run under pytest in the `test` job.)
+    # backend the annotation index uses. (Linux compilation is covered by the maturin builds
+    # in the `test`/`docker-test` jobs; the binning-invariance checks are Python-level —
+    # helpers.count_checked and tests/test_binning_invariance.py — and run under pytest in
+    # the `test` job, beside the bin-builder property test here.)
     runs-on: macos-latest
 
     steps:
@@ -188,19 +207,12 @@ jobs:
         with:
           workspaces: rust
 
-      # The ~210 Rust unit tests (mFSD stats, GTF-cache roundtrip, thread-budget guard,
-      # alignment/CIGAR, WFA, contig normalization, …) — logic not reached through the
-      # Python FFI tests. Default features keep `legacy-parity` ON so the `count_bam`
-      # path also compiles under test. This is the gate that was missing.
-      - name: Cargo test (default features — Rust unit tests)
+      # The ~210 Rust unit tests (mFSD stats, GTF line grammar, thread-budget guard,
+      # alignment/CIGAR, WFA, contig normalization, bin geometry, …) — logic not reached
+      # through the Python FFI tests.
+      - name: Cargo test (Rust unit tests)
         run: |
           cd rust && cargo test
-
-      # The shipped wheel builds `--no-default-features` (no `count_bam`); confirm that
-      # configuration compiles and its tests pass too.
-      - name: Cargo test (no-default-features — shipped-wheel config)
-        run: |
-          cd rust && cargo test --lib --no-default-features
 
   docker-test:
     runs-on: ubuntu-latest
@@ -217,13 +229,15 @@ jobs:
         with:
           context: .
           push: false
+          load: true
           tags: gbcms:test
           cache-from: type=gha,scope=test
           cache-to: type=gha,mode=max,scope=test
 
-      - name: Verify Docker build success
+      - name: Run the image
         run: |
-          # Check that the image was built successfully
           docker images gbcms:test --format "table {{.Repository}}\t{{.Tag}}\t{{.Size}}"
-          echo "✅ Docker image gbcms:test built successfully"
+          # The CLI starts, and the locked dependencies satisfy gbcms's requirements.
+          docker run --rm gbcms:test --version
+          docker run --rm --entrypoint python gbcms:test -m pip check
 

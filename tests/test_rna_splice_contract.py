@@ -30,7 +30,7 @@ import glob
 import random
 
 import pysam
-from helpers import make_read, read_maf_output
+from helpers import count_bam_checked, make_read, read_maf_output
 from typer.testing import CliRunner
 
 from gbcms.cli import app
@@ -247,11 +247,14 @@ def test_gap_representation_does_not_flip_the_call(tmp_path):
 def test_indel_across_junction_is_examined(tmp_path):
     """M-N-D-M: the deletion op sits directly after the splice N, at the
     genomic position the variant expects (anchor = last intronic base).
-    Carriers count ALT through the post-N inspection; the REF-side spliced
-    reads observe EVERY deleted-span base aligned (exon2 M), so they count
-    REF — the span, not the spliced-out anchor, is the discriminating
-    fact. (They were pinned neither during the conservative cluster-A
-    phase.)"""
+    The carriers' block holding the deletion starts at the junction, so no
+    aligned base flanks it: their bases (exon 1, then exon 2 from past the
+    deleted bases) equal REF spliced at an acceptor two bases on. A deletion
+    at a splice reads like a shifted splice site, so they are depth only
+    (operator, 2026-10-04: R5's one-block rule), as the shifted-N form of the
+    same reads always was. The REF-side spliced reads observe EVERY
+    deleted-span base aligned (exon2 M), so they count REF — the span, not
+    the spliced-out anchor, is the discriminating fact."""
     ref = _mk_ref()
     intron_start, gap = 280, 40
     anchor = intron_start + gap - 1  # last intronic base, 0-based 319
@@ -274,18 +277,15 @@ def test_indel_across_junction_is_examined(tmp_path):
     )
     r = rows[0]
     assert (
-        int(r["alt_count"]) == 4
-    ), f"junction-adjacent D carriers must count ALT, got ad={r['alt_count']}"
+        int(r["alt_count"]) == 0
+    ), f"junction-adjacent D carriers have no aligned flank: depth only, got ad={r['alt_count']}"
     # REF-side spliced reads observe every deleted-span base aligned:
     # span-aligned REF testimony (the anchor base is spliced out, but the
     # annotated deletion is demonstrably absent from these reads).
     assert (int(r["ref_count"]), int(r["total_count"])) == (5, 9)
     assert int(r["ref_count_fragment"]) == 5
-    # Fragment layer must agree: the carriers' structural evidence survives
-    # consensus even though BAQ zeroes the first exon base after the N+D
-    # (ad>0 with adf=0 was a live divergence before FragmentEvidence::resolve
-    # recognized structural ALT independent of base quality).
-    assert (int(r["alt_count_fragment"]), int(r["total_count_fragment"])) == (4, 9)
+    # The fragment layer agrees: the carriers are depth only there too.
+    assert (int(r["alt_count_fragment"]), int(r["total_count_fragment"])) == (0, 9)
 
 
 def test_splicing_elsewhere_does_not_affect_exonic_calls(tmp_path):
@@ -412,11 +412,15 @@ def test_spliced_over_insertion_carries_no_information(tmp_path):
 
 
 def test_windowed_deletion_after_junction_in_repeat(tmp_path):
-    """Shifted representation across a junction: the aligner extends the N
-    over the annotated span and writes the D two bases downstream inside the
-    same AT tract — the same event, shifted. The triage must NOT exclude the
-    read (it carries an indel op inside the scan window) and the post-N
-    windowed scan verifies the deleted bases at the shifted position."""
+    """A deletion written right after a junction inside the tract: the aligner
+    extends the N over the annotated span and into the AT tract, then writes a
+    D(2). The read's bases (exon 1, then the tract from 346) are what a
+    reference read spliced two bases later shows: the D is where the N ended,
+    not a deletion its bases carry, and the read does not show the tract's
+    start. The triage keeps it (an indel op sits in the scan window), and the
+    windowed scan does not credit it (the deletion is not its only change
+    across the window): depth, neither allele. It counted ALT from its CIGAR
+    before #189."""
     # ref[339]='C' pins the anchor (no left-shift), tract AT×5 at [340, 350),
     # ref[350]='G' ends the tract.
     ref = _mk_ref(plants=((339, "CATATATATATG"),))
@@ -438,23 +442,18 @@ def test_windowed_deletion_after_junction_in_repeat(tmp_path):
     vcf = _vcf(tmp_path, rows_v)
     bam = _bam(tmp_path, ref, carriers + refs)
     fasta = _fasta(tmp_path, ref)
-    # DNA mode isolates the splice-evidence machinery with no BAQ in play: the triage defers, the post-N windowed scan verifies the
-    # deleted bases at the shifted position, carriers count ALT.
+    # DNA mode isolates the splice-evidence machinery with no BAQ in play.
     r = _run(tmp_path, vcf, bam, fasta, mode="dna")[0]
     assert (
-        int(r["alt_count"]) == 4
-    ), f"shifted post-N carriers must count ALT, got ad={r['alt_count']}"
+        int(r["alt_count"]) == 0
+    ), f"placement-only post-N reads must not count ALT, got ad={r['alt_count']}"
     assert int(r["ref_count"]) == 5
     assert int(r["total_count"]) == 9
 
 
 def test_windowed_deletion_after_junction_in_repeat_rna(tmp_path):
-    """RNA-mode twin of the DNA-mode case above. Committed red (xfail-strict)
-    while consensus splicing still drained introns from ref_context in place:
-    the S3 sequence check then read the spliced context at genomic
-    coordinates and rejected the shifted candidate. With ref_context always
-    genomic, RNA matches DNA — the carriers windowed-match through the
-    post-N scan."""
+    """RNA-mode twin of the DNA-mode case above: RNA matches DNA (ref_context
+    is always genomic, so consensus splicing cannot drain introns from it)."""
     ref = _mk_ref(plants=((339, "CATATATATATG"),))
     anchor = 339
     rows_v = [(anchor + 1, ref[anchor : anchor + 3], ref[anchor])]
@@ -477,8 +476,8 @@ def test_windowed_deletion_after_junction_in_repeat_rna(tmp_path):
     )
     r = rows[0]
     assert (
-        int(r["alt_count"]) == 4
-    ), f"shifted post-N carriers must count ALT, got ad={r['alt_count']}"
+        int(r["alt_count"]) == 0
+    ), f"placement-only post-N reads must not count ALT, got ad={r['alt_count']}"
     assert int(r["ref_count"]) == 5
     assert int(r["total_count"]) == 9
 
@@ -516,12 +515,12 @@ def test_spliced_over_delins_carries_no_information(tmp_path):
     ), f"spliced-over delins reads must not count DP, got dp={r['total_count']}"
 
 
-def test_legacy_parity_with_spliced_reads(tmp_path):
-    """The binned↔legacy parity oracle holds for N-CIGAR reads: the
-    splice-skip exclusion, the post-N deletion evidence, and span-aligned
-    REF testimony all live in the shared checker (count_both asserts every
-    parity field)."""
-    from helpers import build_bam, count_both
+def test_spliced_reads_count_the_same_under_any_bin_geometry(tmp_path):
+    """N-CIGAR reads: the splice-skip exclusion, the post-N deletion reads (depth
+    only: no aligned base flanks a deletion at the junction) and span-aligned REF
+    testimony count the same with one variant per bin (count_checked compares
+    every field)."""
+    from helpers import build_bam, count_checked
 
     from gbcms._rs import Variant
 
@@ -558,21 +557,19 @@ def test_legacy_parity_with_spliced_reads(tmp_path):
         ref_context=ref[anchor - pad : p0 + 2 + pad],
         ref_context_start=anchor - pad,
     )
-    c = count_both(bam, [v], min_mapq=0, min_baseq=0)[0]
+    c = count_checked(bam, [v], min_mapq=0, min_baseq=0)[0]
     assert c.dp >= c.rd + c.ad
     assert c.dpf >= c.rdf + c.adf
     assert c.rd == c.rd_fwd + c.rd_rev
     assert c.ad == c.ad_fwd + c.ad_rev
-    assert c.ad == 4, f"M-N-D-M carriers must count ALT in both paths, got ad={c.ad}"
+    assert c.ad == 0, f"M-N-D-M carriers have no aligned flank: depth only, got ad={c.ad}"
     assert c.rd == 8, f"pre-mRNA reads AND span-aligned junction reads count REF, got rd={c.rd}"
 
 
 def test_mq0_tracking_precedes_strandedness_filter(tmp_path):
     """mq0_count is a physical-locus red flag: an antisense MAPQ-0 read is
-    still a read at the locus, so it must be tallied BEFORE the strandedness
-    filter drops it — in BOTH engine paths. The binned path previously
-    filtered strandedness first, so its mq0_count diverged from legacy for
-    stranded RNA libraries."""
+    still a read at the locus, so it is tallied before the strandedness filter
+    drops it from counting."""
     from helpers import build_bam
 
     from gbcms import _rs
@@ -611,21 +608,14 @@ def test_mq0_tracking_precedes_strandedness_filter(tmp_path):
         "enforce_strandedness": True,
         "strandedness": "reverse",
     }
-    legacy = _rs.count_bam(bam, [v], [None], **kwargs)[0]
-    binned = _rs.count_bam_binned(bam, [v], [None], **kwargs)[0]
-    assert (
-        legacy.mq0_count == 1
-    ), f"legacy must tally the antisense MAPQ-0 read, got {legacy.mq0_count}"
-    assert (
-        binned.mq0_count == legacy.mq0_count
-    ), f"binned mq0_count ({binned.mq0_count}) diverges from legacy ({legacy.mq0_count})"
-    # The antisense read must still be excluded from counting proper.
-    for c in (legacy, binned):
-        assert c.dp == 1 and c.rd == 1 and c.ad == 0
-        assert c.dp >= c.rd + c.ad
-        assert c.dpf >= c.rdf + c.adf
-        assert c.rd == c.rd_fwd + c.rd_rev
-        assert c.ad == c.ad_fwd + c.ad_rev
+    c = count_bam_checked(bam, [v], [None], **kwargs)[0]
+    assert c.mq0_count == 1, f"the antisense MAPQ-0 read must be tallied, got {c.mq0_count}"
+    # The antisense read is still excluded from counting proper.
+    assert c.dp == 1 and c.rd == 1 and c.ad == 0
+    assert c.dp >= c.rd + c.ad
+    assert c.dpf >= c.rdf + c.adf
+    assert c.rd == c.rd_fwd + c.rd_rev
+    assert c.ad == c.ad_fwd + c.ad_rev
 
 
 def test_large_deletion_band_near_junction(tmp_path):
@@ -673,7 +663,9 @@ def test_phase3_matrix_mode_equivalence_near_junction(tmp_path):
     ref = "".join(rng.choice("ACGT") for _ in range(500))
     pos = 300  # delins REF span [300, 303)
     alt = "".join("A" if b != "A" else "G" for b in ref[pos : pos + 2])  # 3bp -> 2bp
-    intron = (304, 364)  # junction 1bp past the REF span, inside the context
+    # Junction 4bp past the REF span, inside the context and clear of the flank
+    # the exact-carrier rule reads (so the spliced reads are informative REF).
+    intron = (307, 367)
     rl = 100
     reads = []
     for i in range(4):  # delins carriers as an aligner writes them: mismatched

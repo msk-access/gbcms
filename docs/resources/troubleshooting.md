@@ -98,16 +98,19 @@ Common issues and solutions for gbcms. Issues are grouped by phase — work top-
     Check in this order:
 
     1. **`gbcms_status`** column — if `FAIL`, the variant was excluded from counting;
-       `gbcms_status_reason` says why (`REF_MISMATCH`, `FETCH_FAILED`, `EMPTY_ALLELE`,
-       `ALT_EQUALS_REF`, `ALT_CONTAINS_N`). See [Normalization Issues](#normalization-issues).
+       `gbcms_status_reason` says why ([each reason](../reference/qc-flags.md#verdict-and-status-reasons)).
+       See [Normalization Issues](#normalization-issues).
 
-    2. **Complex Del+SNV routing** — if your variant has deletion format (`REF` longer than `ALT`,
-       `ALT` is a single base) but the anchor base also changes (e.g., `GC→T`, `AG→T`), it is a
-       **complex Del+SNV** routed to `check_complex`, not `check_deletion`.
-       Use `--trace` logging to confirm:
+    2. **Complex variants count exact carriers only** — a delins, or a deletion whose anchor
+       also changes (e.g., `GC→T`, `AG→T`), counts a read as ALT only when its bases carry the
+       whole given allele with two flank bases each side
+       ([exact-carrier rule](../reference/allele-classification.md#the-exact-carrier-rule)).
+       Reads carrying a different allele there are neither (`partial_alt` when closer to ALT),
+       and `gbcms_diagnostic` names the allele they carry (`OBSERVED_ALLELE` /
+       `COEXISTING_ALLELE`). Use `--trace` to see each read's call:
        ```bash
        gbcms dna --trace --variants variants.maf --bam sample.bam \
-           --fasta ref.fa --output-dir /tmp/debug/ 2>&1 | grep "check_complex\|check_deletion"
+           --fasta ref.fa --output-dir /tmp/debug/ 2>&1 | grep "read call"
        ```
        See [Complex Indels](../reference/complex-indels.md) for detailed case studies.
 
@@ -132,22 +135,26 @@ Common issues and solutions for gbcms. Issues are grouped by phase — work top-
 
 ??? question "`ref_count = 0` for a large deletion"
 
-    For large deletions (~100bp+), REF reads have clean M-only CIGARs. gbcms's
-    `is_worth_realignment()` skips Phase 3 for clean CIGARs, and the **M-block REF fallback**
-    in `check_complex` classifies these as REF.
+    A pure large deletion counts a clean read spanning its anchor as REF (`check_deletion`).
+    A large delins (a deletion with a replacement) is judged by the
+    [exact-carrier rule](../reference/allele-classification.md#the-exact-carrier-rule): no read
+    holds a ~100bp window whole, so each end is judged by a junction window, and a REF read
+    counts when it carries the reference across either junction.
 
     If `ref = 0`, check:
-    - The variant was normalized correctly (M-block REF fallback only applies in `check_complex`)
-    - The BAM slice has coverage at the anchor position (`samtools depth -a sample.bam -r chr22:30038094-30038095`)
-    - Reads actually **span the anchor**: reads mapping entirely inside a large deleted span
-      carry no information about the variant and count as neither, not REF
+    - The variant was normalized correctly (`gbcms_status` is `PASS`)
+    - The BAM slice has coverage at the event's ends (`samtools depth -a sample.bam -r chr22:30038094-30038095`)
+    - Reads actually **reach a junction**: reads mapping entirely inside a large deleted span,
+      or ending inside the event, carry no information about the variant and count as depth only
 
     See [NF2 Case Study](../reference/complex-indels.md#case-2-nf2-large-deletion-ref-reads-invisible).
 
 ??? question "`alt_count` is lower than expected for a deletion ≥5bp"
 
     BWA left-alignment can shift the anchor further left than where the CIGAR `D` appears.
-    The `has_shifted_same_length` Phase 3 fallback handles this for deletions ≥5bp.
+    S3 checks the haplotype a placement gives, so a deletion written elsewhere in its shift
+    region counts ALT; one written elsewhere with compensating mismatches counts ALT when the
+    read's bases spell the ALT across the window.
 
     For deletions <5bp failing S3 sequence validation, CIGAR-definitive REF is used — this is
     intentional. A 1-4bp deletion in the wrong reference context is almost certainly spurious noise,
@@ -215,11 +222,15 @@ Common issues and solutions for gbcms. Issues are grouped by phase — work top-
     - Wrong reference genome build (GRCh37 data with GRCh38 reference or vice versa)
     - Chromosome naming mismatch (`chr1` vs `1`)
     - Trailing-base error in MAF annotation (fixed by tolerant validation if ≥90% match)
+    - The REF written a few bases off (e.g. VCF alleles that keep the anchor base,
+      with Start advanced as if it were trimmed): `gbcms_diagnostic` then says
+      `REF_AT_OFFSET(k)`, where the given REF matches exactly. The row is not moved
+      or counted; correct the input's coordinates.
 
     Diagnose with:
     ```bash
     gbcms normalize --variants variants.maf --fasta ref.fa --output /tmp/norm/normalized.tsv
-    grep "REF_MISMATCH" /tmp/norm/normalized.tsv | head -5   # matches the gbcms_status_reason column
+    grep "REF_MISMATCH" /tmp/norm/normalized.tsv | head -5   # gbcms_status_reason; REF_AT_OFFSET in gbcms_diagnostic
     ```
 
 ??? question "`WARN_REF_CORRECTED` reason (verdict `PASS`) — is this a problem?"
@@ -237,10 +248,12 @@ Common issues and solutions for gbcms. Issues are grouped by phase — work top-
 
 ??? question "`WARN_HOMOPOLYMER_DECOMP` reason (verdict `PASS`) — what changed?"
 
-    The variant is a homopolymer run called as a larger deletion (e.g. `CCCCCC→T`). In this
-    sample, the corrected allele (the run with its last base replaced, `CCCCCC→CCCCCT`) got
-    more ALT support, so its counts were used. `used_decomposed = True` in the output, and the
-    flag is set per sample.
+    The run used `--rescue-homopolymer`, and the variant is a homopolymer run called as a
+    larger deletion (e.g. `CCCCCC→T`). In this sample, the corrected allele (the run with its
+    last base replaced, `CCCCCC→CCCCCT`) got more ALT support, so its counts were used.
+    `used_decomposed = True` in the output, and the flag is set per sample. Without the flag,
+    the row counts the given allele, and `OBSERVED_ALLELE` in `gbcms_diagnostic` names the
+    allele the reads carry.
 
     It suggests the caller collapsed a smaller change at the run's end into one complex variant.
     The comparison is a heuristic: both alleles can claim reads carrying other forms of the run.
@@ -270,9 +283,10 @@ Common issues and solutions for gbcms. Issues are grouped by phase — work top-
 
 ??? question "All counts are 0 in RNA mode"
 
-    1. **Strandedness filter with missing gene annotation** — if your MAF lacks a `gene_strand`
-       column, all reads fail the strandedness filter (defaulted to on).
-       Disable with `--no-strandedness` for unstranded libraries or MAFs without strand annotation.
+    1. **Strandedness filter with the wrong protocol** — under the default
+       `--strandedness reverse` (dUTP), a forward-stranded or unstranded library's sense
+       reads read as antisense and are excluded. Set `--strandedness forward` or
+       `unstranded` to match the library.
 
     2. **MAPQ filter too strict** — default MAPQ=1 with NH:i:1 rescue is correct for STAR.
        If your aligner assigns MAPQ differently, check `--min-mapq`.
@@ -283,14 +297,21 @@ Common issues and solutions for gbcms. Issues are grouped by phase — work top-
        samtools view sample.bam | head -1 | tr '\t' '\n' | grep "NH"
        ```
 
-??? question "`rna_sense_depth` and `rna_antisense_depth` are both 0"
+??? question "`rna_antisense_depth` is 0 and every read counts as sense"
 
-    The `gene_strand` column is missing from the MAF or all variants have `gene_strand = NA`.
-    gbcms cannot assign sense/antisense without strand annotation.
+    The variant has no gene strand. gbcms resolves it from the `--gtf` exons at the
+    variant's position, or at an intronic position from the transcripts spanning it.
+    Without one, every read passes as sense, strandedness is not enforced, and a
+    run-level WARNING names such variants. Causes:
+
+    - no `--gtf`, or a GTF that does not annotate the variant's contig;
+    - an intergenic position (no transcript spans it);
+    - genes of both strands over the position (overlapping antisense genes): both
+      genes' transcripts carry the allele, so every read counts by design.
 
     Solutions:
-    - Add strand annotation to the MAF (from gene model GFF/GTF)
-    - Use `--no-strandedness` to count all reads regardless of strand
+    - Pass `--gtf` with the annotation the BAM was aligned against.
+    - For an unstranded library, use `--strandedness unstranded`.
 
 ??? question "RNA editing flag (`rna_editing_site`) is always False"
 

@@ -61,7 +61,13 @@ per-type classification):
   an event at an exon boundary reached through the junction) gets the
   same anchor/windowed inspection as an op after an `M` block. The
   anchor base itself may be spliced out; the evidence is attributed to
-  the nearest aligned or inserted base.
+  the nearest aligned or inserted base. A windowed candidate (not at the
+  anchor) counts ALT only when it is the read's one change across the
+  variant's discrimination window: a `D` written just after an `N` that
+  covers part of that window is where the aligner ended the `N` (the read's
+  bases are those of a reference read spliced a few bases later), so such a
+  read counts toward depth only (it counted ALT from its CIGAR before
+  6.6.0).
 - **Span-aligned REF testimony**: at a pure-deletion locus whose anchor
   base is spliced out, a junction read whose aligned bases cover the
   **entire deleted span** demonstrates the deletion is absent — it counts
@@ -76,9 +82,33 @@ per-type classification):
 - Phase 3 never scores across a splice: `extract_raw_read_window`
   refuses windows that an `N` overlaps (a contiguous slice would stitch
   the exon arms into a junction-chimeric sequence in which the missing
-  intron reads as deletion evidence), and `check_complex`'s
-  reconstruction classifies such reads neither instead of
-  string-comparing them.
+  intron reads as deletion evidence).
+- A complex variant's exact-carrier windows for a read spliced in their
+  flank or padding are built over the reference spliced at the read's own
+  junctions (RJ-19, C32 #213): the read's bases past a splice are the next
+  exon's, so both alleles' haplotypes continue there (the far exon read from
+  the FASTA), and repeat growth and flank are measured on that spliced
+  sequence. A length change that pushes an exon's last bases past the
+  junction shows against the next exon instead of fitting a window cut at the
+  exon edge (on FORTE splice probes, spurious ALT 19 → 4), and the read must
+  hold the spliced flank as any read holds its flank (reads reaching one or
+  two bases past the junction hold none: −0.95% of REF at probes 0–1 bp from
+  the edge). A read spliced through the bases where the alleles differ shows
+  neither and counts toward depth only.
+- A splice is not reference coverage (RJ-17, R5 #198): a pure-indel read is
+  informative only when one aligned block between splices spans the window,
+  REF and ALT alike. A read spliced inside an indel's change interval is
+  depth only (the event may sit in the skipped intron), and so is a deletion
+  written right after a read's splice (its bases equal REF spliced at an
+  acceptor further on).
+- An RNA read's soft clip that reaches an exon edge or a junction end
+  (annotated, or one the variant's reads splice at), or whose aligned bases end
+  within five bases of one, is not allele evidence (RJ-18, C15 #173): STAR clips
+  a junction overhang it cannot splice, so such a clip holds the next exon's
+  bases. Any other clip is the read's own bases, read as in DNA.
+- A junction that starts inside a complex event's differing bases and runs past
+  them (or ends inside them) splices the haplotypes at the event's edge (RJ-19),
+  so a delins carrier counts whether the aligner wrote `X D N` or `X N`.
 
 Reads without `N` ops never enter this triage — DNA-mode classification
 is untouched. Per-variant exclusion counts are logged at debug level in
@@ -132,14 +162,16 @@ heuristic BAQ handles overhang misalignment.
 - This mimics GATK SplitNCigarReads' overhang clipping without
   removing bases — a softer approach that preserves information
 
-**Exon-boundary exception (with `--gtf`).** At a variant within 5bp of an
-annotated exon boundary (`exon_boundary_dist`), the penalty would land on
-exactly the reads that splice there, which are the evidence at an exon edge.
-BAQ is therefore skipped for that variant. The main counts, the per-transcript
-counts and ASJD all use this one rule, so at an exon edge a transcript's
-counts match the variant's counts, as they do elsewhere. Away from a boundary,
-BAQ applies in every view. A DEBUG line names each variant form where it is
-skipped.
+**Exon-boundary exception (with `--gtf`).** At a variant whose REF span comes
+within 5bp of an annotated exon boundary (`exon_boundary_dist`), the penalty
+would land on exactly the reads that splice there, which are the evidence at an
+exon edge. BAQ is therefore skipped for that variant. The distance is measured
+from the whole REF span, so an MNP or deletion reaching into an exon's last
+five bases is covered even when its first base is farther out. The main counts,
+the per-transcript counts, ASJD and each `--rescue-mnp` component re-count all
+use this one rule, so at an exon edge a transcript's counts match the variant's
+counts, as they do elsewhere. Away from a boundary, BAQ applies in every view.
+A DEBUG line names each variant form where it is skipped.
 
 **Default behavior:**
 

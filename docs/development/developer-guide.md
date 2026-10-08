@@ -19,7 +19,9 @@ Guide for contributing to gbcms.
     # Install Rust (if not installed)
     curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
     
-    # Install (builds Rust extension)
+    # Install (builds Rust extension, then installs the `dev` dependency group,
+    # which needs pip>=25.1)
+    pip install --upgrade "pip>=25.1" maturin
     maturin develop --release
     
     # Verify
@@ -40,8 +42,8 @@ Guide for contributing to gbcms.
     # Set libclang path for the Rust build
     export LIBCLANG_PATH=$CONDA_PREFIX/lib
     
-    # Install maturin and build
-    pip install maturin
+    # Install maturin and build (the `dev` dependency group needs pip>=25.1)
+    pip install --upgrade "pip>=25.1" maturin
     maturin develop --release
     
     # Verify
@@ -61,7 +63,9 @@ Guide for contributing to gbcms.
     python -m venv .venv
     source .venv/bin/activate
     
-    # Install (builds Rust extension)
+    # Install (builds Rust extension, then installs the `dev` dependency group,
+    # which needs pip>=25.1)
+    pip install --upgrade "pip>=25.1" maturin
     maturin develop --release
     
     # Verify
@@ -128,19 +132,16 @@ maturin develop
 # Release (optimized)
 maturin develop --release
 
-# Build wheel (dev/test — includes the legacy count_bam parity oracle)
+# Build wheel
 maturin build --release --out dist
-
-# Build the SHIPPED wheel (drops the test-only count_bam parity oracle)
-maturin build --release --no-default-features --out dist
 ```
 
-!!! note "`legacy-parity` feature"
-    `maturin develop` and `cargo test` include the per-variant `count_bam` (the
-    binned↔legacy parity oracle) via the default `legacy-parity` Cargo feature. Release
-    wheels build `--no-default-features` to omit it — production only uses
-    `count_bam_binned`. Changing the counting core means mirroring it in *both* paths;
-    see `.agents/rules/architecture.md` §"Legacy count_bam parity oracle".
+!!! note "Binning invariance"
+    Counts must not depend on how variants are binned. `count_bam_binned` takes two test
+    arguments, `bin_window` and `bin_max_variants`; the test helper `count_checked` runs
+    production bins and one variant per bin and compares every field, and
+    `tests/test_binning_invariance.py` varies the geometry further. See
+    `.agents/rules/architecture.md` §"Binning invariance".
 
 ---
 
@@ -266,9 +267,9 @@ When debugging specific variant types, use targeted BAM slices:
 
 | Variant Type | Key Examples | What to Check |
 |:-------------|:-------------|:--------------|
-| Del+SNV (complex) | SOX9 `GC→T`, ABL1 `AG→T` | Routes to `check_complex`, not `check_deletion`; alt > 0 |
-| Large deletion, REF=0 | NF2 ~100bp DEL | M-block REF fallback in `check_complex`; ref > 0 |
-| Shifted large deletion | TP53 `GACCGTGCAAGT→-` | `has_shifted_same_length` Phase 3; alt matches sign-out |
+| Del+SNV (complex) | SOX9 `GC→T`, ABL1 `AG→T` | Exact-carrier rule, not `check_deletion`; alt > 0 |
+| Large delins, REF=0 | NF2 ~100bp delins | Junction windows of the exact-carrier rule; ref > 0 |
+| Shifted large deletion | TP53 `GACCGTGCAAGT→-` | S3's haplotype check passes the shifted `D(12)` as the same event; alt matches sign-out |
 | MNP/DNP | TERT (5bp), BRCA2 (2bp) | ALT recovery vs sign-out |
 | Shifted insertion | JAK1 `65306997` | Multi-allelic isolation, windowed INS scan |
 

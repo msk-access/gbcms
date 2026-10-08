@@ -56,6 +56,7 @@ Complete reference for all pipeline parameters.
 | `--filter_by_sample` | `false` | Filter multi-sample MAF by `Tumor_Sample_Barcode` ([details](samplesheet.md#multi-sample-maf-filtering)) |
 | `--show_normalization` | `false` | Add `norm_*` columns showing left-aligned coordinates in output |
 | `--rescue_mnp` | `false` | Enable [MNP rescue pass](../reference/architecture.md#mnp-rescue-pass-rescue-mnp-v430) — for MNPs whose partial evidence dominates (`partial_alt > alt_count`), reports the best-supported component SNV's counts |
+| `--rescue_homopolymer` | `false` | Dual-count the [homopolymer twin](../reference/variant-normalization.md#step-5-homopolymer-decomposition-detection) and report the form with more ALT reads (`WARN_HOMOPOLYMER_DECOMP`). Off: the row counts the given allele, and `OBSERVED_ALLELE` names the allele the reads carry. |
 | `--rescue_mnp_threshold` | `1.0` | Maximum disc/len ratio for MNP rescue eligibility (0.0–1.0). `1.0` = all MNPs eligible (C++ compatible). `0.5` = conservative sparse-only mode. `0.0` = disable rescue eligibility (diagnostics still emitted). |
 
 ## UMI & BAQ Options
@@ -79,19 +80,18 @@ These parameters are only used when `--mode rna` is specified.
 !!! tip "RNA mode defaults"
     RNA mode uses different PairHMM gap penalties by default (`gap_open=5e-3`, `gap_extend=0.25`) to tolerate RT-induced stutter at homopolymers. These can be overridden via the alignment backend parameters below.
 
-## GTF Index Caching (RNA)
+## GTF Index Caching (RNA) — deprecated
 
-Parsing a full Ensembl GTF takes ~9s. Across a cohort that cost is otherwise paid once **per sample**. The pipeline caches the parsed index so the GTF is parsed **once for the whole cohort** — the per-sample annotation load drops from ~9s to ~0.05s.
+The GTF index cache is gone in 6.6.0: each `GBCMS_RNA` task loads the GTF (plain or `.gtf.gz`) in a few seconds (2 s for a whole Ensembl GTF), so the `GBCMS_BUILD_GTF_CACHE` step was removed.
 
 | Parameter | Default | Description |
 |:----------|:--------|:------------|
-| `--gtf_cache` | `true` | When `--gtf` is set, pre-build the GTF index once per cohort so per-sample tasks skip the parse. Set `false` to disable (each sample re-parses). |
+| `--gtf_cache` | `null` | Deprecated in 6.6.0 and ignored; the pipeline warns when it is set. Removed in 6.7.0. |
 
-**This is automatic — no extra wiring needed.** When `--mode rna` is run with a `--gtf` (and `--gtf_cache` is left `true`), the pipeline runs a single `GBCMS_BUILD_GTF_CACHE` process up front, using the cohort's `--gtf` and `--variants`. Every per-sample `GBCMS_RNA` task then receives the prebuilt cache directory (via the Nextflow DAG, so it is guaranteed ready first) and loads the index in ~0.05s instead of re-parsing.
-
-**Why the up-front build matters.** Nextflow launches up to `queueSize` tasks at once. If the cache did not already exist, every concurrently-launched sample would cold-miss and re-parse the GTF — so a plain cache saves nothing until a later wave, and nothing at all for a cohort smaller than `queueSize`. Building it once before the fan-out lets every sample start warm.
-
-The pre-build uses the cohort `--variants` file. With `--filter_by_sample`, each sample's variants are a per-sample subset; if a subset's chromosome set differs from the cohort's, that sample simply falls back to a normal parse (the cache is keyed on the variant chromosome set). Caching is best-effort throughout — a missing, corrupt, stale-version, or unwritable cache always falls back to a fresh parse and never affects counts.
+!!! tip "Cohorts on shared storage: pass the `.gtf.gz`"
+    Every task reads the GTF. The Ensembl GRCh38 GTF is 1.46 GB plain and 61 MB
+    gzipped, so `--gtf Homo_sapiens.GRCh38.111.gtf.gz` keeps per-task reads below
+    what the old cache file was (96–125 MB) for about 0.4 s more decoding.
 
 ## Alignment Backend (Advanced)
 

@@ -395,6 +395,16 @@ class GbcmsBaseConfig(BaseModel):
             "replace the row's and the MNP's own counts go to gbcms_rescue."
         ),
     )
+    rescue_homopolymer: bool = Field(
+        default=False,
+        description=(
+            "Dual-count the homopolymer twin: for a delins whose REF is a run of one "
+            "base and whose ALT is the base after the run (CCCCCC>T), also count "
+            "the run with its last base replaced (CCCCCT) and report whichever has "
+            "more ALT reads, flagged WARN_HOMOPOLYMER_DECOMP. Off by default: the row "
+            "counts the given allele, and OBSERVED_ALLELE names what the reads carry."
+        ),
+    )
     rescue_mnp_threshold: float = Field(
         default=1.0,
         ge=0.0,
@@ -414,6 +424,15 @@ class GbcmsBaseConfig(BaseModel):
         """Validate that input files exist."""
         if not v.exists():
             raise ValueError(f"File not found: {v}")
+        return v
+
+    @field_validator("reference_fasta")
+    @classmethod
+    def validate_reference_is_file(cls, v: Path) -> Path:
+        """The reference is read by its index, so it must be a file: a directory (an
+        empty path is `.`) would otherwise fail deep in the engine."""
+        if not v.is_file():
+            raise ValueError(f"The reference is not a file: {v}")
         return v
 
     @model_validator(mode="after")
@@ -519,15 +538,12 @@ class GbcmsRnaConfig(GbcmsBaseConfig):
     gtf_cache_dir: Path | None = Field(
         default=None,
         description=(
-            "Directory for caching the parsed GTF index (M5a). When set, the parsed "
-            "annotation intermediate is persisted here and reused across runs over "
-            "the same GTF and variant set, skipping the GTF text parse. Intended as "
-            "a directory shared across a Nextflow cohort so the GTF is parsed once. "
-            "Caching is best-effort: any cache error falls back to a normal parse."
+            "Deprecated in 6.6.0 and ignored (removed in 6.7.0). The GTF index cache "
+            "is gone: the GTF loads in a few seconds without one."
         ),
     )
 
-    # P5: Library type flag — controls fragment consensus behavior
+    # Library type flag — controls fragment consensus behavior
     library_type: str = Field(
         default="capture",
         description=(
@@ -589,9 +605,22 @@ class GbcmsRnaConfig(GbcmsBaseConfig):
                 raise ValueError(f"GTF file must have .gtf or .gtf.gz extension, got: {v.name}")
         return v
 
+    @field_validator("gtf_cache_dir")
+    @classmethod
+    def ignore_gtf_cache_dir(cls, v: Path | None) -> None:
+        """Warn that the GTF cache is deprecated, and drop the setting."""
+        if v is not None:
+            import logging
+
+            logging.getLogger("gbcms.models").warning(
+                "--gtf-cache-dir is deprecated and ignored: the GTF index cache is gone "
+                "(the GTF loads in a few seconds without one). It will be removed in 6.7.0."
+            )
+        return None
+
     @model_validator(mode="after")
     def validate_amplicon_strandedness(self) -> "GbcmsRnaConfig":
-        """P5: Auto-disable strandedness for amplicon libraries.
+        """Auto-disable strandedness for amplicon libraries.
 
         Amplicon libraries are not strand-specific, so enforcing dUTP
         strandedness filtering would incorrectly discard ~50% of reads.
@@ -650,6 +679,10 @@ class MergeConfig(BaseModel):
             "Use t_{metric}_{type} column naming for backward compatibility "
             "with genotype_variants merge output."
         ),
+    )
+    command_line: str = Field(
+        default="",
+        description="The merge command, written to the merged MAF's provenance.",
     )
 
     @field_validator("inputs")

@@ -1,9 +1,8 @@
 """Per-molecule observation export (`count_bam_binned_observations`).
 
-The counting path is untouched by the export, so binned↔legacy parity cannot detect a
-broken export — parity compares `BaseCounts` only. The binding test here is therefore
-load-bearing: for every variant the emitted rows must reconcile with the **fragment-level**
-counts (`adf`/`rdf`/`dpf`).
+The counting path is untouched by the export, so comparing counts cannot detect a broken
+export. The binding test here is therefore load-bearing: for every variant the emitted rows
+must reconcile with the **fragment-level** counts (`adf`/`rdf`/`dpf`).
 
 It must be fragment-level, not read-level: a read excluded by the multi-allelic sibling
 guard still contributes REF evidence to its fragment, so it counts in `rdf` and emits a REF
@@ -44,6 +43,15 @@ def _read(name, base_at_pos, start=90, flag=0):
 
 def _variant(ref=REF_BASE, alt=ALT_BASE):
     return Variant("chr1", POS, ref, alt, "SNP")
+
+
+def _fasta(tmp_path):
+    """The reference the fixture reads come from: chr1, 500 A's (build_bam's contig)."""
+    fa = tmp_path / "chr1.fa"
+    if not fa.exists():
+        fa.write_text(">chr1\n" + REF_BASE * 500 + "\n")
+        pysam.faidx(str(fa))
+    return str(fa)
 
 
 def _py_variant(ref=REF_BASE, alt=ALT_BASE):
@@ -146,7 +154,7 @@ def test_decomposed_variant_emits_the_winning_forms_rows(tmp_path, backend):
 
     A decomposed variant runs the classifier twice and the higher-`ad` form wins. The
     observations must follow that same arbitration: pairing the winning counts with the
-    *losing* rows would leave every count — and therefore parity — untouched while the
+    *losing* rows would leave every count untouched while the
     export carried the wrong allele for every molecule. Asserting `used_decomposed` is
     what keeps this test honest; with an identical decomposed form the branch never runs
     and the test would pass vacuously.
@@ -407,7 +415,12 @@ def test_settings_are_configurable_without_fabricating_a_config(tmp_path):
         GbcmsDnaConfig()  # the four required-but-unread fields
 
     bam = build_bam(tmp_path, [_read("a", ALT_BASE)], filename="nocfg.bam")
-    result = gbcms.observe_molecules(bam, [_py_variant()], filters=ReadFilters(duplicates=False))
+    result = gbcms.observe_molecules(
+        bam,
+        [_py_variant()],
+        filters=ReadFilters(duplicates=False),
+        reference_fasta=_fasta(tmp_path),
+    )
     assert result.n_rows == 1
 
 
@@ -426,8 +439,15 @@ def test_filters_argument_actually_reaches_the_engine(tmp_path):
     dup.flag |= 0x400  # mark duplicate
     bam = build_bam(tmp_path, [_read("keep", ALT_BASE), dup], filename="dupfilt.bam")
 
-    filtered = gbcms.observe_molecules(bam, [_py_variant()], filters=ReadFilters(duplicates=True))
-    kept = gbcms.observe_molecules(bam, [_py_variant()], filters=ReadFilters(duplicates=False))
+    filtered = gbcms.observe_molecules(
+        bam, [_py_variant()], filters=ReadFilters(duplicates=True), reference_fasta=_fasta(tmp_path)
+    )
+    kept = gbcms.observe_molecules(
+        bam,
+        [_py_variant()],
+        filters=ReadFilters(duplicates=False),
+        reference_fasta=_fasta(tmp_path),
+    )
     assert filtered.n_rows == 1, "duplicate was not filtered"
     assert kept.n_rows == 2, "duplicates=False did not reach the engine"
 
@@ -443,8 +463,12 @@ def test_umi_tag_argument_decides_what_counts_as_one_molecule(tmp_path):
     r2.set_tag("MI", "famB")  # same template, deliberately different families
     bam = build_bam(tmp_path, [r1, r2], filename="umitag.bam")
 
-    by_qname = gbcms.observe_molecules(bam, [_py_variant()], umi_tag=None)
-    by_umi = gbcms.observe_molecules(bam, [_py_variant()], umi_tag="MI")
+    by_qname = gbcms.observe_molecules(
+        bam, [_py_variant()], umi_tag=None, reference_fasta=_fasta(tmp_path)
+    )
+    by_umi = gbcms.observe_molecules(
+        bam, [_py_variant()], umi_tag="MI", reference_fasta=_fasta(tmp_path)
+    )
     assert by_qname.n_rows == 1, "without a UMI tag the pair is one molecule"
     assert by_umi.n_rows == 2, "umi_tag did not reach the engine"
 
@@ -460,11 +484,10 @@ def _throwaway_config(tmp_path, bam, **over):
     from gbcms.models.core import GbcmsDnaConfig, OutputConfig
 
     (tmp_path / "unused.txt").write_text("")
-    (tmp_path / "unused.fa").write_text(">chr1\nA\n")
     return GbcmsDnaConfig(
         variant_file=tmp_path / "unused.txt",
         bam_files={"s": Path(bam)},
-        reference_fasta=tmp_path / "unused.fa",
+        reference_fasta=Path(_fasta(tmp_path)),
         output=OutputConfig(directory=tmp_path / "unused_out"),
         **over,
     )
@@ -528,19 +551,21 @@ def test_public_wrapper_returns_observations(tmp_path):
                 chrom="chr1", pos=POS, ref=REF_BASE, alt=ALT_BASE, variant_type=VariantType.SNP
             )
         ],
+        reference_fasta=_fasta(tmp_path),
     )
     assert result.n_rows == len(result.observations) == 3
     assert result.path is None
     assert Counter(o.allele for o in result.observations) == {1: 2, 0: 1}
 
 
-def test_wrapper_forwards_decomposition_so_alt_is_not_lost(tmp_path):
-    """Normalization's *decomposed* form must reach the counter, or ALT rows vanish.
+def test_wrapper_threads_the_twin_like_the_pipeline(tmp_path):
+    """The homopolymer twin reaches the counter exactly as in the pipeline: only on request.
 
-    `prepare_variants` can rewrite a complex indel into a decomposed form that is what the
-    reads actually carry. An earlier revision kept only `p.variant` and passed
-    `decomposed=[None] * n`, so those molecules were exported as OTHER with **zero ALT
-    rows** — silently, with PASS status. Regression guard for that.
+    `prepare_variants` builds a twin for a delins like CCCCCC>T (CCCCCT). By default a row
+    counts the given allele, so molecules carrying the twin are OTHER. With
+    `rescue_homopolymer=True` (the pipeline's `--rescue-homopolymer`) the twin is
+    dual-counted and wins, so they are ALT. An earlier revision dropped the twin even when
+    the pipeline used it; this guards that the two stay in step.
     """
     import gbcms
     from gbcms.models.core import Variant as PyVariant
@@ -567,9 +592,18 @@ def test_wrapper_forwards_decomposition_so_alt_is_not_lost(tmp_path):
     ]
     result = gbcms.observe_molecules(bam, variants, reference_fasta=str(fasta))
     alleles = Counter(o.allele for o in result.observations)
-    assert alleles[ALLELE_ALT] == 6, f"ALT molecules lost: {dict(alleles)}"
-    assert alleles[ALLELE_REF] == 4
+    # Whether the twin's carriers then land in REF or OTHER is the complex-variant
+    # classifier's call, not the wrapper's; this checks only that the twin is not counted.
+    assert alleles[ALLELE_ALT] == 0, f"the given allele is counted: {dict(alleles)}"
+    assert sum(alleles.values()) == 10
     assert result.variant_status == ["PASS"]
+
+    rescued = gbcms.observe_molecules(
+        bam, variants, reference_fasta=str(fasta), rescue_homopolymer=True
+    )
+    alleles = Counter(o.allele for o in rescued.observations)
+    assert alleles[ALLELE_ALT] == 6, f"the twin did not reach the counter: {dict(alleles)}"
+    assert alleles[ALLELE_REF] == 4
 
 
 def test_vcf_and_maf_representations_converge(tmp_path):
@@ -643,8 +677,10 @@ def test_parquet_sink_matches_the_in_memory_rows(tmp_path):
     # front rather than failing the n_rows comparison below.
     pq = pytest.importorskip("pyarrow.parquet")
 
-    mem = gbcms.observe_molecules(bam, variants)
-    written = gbcms.observe_molecules(bam, variants, observations_path=out)
+    mem = gbcms.observe_molecules(bam, variants, reference_fasta=_fasta(tmp_path))
+    written = gbcms.observe_molecules(
+        bam, variants, observations_path=out, reference_fasta=_fasta(tmp_path)
+    )
 
     assert written.path == out and out.exists()
     assert written.observations == [], "rows must not cross the FFI boundary when written"
@@ -739,3 +775,32 @@ def test_cli_flag_writes_observations_alongside_counts(tmp_path):
     ]
     # the counts output is still produced, unchanged by the flag
     assert list(out.glob("*.vcf")) or list(out.glob("*.maf"))
+
+
+def test_observing_without_a_reference_is_refused(tmp_path):
+    """The variants are normalized and judged against the reference, so a missing
+    one is an error (as for the CLI), never a silently degraded run."""
+    import gbcms
+
+    bam = build_bam(tmp_path, [_read("a", ALT_BASE)], filename="noref.bam")
+    for missing in ({}, {"reference_fasta": None}, {"reference_fasta": ""}):
+        with pytest.raises(ValueError, match="reference_fasta"):
+            gbcms.observe_molecules(bam, [_py_variant()], **missing)
+    # Path("") is Path("."): a directory, like any other, is not a reference
+    for not_a_file in (Path(""), tmp_path, str(tmp_path)):
+        with pytest.raises(ValueError, match="reference_fasta"):
+            gbcms.observe_molecules(bam, [_py_variant()], reference_fasta=not_a_file)
+
+
+def test_a_row_with_an_empty_allele_is_exported_as_other(tmp_path):
+    """Rows stay positional, FAIL rows included. A row prep fails for an empty allele
+    shows no allele (no read can carry it), so its molecules are OTHER, never REF."""
+    import gbcms
+
+    bam = build_bam(tmp_path, [_read(f"r{i}", REF_BASE) for i in range(4)], filename="empty.bam")
+    result = gbcms.observe_molecules(
+        bam, [_py_variant(), _py_variant(ref="AA", alt="")], reference_fasta=_fasta(tmp_path)
+    )
+    assert result.variant_status[1] != "PASS"
+    alleles = Counter(o.allele for o in result.observations if o.variant_index == 1)
+    assert alleles and set(alleles) == {ALLELE_OTHER}, alleles

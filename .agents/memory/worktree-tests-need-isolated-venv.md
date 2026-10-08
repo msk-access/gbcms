@@ -15,10 +15,10 @@ edits — green results mean nothing. Running `maturin develop` against that
 shared venv from a worktree would instead repoint it for every other session.
 
 **How to apply:** per worktree, in the session scratchpad:
-`uv venv --python 3.10 $SP/venv`, `VIRTUAL_ENV=$SP/venv uv pip install` the
-runtime deps + pytest/pytest-cov/pytest-mock/pyarrow/black/ruff/mypy/
-types-pyyaml/scipy-stubs/maturin (CI installs these unpinned → latest = CI's
-versions), then from the worktree root
+`uv venv --python 3.10 $SP/venv`, `VIRTUAL_ENV=$SP/venv uv pip install -r
+pyproject.toml --group dev maturin` (runtime deps + the PEP 735 `dev` group, which
+includes `test` and `docs`; unpinned → latest = CI's versions), then from the
+worktree root
 `VIRTUAL_ENV=$SP/venv PATH=$SP/venv/bin:$PATH maturin develop --release`
 (repo root only — [[maturin-develop-repo-root-only]]). Verify with
 `$SP/venv/bin/python -c "import gbcms; print(gbcms.__file__)"` → worktree path.
@@ -26,3 +26,13 @@ A baseline build of another branch: `git archive <branch> | tar -x` into the
 scratchpad + its own venv (no git state change). For `mkdocs build --strict`,
 the git-revision-date plugin warns in a worktree (.git is a file) — build with
 a temp config minus that plugin. See [[black-version-skew-venv-vs-ci]].
+
+**Without `VIRTUAL_ENV`, maturin develop installs into the nearest `.venv` above
+the cwd** — from a worktree under `.claude/worktrees/` that is the MAIN
+checkout's `.venv`, whose `gbcms.pth` then points at the worktree (2026-10-03,
+a review agent following a prompt that said `.venv-rev/bin/maturin develop`).
+Always set `VIRTUAL_ENV` (and PATH) as above in review-agent prompts; if it
+happens, rerun `maturin develop` from the main checkout root and check
+`gbcms.pth`. It recurred on 2026-10-05 (the group 5 review agent ran
+`.rv/bin/maturin develop` with no `VIRTUAL_ENV`): the warning sat in this file,
+not in the index line read every session, which now carries it.

@@ -3,8 +3,10 @@
 The rule these tests pin: when several same-type indels are annotated within
 one repeat-tract / scan-window neighborhood, a molecule belongs to exactly
 ONE of them — the row whose canonical (left-aligned position + bases) form
-its CIGAR op matches. For every other co-annotated row the molecule is a
-DISTINCT allele (neither + partial evidence), never full ALT and never REF.
+its CIGAR op matches. For every other co-annotated row the molecule is never
+full ALT: where its change lies inside that row's discrimination window it is a
+DISTINCT allele (neither + partial evidence), never REF; outside it the molecule
+shows that row's reference and is REF.
 The windowed S3 shift-tolerance exists for aligner-vs-annotation
 representation shifts of the SAME allele; it must not let a molecule hop
 between distinct annotated alleles.
@@ -13,9 +15,8 @@ Adjudicated on real data (issue #92, 2026-09-22): canonical exclusive
 assignment reproduces sign-out exactly at a five-deletion cluster where
 per-row windowed counting over-attributed 2-5x.
 
-Runs through the production CLI (pipeline sibling assembly): sibling paths
-are exempt from the binned<->legacy parity oracle, so the oracle is NOT used
-here. Committed red (xfail-strict) before the fix.
+Runs through the production CLI (pipeline sibling assembly). Committed red
+(xfail-strict) before the fix.
 """
 
 import glob
@@ -200,16 +201,26 @@ def test_cluster_sum_bounded_by_distinct_molecules(tmp_path):
 
 def test_tract_mate_carriers_surface_as_partial(tmp_path):
     """A tract-mate's carriers are structural indel evidence of a DIFFERENT
-    allele: they must surface in partial_alt (not vanish, not count REF)."""
+    allele: inside the row's window they surface in partial_alt (not vanish, not
+    count REF); outside it they show the row's reference.
+
+    Row A's discrimination window is 299-303. B's deletion (302-304) lies in
+    it. C's deletion of the same bases (304-305) and D's (308-309) lie outside:
+    their carriers show the reference across A's window, so they are REF for A
+    (as IGV shows them). C's is another haplotype than A's, not A written
+    elsewhere (#189: the old same-bases test matched it to A, and the sibling
+    guard then demoted it to partial).
+    """
     ref, rows, reads = _cluster_setup(tmp_path)
     res = _run(tmp_path, _vcf(tmp_path, rows), _bam(tmp_path, ref, reads), _fasta(tmp_path, ref))
     r_a = res[D_A + 1]
-    # carriers of B and C (6+4) are distinct-allele evidence for row A
+    # B's 6 carriers are distinct-allele evidence for row A
     assert (
-        int(r_a["partial_alt"]) >= 10
+        int(r_a["partial_alt"]) == 6
     ), f"tract-mate carriers must appear as partial for row A, got {r_a['partial_alt']}"
-    # and they never count REF for row A
-    assert int(r_a["ref_count"]) == 10, f"only true WT reads count REF, got {r_a['ref_count']}"
+    # 10 WT reads plus C's 4 and D's 3 carriers; reads and fragments agree
+    assert int(r_a["ref_count"]) == 17, f"WT + C + D carriers count REF, got {r_a['ref_count']}"
+    assert int(r_a["ref_count_fragment"]) == 17
 
 
 def test_distant_same_alleles_unaffected(tmp_path):
@@ -374,10 +385,12 @@ def _complex_vcf(tmp_path, ref):
 
 
 def test_complex_sibling_claims_windowed_carrier(tmp_path):
-    """The key cross-type case: a delins tract-mate's carriers S3-match the
-    pure-del row's windowed scan pre-fix. Post-fix the delins sibling claims
-    them (full-ALT for the complex row beats a windowed match), and the
-    pure-del row records them as partial evidence."""
+    """The key cross-type case: a delins tract-mate's carriers delete the pure
+    deletion's bases (AG) 4bp further on. That is another haplotype, not the
+    pure deletion written elsewhere, and their change starts past the pure
+    deletion's window, so they show its reference there: REF for the pure-del
+    row, ALT for the delins row (#189: the old same-bases test matched them to
+    the pure deletion, and the delins sibling then claimed them back)."""
     ref, reads = _complex_setup(tmp_path)
     res = _run(
         tmp_path, _complex_vcf(tmp_path, ref), _bam(tmp_path, ref, reads), _fasta(tmp_path, ref)
@@ -391,8 +404,64 @@ def test_complex_sibling_claims_windowed_carrier(tmp_path):
         int(r_del["alt_count"]) == 6
     ), f"pure-del row must not absorb delins carriers, got ad={r_del['alt_count']}"
     assert (
-        int(r_del["partial_alt"]) >= 5
-    ), f"claimed delins carriers must surface as partial, got {r_del['partial_alt']}"
+        int(r_del["ref_count"]) == 13
+    ), f"8 WT reads and the 5 delins carriers are REF here, got {r_del['ref_count']}"
+
+
+# A (CA)x4 tract at 0-based 601-608, after a G anchor at 600.
+STR_ANCHOR = 600
+STR_PLANT = "GCACACACAT"
+
+
+def test_a_split_carrier_of_the_longer_deletion_is_partial_for_the_shorter(tmp_path):
+    """Guard: a 4bp deletion written as two 2bp deletions in (CA)x4. Each D(2) is
+    the 2bp row's deletion written elsewhere in the tract, but not the read's only
+    change across the window: the read carries the 4bp row's haplotype, so it is
+    partial evidence for the 2bp row, not its ALT."""
+    a = STR_ANCHOR
+    ref = _mk_ref(plants=((a, STR_PLANT),))
+    reads = _del_reads(ref, a + 1, 2, 6, "ca") + _ref_reads(ref, a + 4, 8)
+    for i in range(5):  # M, D(2) at a+3, M(2), D(2) at a+7, M
+        s = a - 35 - (i % 5)
+        left = a + 3 - s
+        seq = ref[s : a + 3] + ref[a + 5 : a + 7] + ref[a + 9 : a + 9 + READ_LEN - left - 2]
+        cigar = ((0, left), (2, 2), (0, 2), (2, 2), (0, READ_LEN - left - 2))
+        reads.append(make_read(f"sp{i}", seq, s, cigar))
+    vcf = _vcf(tmp_path, [(a + 1, ref[a : a + 3], ref[a]), (a + 1, ref[a : a + 5], ref[a])])
+    _run(tmp_path, vcf, _bam(tmp_path, ref, reads), _fasta(tmp_path, ref))
+    maf = glob.glob(str(tmp_path / "out" / "*.maf"))[0]
+    row = next(r for r in read_maf_output(maf) if r["Reference_Allele"] == "CA")
+    got = (int(row["alt_count"]), int(row["partial_alt"]), int(row["ref_count"]))
+    assert got == (6, 5, 8), f"2bp row (ad, partial, rd): {got}"
+
+
+def test_an_unreadable_insert_is_neither_rows_alt_at_a_multi_allelic_site(tmp_path):
+    """Guard: G>GAA and G>GTT annotated at one anchor. A carrier whose two inserted
+    bases are all below --min-baseq is sent to Phase 3, which can call it ALT for
+    both rows, but its read window cannot favour either ALT over the reference (its
+    inserted bases are masked): partial evidence for both rows, neither's ALT. Each
+    row keeps its own 5 carriers; the other row's 5 are a third allele there."""
+    a = 600
+    ref = _mk_ref(plants=((a - 3, "CGTGCAT"),))  # anchor G at 600 in unique sequence
+    reads = _ref_reads(ref, a, 8)
+
+    def carrier(name, s, ins, q):
+        left = a + 1 - s
+        right = READ_LEN - left - len(ins)
+        seq = ref[s : a + 1] + ins + ref[a + 1 : a + 1 + right]
+        quals = [30] * left + [q] * len(ins) + [30] * right
+        return make_read(name, seq, s, ((0, left), (1, len(ins)), (0, right)), quals=quals)
+
+    for i in range(5):
+        reads.append(carrier(f"aa{i}", a - 40 - i, "AA", 30))
+        reads.append(carrier(f"tt{i}", a - 40 - i, "TT", 30))
+        reads.append(carrier(f"lq{i}", a - 40 - i, "AA", 5))
+    g = ref[a]
+    vcf = _vcf(tmp_path, [(a + 1, g, g + "AA"), (a + 1, g, g + "TT")])
+    _run(tmp_path, vcf, _bam(tmp_path, ref, reads), _fasta(tmp_path, ref))
+    for row in read_maf_output(glob.glob(str(tmp_path / "out" / "*.maf"))[0]):
+        got = (int(row["ref_count"]), int(row["alt_count"]), int(row["partial_alt"]))
+        assert got == (8, 5, 10), f"+{row['Tumor_Seq_Allele2']} (rd, ad, partial): {got}"
 
 
 def _cluster_maf(tmp_path, ref, rows):

@@ -52,11 +52,14 @@ COPY pyproject.toml README.md LICENSE ./
 COPY rust/ rust/
 COPY src/ src/
 
+# The commit this image is built from: the build copies no .git, so it is passed
+# in (rust/build.rs records it for output provenance, `#gbcms vX (commit)`).
+ARG GBCMS_BUILD_COMMIT=""
+ENV GBCMS_BUILD_COMMIT=${GBCMS_BUILD_COMMIT}
+
 # Build unified wheel with maturin (includes both Python and Rust)
 # Don't use --manifest-path; it's in pyproject.toml and ensures correct wheel name
-# --no-default-features drops the `legacy-parity` feature so the shipped wheel does not
-# export the per-variant `count_bam` parity oracle (test-only). See rust/Cargo.toml.
-RUN maturin build --release --no-default-features --out /app/dist
+RUN maturin build --release --out /app/dist
 
 # Stage 2: Runtime (slim image)
 FROM python:3.11-slim-bookworm
@@ -84,9 +87,15 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     bash \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy and install the unified wheel
+# Runtime dependencies from the hash-pinned lock (linux/amd64, Python 3.11; refreshed
+# at each release, see the release guide), then the wheel without resolving anything,
+# then pip check: the image holds exactly the locked versions, and they satisfy
+# gbcms's own requirements, so a lock that no longer does fails the build here.
+COPY docker/requirements.lock /app/requirements.lock
 COPY --from=builder /app/dist/*.whl /app/dist/
-RUN pip install --no-cache-dir /app/dist/*.whl
+RUN pip install --no-cache-dir --require-hashes --no-deps -r /app/requirements.lock \
+    && pip install --no-cache-dir --no-deps /app/dist/*.whl \
+    && pip check
 
 # Verify installation
 RUN python -c "from gbcms import _rs; import gbcms; print(f'gbcms {gbcms.__version__} ready')"

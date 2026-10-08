@@ -73,7 +73,8 @@ Rust tests live inside `#[cfg(test)]` modules and cover:
 ```
 tests/
 ├── conftest.py                  # Shared pytest fixtures (paths, RNA BAM, editing DB)
-├── helpers.py                   # Shared helpers (build_bam, make_read, count_one, count_both)
+├── helpers.py                   # Shared helpers (build_bam, make_read, count_checked, count_one_checked)
+├── census.py                    # Read census: each read judged by its own bases (the classification oracle)
 ├── test_accuracy.py             # Variant type accuracy + DP invariant
 ├── test_alignment_backend.py    # PairHMM default, backend integration
 ├── test_baq.py                  # BAQ quality downgrade
@@ -131,8 +132,8 @@ def test_snp_accuracy():
     # Create variant
     variant = Variant("chr1", 100, "A", "T", "SNP")
     
-    # Run counting
-    results = count_bam(bam_path, [variant], decomposed=[None], ...)
+    # Count (production bins, checked against one variant per bin)
+    results = count_checked(bam_path, [variant])
     
     # Validate allele counts
     assert results[0].rd == 50
@@ -149,12 +150,19 @@ def test_with_siblings():
     v1 = Variant("chr1", 100, "A", "T", "SNP")
     v2 = Variant("chr1", 100, "A", "C", "SNP")
     
-    results = count_bam(
-        bam_path, [v1, v2], decomposed=[None, None],
-        sibling_variants=[[v2], [v1]],  # Gap 1A: sibling info
-        ...
+    results = count_checked(
+        bam_path, [v1, v2],
+        sibling_variants=[[v2], [v1]],  # co-annotated alleles at one site
     )
 ```
+
+### Binning invariance and the read census
+
+`count_checked` (and `count_bam_checked`, which takes `count_bam_binned`'s arguments)
+counts with production bins and again with one variant per bin, and fails on any field
+that differs: bin geometry is performance only. `tests/test_binning_invariance.py`
+varies it further. For pure indels, `tests/census.py` judges each read by its own bases;
+`assert_matches(counts, census(...))` checks the engine's REF and ALT against it.
 
 ### Key Invariants to Assert
 
@@ -183,6 +191,7 @@ Every N/masked/partial path must produce a deterministic, traceable outcome:
 | Complex with N in haplotype | via masked compare | +1 | depends on match | `trace` |
 | ALT = "N" in input VCF/MAF | `FAIL` + reason `ALT_CONTAINS_N` | — | — | `warn` (validation) |
 | ALT equal to REF in input VCF/MAF | `FAIL` + reason `ALT_EQUALS_REF` | — | — | `warn` (validation) |
+| Allele that is not a base sequence (IUPAC code, stray character; `-` outside MAF input) | `FAIL` + reason `NON_SEQUENCE_ALLELE` | — | — | `warn` (validation) |
 | ThirdAllele with partial match | neither + partial | — | +1 | `trace` |
 
 ---

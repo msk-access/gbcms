@@ -6,12 +6,11 @@ process GBCMS_RNA {
 
     publishDir "${params.outdir}/gbcms", mode: params.publish_dir_mode
 
-    container "ghcr.io/msk-access/gbcms:6.5.0"
+    container "ghcr.io/msk-access/gbcms:${workflow.manifest.version}"
 
     input:
     tuple val(meta), path(bam), path(bai), path(variants)
     tuple path(fasta), path(fai)
-    path gtf_cache  // prebuilt GTF index cache dir (or [] when caching is off)
 
     output:
     tuple val(meta), path("*.{vcf,maf}"),  emit: counts
@@ -46,6 +45,9 @@ process GBCMS_RNA {
     // MNP rescue pass (v4.3.0 — decomposes MNPs into SNPs for re-counting)
     def rescue_mnp_arg = asBool(params.rescue_mnp) ? "--rescue-mnp --rescue-mnp-threshold ${params.rescue_mnp_threshold}" : ""
 
+    // Homopolymer twin dual-count (opt-in; by default a row counts the given allele)
+    def rescue_homopolymer_arg = asBool(params.rescue_homopolymer) ? "--rescue-homopolymer" : ""
+
     // Adaptive context padding in repeat regions
     def adaptive_arg = asBool(params.adaptive_context) ? "" : "--no-adaptive-context"
 
@@ -78,11 +80,6 @@ process GBCMS_RNA {
     // RNA-specific: GTF annotation for splice-site-aware counting
     def gtf_arg = params.gtf ? "--gtf ${params.gtf}" : ""
 
-    // M5a: reuse the cohort's prebuilt GTF index cache (a staged dir from
-    // GBCMS_BUILD_GTF_CACHE), skipping the per-sample GTF parse. Empty ([]) when
-    // caching is disabled or no GTF is given.
-    def gtf_cache_arg = gtf_cache ? "--gtf-cache-dir ${gtf_cache}" : ""
-
     // P5: RNA library type — 'capture' (default) or 'amplicon'
     def library_type_arg = params.library_type != 'capture' ? "--library-type ${params.library_type}" : ""
 
@@ -108,6 +105,7 @@ process GBCMS_RNA {
         ${preserve_barcode_arg} \\
         ${show_norm_arg} \\
         ${rescue_mnp_arg} \\
+        ${rescue_homopolymer_arg} \\
         ${adaptive_arg} \\
         ${backend_arg} \\
         ${hmm_args} \\
@@ -121,7 +119,6 @@ process GBCMS_RNA {
         ${baq_arg} \\
         ${editing_db_arg} \\
         ${gtf_arg} \\
-        ${gtf_cache_arg} \\
         ${strandedness_arg} \\
         ${strand_protocol_arg} \\
         ${library_type_arg} \\

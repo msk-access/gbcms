@@ -3,16 +3,48 @@
 > Tactical state that must survive a closed laptop or a context summary.
 > Update the **Now** and **Next** sections as work progresses.
 
-_Last updated: 2026-09-25_
+_Last updated: 2026-10-07_
 
 ## Now
-**Release 6.5.0 is cut: `release/6.5.0` → PR to main.** It bumps the release
-guide's 11 version references (the `nextflow/main.nf` banner included; the 6.4.0
-cut had missed it) and cuts the CHANGELOG. The cycle plan was removed from the
-repo at the cut (operator decision). Cycle plans are kept locally, outside the
-repo, from now on.
+**6.6.0 release in progress.** `release/6.6.0` is cut from develop c01749ab: version
+6.6.0 in `rust/Cargo.toml`, its lock and the Nextflow manifest; the CHANGELOG section
+dated; the cycle plan removed at this cut (a private copy in `~/test/gbcms/plans/`).
+Every 6.6.0 work item is merged (tracker #140); what the release holds is the
+CHANGELOG's 6.6.0 section. One item is open: the release gate, D5 #155.
 
-6.5.0 on develop:
+The gate (`docs/development/regression-panel.md`), before the release PR merges:
+1. Checkpoint wheels: `checkpoints.tsv` (6.5.0 to the release head), committed on a
+   pushed `checkpoint-wheels/6.6.0` branch, builds one wheel per checkpoint (CI
+   artifacts, each with its commit's `requirements.lock`).
+2. On HPC: the panel (the local tier `~/test/gbcms/harness/regression_panel/tier_660/`,
+   PHI, carried by the operator: 289 samples, 411 runs) for 6.5.0 from its image and
+   the candidate from its wheel; `compare_panel.py`; `attribute.py` (prepare, the
+   checkpoints on the reduced runs, check, attribute); adjudicate any flagged stratum.
+3. Then: merge the release PR (a merge commit), tag `6.6.0`, check the GitHub Release
+   page, back-merge main into develop, move develop to `6.7.0-dev.0`, clean up.
+4. After the tag: the mskcc-omics-workflows containers repo (`gbcms/6.6.0`
+   Dockerfile) and the modules repo's gbcms modules.
+
+Working rules (carried into 6.7.0): measure first, red-first tests, an adversarial
+review, real-data acceptance per read on a matrix of data types (gbcms is a
+genotyper, not a caller), mount runs one at a time, and community practice as a
+floor, not a ceiling.
+
+## Next → 6.7.0
+The 6.7.0 milestone and tracker #196 hold the deferred work, among it per-locus gap
+parameters (#244), the sibling shapes measured for #246, and the panel's GIAB and
+TEMPO arms. A 6.7.0 plan is added to develop after the back-merge.
+
+
+### Previous: 6.5.0 release
+**6.5.0 is released** (2026-09-25): #118 merged to main, bare tag `6.5.0`, and
+main back-merged into develop. The release workflow publishes to PyPI, GHCR and
+the docs; the GitHub Release page is created by hand (release guide step 9).
+Cycle plans live on develop (PHI-free) and are removed on the release branch at
+each cut, so they never ship. `CYCLE_6.5.0_PLAN.md` was removed at this cut; a
+private copy is kept locally in `~/test/gbcms/plans/`.
+
+6.5.0 contents:
 - T1 cluster exclusive assignment (#99).
 - T2 ASJD-2 markers (#100).
 - T3–T5 observability (#102).
@@ -34,33 +66,25 @@ RC check (develop vs the 6.4.0 release, every changed cell attributed; harness
   T3 flag; 0 unexplained. BRCA2 reproduces the T1 record.
 - RNA, FORTE truth cohort (33 samples / 94 rows): zero main-count changes; the six
   T2 marker rows and one T6 exon-edge row; 0 unexplained.
-- Re-checked with #116's code: byte-identical DNA (1060/1060) and RNA (33/33).
-  The final develop HEAD is re-checked the same way
-  (`~/test/gbcms/harness/t110/real/final_rc.py`).
+- Re-checked with #116's code, and finally on the exact 6.5.0 code (an isolated
+  build of develop 851119f3, `~/test/gbcms/harness/t110/real/final_rc.py`):
+  byte-identical, DNA 28/28 runs and RNA 33/33.
 
-**Next → operator gates for 6.5.0:**
-1. Build and push the container.
-2. Run the HPC 56-sample IMPACT matrix against the 6.4.0 baseline (script at
-   `~/test/gbcms/dev_regression/` on HPC, repointed at the rc container), plus
-   RNA smokes.
-   - If the matrix feeds VCF input and compares MAF output by `Start_Position`,
-     key it on `vcf_pos`/`vcf_ref`/`vcf_alt`: T12 changes VCF-input MAF
-     coordinates by design. MAF-input output is byte-identical.
-3. Merge the release PR, then tag `6.5.0` (bare: the release workflow triggers
-   only on `N.N.N` tags).
-4. Create the GitHub Release page. 6.4.0 has none; the latest page is 6.3.1.
-5. Back-merge main into develop.
+**Then → 6.6.0.** The plan was `CYCLE_6.6.0_PLAN.md` (#117; removed at the 6.6.0
+cut, a private copy in `~/test/gbcms/plans/`). It had 35 tickets, each with a GitHub
+issue in the **6.6.0 milestone**, all under the tracking issue **#140**. Grouped
+work is filed as sub-issues: #92 → #141–#144, #112 → #145–#147, #133 → #148–#149,
+#134 → #150–#152, #135 → #153–#154. The other top-level issues are #106, #111, #114,
+#119–#139, #155 and #156. Start with the operator decisions (C2, R1, R2, I1, I3, I4,
+S1/S2), then the count-affecting tickets, each measured first.
 
-Optional: head-to-head vs C++ GBCMS 1.2.4/1.2.5 (on HPC).
-
-**After the cut → 6.6.0.** The plan is local (`~/test/gbcms/plans/`). It carries
-every open finding, whatever its priority:
-- the open issues #92, #106, #111, #112, #114;
-- the T12 review leftovers;
-- the grouped-row REF-fragment decision;
-- the M5 / accepted-deviation items;
-- release-infra checks;
-- a dependency-upgrade audit.
+Release comparison: the HPC run was not done before the 6.5.0 tag. It became the
+6.6.0 release gate, on the coverage-driven regression panel (D5, #155) instead
+of the hand-picked 56 samples. The selection harness is local
+(`~/test/gbcms/harness/regression_panel/`, PHI) and the operator carries its
+output to HPC. If a comparison feeds VCF input and compares MAF output by
+`Start_Position`, key it on `vcf_pos`/`vcf_ref`/`vcf_alt` instead. Optional: a
+head-to-head against C++ GBCMS 1.2.4/1.2.5 (on HPC).
 
 ### Previous: code-review remediation
 Working the code-review remediation plan (`CODE_REVIEW_IMPLEMENTATION_PLAN.md`)
@@ -142,9 +166,10 @@ Remaining (all optional):
 - Stats stay in **Rust** (KS/LLR/Fisher in `mfsd.rs`/`shared/stats.rs`); **no scipy**
   dependency — exact KS is a self-contained Rust DP, validated against baked
   SciPy reference constants.
-- Legacy `count_bam` (per-variant) is kept as the binned↔legacy **parity oracle** but
-  feature-gated (`legacy-parity`, default on) so the **shipped wheel excludes it**
-  (release builds `--no-default-features`); production uses `count_bam_binned` only.
+- Binning invariance replaces the legacy `count_bam` parity oracle (T1 #170,
+  2026-10-01): a second engine sharing the classifier never caught a classification
+  bug; counts must not depend on bin geometry, and the read census checks
+  classification.
 - Tests kept minimal/high-signal (each is a maintenance contract); fixes that reduce
   duplication are preferred over adding code.
 - Source comments/logs explain what/why/how — **never** ticket labels (`CR-`/`HI-`/

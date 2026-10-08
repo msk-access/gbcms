@@ -20,14 +20,14 @@ full ALT call:
     surfaced, never silently absorbed)
   - delins/complex variants -> Phase-3 (unchanged)
 
-Every counting assertion runs through count_both (binned<->legacy parity) and
+Every counting assertion runs through count_checked (binning invariance) and
 asserts the counting invariants.
 """
 
 import random
 
 import pysam
-from helpers import count_both, make_read
+from helpers import count_checked, make_read
 
 from gbcms._rs import Variant
 
@@ -133,7 +133,7 @@ def _ins_reads(ref, anchor, ins_seq, n=6, rl=100):
 
 
 def _count(bam, variant):
-    c = count_both(bam, [variant], min_mapq=0, min_baseq=0)[0]
+    c = count_checked(bam, [variant], min_mapq=0, min_baseq=0)[0]
     assert c.dp >= c.rd + c.ad
     assert c.dpf >= c.rdf + c.adf
     assert c.rd == c.rd_fwd + c.rd_rev
@@ -317,9 +317,10 @@ def test_ins_same_length_wrong_sequence_stays_partial(tmp_path):
 
 
 def test_ins_unique_context_windowed_noise_keeps_rd(tmp_path):
-    """A stray 1bp insertion NEAR (not at) the anchor in unique context is
-    alignment noise: the anchor-covering M is definitive REF. The read keeps
-    rd and carries partial evidence — surfaced, not silently absorbed."""
+    """A stray 1bp insertion NEAR (not at) the anchor in unique context, outside
+    the discrimination window: a separate event. The read's bases across the
+    window are REF, so it keeps rd, with no partial evidence (C26, operator
+    2026-10-01)."""
     ref = _mk_ref()
     anchor, rl = 200, 100
     reads = []
@@ -330,7 +331,7 @@ def test_ins_unique_context_windowed_noise_keeps_rd(tmp_path):
         reads.append(make_read(f"noise{i}", seq, s, ((0, left), (1, 1), (0, rl - left - 1))))
     bam = _bam(tmp_path, ref, _ref_reads(ref, anchor) + reads)
     c = _count(bam, _ins_variant(ref, anchor, "TT"))
-    assert (c.rd, c.ad, c.partial_alt) == (14, 0, 6)
+    assert (c.rd, c.ad, c.partial_alt) == (14, 0, 0)
 
 
 def test_ins_repeat_tract_windowed_wrong_length_stays_partial(tmp_path):

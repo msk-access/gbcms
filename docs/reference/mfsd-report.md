@@ -36,25 +36,20 @@ The report title displays the sample name (from `--bam sample_id:path` or derive
 
 ### 2. Summary Dashboard
 
-Four metric cards provide an at-a-glance overview of fragment origin signal classification:
+Three metric cards give an at-a-glance overview of the fragment-size evidence:
 
-| Card | Description |
-|:-----|:------------|
-| **TUMOR-LIKE** | Variants with strong evidence of tumor-derived short fragments |
-| **CH-LIKE** | Variants consistent with clonal hematopoiesis (no short-fragment enrichment) |
-| **AMBIGUOUS** | Variants with inconclusive fragment size profiles |
-| **INSUFFICIENT** | Variants with too few ALT fragments for reliable classification |
+Each card counts the variants in one class: LEANS-SOMATIC, NO-SIZE-EVIDENCE and INSUFFICIENT ([defined in QC Flags](qc-flags.md#mfsd-report-classes), shown below).
 
 ### 3. Caveat Banner
 
-A clinical disclaimer noting that fragment origin signal is an experimental diagnostic tool and should not be used as the sole basis for clinical decisions.
+A clinical disclaimer noting that the fragment-size evidence is graded, not diagnostic, and should not be used as the sole basis for clinical decisions; matched-normal (buffy coat) sequencing decides CH.
 
 ### 4. Per-Variant Analysis Cards
 
 Each qualifying variant gets a dedicated card containing:
 
 - **Variant identity**: Gene symbol, genomic coordinates, allele change
-- **Fragment Origin Signal**: Classification badge (TUMOR-LIKE / CH-LIKE / AMBIGUOUS / INSUFFICIENT) with confidence explanation
+- **Fragment-size evidence**: Class badge ([LEANS-SOMATIC / NO-SIZE-EVIDENCE / INSUFFICIENT](qc-flags.md#mfsd-report-classes)) with its explanation, and a note when the gene is CH-associated
 - **Key statistics table**: Subnucleosomal enrichment, KS p-value, mean fragment sizes (REF vs ALT), delta, log-likelihood ratio
 - **Dual-axis histogram**: Interactive Plotly chart showing:
     - **Bar chart** (left y-axis): Fragment count per size bin (REF in blue, ALT in red)
@@ -62,32 +57,12 @@ Each qualifying variant gets a dedicated card containing:
 
 ---
 
-## Fragment Origin Signal Classification
+## Fragment-size Evidence
 
-The report classifies each variant into one of four categories based on subnucleosomal enrichment and the KS test:
+The report grades each variant's fragment-size evidence from the ALT and REF fragments at the same locus: the KS test's FDR q-value across the sample's variants (`mfsd_qval_alt_ref`, not the raw p-value) and the sub-nucleosomal shares. It is graded evidence, never an origin call; a CH-associated gene is shown as a note:
 
-```mermaid
-flowchart TD
-    Start(["Variant"]) --> AltCheck{"ALT count ≥ min_alt?"}
-    AltCheck -->|"No"| Insufficient(["INSUFFICIENT"]):::grey
-    AltCheck -->|"Yes"| EnrichCheck{"Sub-nucleosomal<br/>enrichment > 1.0?"}
-    EnrichCheck -->|"Yes"| KSCheck{"KS p-value < 0.05?"}
-    EnrichCheck -->|"No"| CH(["CH-LIKE"]):::amber
-    KSCheck -->|"Yes"| Tumor(["TUMOR-LIKE"]):::green
-    KSCheck -->|"No"| Ambiguous(["AMBIGUOUS"]):::blue
-
-    classDef green fill:#27ae60,color:#fff,stroke:#1e8449,stroke-width:2px;
-    classDef amber fill:#e67e22,color:#fff,stroke:#bf6516,stroke-width:2px;
-    classDef blue fill:#3498db,color:#fff,stroke:#2471a3,stroke-width:2px;
-    classDef grey fill:#95a5a6,color:#fff,stroke:#7f8c8d,stroke-width:2px;
-```
-
-| Signal | Enrichment | KS p-value | Interpretation |
-|:-------|:-----------|:-----------|:---------------|
-| **TUMOR-LIKE** | > 1.0 | < 0.05 | ALT fragments are significantly shorter than REF → consistent with tumor cfDNA |
-| **CH-LIKE** | ≤ 1.0 | — | No short-fragment enrichment → consistent with clonal hematopoiesis |
-| **AMBIGUOUS** | > 1.0 | ≥ 0.05 | Enrichment present but not statistically significant |
-| **INSUFFICIENT** | — | — | Too few ALT fragments for reliable analysis |
+<!-- Defined once, in QC Flags; this includes the flowchart and table. -->
+--8<-- "reference/qc-flags.md:mfsd-classes"
 
 ### Sub-nucleosomal Enrichment
 
@@ -162,7 +137,7 @@ These columns are added by the physical sizing engine (new in v4.1):
 | `mfsd_sub_nuc_enrichment` | Ratio of ALT to REF sub-nucleosomal fractions |
 | `mfsd_mono_nuc_ref_frac` | Fraction of REF fragments in the mono-nucleosomal range (150–200 bp) |
 | `mfsd_mono_nuc_alt_frac` | Fraction of ALT fragments in the mono-nucleosomal range |
-| `mfsd_ch_flag` | Boolean flag indicating CH-like fragment size profile |
+| `mfsd_ch_flag` | QC flag: [definition](qc-flags.md#qc-columns) |
 
 ---
 

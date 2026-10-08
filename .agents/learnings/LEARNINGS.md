@@ -17,6 +17,151 @@ regenerating a section.
 
 ---
 
+## [LRN-20261005-002] rule-trigger | a review-agent prompt names the venv maturin installs into
+- **Status:** resolved (rule promoted)
+- **Cause:** rule-trigger
+- **Summary:** the group 5 review agent ran `.rv/bin/maturin develop` from its
+  worktree, which sits under `.claude/worktrees/` inside the main checkout; with
+  no `VIRTUAL_ENV`, maturin installed into the main checkout's `.venv`, whose
+  `gbcms.pth` then pointed at the worktree. My prompt gave that command. The same
+  failure was recorded on 2026-10-03 in the memory file, but its index line (the
+  part loaded every session) did not carry the rule, so it was not in view when I
+  wrote the prompt. Repaired by `maturin develop` from the main root.
+- **Promotion target:** `DONE:` `.agents/memory/MEMORY.md` — the
+  worktree-venv index line now says every review-agent prompt sets
+  `VIRTUAL_ENV=<scratch venv>` for `maturin develop`.
+- **Related:** [[worktree-tests-need-isolated-venv]], [[maturin-develop-repo-root-only]].
+
+## [LRN-20261005-001] rule-body | a derived output's behaviour is checked where each writer computes it
+- **Status:** resolved (rule promoted)
+- **Cause:** rule-body
+- **Summary:** for group 3 I wrote in the docs, the changelog, the PR and an
+  issue comment that R5 leaves `vaf` unchanged "because vaf is alt / total",
+  read from `gbcms merge`'s formula without its inputs (merge's total is
+  REF + ALT). Every writer computes vaf as alt / (REF + ALT), so R5 raises it at
+  a splice-crossing deletion with carriers (no measured row moved: the affected
+  rows had none). Found while mapping group 4; corrected in `3d44d240`. A
+  follow-on claim that merge's VAF differs from the writers' was wrong for the
+  same reason and was withdrawn before anything was filed.
+- **Promotion target:** `DONE:` `.agents/memory/holistic-effects-map.md` — a
+  derived output is checked at every place it is computed before stating how a
+  change moves it.
+- **Related:** [[holistic-effects-map]].
+
+## [LRN-20261003-002] rule-body | runs over a network mount go one at a time
+- **Status:** resolved (rule promoted)
+- **Cause:** rule-body
+- **Summary:** to speed up group 3's prototype acceptance I ran five builds'
+  comparisons and three base runs in parallel over the same SFTP mount. Each
+  probe sample crawled (about 25 minutes) and one read hit an NFS timeout. The
+  operator: access one file on one mount at a time; serial is more responsive
+  than several connections. The run guidance covered visibility and wedged
+  mounts but not concurrency.
+- **Promotion target:** `DONE:` `.agents/memory/long-runs-visible.md` (runs over a
+  mount go one at a time, grouped by file) and the local mounts memory (the
+  concurrency rule and the measurement); the group 3 harness now runs serially
+  grouped by BAM (`serial_rest.py`).
+- **Related:** [[long-runs-visible]].
+
+## [LRN-20261003-001] rule-body | a practice survey includes the literature and the domain's own tools
+- **Status:** resolved (rule promoted)
+- **Cause:** rule-body
+- **Summary:** the survey rule named general callers and genotypers only; for an
+  RNA group the relevant practice lives in RNA tools (SplitNCigarReads, ASE
+  counters, RNA variant and editing callers) and in method papers. The operator
+  asked to "also look at literature and other tools of what people have done".
+- **Promotion target:** `docs/reference/read-judgment.md` "How a change to read
+  judgment is made", step 1 — `DONE:` adds the domain's tools and the published
+  literature. Memory `survey-several-tools` updated.
+- **Related:** [[survey-several-tools]].
+
+## [LRN-20261002-003] environment | a detached harness run is invisible to the operator
+- **Status:** resolved (memory)
+- **Cause:** environment
+- **Summary:** acceptance runs started with `nohup` (to outlive the 30-minute
+  tracked-task limit) do not show in the app's background list; the operator saw
+  "nothing running" mid-acceptance. A full `--trace` probe run also ground for an
+  hour before I switched to a targeted trace.
+- **Promotion target:** memory `long-runs-visible` — `DONE:` pair each detached
+  run with a tracked waiter; say why a run is slow and switch methods.
+- **Related:** [[long-runs-visible]].
+
+## [LRN-20261002-002] rule-body | a read-input rule is validated against an oracle that does not share it
+- **Status:** resolved (rule promoted)
+- **Cause:** rule-body
+- **Summary:** the first C17 build (clip bases past the TLEN fragment end) agreed
+  with the read census on every SNV row, because the census was changed in step
+  and shares the rule. Tracing the three indel rows that moved away from the
+  census showed 13 genuine FLT3-ITD ALT reads lost: TLEN, a reference distance,
+  leaves out inserted bases. The process named the census as the oracle without
+  saying it cannot judge a rule it implements.
+- **Promotion target:** `docs/reference/read-judgment.md` "How a change to read
+  judgment is made", step 1 — `DONE:` for a read-input rule the census mirrors,
+  the evidence includes an oracle it does not share. Memory
+  `census-mirrors-read-inputs`.
+- **Related:** [[census-mirrors-read-inputs]], [[holistic-effects-map]].
+
+## [LRN-20261002-001] rule-body | a community-practice survey covers several tools
+- **Status:** resolved (rule promoted)
+- **Cause:** rule-body
+- **Summary:** for group 1 (read inputs) I surveyed only GATK. The operator
+  pointed out there are more tools to look at. The validation standard said
+  "callers and genotypers" but named none, so the survey defaulted to one.
+- **Promotion target:** `docs/reference/read-judgment.md` "How a change to read
+  judgment is made", step 1 — `DONE:` names the tool set to survey. Memory
+  `survey-several-tools`.
+- **Related:** [[survey-several-tools]].
+
+## [LRN-20261001-001] rule-body | a failing test's expectation is changed only with the operator's say
+- **Status:** resolved (rule promoted)
+- **Cause:** rule-body
+- **Summary:** during H3 I edited existing test expectations as part of fixes
+  (three `test_shifted_indels` cases to depth-only, the C28 example, a census
+  assertion), explaining them only in commits and the CHANGELOG. The operator
+  asked to be told why before any test is modified, or to measure to understand.
+  The validation standard said "red-first" but nothing about changing existing
+  expectations, so the rule was missing.
+- **Promotion target:** `AGENTS.md` "Counting test invariants" — `DONE:` a line:
+  never edit an existing test's expectation to make it pass without telling the
+  operator what it asserted, why it is wrong, and the evidence, then waiting.
+  Memory `test-changes-need-operator-notice`.
+- **Related:** [[test-changes-need-operator-notice]].
+
+## [LRN-20260928-001] rule-body | gbcms is a genotyper, not a caller; the BAM is not the truth
+- **Status:** resolved (rule promoted)
+- **Cause:** rule-body
+- **Summary:** the standing principle was written as "the BAM is truth", and I
+  repeated it in the validation standard. The operator corrected it: alignments
+  can be wrong, and the point is that gbcms is a genotyper, not a caller. The
+  evidence is each read's own bases, judged independently of the aligner's
+  placement (this is what the exact-carrier windows, repeat growth, clip reading
+  and splice handling already do); gbcms counts the given allele and never decides
+  existence or rewrites an allele.
+- **Promotion target:** `AGENTS.md` invariant 7 — `DONE:` "Count the given allele — a
+  genotyper, not a caller … its own bases carry that ALT (alignments can be wrong;
+  judge bases, not placement)". Memory `bam-is-truth` renamed and rewritten as
+  `genotyper-not-caller`; the plan's "Validation standard" and the add-feature skill
+  reworded. Dataset specifics moved to local-only memories (operator: keep them local).
+- **Related:** [[genotyper-not-caller]], [[count-the-given-allele]].
+
+## [LRN-20260925-001] rule-body | a census finding is not ALT evidence
+- **Status:** resolved (rule promoted)
+- **Cause:** rule-body
+- **Summary:** For C1 I proposed option C: turn fallback ALT calls without ALT sequence
+  into partial, *unless* reads share a recurring unannotated haplotype. That exception
+  credits a mis-described event to the row's ALT (deconvolution). `bam-is-truth` said a
+  recurrent unannotated haplotype "is a finding" without saying it must never count
+  for the row, and no invariant stated that gbcms counts only the given allele. The
+  operator restated the principle: input is taken as correct, results are accurate for
+  it, caveats go to the status-reason and diagnostic columns.
+- **Promotion target:** `AGENTS.md` invariant 7 "Count the given allele";
+  `.agents/memory/bam-is-truth.md` clarifies that a finding is never ALT evidence; new
+  memory `count-the-given-allele.md`; `CYCLE_6.6.0_PLAN.md` C1 drops the exception,
+  and C3 is re-scoped to report the given allele, with the default-on decomposition
+  as an open decision.
+
+---
+
 ## [LRN-20260923-002] rule-body | reproduce a claim before stating it
 - **Status:** resolved (rule promoted)
 - **Cause:** rule-body

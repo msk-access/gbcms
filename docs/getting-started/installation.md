@@ -22,7 +22,12 @@
     ```bash
     git clone https://github.com/msk-access/gbcms.git
     cd gbcms
-    pip install -e ".[dev]"
+    pip install .   # builds the Rust extension: needs a Rust toolchain
+
+    # Contributors: an editable install with the test, lint and docs tools
+    # (a PEP 735 dependency group, which needs pip>=25.1)
+    pip install --upgrade "pip>=25.1"
+    pip install -e . --group dev
     ```
 
 ---

@@ -5,7 +5,1190 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [6.6.0] - 2026-10-07 — every read judged by its own bases
+
+### Changed — release infrastructure (#136, #137, #152)
+
+- **One version source per ecosystem (#136).** The Python package takes its version
+  from `rust/Cargo.toml` (maturin, `dynamic = ["version"]`; `gbcms.__version__` reads the
+  installed metadata), and the Nextflow modules and banner read `manifest.version`. A
+  release edits `rust/Cargo.toml`, the Nextflow manifest and the CHANGELOG instead of
+  11 places in two formats. `scripts/release.py check` runs on every PR, and with
+  `--tag` it is the release workflow's first job: nothing builds or publishes unless
+  the tag is a bare `X.Y.Z` equal to Cargo.toml, its lock and the manifest, with a
+  dated CHANGELOG section (a tag on a dev version would have published a dev wheel
+  under the release). On `develop` the manifest must name a published image older
+  than the dev package, and the package must move to the next dev version after a
+  release. Only a tag push publishes (a manual run builds and checks), the tag reaches
+  shell steps through `env:`, and the workflow's default token reads only. The
+  Nextflow lint job checks every process `nextflow inspect` resolves runs the
+  manifest's image; `gbcms --version` and the resolved images are unchanged.
+- **The release workflow creates the GitHub Release (#137).** After PyPI and the image
+  are published, it creates (or updates) the Releases entry: the title and notes from
+  the tag's CHANGELOG section (`## [X.Y.Z] - YYYY-MM-DD — summary`; cut at a section,
+  with a link to the full file, past GitHub's body limit), the wheel and sdist attached
+  with `SHA256SUMS`, and a build-provenance attestation for each artifact.
+- **The bin window is documented as the floor it is (#152).** `BIN_WINDOW` (10 kb) is a
+  minimum span that dense variants chain past, bounded by the 200-variant cap; measured
+  on real inputs (per-sample lists max 29 kb; one input holding a cohort's variants max
+  47 kb) and never capped by span. The page no longer cites the retired parity suite.
+
+### Added — the regression panel, the release gate (#155)
+
+- **A panel chosen for coverage** replaces the hand-picked 56-sample HPC matrix: every
+  signed-out variant is tagged with the strata that exercise distinct code paths (70,
+  including this release's: delins size and direction, indels beside another run,
+  tandem-duplication inserts, PMS2 at `--min-mapq 0`, MNPs near indels, a delins
+  overlapping its component row, ACCESS indels in homopolymers), and a greedy set
+  cover picks the samples. Arms beyond the IMPACT/ACCESS panels: the FORTE RNA truth
+  cohort and a cohort-MAF fillout; configurations beyond production defaults: mFSD
+  with both Parquet outputs, the SW backend, VCF output.
+- **The tools** (`scripts/regression_panel/`, no patient data): a run-list runner
+  (resumable, SLURM-array shards, wall time and peak memory per run), a comparison
+  (version against version, and each version against the sign-out counts by stratum),
+  and **mechanical attribution**: one wheel per count-affecting merge (the new manual
+  *Checkpoint wheels* workflow), run on the changed rows, names the merge where each
+  changed cell changed (the workflow starts by hand, or from a pushed `checkpoint-wheels/X.Y.Z`
+  branch before the release reaches the default branch). The gate and its criteria:
+  `docs/development/regression-panel.md`.
+
+### Fixed — one allele given twice is not its own sibling (#246)
+
+- **Carriers lost at both rows.** An input that gives one allele on two rows had
+  each row treated as the other's sibling once normalization made them one variant:
+  the same row given verbatim (a cohort MAF listing a recurrent indel once per
+  sample), or one allele written two ways (a repeat unit inserted at either end of
+  the repeat, as FORTE's indel probes do). A carrier the aligner wrote at the
+  junction counted at both rows; one written anywhere else in a repeat fit both
+  exactly, so the AD guard counted it at neither: +CTG at a (CTG)x11 tract had AD 7
+  against 62 when counted alone. Outputs before 6.6.0 undercount such rows' indel
+  carriers written away from the junction (an SNV base read directly was never
+  contested). With `--rescue-mnp`, an MNP given twice was skipped as grouped.
+- **The fix.** A sibling of the row's own allele is left out of its sibling list
+  (the guards, the Phase-3 haplotype matrix and the observed-allele scan all read
+  that list; one entry per other allele), so each row counts every carrier, and
+  the MNP rescue skips only a row whose group holds another allele. A row given
+  verbatim is noted at INFO; one allele given two ways warns, naming the rows. A
+  genuinely different allele at the site stays a sibling.
+
+### Fixed — a carrier behind a substitution is not REF; the junction ALT stays (#245)
+
+- **A carrier counted REF.** A readable insert of the variant's length written just
+  outside the window behind a substitution (the anchor read as another base, so the
+  base the insert would place onto the reference does not fit) could not slide back:
+  the read was a separate event and counted REF, though at the variant's junction it
+  costs no more mismatches. Against develop's outputs: RC 19 reads at 2 rows (one
+  BRCA2 allele recurring in two samples), WES 2, FORTE 2; all REF to partial, no ALT
+  or depth changed.
+- **The rule (RJ-22).** Before such an insert is called a separate event, every
+  junction it can reach (through the read's contiguous aligned bases, up to 64 each
+  way) is scored by the read's readable mismatches; a fewest-mismatch placement
+  inside the discrimination window makes it another allele (neither, with partial
+  evidence): never REF, and never ALT, since one read cannot tell a molecule's error
+  from a recurring other allele. ALT is still judged only over the placements a slide
+  reaches base by base (RJ-21). The scan-window gate admits an insert either way
+  reaches the window. An insert with no readable base is unchanged (RJ-20).
+- **The strict path keeps its junction ALT** when a slide could absorb a flank
+  substitution into another insert. On RC (28 reads) each is the given ALT plus one
+  molecule's substitution, no other allele recurring: ABRA2's placement of a
+  singleton. Every surveyed tool credits it ALT; a contract test pins it.
+
+### Fixed — a same-length insert of other bases is judged by its bases (#243)
+
+- **Phase 3 overrode the bases.** A read whose insertion had the variant's length and
+  other readable bases, near the variant, went to Phase 3, whose closer haplotype let
+  length win ALT against those bases (Smith-Waterman under both bio versions, PairHMM
+  more often under bio 4) and could absorb another allele into REF. On the RC DNA set
+  it was the only way a read reached Phase 3 at an insertion row: 50 of 94,530 calls.
+- **The rule (RJ-21).** Such a read is judged by its bases, never Phase 3, and over
+  every placement its insert can take, not only the aligner's: the insert slides a
+  junction when the base it places onto the reference fits it (the same base, or a
+  masked one), so a sequencing error the aligner absorbed into the flank, or a
+  compensating mismatch, slides back. It is ALT when a placement shows the ALT by read
+  bases (at the variant's junction, judged as the strict path judges an insert there,
+  or the variant's haplotype in a repeat) or its bases across the window spell the ALT;
+  otherwise another allele when a placement sits inside the discrimination window,
+  and a separate event (RJ-8) when none does. Only the best-aligned placements count
+  (a slide that takes in a read mismatch resolves it). An insert with no readable base
+  of its own does not slide (RJ-20). Both backends agree. The deletion side already
+  judged by bases.
+
+### Fixed — an insertion's ALT needs one of the read's own inserted bases read (#240)
+
+- **Reads whose inserted bases nobody can read counted ALT.** A read carrying an
+  insertion of the right length whose bases are all N (fgbio masks a duplex
+  disagreement to N at Q2) or all below `--min-baseq` was credited ALT on length
+  alone: the strict path found the bases unverifiable and handed the read to Phase 3,
+  where REF pays for the gap, under both backends. Shifted placements went the same
+  way, and the deleted-anchor and split-op reading accepted a readable flank base.
+  On the RC DNA set that was 127 reads in 20 of 1,060 rows, mostly 1bp insertions
+  into homopolymer runs with a duplex-masked N inside the run (the aligner writes the
+  N as the insertion). Three rows lost 62, 15 and 11 ALT reads (430 → 368, 299 → 284,
+  111 → 100), the other 17 one to eight; depth is unchanged and the reads move to
+  `partial_alt`. The WES loci: 21 reads in 8 of 80 rows. The FORTE sample: 8 in DNA
+  mode (both backends) and 9 in RNA mode, all low-quality letters. RNA truth and
+  probe samples are unchanged.
+- **The rule (RJ-20).** A read whose inserted bases are all unreadable is neither,
+  with partial evidence, on every path: at the junction, at another placement inside
+  the discrimination window, across several ops, after a deleted anchor, and as a
+  truncation. Written outside the window such an insert is a separate event (RJ-8).
+  "Readable" means not N and at or above `--min-baseq`, the gate SNV bases pass. A
+  read whose readable inserted bases match the ALT stays ALT, however many are
+  masked. The read census holds the same rule. The post-splice path already counted
+  such reads this way.
+- **Community practice.** Likelihood callers (GATK, bcftools, Strelka2) credit ALT on
+  length; sequence-keyed counters do not: VarDict and freebayes drop such a read,
+  bam-readcount and LoFreq report it as its own allele, and GetBaseCountsMultiSample
+  counts it as neither. gbcms counts the given allele from the read's own bases.
+
+### Fixed — Fisher's exact test at any depth (#239)
+
+- **Strand-bias p-values were 0 at depth.** `strand_bias_p_value`,
+  `fragment_strand_bias_p_value` (VCF `SB_PVAL`, `FSB_PVAL`) and merge's combined
+  columns were 0, as if strongly biased, whenever the binomial C(n, forward total)
+  passed f64's range. That needs both strands well covered: from about 1,030 reads
+  on a strand-balanced table. Tables with one thin strand stayed correct. On the
+  RC cfDNA rows that was 316 of 1,060 read-level p-values, 298 of them truly
+  ≥ 0.05. The ASJD junction test (p < 0.05) read the same zeros.
+- **The fix.** The test is now the exact two-sided p of R's `fisher.test`, computed
+  in log space from the ratio of neighbouring tables, walking out from the most
+  likely table: no factorial, nothing overflows, relative error near 10⁻¹³ at any
+  depth, and tables too unlikely to count are never visited.
+  - Ties follow R's rule (probability ≤ observed × (1 + 10⁻⁷)). That replaces an
+    absolute 10⁻¹⁰ tolerance which floored strongly biased tables near 10⁻¹⁰; one
+    printed 2.1 × 10⁻¹⁰ where the exact p is 7.0 × 10⁻⁹⁰.
+  - The p = 1 guards (≤ 1 ALT observation, empty or full margins) and the odds ratio
+    are unchanged.
+  - The p-value stays the exact p of the raw counts. At deep coverage, read the odds
+    ratio for the size of a bias.
+- **Measured on the local FORTE sample (9,536 rows).**
+  - What moved: 397 read-level and 205 fragment-level strand-bias p-values, and 5
+    ASJD p-values, of which one flag clears. All counts and Parquet tables are
+    unchanged.
+  - Every reported strand-bias p now equals scipy's exact value.
+- **statrs** leaves the direct dependencies.
+
+### Changed — Rust dependencies on their current releases (#139)
+
+The Rust dependencies move to their current releases, one per commit (PR #238).
+No output changes. bio follows once C35 (#240) and C36 (#243) are in.
+- **pyo3 0.29** (from 0.27). The API migration: `allow_threads` is now `detach`,
+  and `Variant` and `BaseCounts` opt in to the by-value conversion that Python
+  passes back. The module keeps the GIL on a free-threaded interpreter, as before;
+  gbcms is not built or tested free-threaded.
+- **rust-htslib 1.0, arrow/parquet 60**, and the semver-compatible updates.
+  (statrs went to 0.19 here, then left the dependencies with #239.)
+  - parquet 60 truncates column-chunk min/max statistics of strings longer than 64
+    bytes. The data are unchanged.
+- **wfa2lib-rs moves to upstream's current commit without its default features.**
+  Those only built its benchmark binary, so clap, tracing and mimalloc leave the
+  build.
+- **bio 4.2.1** (from 3.0), held until C35 (#240) and C36 (#243) landed.
+  - The PairHMM: bio 4.1 fixes how it scores the bases of an extended read
+    insertion (rust-bio#701). That moved reads decided in Phase 3: ones whose
+    inserted bases are N or below the base-quality floor crossed ±2.3 (synthetic:
+    1.8 → 5.0), and same-length inserts of other bases leaned to ALT. Since C35 and
+    C36 neither reaches the PairHMM (RJ-20, RJ-21): no pure insertion is decided in
+    Phase 3 on the measured sets.
+  - Smith-Waterman: bio 4 counts a gap's first base in the open penalty
+    (rust-bio#660), so `SW_GAP_OPEN` moves from −5 to −6 and every score is
+    unchanged.
+  - `Cargo.toml` caps bio at `~4.2` (its minor releases have changed numerics). bio
+    keeps its own statrs 0.18; the new crates in the lock are unused optional ones.
+  - On develop with C36, bio 4 changes no output: the local FORTE sample (9,536 rows,
+    both backends, every Parquet table) and the cluster RC sets (144 files) are
+    byte-identical.
+- **Unchanged output:**
+  - Local FORTE sample (RNA and DNA modes, both alignment backends, 9,536 rows
+    including 806 indels observed in the reads): compared after step 1, after steps
+    1–5, and for the final tree. No column and no Parquet table changes.
+  - RC sets on the cluster (28 cfDNA DNA, 33 RNA truth, 3 probe samples and 80 WES
+    loci; 2,212 rows): byte-identical.
+
+### Changed — dependencies, CI coverage and the image (#139)
+
+Measured first (PR #231). Nothing changes at runtime.
+- **The dependency floors are true.** At the declared floors the CLI crashed: typer
+  0.9.0 cannot read its `list[...]` options. pysam 0.21.0 has no macOS arm64 wheel
+  and an sdist that fails on current setuptools. Bisected one package at a time, the
+  minimums are `typer>=0.15.4` (older typer does not cap click and breaks with
+  click >= 8.2) and `pysam>=0.22.0`; rich 13.0, pydantic 2.0 and polars 1.0 held.
+  All of them together pass the suite on Python 3.10 and 3.11. A new CI leg installs
+  the floors on every PR and checks that they are what got installed.
+- **click is no longer a runtime dependency.** typer bundles its own copy, and gbcms
+  never imports click; the CLI tests do, so it moved to the `test` group, and the
+  image no longer installs it.
+- **CI tests the supported range.** Python 3.10–3.14 all pass on the latest
+  releases, but CI tested only 3.11 and 3.12. PRs now run Ubuntu 3.10 (at the
+  floors), 3.11 (the image's) and 3.14, plus macOS 3.12, and the classifiers list
+  3.10–3.14. A monthly workflow (`latest-deps.yml`, also run by hand before a release)
+  runs every version on the newest releases with the semver-compatible Rust updates. On failure it opens or updates
+  one `latest-deps` issue.
+- **One dev-dependency list.** The `dev` extra and a PEP 735 `dev` group had drifted
+  apart. The group lacked pytest-mock, types-pyyaml, pyyaml and mkdocs; the extra
+  lacked pyarrow, which the tests import. They are now the dependency groups `test`
+  and `dev` (`dev` includes `test` and `docs`, the site's tools, which
+  `deploy-docs.yml` now installs instead of its own list), kept out of the published
+  metadata.
+  `pip install gbcms[dev]` no longer exists. `maturin develop` installs `dev`, which
+  needs pip >= 25.1 (or uv); the developer docs now say so, since the old
+  `python -m venv` steps failed on Python's bundled pip. `make setup` installs it too.
+- **The image installs a hash-pinned lock.** It resolved its dependencies afresh at
+  each build. `docker/requirements.lock` (linux/amd64, Python 3.11) is installed
+  with `--require-hashes --no-deps`, then `pip check`, and is refreshed at each
+  release (release guide step 4). CI now runs the image (`--version`, `pip check`).
+  The 6.6.0 lock takes polars 2.0, released the day before the cut: none of the
+  APIs it removed are used, and the suite passes on it. gbcms uses polars only in
+  `gbcms merge`, the mFSD report and the batch IO helpers, never to count.
+
+### Changed — GTF loading (#139)
+
+Measured on GRCh38.111 (PR #230). Only `--gtf` runs are affected, and their output
+is unchanged for well-formed GTFs.
+- **The GTF loads in 2 s instead of 9 s, plain or `.gtf.gz`.** noodles-gtf parsed
+  every line before reading its feature column. A byte-level parser reads each
+  line's feature and chromosome first and checks only the exon lines it keeps.
+  Measured in `gbcms rna` on Ensembl 111: 1.6 s for 16 chromosomes (8.9 s before),
+  2.0 s for the whole genome (9.3 s), 2.4 s from `.gtf.gz`. GENCODE v50 loads in
+  4.0 s (basic) and 6.5 s (comprehensive) from `.gtf.gz`. Peak memory falls (407 MB
+  vs 470 MB for 16 chromosomes): `gene_id`, stored for every exon and never read,
+  is gone.
+  - It loads exactly the exons noodles did: no line differs across Ensembl 111 and
+    GENCODE v50 comprehensive, v50 basic and v47lift37 (26.1M lines).
+  - gzip and BGZF are detected from the file's content. The config already accepted
+    `.gtf.gz`, but the parser failed on it with "stream did not contain valid UTF-8".
+- **Malformed exon lines are rejected and warned about.** The grammar is noodles-gtf's,
+  column by column, except in four places where noodles loaded a line wrongly:
+  - A whitespace run may now separate a key from its value. noodles read
+    `transcript_id  "T1"` as the ID ` "T1"`, quotes included.
+  - Unquoted values are trimmed.
+  - A line with start after end is rejected; noodles kept it as a negative-length exon.
+  - A coordinate past 2,147,483,647 is rejected; noodles wrapped it negative.
+  - An exon with an empty `transcript_id` is rejected, as a missing one already was.
+    noodles merged every such exon into one transcript.
+  - A `transcript_id` that strips to nothing (`"."`, `".1"`) is rejected the same way.
+  - An exon line that is not UTF-8 text is rejected; it used to stop the run.
+  - Each of these lines used to move `exon_boundary_dist` with a bogus boundary.
+    Rejected lines now get one warning with their count and the first one's line
+    number and reason.
+- **The GTF index cache is deprecated.** On Ensembl it saved 1–1.4 s a sample: a hit
+  cost 0.9 s in the CLI (~0.3 s of it start-up) against a 1.6–2.0 s load now. It
+  brought a build step, a Nextflow process and a 97 MB file per chromosome set. It is
+  no longer used:
+  - `--gtf-cache-dir`, `gbcms build-gtf-cache` and the Nextflow `--gtf_cache` are
+    accepted and ignored with a warning, and are removed in 6.7.0.
+  - The `GBCMS_BUILD_GTF_CACHE` process, the cache module and its binding are gone.
+  - The noodles-gtf, bincode and serde dependencies are gone too. bincode 3.0 is a
+    `compile_error!` release, so there was no upgrade path.
+
+### Changed — mFSD statistics (#153, #154)
+
+Measured first on ACCESS plasma labeled by the patient's buffy coat (operator
+decisions 2026-09-25, refined 2026-10-05): mFSD is graded, plasma-only evidence,
+never an origin call; the CH-vs-tumor prediction belongs to a separate model that
+reads `<sample>.fsd.parquet`. Only `--mfsd` output changes.
+- **The fragment-size LLR is the mean per fragment (#153).** `mfsd_alt_llr` and
+  `mfsd_ref_llr` (VCF `MFSD_ALT_LLR`, `MFSD_REF_LLR`) were sums, which grew about
+  22x with depth on real cfDNA; the mean stays comparable, with n in
+  `mfsd_*_count`. An empty fragment class writes `NA` for its mean size and LLR (it
+  wrote 0, where the docs already said `NA`; the N class is empty on most rows).
+- **The mFSD report grades the evidence (#154).** Its classes are `LEANS-SOMATIC`
+  (ALT fragments significantly shorter than REF: KS q < 0.05 with the ALT ECDF
+  above the REF ECDF where they differ most), `NO-SIZE-EVIDENCE` and
+  `INSUFFICIENT`, replacing `TUMOR-LIKE` / `CH-LIKE` / `AMBIGUOUS`. `CH-LIKE` rested
+  on a non-significant KS, which is also the usual result for tumor variants at
+  these fragment counts: on 39 labeled samples it called 3 of 17 tumor variants in
+  CH-associated genes CH-LIKE, and about 30% of tumor variants below 50 ALT
+  fragments looked REF-like. Nothing leans CH now. Gene membership is a note, not
+  a gate (a tumor TP53 variant could never be `TUMOR-LIKE`), and the enrichment
+  > 1.3 gate is gone: on duplex fragments the new rule leans somatic on 22 of 97
+  tumor variants and 0 of 39 white-cell variants (the old rule found 16). The
+  direction is read from the KS gap, not from the sub-nucleosomal share, which
+  missed an ALT 31 bp shorter with no fragment under 150 bp. A significantly
+  longer ALT is not somatic evidence. Variants below `--mfsd-report-min-alt` are
+  left out of the report, as before.
+- **The KS p-value is exact** up to 10⁷ lattice cells, with Stephens' corrected
+  asymptotic series above. The switch at `n·m` 10,000 sent most real ALT-vs-REF
+  pairs (348 of 512) to the uncorrected series, which overstated p 1.7–2.3x at 5
+  ALT fragments near p = 0.05 and up to 45x for a strong shift. The exact value
+  compares lattice points with the observed deviation in integers (a float band
+  could count the observed point as not reaching D near the cap), computes p
+  directly as the share of paths leaving the band (a tiny p keeps its digits), and
+  visits only the cells inside the band.
+- **A variant on a contig absent from the BAM stays out of the mFSD q-values.**
+  With `--mfsd` its fields held 0.0, which read as a KS test with p = 0 and
+  deflated every real variant's BH q-value; it now reads as no test (`NA`).
+- **`mfsd_alt_confidence` is `TESTABLE` / `SPARSE` / `NONE`** (was `HIGH` / `LOW` /
+  `NONE`): it names how much ALT data there is (≥ 5, 1–4, 0 fragments); at 5
+  fragments a real size shift is detected only about 8% of the time.
+
+### Changed — merge, outputs and observability (#194, #221, #223, #224, #129, #148, #130, #131, #156, #220, #225)
+
+Measured first (operator decisions 2026-09-30 for #194, 2026-10-05 for the rest);
+community practice surveyed (bcftools, Picard/htsjdk, GATK, samtools/htslib,
+maftools, genotype_variants, Snakemake, Nextflow, bam-readcount, LoFreq, fgbio,
+DeepVariant, Strelka2). Where no tool sets a standard, gbcms now does more.
+- **A missing count is not a zero in `gbcms merge` (#194).** When either flavor's
+  count cell is missing or not a finite number (empty, `NA`, `nan`, `inf`, text)
+  in a row it has, the combined `simplex_duplex_*` cell is `NA`, as are the
+  totals, VAFs and strand bias built from it, and merge warns once per column
+  with the number of rows (it summed them as 0, silently). A row an input lacks
+  still counts 0 for it. Combined VAFs are written with four decimals, as the
+  writers write theirs (`f"{v:.4f}"`), and the combined strand-bias p-values and
+  odds ratios as theirs (`1.7045e-01`, `3.0000`). No real output carries such cells (0 of 180,348 count
+  cells measured); they come from edited files or other tools.
+- **Merge keeps every gbcms column per input (#223).** The mFSD and RNA columns
+  (63 of the 89 columns the writers can emit) were taken from the first input
+  only, unprefixed, and every later input's were dropped: with `--mfsd`, which
+  the pipeline allows alongside merge, a merged ACCESS output showed the duplex
+  BAM's fragment sizes as the sample's. They are prefixed per input
+  (`duplex_mfsd_ref_mean`), the set taken from the writer, with a test that it
+  matches in every mode. Inputs written with `--column-prefix` (`duplex_` as the
+  pipeline runs it, `t_`) carry their counts under that prefix and their status,
+  strand-bias, mFSD and RNA columns unprefixed: merge renamed nothing for them, so
+  the second input's status and strand bias were dropped too, and `t_` counts were
+  never combined. Every column is now found under the writer's name.
+- **A row only a later input has keeps its annotations (#221):** its first-input
+  columns (gene, sample barcode, classification...) come from the earliest
+  later input that has the row (matched by that input's own row, so one variant
+  listed for two samples keeps each sample's); they were empty. No work when
+  every row is in the first input, as in the pipeline.
+- **Merge reads its inputs' provenance (#129).** The merged MAF starts with its
+  own `#gbcms`/`#command` lines and one `#input` line per input with that
+  input's version line (it had none). Merge warns when the inputs come from
+  different versions or builds (builds differ only when both name a commit), or
+  when only some say which version wrote them, and stops when one is a VCF-input
+  MAF from before 6.5.0 (`vcf_pos` without `vcf_ref`/`vcf_alt`, its version line
+  missing or older than 6.5.0; a later output can carry vcf2maf's `vcf_pos`) and
+  another is not: the
+  same 102k VCF records genotyped by 6.4.0 and by this version differ in 6.3% of
+  their rows, which merged into 12,771 half-empty rows with exit 0. The INFO line
+  that claimed "n/m variants have no <type> counts" counted rows whose REF count
+  was 0; it now counts the rows each input lacks. No surveyed merger compares
+  producer versions.
+- **Merge no longer sums two alleles where the flavors' MNP rescue differs
+  (#224, the rescue half of #128, pulled in from 6.7.0).** When one flavor
+  reports a rescued component and the other the MNP (or rescue ran on one flavor
+  only), the row's combined `simplex_duplex_*` cells are `NA`; they added the two
+  alleles' counts, with only a warning. A row one flavor lacks is not mixed. 20
+  real ACCESS pairs had none; the warning names each such row.
+- **Builds name their commit.** Provenance lines (`#gbcms`, VCF `##source`, run
+  logs, `gbcms --version`) read `gbcms v6.6.0.dev0 (9c371263)`; develop now
+  carries a `.devN` version, since every development build since 6.5.0 reported
+  6.5.0. The commit comes from git, or from `GBCMS_BUILD_COMMIT` (set by the
+  Dockerfile and the release workflow).
+- **VCF output of a whole-contig deletion is valid (#220, pulled in from
+  6.7.0).** A MAF deletion at Start 1 spanning its whole contig has no reference
+  base before or after it; it was written with a REF padded past the contig end
+  with `N` (`ACGTACN > N`). It is now the symbolic `<NON_SEQUENCE>` record (REF
+  the base at POS), in counting runs and `gbcms convert`; the row was already FAIL
+  (`FETCH_FAILED`). None in real data.
+- **No partial output files (#148).** Every output (MAF, VCF, the merged MAF,
+  `convert` and `normalize` files, both Parquet files, the mFSD report) is
+  written to `.<name>.partial`, fsynced, and renamed into place; a failed run,
+  including a failure while closing (a full disk), leaves nothing at the output
+  path and no temp file, and the observations Parquet goes into place only after
+  the MAF/VCF. A symlinked output keeps its link (its target is replaced), a
+  replaced file keeps its permission bits, and a device or FIFO (`/dev/stdout`)
+  is written in place. It left a truncated file
+  under the final name (htslib tools, GATK and Picard do too; only workflow
+  managers clean up).
+- **Per-BAM warnings once (#130).** The `--rescue-mnp` re-count no longer repeats
+  the records-without-bases, records-without-qualities and absent `--umi-tag`
+  warnings, and those records are counted once each (the count was an upper
+  bound: overlapping bins fetched a record more than once).
+- **The run start says what the run does (#131).** One INFO block lists every
+  resolved option (generated from the configuration, so none is left out) and
+  what each count- or column-changing option implies; one INFO line per BAM
+  gives facts from its first 20,000 records (duplicates flagged, base-quality
+  values, the share below `--min-baseq`, ALT contigs, hard-clipped primaries). It
+  warns only when `--min-baseq` removes more than 10% of sampled bases, the
+  header has ALT contigs, or more than 1% of primaries are hard-clipped: on 10
+  MSK BAMs the default removes 0.8–2.1% and none has ALT contigs or hard-clipped
+  primaries. Unmarked duplicates are reported, not warned: ACCESS consensus and
+  FORTE RNA BAMs carry none by design. The CLI's four-setting `Config:` line is
+  replaced by the block. Implications are stated against the mode's defaults (an
+  RNA run's are RNA's), RNA amplicon and strandedness settings included; turning
+  off the secondary or supplementary filter lets those alignments join fragment
+  evidence, never read counts. A BAM the facts cannot read is left to counting.
+- **The docs toolchain is pinned below MkDocs 2.0 (#225, the pin half of #138,
+  pulled in from 6.7.0):** `mkdocs>=1.6,<2` and `mkdocs-material>=9.5,<10` in the
+  dev extras and the docs workflow (both installed unpinned), with a test; the
+  MkDocs 2.0 migration stays in 6.7.0.
+- **One page for every QC flag, each defined once (#156):**
+  `docs/reference/qc-flags.md`, a table per family (status reasons, diagnostics,
+  rescue outcomes, ASJD, QC columns, mFSD classes, VCF record shapes) with mode,
+  MAF column, VCF field and what to do. Each family is a snippet section that the
+  pages needing the table include (normalization, architecture, RNA annotation,
+  output formats, mFSD report); the rest link to it. Tests fail when a flag the
+  code emits is missing from the page, when a flag is defined anywhere else (a
+  table row or bullet), when a line lists three or more flags without linking it,
+  or when an include names a missing section; the docs build now fails on a
+  missing snippet or anchor. Consolidating found copies that had drifted: the mFSD
+  report's class table and flowchart (thresholds 1.0 and the raw KS p-value; the
+  code uses 1.3/1.2, the FDR q-value and the CH-gene check), its `mfsd_ch_flag`
+  ("CH-like profile"; it marks a CH gene), output formats' `STRAND_DISCORDANT`
+  (from before intronic loci got a strand), the VCF `GS` row (the pre-6.0
+  combined status; `GSR` was missing), and the report's own tooltips (raw p).
+
+### Changed — input and representation (#122, #123, #124, #125, #126, #147, #208, #149, #218)
+
+Measured on the MSK sign-out dump (1,133,044 rows; operator decisions 2026-09-25
+and 2026-10-05).
+- **Non-sequence MAF alleles are FAIL rows (#123).** An allele that is not a base
+  sequence (an IUPAC code such as `R`, `.`, a stray character from a hand edit)
+  made the row count 0 silently; it is now a FAIL row, `NON_SEQUENCE_ALLELE`,
+  kept in MAF output. Lowercase bases are bases; `-` is a MAF dash allele, so a
+  `-` given as non-MAF input (the observations API) is one too. VCF output,
+  which cannot carry such an allele (nor an empty one), writes the symbolic
+  record `<NON_SEQUENCE>` (REF the reference base at POS, declared in the
+  header), in counting runs and in `gbcms convert`. 7 such rows in the sign-out
+  data.
+- **A `REF_MISMATCH` row says where the given REF sits (#218).** The row stays
+  FAIL and uncounted; `gbcms_diagnostic` (VCF `GD`, and `gbcms normalize`'s
+  new `gbcms_diagnostic` column) gives `REF_AT_OFFSET(k)` when the REF (3+
+  bases) matches the reference exactly within 3 bases of its position, every
+  such offset listed nearest first. In the sign-out data 87 of 154
+  `REF_MISMATCH` rows sit 1–3 bases off, mostly legacy ANNOVAR-annotated
+  indels at Start−1 whose alleles still carry the VCF anchor base. No tool
+  surveyed moves or explains such a row (`bcftools norm --check-ref` exits,
+  warns, excludes or fixes REF in place; maf2vcf skips it).
+- **VCF output of MAF input names its MAF row.** Every record carries
+  `MAF_START`, `MAF_REF` and `MAF_ALT`: the row's Start and alleles as
+  written (a placeholder such as `0` too; percent-encoded, `.` when empty), so
+  a result can be looked up by its input, as VCF input's MAF output carries
+  `vcf_pos`, `vcf_ref` and `vcf_alt`. Also in `gbcms convert`.
+- **A MAF deletion at Start 1 is counted (#122).** It has no base before it; it
+  is resolved to the VCF spec's position-1 form (the base after it), as gbcms's
+  VCF output already wrote it, and counts as the same event given as VCF does
+  (it was `FETCH_FAILED`). None in the sign-out data.
+- **`End_Position` is optional (#124).** gbcms places a variant by
+  `Start_Position` and its alleles; rows without an integer `End_Position` were
+  skipped and are now read (maf2vcf converts them). `gbcms merge` no longer
+  joins on it: inputs that write it differently for one variant join into one
+  row (the first input's `End_Position`, the difference logged), and a row only
+  a later input has keeps that input's. Where an input lists one variant twice
+  with different `End_Position`, it joins on `End_Position` too, so each row
+  pairs with its own counterpart. The sign-out data has it, consistent
+  with Start and REF, on every row but one; no two of its rows differ only in
+  `End_Position`.
+- **VCF input's MAF output fills `Tumor_Seq_Allele1` (#125)** with the reference
+  allele: MSK's sign-out convention on every row, and maf2vcf's reading of an
+  empty one. Previously empty.
+- **One row, one allele (#126):** a `Tumor_Seq_Allele1` that differs from both
+  REF and Allele2 is not a second allele (vcf2maf's reading; cBioPortal picks
+  Allele1). Documented and tested; no such rows in the sign-out data.
+- **Engine API (#147):** a `decomposed` or `sibling_variants` list shorter than
+  the variants is padded; a longer one raises `ValueError` (a short decomposed
+  list panicked; a long list was cut silently).
+- **One allele-kind rule (#208):** the AD-claiming guard's pure-indel test and
+  the pure-indel windows use `allele_kind` (case-insensitive anchor; a
+  multi-base shared prefix is complex, as the dispatcher counts it). No prepared
+  sign-out row changes; it reaches only lowercase or unprepared engine input.
+- `is_indel` in preparation is `ref_len != alt_len` (#149; no change).
+
+
+### Changed — RNA: strand at intronic loci, splices are not coverage, clips and junctions (#185, #198, #186, #173, #213)
+
+Five RNA rules (operator, 2026-10-04), each measured on FORTE against the
+previous build: the truth cohort (94 signed-out rows), the T9 exon-edge indel
+probes (978) and the C1 splice probes (7,224 delins at exon edges and mid-exon,
+where no read carries the ALT).
+- **Gene strand at intronic positions (#185).** A position no stranded exon
+  covers (intronic, splice sites included) takes the strand of the transcripts
+  spanning it, all agreeing; where both strands' genes cover a position there is
+  no strand and every read counts (both genes' transcripts carry the allele).
+  The exon index read the first and last intron bases as exonic (an end-inclusive
+  interval tree built from half-open exons): fixed, for the strand and the
+  per-transcript counts. The unresolved-strand warning names the variants.
+  Truth: no row changes; T9: 95 antisense REF reads move to
+  `rna_antisense_depth` on 62 rows.
+- **A splice is not reference coverage (#198, RJ-17).** A pure-indel read is
+  informative only when one aligned block between splices spans the window, REF
+  and ALT alike. Truth: no row changes; T9: 24,703 REF reads at splice-crossing
+  deletions become depth only (their bases fit both alleles). `vaf` (alt over
+  REF plus ALT) at such a deletion with carriers rises to the VAF among the
+  reads that show the event; no measured row's `vaf` moved (the T9 rows have no
+  carriers). A deletion written right after a read's splice (no aligned flank)
+  is depth only.
+- **Diagnostics read the counted reads (#186).** `OBSERVED_ALLELE` and
+  `COEXISTING_ALLELE` take n/m over the reads the counts read: no antisense read
+  under enforcement, and the RNA mapping rule's unique mappers. Counts unchanged.
+- **An RNA read's clip at an exon edge is not allele evidence (#173, RJ-18).**
+  STAR clips a junction overhang it cannot splice, so a clip reaching an exon
+  edge or junction end (annotated, or one the reads splice at), or ending within
+  five bases of one, holds the next exon's bases and is not read. Any other clip
+  is the read's own bases and is read as in DNA (a mid-exon MNP carrier with its
+  second base clipped still counts ALT). Splice probes: spurious ALT 19 → 16.
+- **A spliced read is read across its junctions (#213, RJ-19).** The
+  exact-carrier windows of a read spliced near the event are built over the
+  reference spliced at its own junctions (the far exons read from the FASTA,
+  every junction the windows reach followed), not cut at the exon edge; a
+  junction starting inside the event splices the haplotypes at its edge, so a
+  delins carrier counts however the gap is written; such a read counts ALT only
+  when its bases also beat REF spliced at its own junction (an alternative
+  donor or acceptor), and is otherwise depth only. Splice probes: spurious ALT
+  19 → 4; REF −0.95% at probes 0–1 bp from the exon edge (reads reaching one or
+  two bases past the junction hold no spliced flank), −0.11% at 2–4 bp.
+- **All five together**, against the branch point: splice probes spurious ALT
+  19 → 2, REF −0.39%, partial −453; T9 106 rows (REF −24,813, mostly R5); truth: 4 rows'
+  per-transcript columns (the exon-index fix), no count; RC DNA and WES
+  byte-identical (before the review follow-ups; RNA-only changes since).
+- **Survey:** GATK splits RNA reads at N and counts a piece only when its bases
+  favour an allele, and runs HaplotypeCaller with `-dont-use-soft-clipped-bases`;
+  bcftools never uses spliced reads for indels; phASER, WASP and ASEReadCounter
+  never read clips; REDItools resolves a site's strand from the annotation
+  spanning it and leaves mixed strands undetermined; allele counters take every
+  tally over one filtered read set.
+
+### Documented — why the RNA mapping-quality default is `--min-mapq 1`
+
+No behaviour change. The RNA default keeps reads STAR placed at two to four loci
+(MAPQ 3 or 1), counted once at their primary alignment, because junction reads tie
+between a gene and its processed pseudogene. Measured on FORTE: counting unique
+alignments only would cost real ALT reads at genes with pseudogenes (PIK3CA E545K:
+10 of 159; 12 across the truth set) and 1.6% of junction fragments at the probes;
+`--min-mapq 0` would add 6 ALT and 33 REF reads across the truth set. The STAR
+MAPQ scale and the measurement are in `docs/reference/read-filters.md`, which also
+corrects a note that STAR gives novel junctions low MAPQ (its MAPQ depends only on
+the number of loci).
+
+### Changed — an exact-carrier ALT call needs quality-weighted evidence (#174)
+
+A read's bases across a complex variant's windows are now weighed by their
+quality (a base matches with 1 − e and mismatches with e/3, e its error
+probability), and an ALT call needs them to favour ALT over REF by at least what
+one base read at `--min-baseq` gives (about 2.5 log10 at the default 20). Bases
+matching both alleles cancel: the evidence is the weight of the bases that
+mismatch REF less those that mismatch ALT, including a long event's bases past
+its junction windows.
+Clearly read bases must still match the ALT, as before. A low-quality base now
+counts for little instead of fitting either allele.
+- **Why:** reads whose window was mostly low quality could be called ALT on one
+  clear sequencing error. Synthetic probes where no read carries the ALT found
+  2.0 spurious ALT reads per million in FORTE RNA, 1.8 in IMPACT, one in WES and
+  none in ACCESS duplex or simplex.
+- **Measured:** on the probes, RNA spurious ALT 70 → 15–19, IMPACT 7 → 1, WES
+  1 → 0; on every complex DNA/WES row with ALT reads, 1–2 of 1,185 real ALT
+  reads lost. Two simpler rules were measured and set aside: requiring every
+  event base read (46 real reads lost) or at most one masked (15 lost).
+- **Not in this change:** spliced reads whose junction an aligner placed a few
+  bases late at an exon edge (about 9 of the remaining RNA probe calls), and a
+  REF molecule with one clear error just outside the window its ALT reading is
+  anchored away from; 6.7.0.
+
+### Changed — reads deleting the anchor, and the ALT written across several ops, are judged by their bases (#202, #201)
+
+- **A read whose own deletion covers a pure indel's anchor** (#202) is judged by
+  its bases between its nearest aligned flanks: ALT when they equal the ALT
+  (masked bases fit, at least one base read), with the aligner's placement of
+  its gap only a tie-break; REF when they equal the REF (the reference written
+  as the anchor deleted and re-inserted); otherwise neither, with partial
+  evidence. Before, Phase 3 credited such a read to whichever of REF and ALT was
+  closer, so reads holding another allele counted ALT or REF; at insertion rows
+  they counted REF.
+- **The ALT written across several insertion or deletion ops** (#201), such as a
+  deletion written as two or a 1bp deletion in a run written as D2 + I1, counts
+  ALT when the read's bases spell it. Before, it counted partial.
+- **Measured:** develop vs this branch on RC DNA, FORTE RNA and WES, every MAF
+  cell compared.
+  - The split-op rule changed no row (144 of 144 files byte-identical).
+  - The anchor rule changes 33 rows: ALT net 0 on RC DNA (±1 read at 6 rows),
+    −2 on WES; REF +57 and partial +210 at the BRCA2 cluster, where reads that
+    were a co-annotated deletion's false ALT now count REF where their bases
+    across the row's window are REF.
+  - Against the read census, the changed indel rows move toward it: summed
+    distance REF 344 → 251, ALT 40 → 44 (masked-base edge cases).
+
+### Changed — what a read contributes: adapter read-through, absent qualities, unmapped records (#176, #182, #183, #207)
+
+The read-judgment spec gains RJ-10 to RJ-12, which decide what a read brings
+before any rule reads it.
+- **A read ends at its fragment end** (#176). When the insert is shorter than the
+  read, the bases past the mate's 5' end are adapter. They are now hard-clipped as
+  the read enters counting, as if the read had been trimmed, so they are neither
+  bases nor reach in any rule.
+  - Only adapter-like bases are clipped: soft-clipped, or at most two aligned past
+    the boundary (an aligner's chance extension into adapter), none inserted.
+  - A read whose bases go on aligning past the boundary, or hold an insertion
+    there, keeps them. TLEN is a reference distance, so it leaves out an ITD's
+    inserted bases and a mate's clipped 5' bases.
+  - Only an inward-facing pair defines a fragment; an outward one (TLEN negative
+    on the forward read) is left alone.
+  - In MSK data the first base past the boundary is A (the adapter's first base)
+    in 97% of clipped reads.
+- **Records without base qualities** (QUAL `*`) are dropped by the read filter
+  and warned once per BAM (#182). Before, they voted as Q255, and the fragment
+  consensus margin could overflow; it now saturates.
+- **Unmapped records** (flag 0x4) are dropped by the read filter (#183). An
+  unmapped mate placed at a variant counted in `mq0_count`, and at
+  `--min-mapq 0` as a read (an ALT read when it carried the ALT). A read whose
+  mate is unmapped still counts, and mapped MAPQ-0 alignments stay countable at
+  `--min-mapq 0` (pseudogene loci such as PMS2).
+- **Fixed:** the complex classifier read a hard-clipped read's anchor quality
+  from the wrong base (#207).
+- **Measured:** develop vs this branch on RC DNA, FORTE RNA and WES, every MAF
+  cell compared, at the default MAPQ and at `--min-mapq 0`.
+  - 182 rows change at the default MAPQ. RC DNA: 160 rows, ALT −57, REF −66. WES:
+    13 rows, REF −12. FORTE: 9 probe rows, REF −3; the truth set is unchanged.
+  - Every changed row is explained by reads that read through. All 57 lost ALT
+    reads had their ALT on a removed adapter overhang; 52 of the 54 at SNVs
+    showed the adapter's A.
+  - On SNV rows the change equals the read census's (ALT −53, REF −31). On the
+    57 changed pure-indel rows the engine moves toward the census: summed
+    distance REF 167 to 125, ALT 69 to 62.
+  - At `--min-mapq 0`: 184 rows. The two extra rows lose one REF read each to
+    the same clip on reads below MAPQ 20. The PMS2 row keeps its MAPQ-0 reads
+    (REF 5,439 at MAPQ 0 vs 5,414 at the default). No row moved by an unmapped
+    record.
+  - The FLT3 ITD a first build lost 13 ALT reads at is unchanged.
+
+### Changed — which reads count REF for a pure indel; long complex events read through the read (#200, #199)
+
+Read judgment now has one spec, `docs/reference/read-judgment.md`:
+a table of read shapes and their calls, with the decision behind each, executed
+by `tests/test_read_judgment_spec.py`. Changes to how reads are judged are
+decided against it.
+- **Another indel inside the discrimination window means not REF** (#200). A
+  read carrying another insertion or deletion inside the window (not the ALT
+  at another placement) is neither, with partial evidence: its bases are not
+  REF there. This extends the sibling REF guard (#119) from co-annotated rows
+  to any indel. Most visible at deep slippage loci: a BRCA2 cluster where an
+  unannotated 1bp deletion in an A run lies inside two rows' windows, and
+  homopolymer runs.
+- **Another indel outside the window is a separate event** (#200). Of any
+  length, it leaves the read REF where its bases across the window are REF,
+  with no partial evidence. Before, a 5bp-or-longer one withdrew REF in a
+  repeat, and kept REF with partial evidence in unique sequence.
+- **Long complex events read through the read** (#199). The junction windows
+  of an event too long for one read are read on inward as far as the read
+  reaches. A read whose later bases contradict an allele is no longer called
+  that allele: for example, a substitution-only read reaching the end of the
+  run after a C>TA or CA>T, or a read that keeps the anchor and changes the
+  run length.
+- **Measured:** develop vs this branch, on RC DNA, FORTE RNA and WES, with every
+  MAF cell compared.
+  - 112 of 144 files are byte-identical. 155 rows change, all from the
+    inside-window rule: REF −4,327, partial +4,324. ALT and depth are
+    unchanged everywhere. The long-event change moved no row.
+  - Checked against the read census (bases only): on the 105 changed DNA/WES
+    rows it counts 57,199 REF reads, develop 60,619, this branch 57,218. On
+    every FORTE row, the reads moved out of REF are no more than those whose
+    bases contradict both alleles.
+  - The largest moves:
+    - a BRCA2 cluster: the +AAG row goes 1,413 → 408 REF in one sample
+      (census 368), the 12bp-deletion row 1,213 → 402;
+    - a 1bp-deletion row in a homopolymer: 1,009 → 698;
+    - a FORTE T-run probe: about −1.5% REF.
+
+### Changed — code-quality sweep: logging, monitoring, dead code, duplication (#204)
+
+Counts are unchanged on prepared input: 144 of 144 acceptance files (RC DNA,
+FORTE RNA, WES) are byte-identical to the previous build, every MAF cell compared.
+- **Logging.**
+  - Per-read WARN and DEBUG lines move to trace.
+  - Rows the engine can only judge degraded are warned once per counting pass,
+    with their count: indels and complex variants without a prepared reference
+    context, MNPs whose REF equals ALT, and rows with an empty allele.
+  - The exact-carrier fallback warning names its reason.
+  - Misleading texts are corrected; for example, an exact-length deletion is
+    no longer called "wrong-length".
+  - Per-read traces name their read; the Phase stats line is 1-based.
+  - Every decision path has a named trace: why an ALT call is kept, and each
+    route to the exact-carrier rule.
+- **Monitoring** (no new columns).
+  - Each read's `read call` trace names the rule that decided it (`rule=`).
+  - The Phase stats line counts these rules per variant: reads withdrawn as
+    uninformative, ALT kept by its bases, exact-carrier judged or fell back,
+    sibling-guard exclusions and clip admissions.
+  - One INFO line per counting pass gives the totals.
+  - Prep counts what it could not fetch in full (capped or missing shift
+    regions, missing or short event references, missing reference contexts,
+    capped left-alignments) and warns once when any occurred.
+- **API.**
+  - `prepare_variants` takes `rescue_homopolymer` (default off). It builds the
+    homopolymer twin only when the twin will be counted; the pipeline and
+    `observe_molecules` pass the flag.
+  - `BaseCounts.singleton_alt_count` and `duplex_alt_count` are removed. Nothing
+    ever wrote them; they were always 0.
+  - `Variant.shift_region` and `event_ref` are read-only from Python.
+  - A row with an empty allele counts neither and is warned once per pass; no
+    read can carry an empty allele. Prep fails such rows, so pipeline counts are
+    unchanged. Two places did see them:
+    - `observe_molecules`, which passes FAIL rows through to keep rows
+      positional: such a row's molecules are now OTHER (with an empty ALT they
+      counted REF);
+    - unprepared rows passed straight to the engine, which could reach the MNP
+      check, where `len - 1` underflowed.
+- **Dead code and duplication.**
+  - Unused parameters, branches and setters are removed.
+  - Observations and mFSD share one molecule classifier.
+  - Six reference-end CIGAR walks, the soft-clip rule, the scan pad and read
+    window, the read loops' quality, scoring and molecule-key code, and the
+    insertion and deletion checks' end-of-walk resolution each have one helper.
+  - The large-deletion band's literals are named constants.
+  - One allele-kind classification (SNV, MNP, insertion, deletion, complex)
+    drives the dispatcher, splice triage's span, the exact-carrier rule's scope
+    and prep's variant-type label, which each spelled out the same rule.
+- **Comments.** Stale comments are corrected, and ticket labels are removed
+  from code comments and log text.
+
+### Changed — `observe_molecules` requires a reference FASTA (#204) — breaking
+
+- `observe_molecules()` takes `reference_fasta` from the argument or from `config`.
+  Neither (or an empty string) raises `ValueError`, as the CLI does; so does a path
+  that is not a file. Without a reference, the variants were neither normalized nor given a reference context.
+  The indel and complex-variant rules then ran degraded, with nothing said:
+  - carriers written elsewhere in a repeat were not recognised;
+  - reads were judged against the bare event;
+  - complex variants went to the previous classifier.
+- `ObservationResult.variant_status` is always set (a list; it was `None` without a
+  reference).
+- The CLI's config refuses a reference that is not a file. An empty `--fasta ""`
+  is `.`, a directory, which passed the existence check and failed in the engine
+  with a FASTA-index error.
+
+### Fixed — missing data never changes a count silently (#204)
+
+- **ALT calls without a reference to read against.** An ALT call on a pure indel
+  from a read that spans neither window stood on placement alone when the
+  reference around the event was unavailable. At a contig end the ALT side's
+  reading stretch failed to fetch, so carriers whose bases fit both alleles
+  counted ALT while the same REF reads were withdrawn. Now:
+  - the rule reads the reference that exists, stopping at the contig end;
+  - a read with a side to read from but no prepared reference (an unprepared
+    variant, or one that failed prep) counts toward depth only, and is counted
+    and warned once per variant;
+  - a read lying inside the tract has nothing to read from either way, so it is
+    depth only;
+  - a read whose deciding base lies past a contig edge stays depth only (a
+    circular contig continues at its start), but is counted and warned with the
+    others.
+- **Reads starting on a flank.** The ALT read-by-bases rule reads from a flank base
+  the read starts on (rightwards), or ends on (leftwards). The ALT side's windows
+  already started there, and the flank is a base both alleles share. Carriers that
+  start on the anchor and whose bases discriminate count ALT; before, they were
+  withdrawn.
+  - The read must read that flank base: unmasked (BQ at the threshold) and the
+    reference's. For a deletion sliding through a repeat, the flank is all that
+    tells a carrier from REF placed one base along the run. This now holds for the
+    ALT windows too: a window that starts (or ends) on the read's own end base
+    needs that base read, where before the read's extent alone made it
+    informative. A carrier with a masked flank is no longer ALT.
+- **The exact-carrier rule's reference.** Prep widens the reference for exactly the
+  variants the rule judges: one predicate, `carrier::judges`, shared with the
+  dispatcher. Anchor-changing insertions (C>TA) and the homopolymer twin now get
+  it, so a long run no longer sends them silently to the previous classifier. A
+  read the rule still cannot judge is counted and warned once per variant.
+  - In a long run, the rule's junction windows have a known gap (#199): a read
+    holding only the left junction can decide the call. Both sides are strict
+    xfails.
+- **Splice triage for anchor-changing insertions.** An insertion that also changes
+  its anchor (A>CCC) uses the delins span. An RNA read spliced over the anchor
+  and resuming at the next base leaves depth; it counted toward DP as neither.
+- **Soft-masked references.** Every reference window prep reads is upper case.
+  Over a soft-masked (lower-case) FASTA region, left-alignment could not shift.
+  The SW and PairHMM scorers saw reference bases as mismatches: on a synthetic
+  deletion locus REF went 6 → 12 under SW, and partial 6 → 0 under both.
+  Prepared alleles there are now upper case.
+- **mFSD determinism.** The fragment-size statistics are bit-identical run to run.
+  The size vectors arrived in hash order, and the float sums depended on it: 17
+  distinct `mfsd_ref_llr` values over 20 identical runs. The `--mfsd-parquet` size
+  arrays are now in a fixed order. The MAF and VCF columns round far coarser and
+  are unchanged.
+- Three older tests expected ALT from 10bp all-A reads inside an all-A context.
+  Their bases fit both alleles, so they are depth only.
+- **Measured** on RC DNA, FORTE RNA and WES (develop vs branch, every MAF cell
+  compared):
+  - 140 of 144 files are byte-identical; the other fixes target cases this data
+    does not hold;
+  - four rows change, each adjudicated read by read:
+    - a 66bp tandem duplication gains 11 ALT reads (8 fragments). Each starts on
+      the anchor and holds the whole 66bp insert past the first base where the
+      alleles differ, so they are carriers by their bases;
+    - three deletions (14bp, and 1bp in two G runs) lose 5 ALT reads in all; no
+      fragment counts change. Each read starts or ends on a flank base read at
+      BQ 9–15, so its bases fit both alleles.
+
+### Changed — binning invariance and a read census replace the legacy parity path (#170, #171)
+
+- The per-variant `count_bam` (with `count_single_variant`, about 700 lines that
+  duplicated the binned loop) is removed, along with the `legacy-parity` Cargo
+  feature. Production never called it, so output is unchanged: the RC, FORTE and
+  WES acceptance runs are byte-identical.
+  - It shared the classifier, so it could not see classification bugs. Every one
+    found this cycle came from judging reads by their bases.
+  - Its one bin bug, the anchor's fetch end, was found in review. Synthetic
+    fixtures fit in one bin, so parity could not have caught it.
+  - It cost every counting change a second edit.
+- `count_bam_binned` and `count_bam_binned_observations` take two optional test
+  arguments, `bin_window` and `bin_max_variants` (default: the production
+  constants; below 1: `ValueError`). Counts must not depend on them:
+  - A Rust property test checks that every variant lands in exactly one bin whose
+    fetch holds its read window.
+  - `tests/test_binning_invariance.py` compares every field under the per-variant
+    fetch (window 1, cap 1), tiny windows, small caps, one call per row, shuffled
+    input on 4 threads, and decoy rows. Each geometry is asserted to split the bins.
+    Its fixtures are synthetic DNA (plain, and BAQ+UMI+mFSD; siblings, a decomposed
+    twin, overlapping mates), clip carriers past a long anchor, an RNA locus with a
+    GTF and antisense reads, and the real test BAM.
+  - Every counting test now runs through `count_checked`, which also counts with
+    one variant per bin, so the 49 tests that ran only the legacy path test
+    production. Most of those calls hold one variant and so check the per-variant
+    fetch window; the binning suite covers multi-variant bins.
+- `tests/census.py` judges each read by its own bases across a pure indel's tract,
+  with the decided rules: REF needs one base past the first difference, ALT only
+  that base. The census finds each tract by its own slide, and a test checks that
+  prep agrees. `tests/test_read_census.py` checks the engine against it on reads
+  generated around ten pure indels (ending anywhere past the anchor, some
+  soft-clipped). The open decisions are strict xfails: #200, #201, #202.
+- Both new suites were mutation-checked. Re-introducing the bin-end bug fails
+  the property test and the clip-carrier fixture. Disabling the ALT-side window,
+  or the equivalent-placement rule, fails the census test.
+
+### Fixed — pure-indel reads count ALT only where their own bases hold the ALT (#188, #191, #192, #121)
+
+- C10 (#160) takes REF only from reads whose bases settle the allele. ALT reads
+  had no such check, so a read the CIGAR calls ALT that ends inside a repeat,
+  where its bases fit both alleles, counted ALT. An ALT read now stands on its
+  CIGAR when it spans C10's windows as seen from the ALT haplotype. For a
+  deletion these are an insertion's windows, because a carrier's reference extent
+  counts its own gap: a −AA carrier in a run of six A's could span the REF
+  windows while holding only `G AAAA`. Otherwise the read keeps ALT only when it
+  reads, unmasked, a base where the alleles differ, with every unmasked base it
+  reads fitting the ALT. Failing both, it counts as depth only, as on the REF
+  side. The check reads bases, not reference coordinates: 2,738 RC carriers,
+  mostly of long insertions, span neither reference window, but their bases
+  discriminate, and they keep ALT. There is no margin base. C10's margin guards a
+  REF call made from the CIGAR alone, whereas this check reads the deciding base
+  itself.
+- An indel written at the junction counts ALT only when the read has no other
+  insertion or deletion across the variant's discrimination window. A read with
+  +A and −T for a +A row, or a split +AA, is another allele (neither + partial in
+  a repeat). At 50bp or more the large-deletion band's length tolerance applies,
+  and the band now counts changes across the whole window. Before, it stopped
+  short of the window for a deletion sliding through a long repeat. The order an
+  aligner writes an I/D pair in no longer matters. Before, a deletion written
+  right after an insertion (`M I D M`), or an insertion right after a deletion
+  (`M D I M`), was not inspected, and the read counted REF. A same-length
+  insertion of other bases beside another indel in the window is another allele.
+  Phase 3 called such reads ALT, although their length change is never the ALT's.
+  A deleted anchor followed by an insertion is judged by the read's bases.
+- A same-length deletion placed elsewhere that gives another haplotype now
+  counts ALT when its bases spell the ALT across the window. Compensating
+  mismatches can make the read the ALT allele even though its gap sits elsewhere.
+  The read is anchored on its nearest aligned bases outside the window. Wherever
+  the haplotype its own CIGAR proposes differs from the ALT, the read base must be
+  unmasked and match the ALT: an N where two deletion alleles differ does not
+  count. Otherwise, at 5bp or more, it is a distinct allele. These reads went to
+  Phase 3, which called them ALT; on the RC set every read Phase 3 reached was
+  another allele by its bases. Under 5bp the read stays REF as before. A deletion
+  of another length within the ≥50bp band keeps Phase-3 arbitration (#191).
+- A distinct allele counts neither + partial where the event slides (its shift
+  region is wider than the event) or where the read has an indel inside the
+  discrimination window. It counts REF + partial only in unique sequence with the
+  window clear. Before, only a repeat of a ≤6bp motif gave neither + partial, so
+  carriers of a long-period duplication with another allele counted REF (#192).
+- A one-base-REF variant whose ALT changes the anchor base (`A>CCC`) went to the
+  insertion check, which matched the inserted bases and ignored the substituted
+  anchor. A read keeping the REF anchor and carrying only the insertion counted
+  ALT. Such variants now go to the exact-carrier rule (#141): a carrier holds the
+  whole ALT, anchor included, across a window that grows through repeats and is
+  padded to the ALT's length. Reads that do not hold that window are depth only,
+  so a read's call does not depend on where it ends (#121).
+- The Phase-3 context for a slid indel is not changed (#159). Sizing it by the
+  shift region changed 0 ALT calls on the RC, WES and RNA arms, so it was closed
+  with the measurement.
+- Measured on the RC panels (realigned), WES without realignment (80 loci from
+  paired IMPACT/TEMPO libraries) and FORTE RNA; develop vs branch, every changed
+  read adjudicated by its own bases:
+  - DNA: 15 of 1,060 rows change (ALT −39, REF −107, partial −15, depth
+    unchanged).
+    - ALT: carriers that end inside the repeat or before the deciding base (7
+      at a 1bp deletion, 11 at a 66bp duplication ending with the insert, 5
+      at two 14bp deletions). Also reads carrying other deletions (24–54bp, or
+      a 33bp one 15 bases off) that Phase 3 had called ALT for a 33bp
+      deletion, and 6 reads at a 6bp deletion whose bases fit both alleles.
+    - REF: −118 at the two anchor-changing rows (#121), from reads that do not
+      carry the REF anchor or do not hold the exact-carrier window.
+    - At a +AAG insertion co-annotated with that 33bp deletion (two samples),
+      16 reads move from partial to REF. They carry a large deletion across the
+      anchor, or a D1 inside the window, and only the 33bp row's false ALT kept
+      them out of REF. The insertion row's own rules count them (#200, #202).
+    - At a 6bp deletion, 5 reads whose bases are REF across the window lose REF
+      to partial. They carry a same-length deletion of other bases outside the
+      window (#200).
+  - WES: 10 of 80 rows change, all anchor-changing (#121): ALT −12, REF −399,
+    partial +152, depth +62. At one locus 146 reads keep the REF anchor and
+    carry only the insertion, so they count partial, not ALT. At others, reads
+    that carry the whole ALT gain ALT.
+  - FORTE RNA: the truth set and the STAR repeat-insertion probes are unchanged.
+    One 4bp deletion probe loses 2 ALT reads (a 3bp deletion ending just after).
+- Three adversarial reviews; every changed read was adjudicated. Follow-ups:
+  C26 #200 (which of a read's other indels decide its REF call), C28 #202 (a
+  read deleting the anchor falls back to Phase 3's closer haplotype), C27 #201,
+  C25 #199 and R5 #198.
+
+### Fixed — carriers of an indel written elsewhere in its repeat count ALT, not REF (#189)
+
+- An indel in a repeat can be written at any junction of its shift region with the
+  same haplotype. The input is left-aligned, but aligners may not be: near the
+  FORTE truth set's indel rows STAR placed 162 of 170 repeat insertions away from
+  the left-aligned position (the DNA panels, realigned: 37 of 15,047; WES without
+  realignment: 0 of 620). The windowed checks accepted
+  a shifted placement only by a proxy:
+  - an insertion when the reference base before it equalled the anchor base. That
+    is never true inside the repeat, so carriers written elsewhere counted **REF**
+    (in a synthetic `G AAAAA T` locus, REF 10 / ALT 0 instead of 5 / 5), and it was
+    true by chance for some placements that give another haplotype, which counted
+    ALT;
+  - a deletion when the bases it removes equalled the given ones, so a rotated STR
+    placement (removing `AC` for `CA`) under 5bp counted REF and the same bases
+    deleted outside the repeat counted ALT;
+  - the scan reached `max(5, repeat_span + 2)` bases from the anchor, and
+    `repeat_span` counts motifs of up to 6 bases only, so a longer duplication's
+    carriers written past that reach counted REF.
+- A placement is now accepted when it gives the variant's haplotype (the same
+  bases, or a rotation, elsewhere in the shift region) and is the read's only
+  change across the variant's discrimination window. The scan reaches every
+  placement: every junction of an insertion, a deletion's starts up to its last
+  placement. Other placements:
+  - the variant written elsewhere with another gap, insertion or splice across the
+    window (a +AA read for a +A row, a split −4 read for a −2 row, a deletion
+    cancelled by an insertion): a distinct allele (neither + partial in a
+    repeat). A read spliced over the anchor with a deletion written just after
+    the junction shows only where the aligner ended the splice: depth only (it
+    counted ALT);
+  - the variant's inserted bases where they give another haplotype, inside the
+    variant's discrimination window: a distinct allele, as a wrong-length
+    insertion is (neither + partial in a repeat, REF + partial in unique
+    sequence). Outside the window the read shows the window as reference: REF, as
+    before;
+  - the variant's bases inserted before its anchor base were counted ALT by the
+    backward-boundary check; they are now another haplotype (REF). An
+    anchor-substituting ALT (`A>CCC`) is never matched by a placement elsewhere
+    (C8, #121, covers the strict path);
+  - a same-length deletion that gives another haplotype: REF under 5bp, as before;
+    at 5bp or more it still goes to Phase 3 (C22, #191, revisits that route).
+- Measured on the RC set, develop vs branch, every changed read adjudicated by its
+  own bases:
+  - DNA: 13 of 1,060 rows change (ALT +46, partial −62, REF +13, depth
+    unchanged). Two insertion rows gain 44 and 10 ALT from carriers written up to
+    6 junctions right, each holding the ALT haplotype (their last inserted base is
+    an N). Two 2bp deletion rows move 6 and 18 reads from partial to REF: the
+    reads delete the same two bases 6bp before the anchor, another haplotype
+    outside the window. Their co-annotated 33bp rows regain the same reads as REF,
+    which develop had claimed for the 2bp row. Seven 1bp indel rows lose 8 ALT
+    reads that delete or insert the same base outside the run (one ends before
+    the anchor).
+  - FORTE RNA: the 33 truth samples and the T9 probes are unchanged (the truth
+    set's 3 insertion rows have no carriers). At 23 probes built from STAR's
+    repeat insertions near the truth loci, ALT goes from 11 to 183; an independent
+    census counts 176 shifted equivalent carriers, all ALT on the branch.
+- This also changes grouped rows (#99): a tract-mate deleting the same bases at
+  another position is another haplotype, not this row's allele, so where its
+  change lies outside this row's window its carriers are REF here instead of being
+  matched and then demoted to partial. Tract-cluster grouping now reaches as far
+  as the scan.
+
+### Fixed — indels near a contig end are left-aligned and get their reference windows (#142)
+
+- Prep pads its reference windows on both sides but clamped them only at the
+  contig start. The FASTA reader rejects a window that passes the contig end, so
+  near a contig end each window failed within its own reach:
+  - left-alignment within about 100bp (a WARN; the variant kept its input
+    position, so reads aligned at the left-aligned position could fall out of
+    depth);
+  - `ref_context` within its padding (5–50bp), so there were no Phase-3
+    haplotypes;
+  - the shift region within 256bp (up to 16kb in long repeats), and the event
+    reference within 60bp, for every variant type;
+  - a complex variant fell back to the tolerant classifier that the exact-carrier
+    rule (#141) replaced, so the same reads were judged differently near a contig
+    end. In a synthetic case the same bases and reads gave REF 0 / ALT 0
+    mid-contig but REF 5 / ALT 7 at the contig end, two reads carrying another
+    allele among the ALT.
+- Every window (left-align, `ref_context`, the adaptive repeat scan, the shift
+  region, the event reference) now holds the part of the contig it covers. SNVs and
+  MNPs near a contig end therefore also get their event reference, used by the
+  observed-allele diagnostic. The contig is resolved by the same name the fetch
+  reads, so a FASTA holding a contig under two names cannot mix their lengths.
+  Exact fetches (REF validation, a MAF anchor) stay exact, so a REF running past
+  the end still fails validation instead of being "corrected" to a shorter one.
+
+### Changed — `rna_antisense_depth` counts antisense reads at RNA defaults (#114)
+
+- With strandedness enforced (the RNA default), antisense reads were dropped
+  before the sense/antisense tally, so `rna_antisense_depth` (VCF `ANT`) was
+  always 0. Such a read is now classified as a sense read would be, and tallied
+  when it is a first-class REF or ALT read over the anchor. It is then dropped, so
+  REF, ALT, depth and every other count are unchanged. The column means the same
+  with `--no-strandedness`.
+- `STRAND_DISCORDANT` is documented as a `--no-strandedness` diagnostic: under
+  enforcement, antisense reads never reach the junction tally wherever the gene
+  strand is resolved.
+- Docs: the read-filters strand table is corrected for the default `reverse`
+  protocol, and the gene strand is documented as coming from the `--gtf` exons (not
+  the MAF).
+- The per-read trace line names each excluded antisense read
+  (`antisense_excluded=true`).
+
+### Fixed — records stored without bases (SEQ `*`) are not counted (#172)
+
+- A BAM record with no sequence, such as a secondary alignment kept with
+  `--no-filter-secondary` or a primary in a stripped BAM, is now dropped where
+  every read enters counting. It counts in neither depth, fragments nor
+  `mq0_count`. Each counting pass logs one WARNING when any were skipped.
+  - Before: the SNV check panicked on such a record, and so did heuristic BAQ (RNA,
+    or DNA with `--apply-baq`). The insertion and deletion checks counted it as REF
+    and depth (or as a fragment) from its CIGAR alone.
+  - Counts change only where such records reach counting. With the default
+    filters, that means primary records without bases.
+
+### Changed — the exon-edge BAQ rule and `exon_boundary_dist` measure from the REF span (#106)
+
+- `exon_boundary_dist` (VCF `EBD`) is now the distance from the nearest annotated
+  exon boundary to any base of the variant's REF span, and `0` when a boundary lies
+  inside the span (as in Ensembl VEP's overlap test). It was measured from the first
+  base only. The span is the normalized (left-aligned, VCF-style) REF: SNVs and
+  insertions (a one-base REF) are unchanged, and a pure deletion's span starts at
+  its anchor base (VEP drops the anchor, so its distance to a boundary on the left
+  is one more). This is a column change for multi-base variants: the distance is
+  smaller for about 4 in 10 signed-out multi-base variants and indels.
+- RNA mode with `--gtf`: the BAQ exception at exon edges uses the same distance, so
+  a multi-base variant reaching into an exon's last five bases skips BAQ, as an SNV
+  there does. The main counts, per-transcript counts, ASJD and each `--rescue-mnp`
+  component re-count resolve the rule the same way: a component is counted over
+  its MNP's span, and a rescued row reports the MNP's distance (it reported the
+  adopted component's).
+  - Why: heuristic BAQ lowers the five bases before every splice junction, below
+    `--min-baseq` at Q30 or Q37. An MNP starting more than 5bp from a right exon
+    edge but reaching into those bases lost its edge-side bases in every spliced
+    read. So no spliced carrier showed the whole MNP (`--rescue-mnp` then adopted a
+    component where the reads show the annotated haplotype), and a spliced read
+    carrying only the edge-side change voted REF on its other bases.
+  - Counts change only for multi-base variants that reach within 5bp of an edge
+    while their first base does not. DNA is unaffected (no GTF).
+
+### Changed — a row counts the given allele; the homopolymer twin is opt-in (#163)
+
+- The homopolymer twin is no longer dual-counted by default. It was the corrected
+  allele gbcms counted for a delins like `CCCCCC>T` (`CCCCCT`), reporting whichever
+  form had more ALT reads. The row now counts the allele it is given.
+  `--rescue-homopolymer` (Nextflow `--rescue_homopolymer`) restores the dual count,
+  flagged `WARN_HOMOPOLYMER_DECOMP` as before.
+  - Why: both forms accept near-matches, so the winner could report another
+    allele's reads under the row's label. At the case the twin was built for
+    (SOX2), the reads carry `CCCCT`, not the twin. The twin won by tolerance.
+  - It won at 2 of 11 real twin loci, and on 0 of the 6.5.0 RC rows, so counts
+    change only where it used to win.
+- `observe_molecules()` takes `rescue_homopolymer` and threads the twin the same
+  way.
+
+### Changed — complex variants count exact carriers only (#141)
+
+- A delins, a deletion whose anchor also changes (Del+SNV), or an MNP read with
+  an indel now counts a read as REF or ALT only when the read's own bases carry
+  that allele across the whole event, with two reference flank bases each side.
+  Soft clips count; bases below `--min-baseq` match anything, the only tolerance.
+  - Why: local alignment, likelihoods and the edit-distance margin credited
+    near-matches, so reads carrying another allele, or ending inside the event,
+    were counted for the given one.
+  - The windows are read at the event's own position, grown through repeats
+    touching the event on either allele, and padded to equal length so neither
+    allele is favoured by where reads start. Events over 50 bases are judged at
+    both junctions, reading a short ALT whole; a mismatch at either rules a read
+    out.
+  - A read that cannot hold both windows is depth only (no allele, no
+    `partial_alt`, no mFSD class). A read that holds them, matches neither and is
+    closer to ALT counts in `partial_alt`.
+  - An MNP read with an indel in or right beside the block is judged the same way
+    (an aligner may write a shifted block as an insertion and a deletion); an
+    indel further off leaves the base-by-base comparison in place.
+  - Prep fetches enough reference to hold an event grown through a long repeat.
+  - RNA: a spliced read's windows end at its own junction, so a delins at an
+    exon's first or last bases counts spliced reads; a read spliced through
+    the event counts toward depth only.
+- Complex variants (DNA) count reads whose allele lies in soft-clipped bases. An
+  aligner clips an ALT read near its end while the REF reads beside it align in
+  full, so those carriers used to fall outside depth and VAF read low. A read the
+  exact-carrier rule decides from its own bases, inside a well-defined fragment
+  (past the fragment end a clip is adapter), now counts in DP and REF/ALT;
+  undecided clipped reads stay out. Not in RNA mode (#167).
+- BAQ (the RNA default, and DNA with `--apply-baq`) no longer penalizes a read's
+  own insertion or deletion when that indel is the variant being counted. At Q37
+  the penalty put every ALT read of a small indel or delins below min BQ while
+  REF reads kept full quality; FORTE's Q40 bins hid it. Splice junctions and
+  indels elsewhere in the read are penalized as before (#166).
+- In a multi-allelic group, a read that matches this row's ALT and a sibling's
+  ALT exactly (the two differ only at bases the read has masked) is neither
+  row's AD: it counts in `partial_alt`.
+- `--alignment-backend pairhmm` and `sw` now give identical counts for these
+  variants: the rule uses no alignment scoring.
+
+### Added
+
+- Two `gbcms_diagnostic` flags name the allele the reads carry when it is not the
+  given one (canonical VCF form; n reads carry it exactly, m the given allele):
+  - `OBSERVED_ALLELE(chrom:pos:REF>ALT:n/0)`: no read carries the given allele
+    exactly, so the input is likely mis-described.
+  - `COEXISTING_ALLELE(chrom:pos:REF>ALT:n/m)`: the given allele is present, but a
+    different allele in the same stretch is more frequent (e.g. a germline indel
+    or stutter in a repeat). A caveat for reading the VAF.
+  - Both need n ≥ 3, n > m, at least 5% of the scanned reads, and an allele that
+    is not already an input row.
+  - The scan covers every variant type: each spanning read is compared over the
+    event plus one base each side, so a germline SNP beside the event does not
+    count.
+  - Counts are unchanged; the flag says what the reads show so the input can be
+    checked.
+  - Prep stores the event's reference bases on `Variant.event_ref`.
+
+### Fixed
+
+- **Indel REF counts use only reads that can tell the alleles apart** (#157).
+  A read that starts or ends inside an indel's repeat tract matches both
+  alleles: the aligner places no gap either way. It was counted REF from anchor
+  coverage alone, which biased repeat-indel VAF down (a 50% homopolymer deletion
+  read 25% in a synthetic test; on the 6.5.0 RC data the median gbcms-to-
+  informative VAF ratio was 0.91 for STRs and 0.92 for homopolymers). Such reads
+  now count toward depth only, as in GATK's AD. A deletion longer than a read
+  still gets REF reads from either junction. A tandem duplication (an ITD)
+  slides over its whole duplicated segment, so REF needs a read across all of
+  it. Prep measures that region over its own fetch (`Variant.shift_region`);
+  the repeat context kept for alignment is often too short (a 30bp duplication
+  had an 11-base context).
+  See "Informative Reads for Indels" in the allele-classification reference.
+- **Grouped rows: REF reads and REF fragments exclude the same molecules** (#119).
+  The sibling-ALT guard dropped a read from `ref_count` when it carried any
+  co-annotated sibling's ALT, even one far from this row, and only after its
+  fragment had been recorded as REF. The guard now applies only to siblings
+  whose change lies inside the row's discrimination window. It runs before
+  fragment evidence in every counting path, so `ref_count` and
+  `ref_count_fragment` agree.
+  - Carriers of a sibling outside the window count REF again: IGV shows them as
+    REF at this row.
+  - Carriers of a sibling inside the window now also leave `ref_count_fragment`.
+- What moves with these fixes:
+  - `ref_count`, `ref_count_fragment` and their strand forms, VAF, strand
+    bias, and VCF `AD`/`ADF`/`ADR`/`FAD`;
+  - values built from REF + ALT: the merged `simplex_duplex_total_count`, and
+    RNA `rna_sense_depth`/`rna_antisense_depth` (these count REF and ALT reads;
+    the docs now say so);
+  - per-transcript REF counts and the ASJD REF partition;
+  - `partial_alt`: sibling carriers outside the window count REF, not partial.
+    A carrier of an in-window sibling still counts partial, even when it ends
+    inside the tract.
+  - mFSD: a fragment whose reads all end inside the tract lands in no class. It
+    used to land in REF, and must not look like a third allele (NonREF). In the
+    observation export it is `OTHER`.
+- `alt_count_fragment` can rise by a molecule or two: a mate whose REF call was
+  vacuous (it ended in the tract, or carried a sibling) no longer contests the
+  other mate's ALT. This happened on 3 of 1,060 rows in the 6.5.0 RC DNA runs,
+  by +1 to +2.
+- Unchanged: `alt_count`, `total_count` (DP) and `total_count_fragment`. SNV and
+  MNP rows change only when they share a site with a co-annotated indel. None
+  did in the RC runs.
 
 ## [6.5.0] - 2026-09-25
 

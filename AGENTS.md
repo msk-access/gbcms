@@ -16,15 +16,14 @@ native Parquet, Rayon per-bin parallelism. Full module map: `.agents/rules/archi
 
 ## Load-bearing invariants (don't break these)
 
-1. **Binned ↔ legacy parity.** `count_bam_binned` (production) must produce identical
-   counts to legacy `count_bam` (the per-variant **parity oracle**, feature-gated
-   `legacy-parity`, default-on; absent from the shipped wheel). **Any change to read
-   classification / filtering / fragment consensus / fetch-window logic in the binned
-   path must be mirrored in the legacy `count_single_variant`, or the parity tests
-   fail** — that mirror is the cost of keeping the oracle. RNA/mFSD/ASJD/strandedness
-   features are exempt (binned-only; not in `PARITY_FIELDS`), and parity holds only
-   *without* `sibling_variants`. Full contract: `.agents/rules/architecture.md`
-   §"Legacy count_bam parity oracle".
+1. **Binning invariance.** Bin geometry is performance only: `count_bam_binned` gives
+   identical counts (every field; BH q-values excepted when the set of rows changes)
+   under any bin window or cap, one variant per bin, or one variant per call, so every
+   bin's fetch must hold each member's full read window, anchor included. Checked by
+   `tests/test_binning_invariance.py` and the bin property test (every counting test's
+   `count_checked` adds the per-variant fetch window); classification is checked
+   against the read census (`tests/census.py`), never a second engine. Contract:
+   `.agents/rules/architecture.md` §"Binning invariance".
 2. **One quality contract across alignment backends.** SW, PairHMM, and the WFA
    fast-path must apply the *same* base-quality gate. The fast path must not make a
    definitive REF/ALT call on bases the fallback would reject.
@@ -37,6 +36,11 @@ native Parquet, Rayon per-bin parallelism. Full module map: `.agents/rules/archi
    `#[pyo3(signature)]` params exactly. (There is no second stub — the old top-level
    `src/gbcms_rs.pyi` mirrored a module that isn't imported and was removed in LO-1.)
 6. **mFSD/RNA columns are gated** — absent when off, never NA-filled.
+7. **Count the given allele — a genotyper, not a caller.** Input alleles are taken as
+   correct: never credit a read to a row's ALT unless its own bases carry that ALT
+   (alignments can be wrong; judge bases, not placement), and never infer what a
+   wrong input "should" be. Explain mismatches via `gbcms_status_reason` / `gbcms_diagnostic`.
+   Opt-in rescues (`--rescue-mnp`) are the only exception.
 
 ## Counting test invariants (assert in every counting test)
 ```python
@@ -45,6 +49,9 @@ assert counts.dpf >= counts.rdf + counts.adf    # DPF includes discarded fragmen
 assert counts.rd == counts.rd_fwd + counts.rd_rev   # strand consistency
 assert counts.ad == counts.ad_fwd + counts.ad_rev
 ```
+**Never edit an existing test's expectation to make it pass** without first telling the
+operator what it asserted, why it is wrong, and the evidence — then wait. A failing test
+is a decision point (new tests, and removing the strict-xfail marker a fix targets, are fine).
 
 ## Before every commit (lint gate)
 ```bash

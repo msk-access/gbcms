@@ -42,10 +42,10 @@ jobs:
 
       - name: Install dependencies
         run: |
-          pip install mkdocs-material mkdocs-mermaid2-plugin \
-            mkdocs-glightbox mkdocs-git-revision-date-localized-plugin \
-            mkdocs-panzoom-plugin pillow cairosvg mike mkdocs-pdf \
-            mkdocs-print-site-plugin
+          # The site's tools are pyproject's `docs` dependency group (MkDocs is
+          # pinned below 2.0 there, D3 #138); --group needs pip>=25.1.
+          python -m pip install --upgrade "pip>=25.1"
+          pip install --group docs
 
       - name: Build documentation (PR check only)
         if: github.event_name == 'pull_request'

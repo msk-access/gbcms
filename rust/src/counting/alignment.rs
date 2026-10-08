@@ -10,14 +10,17 @@
 use rust_htslib::bam::record::Cigar;
 use rust_htslib::bam::Record;
 use bio::alignment::pairwise::Aligner;
-use log::{debug, trace};
+use log::trace;
 
 use crate::types::Variant;
 use super::utils::{median_qual, build_haplotypes, ClassifyResult, ClassifyPhase, MIN_USABLE_BASES};
 
 /// Smith-Waterman affine gap-open penalty (integer scoring: match +1,
-/// mismatch −1, N scores 0).
-pub const SW_GAP_OPEN: i32 = -5;
+/// mismatch −1, N scores 0). A gap of k bases scores
+/// `SW_GAP_OPEN + SW_GAP_EXTEND · (k − 1)`: bio ≥ 4 counts the gap's first base in
+/// the open penalty (rust-bio#660), so −6 here is bio 3's −5 open plus one −1
+/// extension, and every alignment score is what it was.
+pub const SW_GAP_OPEN: i32 = -6;
 
 /// Smith-Waterman affine gap-extend penalty — a documented constant.
 ///
@@ -26,7 +29,7 @@ pub const SW_GAP_OPEN: i32 = -5;
 /// defaults cap it at 0.5, and the pre-round value always fell in
 /// (−0.9, −0.5]), so the relaxation never engaged. Traced real runs (ACCESS
 /// duplex, MSI-high) confirmed SW scores nothing under the default PairHMM
-/// backend on well-formed input (issue #92), so a real relaxation curve
+/// backend on well-formed input, so a real relaxation curve
 /// would have had no measurable use.
 ///
 /// SW has two roles: the explicit `--alignment-backend sw` scorer (kept for
@@ -236,8 +239,8 @@ pub fn is_worth_realignment(record: &Record, win_start: i64, win_end: i64) -> bo
 /// of 2 works reliably because shared flanking bases contribute equally to
 /// both allele scores — trimming preserves this invariant.
 ///
-/// **Memory optimization**: Aligners are created once per variant in
-/// `count_single_variant()` and reused for all reads, avoiding repeated
+/// **Memory optimization**: Aligners are created once per variant in the
+/// read loop (`count_variant_from_cache`) and reused for all reads, avoiding repeated
 /// O(n×m) DP matrix allocation (indelpost pattern).
 ///
 /// Returns `(is_ref, is_alt, base_qual)` where `base_qual` is the median
@@ -264,7 +267,7 @@ pub fn classify_by_alignment<F: Fn(u8, u8) -> i32>(
     let (ref_hap, alt_hap) = match build_haplotypes(variant) {
         Some(haps) => haps,
         None => {
-            debug!("classify_by_alignment: build_haplotypes failed for {}:{}",
+            trace!("classify_by_alignment: build_haplotypes failed for {}:{}",
                    variant.chrom, variant.pos + 1);
             return ClassifyResult::neither(ClassifyPhase::Alignment);
         }

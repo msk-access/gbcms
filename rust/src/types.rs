@@ -1,6 +1,8 @@
 use pyo3::prelude::*;
 
-#[pyclass]
+// Python passes Variants back in (count_bam_binned, prepare_variants), so they keep
+// the by-value FromPyObject that pyo3 0.28 made opt-in.
+#[pyclass(from_py_object)]
 #[derive(Debug, Clone)]
 pub struct Variant {
     #[pyo3(get, set)]
@@ -13,9 +15,12 @@ pub struct Variant {
     pub alt_allele: String,
     #[pyo3(get, set)]
     pub variant_type: String, // "SNP", "INSERTION", "DELETION", "COMPLEX"
-    /// Reference sequence around the variant for windowed indel detection.
+    /// Reference sequence around the variant (prep fetches it for indels and delins).
     /// Covers [ref_context_start, ref_context_start + len) in genomic coords.
-    /// Used by Safeguard 3 to verify shifted indels are biologically valid.
+    /// Read by the Phase-3 haplotypes, the pangenome matrix and the sibling guard;
+    /// the exact-carrier rule and the windowed indel checks fall back to it without
+    /// an `event_ref` (the windowed checks also where `event_ref` does not hold the
+    /// bases; the in-band large-deletion check reads its deleted bases from it).
     #[pyo3(get, set)]
     pub ref_context: Option<String>,
     /// Genomic start position (0-based) of the ref_context string.
@@ -32,12 +37,40 @@ pub struct Variant {
     /// None in DNA mode — zero cost, no branching impact.
     #[pyo3(get, set)]
     pub gene_strand: Option<char>,
+
+    /// For a pure indel: the 0-based half-open reference interval it slides
+    /// over without changing the haplotype (its shift-equivalence region; see
+    /// `counting::window`). Prep measures it over its own reference fetch,
+    /// sized to the event, so a long duplication or tract is not cut at the
+    /// edge of `ref_context`. None otherwise; counting then slides over
+    /// `ref_context`.
+    #[pyo3(get)]
+    pub shift_region: Option<(i64, i64)>,
+
+    /// Reference bases around the event, with their 0-based start: its change
+    /// interval plus a margin each side (60 bases, or the insertion's length
+    /// plus 3 when longer), widened where the exact-carrier rule's windows need
+    /// more, up to 16,384 bases. Prep fetches them for every variant that
+    /// passes validation, SNVs and MNPs included (those carry no
+    /// `ref_context`), and for the decomposed twin. The exact-carrier rule, the
+    /// ALT-side read judgments, the observed-allele diagnostic and the windowed
+    /// indel checks' placement equivalence read them.
+    #[pyo3(get)]
+    pub event_ref: Option<(i64, String)>,
+
+    /// The 0-based inclusive reference span the exon-boundary distance (the
+    /// `exon_boundary_dist` column, and so the RNA BAQ rule) is measured over.
+    /// None: the variant's own REF span. MNP rescue sets it on each component it
+    /// re-counts to the MNP's span, so the component is counted under the MNP
+    /// row's rule and reports the row's distance.
+    #[pyo3(get, set)]
+    pub boundary_span: Option<(i64, i64)>,
 }
 
 #[pymethods]
 impl Variant {
     #[new]
-    #[pyo3(signature = (chrom, pos, ref_allele, alt_allele, variant_type, ref_context=None, ref_context_start=0, repeat_span=0, gene_strand=None))]
+    #[pyo3(signature = (chrom, pos, ref_allele, alt_allele, variant_type, ref_context=None, ref_context_start=0, repeat_span=0, gene_strand=None, shift_region=None, event_ref=None, boundary_span=None))]
     #[allow(clippy::too_many_arguments)]
     pub fn new(
         chrom: String,
@@ -49,6 +82,9 @@ impl Variant {
         ref_context_start: i64,
         repeat_span: usize,
         gene_strand: Option<char>,
+        shift_region: Option<(i64, i64)>,
+        event_ref: Option<(i64, String)>,
+        boundary_span: Option<(i64, i64)>,
     ) -> Self {
         Variant {
             chrom,
@@ -60,11 +96,57 @@ impl Variant {
             ref_context_start,
             repeat_span,
             gene_strand,
+            shift_region,
+            event_ref,
+            boundary_span,
         }
     }
 }
 
-#[pyclass]
+/// Per-variant counts of the rule that decided each depth read (DP reads only;
+/// u64 so a pass's sum cannot overflow),
+/// for the Phase stats line and the counting pass's totals. They change no count
+/// and reach no output column.
+#[derive(Debug, Clone, Copy, Default)]
+pub struct DecisionTally {
+    /// REF calls withdrawn: the read spans neither informative window.
+    pub ref_withdrawn: u64,
+    /// ALT calls withdrawn: neither ALT-side window, bases fit both alleles or
+    /// could not be judged.
+    pub alt_withdrawn: u64,
+    /// Of those, the reads whose bases could not be judged (warned per variant).
+    pub alt_unjudged: u64,
+    /// ALT calls kept by the read's own bases.
+    pub alt_by_bases: u64,
+    /// Reads the exact-carrier rule judged.
+    pub carrier_judged: u64,
+    /// Reads it could not judge, left to the previous classifier (warned).
+    pub carrier_fallback: u64,
+    /// REF reads excluded as a sibling's ALT (the multi-allelic REF guard).
+    pub sibling_ref_excluded: u64,
+    /// ALT reads claimed by a sibling (the AD-claiming guard).
+    pub sibling_alt_claimed: u64,
+    /// Reads admitted by the soft-clipped bases that carry their allele.
+    pub clip_admitted: u64,
+}
+
+impl DecisionTally {
+    /// Field-wise sum, for the pass's totals.
+    pub fn add(&mut self, o: &DecisionTally) {
+        self.ref_withdrawn += o.ref_withdrawn;
+        self.alt_withdrawn += o.alt_withdrawn;
+        self.alt_unjudged += o.alt_unjudged;
+        self.alt_by_bases += o.alt_by_bases;
+        self.carrier_judged += o.carrier_judged;
+        self.carrier_fallback += o.carrier_fallback;
+        self.sibling_ref_excluded += o.sibling_ref_excluded;
+        self.sibling_alt_claimed += o.sibling_alt_claimed;
+        self.clip_admitted += o.clip_admitted;
+    }
+}
+
+// Python passes BaseCounts back in (write_fsd_parquet).
+#[pyclass(from_py_object)]
 #[derive(Debug, Clone, Default)]
 pub struct BaseCounts {
     // Basic counts
@@ -142,33 +224,36 @@ pub struct BaseCounts {
     pub mfsd_n_count: u32,
 
     // ── mFSD: Mean fragment sizes ─────────────────────────────────────────────
-    /// Mean fragment size (bp) for REF-classified fragments. 0.0 when empty.
+    /// Mean fragment size (bp) for REF-classified fragments. NaN when the class is empty (0.0, unset, when mFSD is off).
     #[pyo3(get)]
     pub mfsd_ref_mean: f64,
-    /// Mean fragment size (bp) for ALT-classified fragments. 0.0 when empty.
+    /// Mean fragment size (bp) for ALT-classified fragments. NaN when the class is empty (0.0, unset, when mFSD is off).
     #[pyo3(get)]
     pub mfsd_alt_mean: f64,
-    /// Mean fragment size (bp) for NonREF-classified fragments. 0.0 when empty.
+    /// Mean fragment size (bp) for NonREF-classified fragments. NaN when the class is empty (0.0, unset, when mFSD is off).
     #[pyo3(get)]
     pub mfsd_nonref_mean: f64,
-    /// Mean fragment size (bp) for N-classified fragments. 0.0 when empty.
+    /// Mean fragment size (bp) for N-classified fragments. NaN when the class is empty (0.0, unset, when mFSD is off).
     #[pyo3(get)]
     pub mfsd_n_mean: f64,
 
     // ── mFSD: Log-Likelihood Ratios ───────────────────────────────────────────
-    // LLR = Σ log(P_tumor(size) / P_healthy(size)) over all fragments in class.
-    // Positive = tumor-like (short fragments); negative = healthy-like (long).
-    /// LLR for ALT-classified fragments.
+    // LLR = mean over the class's fragments of log(P_tumor(size) / P_healthy(size)).
+    // Positive = tumor-like (short fragments); negative = healthy-like (long). NaN
+    // for an empty class.
+    /// Mean per-fragment LLR for ALT-classified fragments (n = `mfsd_alt_count`).
     #[pyo3(get)]
     pub mfsd_alt_llr: f64,
-    /// LLR for REF-classified fragments.
+    /// Mean per-fragment LLR for REF-classified fragments (n = `mfsd_ref_count`).
     #[pyo3(get)]
     pub mfsd_ref_llr: f64,
 
     // ── mFSD: Pairwise KS comparisons (6 pairs × 3 values = 18 fields) ───────
     // Each triad: (delta = mean_A - mean_B, KS D-statistic, KS p-value).
-    // NaN when either class has fewer than mfsd::MIN_FOR_KS (5) fragments.
-    // Check mfsd_ks_valid (Python-derived) before interpreting these values.
+    // The D-statistic is NaN when either class has fewer than mfsd::MIN_FOR_KS (5)
+    // fragments; the p-value is then 1.0, a placeholder (delta is still the mean
+    // difference when both classes have fragments). Check mfsd_ks_valid
+    // (Python-derived, D not NaN) before interpreting these values.
 
     /// ALT vs REF: mean(ALT) − mean(REF)
     #[pyo3(get)]
@@ -181,9 +266,10 @@ pub struct BaseCounts {
     pub mfsd_pval_alt_ref: f64,
     /// ALT vs REF: Benjamini-Hochberg FDR q-value for `mfsd_pval_alt_ref`,
     /// corrected across all variants with a valid alt-vs-REF KS test in the
-    /// sample. The report classifies TUMOR-LIKE/CH-LIKE on this q-value,
-    /// not the raw p-value. NaN when the KS test was invalid (too few fragments);
-    /// equals the p-value until the post-counting BH pass runs.
+    /// sample. The report's LEANS-SOMATIC class uses this q-value, not the raw
+    /// p-value. When the KS test did not run (too few fragments) it stays the
+    /// p-value placeholder, 1.0, outside the BH family; it equals the p-value until
+    /// the post-counting BH pass runs.
     #[pyo3(get)]
     pub mfsd_qval_alt_ref: f64,
 
@@ -251,7 +337,8 @@ pub struct BaseCounts {
     pub mfsd_sub_nuc_alt_frac: f64,
     /// Sub-nucleosomal enrichment ratio: ALT frac / REF frac.
     /// Values > 1.0 suggest ALT fragments are enriched in short sizes (ctDNA-like).
-    /// Values ≈ 1.0 suggest ALT mirrors REF distribution (CH-like).
+    /// Values ≈ 1.0: ALT mirrors the REF distribution (no size evidence; not
+    /// evidence for clonal hematopoiesis).
     #[pyo3(get)]
     pub mfsd_sub_nuc_enrichment: f64,
     /// Fraction of REF fragments in 150–200bp range (mono-nucleosomal).
@@ -262,7 +349,8 @@ pub struct BaseCounts {
     pub mfsd_mono_nuc_alt_frac: f64,
 
     // ── mFSD: Raw size arrays (for --mfsd-parquet export) ────────────────────
-    // Populated in all runs but only copied to disk when --mfsd-parquet is set.
+    // Populated only with --mfsd (empty otherwise), and copied to disk only when
+    // --mfsd-parquet is set.
     // NOT exported via PyO3 — written directly to Parquet by write_fsd_parquet()
     // in parquet_writer.rs, avoiding an FFI round-trip and the pyarrow dependency.
     /// Raw REF fragment sizes (bp). Internal only; use write_fsd_parquet() to persist.
@@ -280,12 +368,6 @@ pub struct BaseCounts {
     /// Median distance of REF-supporting bases to read end.
     #[pyo3(get)]
     pub ref_dist_end_median: f64,
-    /// ALT reads from singleton UMI families (no mate confirmation).
-    #[pyo3(get)]
-    pub singleton_alt_count: u32,
-    /// ALT reads from duplex UMI families (both strands confirmed).
-    #[pyo3(get)]
-    pub duplex_alt_count: u32,
 
     // ── Decomposed ALT counting (diagnostic, all variant types) ──────────
     // Enables DMP-compatible "any evidence of ALT" counting alongside the
@@ -374,15 +456,35 @@ pub struct BaseCounts {
     /// no ALT is confirmed); not an output column; 0 for other variant types.
     #[pyo3(get)]
     pub clip_candidates: u32,
+    /// The allele the reads carry when it is not the given one
+    /// (`counting::observed`): 1-based VCF-style POS, REF and ALT, and how many
+    /// reads carry it exactly (0 when none is named). Diagnostic only (feeds
+    /// OBSERVED_ALLELE); no count changes.
+    #[pyo3(get)]
+    pub observed_pos: i64,
+    #[pyo3(get)]
+    pub observed_ref: String,
+    #[pyo3(get)]
+    pub observed_alt: String,
+    #[pyo3(get)]
+    pub observed_reads: u32,
+    /// Reads that carry the given ALT exactly over the same stretch (the m in
+    /// OBSERVED_ALLELE's n/m).
+    #[pyo3(get)]
+    pub observed_given_reads: u32,
     /// Reads processed with the requested `--umi-tag` present. Internal only
     /// (no Python getter): summed per BAM to warn when a requested UMI tag is
     /// never seen and fragment grouping silently fell back to QNAME.
     pub umi_tagged_reads: u32,
+    /// Which rule decided each depth read. Internal only (no Python getter):
+    /// logged per variant and summed per counting pass.
+    pub decisions: DecisionTally,
 
     // ── GTF-informed annotation (None when no GTF provided) ──────────────
-    /// Distance (bp) to nearest annotated exon boundary (EBD in VCF).
-    /// None when no GTF is provided. 0 = at boundary. Used for BAQ suppression
-    /// at splice sites. Only populated in RNA mode with `--gtf`.
+    /// Distance (bp) from the variant's REF span to the nearest annotated exon
+    /// boundary (EBD in VCF); 0 when a boundary lies inside the span. None when
+    /// no GTF is provided. Used for BAQ suppression at splice sites. Only
+    /// populated in RNA mode with `--gtf`.
     #[pyo3(get)]
     pub exon_boundary_dist: Option<i32>,
 
@@ -475,8 +577,8 @@ pub const OBS_ALLELE_OTHER: u8 = 3;
 /// One molecule's resolved allele at one variant — the per-molecule view that
 /// `BaseCounts` aggregates away.
 ///
-/// Emitted only when observations are requested; the counting path is unchanged, so
-/// binned↔legacy parity is unaffected. The same molecule observed at two variants in the
+/// Emitted only when observations are requested; the counting path is unchanged. The same
+/// molecule observed at two variants in the
 /// same call carries the same `molecule_hash`, which is what lets a consumer link alleles
 /// across loci (e.g. cis/trans phasing) — gbcms itself does no such linking.
 ///
@@ -487,7 +589,8 @@ pub const OBS_ALLELE_OTHER: u8 = 3;
 /// default would report `0`, which is a *real* MAPQ meaning "mapped ambiguously", so a
 /// partially-built row (`Observation { .., ..Default::default() }`) would silently claim
 /// evidence was badly placed. Omitting the impl makes that fail to compile instead.
-#[pyclass]
+// Output only: nothing passes an Observation back into Rust.
+#[pyclass(skip_from_py_object)]
 #[derive(Debug, Clone)]
 pub struct Observation {
     /// Index into the `variants` list passed to the counting call.

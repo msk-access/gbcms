@@ -26,11 +26,6 @@ from gbcms import _rs
 
 STUB_PATH = Path(__file__).resolve().parents[1] / "src" / "gbcms" / "_rs.pyi"
 
-# `count_bam` is behind the default-on `legacy-parity` cargo feature and is absent from the
-# shipped wheel. Any *other* missing name is a genuine stub/runtime mismatch, not a build
-# variant, so only this one may be skipped.
-FEATURE_GATED = {"count_bam"}
-
 # Guards against the test quietly degenerating to comparing nothing (e.g. a stub-parse change
 # that yields an empty list would otherwise "pass").
 MIN_FUNCTIONS_COMPARED = 6
@@ -114,17 +109,12 @@ STUBS = _stub_signatures()
 def test_every_stub_function_exists_at_runtime():
     """A stub for a function the extension does not export is dead documentation."""
     missing = [n for n in STUBS if not hasattr(_rs, n)]
-    assert (
-        missing == [] or set(missing) <= FEATURE_GATED
-    ), f"declared in _rs.pyi but not exported by the extension: {missing}"
+    assert missing == [], f"declared in _rs.pyi but not exported by the extension: {missing}"
 
 
 @pytest.mark.parametrize("name", sorted(STUBS))
 def test_stub_matches_runtime_signature(name):
     """Parameter names, order, and which ones have defaults must agree exactly."""
-    if not hasattr(_rs, name):
-        pytest.skip(f"{name} is behind the legacy-parity feature and absent from this build")
-
     stub_names, stub_defaulted = STUBS[name]
     rt_names, rt_defaulted = _runtime_signature(name)
 

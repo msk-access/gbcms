@@ -117,8 +117,8 @@ nextflow run nextflow/main.nf \
 | `--strandedness` | Library protocol: `reverse` (dUTP/`-s2`), `forward` (`-s1`), or `unstranded` (`-s0`) | `reverse` |
 | `--enforce_strandedness` | Filter reads to the transcript's sense strand (requires `--gtf` for `gene_strand`). `--strandedness unstranded` disables it. | `true` |
 | `--library_type` | `capture` (default) or `amplicon`. Amplicon treats R1/R2 as independent observations (no fragment consensus) and disables strandedness. | `capture` |
-| `--gtf` | GTF for exon-boundary / per-transcript / ASJD annotation and `gene_strand` back-fill | `''` (disabled) |
-| `--gtf_cache` | Pre-build the GTF index once per cohort (when `--gtf` is set) so per-sample tasks skip the ~9s parse | `true` |
+| `--gtf` | GTF (plain or `.gtf.gz`) for exon-boundary / per-transcript / ASJD annotation and `gene_strand` back-fill | `''` (disabled) |
+| `--gtf_cache` | Deprecated in 6.6.0 and ignored (warns when set); removed in 6.7.0. Each task loads the GTF in a few seconds. | `null` |
 
 ### Feature Columns & Merge
 | Parameter | Description | Default |
@@ -128,6 +128,7 @@ nextflow run nextflow/main.nf \
 | `--mfsd_report` | Generate the HTML mFSD report | `false` |
 | `--rescue_mnp` | Enable the MNP-rescue second pass | `false` |
 | `--rescue_mnp_threshold` | Maximum discriminating/length ratio for MNP rescue eligibility | `1.0` |
+| `--rescue_homopolymer` | Dual-count the homopolymer twin (`WARN_HOMOPOLYMER_DECOMP`); off counts the given allele | `false` |
 | `--merge_counts` | Enable the `MERGE_COUNTS` process (multi-BAM merge; needs `bam_type` in the samplesheet) | `false` |
 | `--merge_add_combined` | Compute `simplex_duplex_*` combined columns during merge | `true` |
 | `--merge_legacy_naming` | Use `t_{metric}_{type}` naming (genotype_variants compat) | `false` |
@@ -179,7 +180,6 @@ Pipeline info and logs are in `${params.outdir}/pipeline_info/`.
 |--------|-------------|
 | `GBCMS_DNA` | DNA allele counting via `gbcms dna` |
 | `GBCMS_RNA` | RNA allele counting via `gbcms rna` |
-| `GBCMS_BUILD_GTF_CACHE` | Pre-build the shared GTF index once per cohort via `gbcms build-gtf-cache` (RNA + `--gtf`) |
 | `GBCMS_NORMALIZE` | Variant normalization via `gbcms normalize` |
 | `MERGE_COUNTS` | Merge per-BAM counts into simplex/duplex combined columns (`--merge_counts`) |
 | `FILTER_MAF` | Pre-filter multi-sample MAF by sample |

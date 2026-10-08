@@ -27,9 +27,18 @@ import logging
 from functools import partial
 from pathlib import Path
 
-from . import __version__
-from .core.kernel import CoordinateKernel
-from .io.output import MafWriter, declared_contigs, vcf_contig_lines
+from .io.atomic import atomic_output
+from .io.output import (
+    MAF_ORIGIN_HEADERS,
+    NON_SEQUENCE_HEADER,
+    MafWriter,
+    build_identity,
+    declared_contigs,
+    maf_origin_info,
+    maf_vcf_record,
+    provenance_line,
+    vcf_contig_lines,
+)
 from .io.reference import ReferenceBases
 from .pipeline import read_variant_file
 
@@ -41,8 +50,8 @@ __all__ = ["vcf_to_maf_file", "maf_to_vcf_file"]
 def vcf_to_maf_file(variant_file: Path, output: Path, command_line: str = "") -> int:
     """Write every countable ALT allele of a VCF as a MAF row; returns the row count."""
     variants = read_variant_file(variant_file)
-    with open(output, "w", newline="") as fh:
-        fh.write(f"#gbcms v{__version__}\n")
+    with atomic_output(output, "w", newline="") as fh:
+        fh.write(f"{provenance_line()}\n")
         if command_line:
             fh.write(f"#command {command_line}\n")
         writer = csv.DictWriter(fh, fieldnames=MafWriter.vcf_input_headers(), delimiter="\t")
@@ -62,20 +71,23 @@ def maf_to_vcf_file(
     variants = read_variant_file(variant_file)
     bases = ReferenceBases(reference)
     try:
-        header = ["##fileformat=VCFv4.2", f"##source=gbcms v{__version__}"]
+        header = ["##fileformat=VCFv4.2", f"##source={build_identity()}"]
         if command_line:
             header.append(f"##gbcms_command={command_line}")
         header.append(f"##reference=file://{reference}")
         # Contigs in the MAF's own naming, as gbcms's VCF output declares them.
         header.extend(vcf_contig_lines(declared_contigs(bases.contigs, variants)))
+        header.append(NON_SEQUENCE_HEADER)
+        header.extend(MAF_ORIGIN_HEADERS)
         header.append("#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO")
-        with open(output, "w") as fh:
+        with atomic_output(output, "w") as fh:
             fh.write("\n".join(header) + "\n")
             for v in variants:
-                pos, ref, alt = CoordinateKernel.maf_to_vcf(
-                    v.pos + 1, v.ref, v.alt, partial(bases.base, v.chrom)
+                pos, ref, alt = maf_vcf_record(
+                    v, partial(bases.base, v.chrom), bases.length(v.chrom)
                 )
-                fh.write("\t".join([v.output_chrom, str(pos), ".", ref, alt, ".", ".", "."]))
+                info = ";".join(maf_origin_info(v))
+                fh.write("\t".join([v.output_chrom, str(pos), ".", ref, alt, ".", ".", info]))
                 fh.write("\n")
     finally:
         bases.close()

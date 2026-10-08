@@ -6,7 +6,6 @@
 //!
 //! Used by:
 //! - `counting/engine.rs` — variant-level fragment dedup and consensus
-//! - `hla/extract.rs` (future) — HLA read extraction dedup
 
 use std::hash::{Hash, Hasher};
 use std::collections::hash_map::DefaultHasher;
@@ -47,7 +46,7 @@ pub struct FragmentEvidence {
     /// is ignored. Only sizes in the cfDNA range (50–1000 bp) are later
     /// aggregated into mFSD class vectors.
     pub insert_size: Option<i32>,
-    /// True if the base at the variant position was 'N' (ambiguous) on any read.
+    /// True if any read carried an N at a discriminating position.
     /// Sticky: once set, never cleared. Used to split "neither-REF-nor-ALT"
     /// fragments into the N class vs. the NonREF class for mFSD analysis.
     pub has_n_base: bool,
@@ -71,6 +70,12 @@ pub struct FragmentEvidence {
     /// make the observation vanish from consensus (rd>0 with rdf=0 was the
     /// exact ALT-side failure fixed above).
     pub has_structural_ref: bool,
+    /// Sticky flag: some read in this fragment could tell the alleles apart
+    /// (any read no rule withdrew as uninformative; see
+    /// `ClassifyResult::uninformative`). A neither-REF-nor-ALT fragment without
+    /// one carries no allele at all, so mFSD leaves it out of its classes instead
+    /// of calling it a third allele.
+    pub has_informative_read: bool,
 
     // ── Mapping confidence ──────────────────────────────────────────────────────────
     /// Worst (minimum) MAPQ among the reads that contributed evidence to this fragment.
@@ -99,6 +104,7 @@ impl FragmentEvidence {
             has_n_base: false,
             has_structural_alt: false,
             has_structural_ref: false,
+            has_informative_read: false,
             min_mapq: u8::MAX,
         }
     }
@@ -110,7 +116,7 @@ impl FragmentEvidence {
     /// recorded for REF or ALT, the orientation of THAT read is stored.
     /// This couples the strand direction to the winning evidence, not just R1.
     ///
-    /// Tie-break (LO-6): the best-quality update uses a strict `>`, so on an
+    /// Tie-break: the best-quality update uses a strict `>`, so on an
     /// exact base-quality tie the *first-observed* mate's orientation is kept.
     /// Reads arrive in coordinate order from a sorted BAM, so this is fully
     /// deterministic per input — but it follows iteration order, not a fixed
@@ -124,8 +130,8 @@ impl FragmentEvidence {
     /// - `tlen`: CIGAR-corrected physical insert size (`|TLEN| - D + I`).
     ///   Updated via `min()` across both reads to keep the most corrected value.
     ///   TLEN=0 (unpaired/unmapped mate) is skipped.
-    /// - `is_n_base`: set `true` when the base at the variant position is 'N'.
-    ///   Sticky across reads of the pair — once set, not cleared.
+    /// - `is_n_base`: set `true` when the read carried an N at a discriminating
+    ///   position. Sticky across reads of the pair — once set, not cleared.
     /// ## Structural INDEL tracking
     /// - `is_structural`: set `true` when the read's classification came from
     ///   a direct CIGAR I/D op match (via `ClassifyResult::is_alt_structural`).
@@ -135,6 +141,8 @@ impl FragmentEvidence {
     ///   Appended last on purpose: every other trailing parameter is a `bool`, so a
     ///   mis-ordered call fails to compile rather than silently swapping two `u8`s
     ///   (which is what inserting it next to `base_qual` would have risked).
+    /// - `informative`: whether this read could tell the alleles apart; sets
+    ///   the sticky `has_informative_read`.
     #[allow(clippy::too_many_arguments)]
     pub fn observe(
         &mut self,
@@ -147,6 +155,7 @@ impl FragmentEvidence {
         is_n_base: bool,
         is_structural: bool,
         mapq: u8,
+        informative: bool,
     ) {
         // Unconditional, and before any allele branching: a read that is neither REF nor
         // ALT still counts toward DPF, so its mapping confidence still describes the
@@ -187,6 +196,9 @@ impl FragmentEvidence {
         if is_structural && is_ref {
             self.has_structural_ref = true;
         }
+        if informative {
+            self.has_informative_read = true;
+        }
 
         // mFSD: capture physical insert size — keep the MOST corrected value
         // across both reads. For deletions, the read carrying the D op gives a
@@ -201,7 +213,7 @@ impl FragmentEvidence {
                 }
             }
         }
-        // mFSD: sticky N flag — once a read sees 'N' at this position, it stays
+        // mFSD: sticky N flag (an N at a discriminating position) — once set, it stays
         if is_n_base {
             self.has_n_base = true;
         }
@@ -235,10 +247,14 @@ impl FragmentEvidence {
     ///
     /// ## Known limitations
     ///
-    /// Variants classified through Phase 3 alignment (complex variants,
-    /// wrong-length INDELs) have `is_structural=false` and continue to use
-    /// quality-weighted consensus. This is intentional: Phase 3 classifications
-    /// are probabilistic, and quality arbitration is appropriate for them.
+    /// Reads judged by their bases rather than a CIGAR op have
+    /// `is_structural=false` and use quality-weighted consensus: complex
+    /// variants (the exact-carrier rule, phase MaskedCompare) and Phase 3
+    /// alignment calls. This is intentional: those calls rest on base
+    /// qualities, and Phase 3 classifications are probabilistic, so quality
+    /// arbitration is appropriate for them. Wrong-length indels are neither
+    /// (with partial evidence) in the Structural phase, so they add no REF or
+    /// ALT evidence to the fragment.
     pub fn resolve(&self, qual_diff_threshold: u8) -> (bool, bool) {
         let has_ref = self.best_ref_qual > 0;
         // Structural ALT evidence exists independently of base quality: the
@@ -270,16 +286,17 @@ impl FragmentEvidence {
                 }
                 // Non-structural conflict (SNPs, Phase 3 returns):
                 // quality-weighted consensus with threshold-based discard.
-                if self.best_ref_qual > self.best_alt_qual + qual_diff_threshold {
+                // Saturating: a quality near 255 plus the margin must not wrap.
+                if self.best_ref_qual > self.best_alt_qual.saturating_add(qual_diff_threshold) {
                     (true, false)  // REF wins by quality margin
-                } else if self.best_alt_qual > self.best_ref_qual + qual_diff_threshold {
+                } else if self.best_alt_qual > self.best_ref_qual.saturating_add(qual_diff_threshold) {
                     (false, true)  // ALT wins by quality margin
                 } else {
                     // Within threshold — ambiguous, discard to preserve VAF accuracy
                     (false, false)
                 }
             }
-            (false, false) => (false, false),  // Should not happen (filtered earlier)
+            (false, false) => (false, false),  // Every read was neither: no REF or ALT evidence
         }
     }
 
@@ -298,13 +315,48 @@ impl FragmentEvidence {
             .or(self.read1_orientation)
             .or(self.read2_orientation)
     }
+
+    /// The molecule's class, from its resolved call (`resolve`). The observations
+    /// export and the mFSD size classes both read this one classifier and differ
+    /// only in what they do with `Unread`.
+    pub fn class(&self, frag_ref: bool, frag_alt: bool) -> MoleculeClass {
+        if frag_ref {
+            MoleculeClass::Ref
+        } else if frag_alt {
+            MoleculeClass::Alt
+        } else if self.has_n_base {
+            MoleculeClass::N
+        } else if self.has_informative_read {
+            MoleculeClass::Other
+        } else {
+            MoleculeClass::Unread
+        }
+    }
+}
+
+/// A molecule's allele class at one variant.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum MoleculeClass {
+    Ref,
+    Alt,
+    /// Neither, with an N at a discriminating position (in consensus BAMs, a
+    /// strand-discordant molecule).
+    N,
+    /// Neither, with an informative read: a third allele, or a REF/ALT tie the
+    /// consensus discarded.
+    Other,
+    /// No informative read: a rule withdrew every read as uninformative
+    /// (`ClassifyResult::uninformative`), so the molecule carries no readable
+    /// allele. The observations export writes it as OTHER (its rows reconcile
+    /// with DPF); mFSD gives it no size class.
+    Unread,
 }
 
 /// Hash a QNAME to u64 for memory-efficient fragment tracking.
 /// Using DefaultHasher for speed — collision probability is negligible
 /// for typical variant-level read counts (~1000 fragments).
 ///
-/// Note (LO-4): the fragment map is keyed on this u64 with no stored QNAME, so a
+/// Note: the fragment map is keyed on this u64 with no stored QNAME, so a
 /// birthday collision would silently merge two fragments. At realistic per-locus
 /// depth the probability is ~5e-10 — not worth the memory of storing keys.
 /// Revisit only if per-locus fragment counts grow orders of magnitude, then
@@ -358,10 +410,10 @@ mod tests {
     ) -> FragmentEvidence {
         let mut ev = FragmentEvidence::new();
         if ref_qual > 0 {
-            ev.observe(true, false, ref_qual, true, true, 200, false, false, TEST_MAPQ);
+            ev.observe(true, false, ref_qual, true, true, 200, false, false, TEST_MAPQ, true);
         }
         if alt_qual > 0 {
-            ev.observe(false, true, alt_qual, false, false, 200, false, structural_alt, TEST_MAPQ);
+            ev.observe(false, true, alt_qual, false, false, 200, false, structural_alt, TEST_MAPQ, true);
         }
         ev
     }
@@ -373,13 +425,13 @@ mod tests {
         // A fragment is only as trustworthy as its least confidently placed read. Taking
         // the max (or last) would let one well-placed mate launder a badly-placed one.
         let mut ev = FragmentEvidence::new();
-        ev.observe(true, false, 30, true, true, 200, false, false, 60);
-        ev.observe(false, true, 30, false, false, 200, false, false, 11);
+        ev.observe(true, false, 30, true, true, 200, false, false, 60, true);
+        ev.observe(false, true, 30, false, false, 200, false, false, 11, true);
         assert_eq!(ev.min_mapq, 11);
         // order must not matter
         let mut rev = FragmentEvidence::new();
-        rev.observe(false, true, 30, false, false, 200, false, false, 11);
-        rev.observe(true, false, 30, true, true, 200, false, false, 60);
+        rev.observe(false, true, 30, false, false, 200, false, false, 11, true);
+        rev.observe(true, false, 30, true, true, 200, false, false, 60, true);
         assert_eq!(rev.min_mapq, 11);
     }
 
@@ -389,7 +441,7 @@ mod tests {
         // the fragment's mapping confidence. Gating the update on is_ref/is_alt would leave
         // those fragments reporting the "unavailable" sentinel instead of what was measured.
         let mut ev = FragmentEvidence::new();
-        ev.observe(false, false, 0, true, true, 200, false, false, 7);
+        ev.observe(false, false, 0, true, true, 200, false, false, 7, true);
         assert_eq!(ev.min_mapq, 7);
     }
 
@@ -407,8 +459,22 @@ mod tests {
     fn mapq_zero_is_recorded_faithfully() {
         // The flip side: a genuine MAPQ 0 must survive as 0, not be treated as "missing".
         let mut ev = FragmentEvidence::new();
-        ev.observe(true, false, 30, true, true, 200, false, false, 0);
+        ev.observe(true, false, 30, true, true, 200, false, false, 0, true);
         assert_eq!(ev.min_mapq, 0);
+    }
+
+    #[test]
+    fn class_follows_the_call_then_the_ambiguous_base_then_informative_reads() {
+        let ev = FragmentEvidence::new();
+        assert_eq!(ev.class(true, false), MoleculeClass::Ref);
+        assert_eq!(ev.class(false, true), MoleculeClass::Alt);
+        assert_eq!(ev.class(false, false), MoleculeClass::Unread);
+        let mut read = FragmentEvidence::new();
+        read.has_informative_read = true;
+        assert_eq!(read.class(false, false), MoleculeClass::Other);
+        read.has_n_base = true;
+        assert_eq!(read.class(false, false), MoleculeClass::N);
+        assert_eq!(read.class(true, false), MoleculeClass::Ref);
     }
 
     // ── resolve() structural priority tests ───────────────────────────
@@ -468,6 +534,20 @@ mod tests {
     }
 
     #[test]
+    fn resolve_compares_qualities_without_overflow() {
+        // A quality of 255 (absent qualities read as 0xFF) plus the margin used to
+        // overflow u8: a panic in debug builds, a wrapped margin in release.
+        let mut ev = FragmentEvidence::new();
+        ev.observe(true, false, 255, true, true, 200, false, false, 60, true);
+        ev.observe(false, true, 255, false, false, 200, false, false, 60, true);
+        assert_eq!(ev.resolve(10), (false, false), "equal qualities: within the margin");
+        let mut ev = FragmentEvidence::new();
+        ev.observe(true, false, 30, true, true, 200, false, false, 60, true);
+        ev.observe(false, true, 255, false, false, 200, false, false, 60, true);
+        assert_eq!(ev.resolve(10), (false, true), "255 beats 30 by more than the margin");
+    }
+
+    #[test]
     fn resolve_no_evidence_returns_neither() {
         // No evidence at all → neither. Should not normally happen
         // (filtered upstream), but the function handles it gracefully.
@@ -482,7 +562,7 @@ mod tests {
         // an M-N-D-M junction) is still CIGAR evidence — the fragment must
         // resolve ALT, not vanish into dpf-only.
         let mut ev = FragmentEvidence::new();
-        ev.observe(false, true, 0, true, true, 200, false, true, TEST_MAPQ);
+        ev.observe(false, true, 0, true, true, 200, false, true, TEST_MAPQ, true);
         assert_eq!(
             ev.resolve(10),
             (false, true),
@@ -495,7 +575,7 @@ mod tests {
         // Without the structural flag, a qual-0 ALT observation carries no
         // usable evidence — unchanged behavior.
         let mut ev = FragmentEvidence::new();
-        ev.observe(false, true, 0, true, true, 200, false, false, TEST_MAPQ);
+        ev.observe(false, true, 0, true, true, 200, false, false, TEST_MAPQ, true);
         assert_eq!(ev.resolve(10), (false, false));
     }
 
@@ -507,10 +587,10 @@ mod tests {
         // a subsequent non-structural observation is made.
         let mut ev = FragmentEvidence::new();
         // First read: structural ALT
-        ev.observe(false, true, 30, true, true, 200, false, true, TEST_MAPQ);
+        ev.observe(false, true, 30, true, true, 200, false, true, TEST_MAPQ, true);
         assert!(ev.has_structural_alt, "should be set after structural ALT");
         // Second read: non-structural REF
-        ev.observe(true, false, 90, false, false, 200, false, false, TEST_MAPQ);
+        ev.observe(true, false, 90, false, false, 200, false, false, TEST_MAPQ, true);
         assert!(ev.has_structural_alt, "should remain set (sticky)");
     }
 
@@ -520,7 +600,7 @@ mod tests {
         // span-aligned REF testimony at a spliced deletion locus. It sets
         // the REF flag and never the ALT flag.
         let mut ev = FragmentEvidence::new();
-        ev.observe(true, false, 50, true, true, 200, false, true, TEST_MAPQ);
+        ev.observe(true, false, 50, true, true, 200, false, true, TEST_MAPQ, true);
         assert!(!ev.has_structural_alt, "REF obs must not set structural ALT flag");
         assert!(ev.has_structural_ref, "structural REF obs must set the REF flag");
     }
@@ -532,7 +612,7 @@ mod tests {
         // REF, not vanish into dpf-only — the mirror of the structural-ALT
         // rule above.
         let mut ev = FragmentEvidence::new();
-        ev.observe(true, false, 0, true, true, 200, false, true, TEST_MAPQ);
+        ev.observe(true, false, 0, true, true, 200, false, true, TEST_MAPQ, true);
         assert_eq!(ev.resolve(10), (true, false));
     }
 
@@ -542,8 +622,8 @@ mod tests {
         // structural ALT keeps its unconditional priority (direct event
         // evidence beats absence-side coverage).
         let mut ev = FragmentEvidence::new();
-        ev.observe(true, false, 0, true, true, 200, false, true, TEST_MAPQ);
-        ev.observe(false, true, 0, false, false, 200, false, true, TEST_MAPQ);
+        ev.observe(true, false, 0, true, true, 200, false, true, TEST_MAPQ, true);
+        ev.observe(false, true, 0, false, false, 200, false, true, TEST_MAPQ, true);
         assert_eq!(ev.resolve(10), (false, true));
     }
 
@@ -551,7 +631,7 @@ mod tests {
     fn observe_non_structural_alt_does_not_set_flag() {
         // Non-structural ALT (e.g., Phase 3 alignment) should not set the flag.
         let mut ev = FragmentEvidence::new();
-        ev.observe(false, true, 50, true, true, 200, false, false, TEST_MAPQ);
+        ev.observe(false, true, 50, true, true, 200, false, false, TEST_MAPQ, true);
         assert!(!ev.has_structural_alt, "non-structural ALT should not set flag");
     }
 }

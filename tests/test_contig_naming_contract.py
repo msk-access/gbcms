@@ -312,7 +312,9 @@ def test_merge_joins_across_contig_naming(tmp_path, caplog):
                 inputs={"duplex": duplex, "simplex": simplex}, output=out, add_combined=False
             )
         )
-    result = pl.read_csv(out, separator="\t", infer_schema_length=0).sort("Chromosome")
+    result = pl.read_csv(out, separator="\t", infer_schema_length=0, comment_prefix="#").sort(
+        "Chromosome"
+    )
     assert result["Chromosome"].to_list() == ["MT", "chr1"]
     joined = result.filter(pl.col("Chromosome") == "chr1").row(0, named=True)
     assert (joined["duplex_ref_count"], joined["simplex_ref_count"]) == ("20", "5")
@@ -432,7 +434,7 @@ def test_merge_writes_each_contig_one_way(tmp_path, caplog):
                 add_combined=False,
             )
         )
-    result = pl.read_csv(out, separator="\t", infer_schema_length=0)
+    result = pl.read_csv(out, separator="\t", infer_schema_length=0, comment_prefix="#")
     assert result["Chromosome"].to_list() == ["chr1", "chr1", "chr1"]
     naming = [r.message for r in caplog.records if "name contigs differently" in r.message]
     assert len(naming) == 2, naming

@@ -15,6 +15,7 @@ Every read from the BAM passes through a **filter cascade** before being checked
 ```mermaid
 flowchart LR
     Start(["📖 BAM Read"]):::start
+    U0{"⓪ Unmapped?\n0x4 (always)"}:::on
 
     subgraph Auto ["🟢 Auto-On (default enabled)"]
         direction LR
@@ -22,31 +23,38 @@ flowchart LR
         F2{"② Secondary?\n0x100"}:::on
         F3{"③ Supplementary?\n0x800"}:::on
         F4{"④ QC Failed?\n0x200"}:::on
-        F5{"⑤ MAPQ < threshold\n(20 DNA / 1 RNA)"}:::on
         F1 -->|No| F2
         F2 -->|No| F3
         F3 -->|No| F4
-        F4 -->|No| F5
     end
 
     subgraph Opt ["⚙️ Optional (off by default)"]
         direction LR
-        O1{"⑥ Improper pair?\n--filter-improper-pair"}:::off
-        O2{"⑦ Contains indel?\n--filter-indel"}:::off
+        O1{"⑤ Improper pair?\n--filter-improper-pair"}:::off
+        O2{"⑥ Contains indel?\n--filter-indel"}:::off
         O1 -->|No| O2
     end
 
-    Start --> F1
-    F5 -->|Pass| O1
-    O2 -->|Pass| Done(["✅ Allele Classifier"]):::pass
+    S1{"⑦ No bases or qualities?\nSEQ / QUAL '*' (always)"}:::on
+    F5{"⑧ MAPQ < threshold\n(20 DNA / 1 RNA)"}:::on
+
+    Start --> U0
+    U0 -->|No| F1
+    U0 -->|Yes| Drop
+    F4 -->|No| O1
+    O2 -->|No| S1
+    S1 -->|No| F5
+    F5 -->|Pass| Clip["✂️ Clip to fragment end"]:::on
+    Clip --> Done(["✅ Allele Classifier"]):::pass
 
     F1 -->|Yes| Drop(["❌ Discard"]):::drop
     F2 -->|Yes| Drop
     F3 -->|Yes| Drop
     F4 -->|Yes| Drop
-    F5 -->|Below threshold| Drop
     O1 -->|"Yes (if enabled)"| Drop
     O2 -->|"Yes (if enabled)"| Drop
+    S1 -->|Yes| Drop
+    F5 -->|Below threshold| Drop
 
     classDef start fill:#9b59b6,color:#fff,stroke:#7d3c98,stroke-width:2px;
     classDef on fill:#27ae60,color:#fff,stroke:#1e8449,stroke-width:2px;
@@ -54,6 +62,41 @@ flowchart LR
     classDef pass fill:#27ae60,color:#fff,stroke:#1e8449,stroke-width:2px;
     classDef drop fill:#e74c3c,color:#fff,stroke:#c0392b,stroke-width:2px;
 ```
+
+**Unmapped records.** A record flagged unmapped (0x4) is not an alignment. An
+aligner places it at its mate's position with MAPQ 0, sometimes with a CIGAR, so
+it would otherwise reach a variant there: in `mq0_count` by default, and as a read
+at `--min-mapq 0`. It is always dropped first (step ⓪), in every mode. Its mapped
+mate still counts (one mapped read of a pair is a read), and mapped MAPQ-0
+alignments stay countable at `--min-mapq 0`, as pseudogene loci such as PMS2 need.
+samtools/bcftools mpileup and GATK (MappedReadFilter) drop unmapped reads too.
+
+**Records without bases or qualities.** A record stored with no sequence
+(SEQ `*`) shows no allele. Aligners write some secondary alignments this way, and
+a stripped BAM can hold primaries like it. A record with bases but no qualities
+(QUAL `*`, stored as 0xFF bytes) gives its bases no error rate, so no rule can
+weigh them (GATK's WellformedReadFilter rejects it too). Either is always dropped
+right after the flag filters (step ⑦), in every mode and counting path, and
+counted in neither depth, fragments nor `mq0_count`. Each counting pass logs one
+WARNING for each kind, with the number of bin fetches that skipped one (bin
+windows overlap, so a record can count more than once).
+
+**A read ends at its fragment end.** When the insert is shorter than the read,
+the read runs on past its mate's 5' end into adapter (read-through). For a pair
+whose fragment is well defined (mate mapped on the same contig, the pair facing
+inward), the bases past the fragment end are hard-clipped as the read enters the
+counting pass, as if the read had been trimmed, so no rule sees them as bases or
+as reach, and a reverse read's start moves past any aligned bases it loses. TLEN
+is read as BWA-MEM, samtools fixmate and Picard write it, from the forward read's
+5' end to the reverse read's, positive on the forward read; an outward-facing
+pair (as at a tandem-duplication junction) defines no fragment. Tags are kept.
+Only adapter-like bases are clipped: soft-clipped, or at most two aligned past
+the boundary (an aligner's chance extension into adapter), none inserted. A read
+whose bases go on aligning past the boundary, or hold an insertion there, keeps
+them: TLEN is a reference distance, so it leaves out the inserted bases of an
+ITD and a mate's clipped 5' bases, and those bases are the molecule's. GATK hard-clips adapter at the same
+boundary, and fgbio ClipBam's `--clip-bases-past-mate` does it as a separate step.
+See [Read Judgment](read-judgment.md) (RJ-10 to RJ-12).
 
 ---
 
@@ -109,7 +152,7 @@ Beyond the read-level filters above, gbcms also applies **base-level quality thr
     - **SNP**: Read is rejected if the base at the variant position has quality < threshold
     - **MNP**: Read is rejected if **any** base in the MNP region has quality < threshold
     - **Insertion/Deletion (windowed scan)**: Inserted/deleted bases below threshold are **masked** (treated as wildcards) rather than rejecting the entire read
-    - **Complex (Phase 2)**: Low-quality bases are masked — they cannot vote for either allele
+    - **Complex (exact carriers)**: Bases at or above the threshold must match the allele; every base is also weighed by its quality, and an ALT call needs the read's evidence for ALT over REF to reach at least what one base at the threshold gives (about 2.5 log10 at 20), so a read whose window is mostly low quality cannot be called ALT on one clear base
     - **Complex (Phase 3 SW)**: Low-quality bases are replaced with `N`, which scores 0 against any base
 
 ---
@@ -158,7 +201,10 @@ RNA mode (`gbcms rna`) extends the standard filter cascade with two additional c
 
 ### NH:i:1 MAPQ Rescue
 
-STAR assigns MAPQ=255 to uniquely mapped reads and MAPQ=0–3 to multi-mappers. When `--min-mapq 1` (RNA default), reads that fail the MAPQ threshold are checked for the `NH:i:1` tag (Number of Hits = 1). If present, the read is uniquely aligned and rescued.
+STAR's MAPQ depends only on how many loci a read aligns to equally well: 255 for
+one, 3 for two, 1 for three or four, 0 for five or more. When `--min-mapq 1` (RNA
+default), reads that fail the MAPQ threshold are checked for the `NH:i:1` tag
+(Number of Hits = 1). If present, the read is uniquely aligned and rescued.
 
 ```mermaid
 flowchart TD
@@ -174,19 +220,51 @@ flowchart TD
     classDef drop fill:#e74c3c,color:#fff,stroke:#c0392b,stroke-width:2px;
 ```
 
-!!! info "Biological Context"
-    Novel splice junctions often receive low MAPQ because STAR hasn't observed the junction in its first-pass database. The NH:i:1 rescue ensures these uniquely mapped reads contribute to allele counts rather than being silently discarded.
+!!! info "When the rescue applies"
+    For STAR an `NH:i:1` read is always MAPQ 255, so the rescue matters for
+    aligners whose MAPQ can be low for a uniquely aligned read; it keeps those
+    reads in the counts rather than silently discarding them.
+
+### Why the RNA default is `--min-mapq 1`
+
+The RNA default keeps reads STAR placed at two to four loci (MAPQ 3 or 1), each
+counted once, at its primary alignment (secondary alignments are filtered). This
+is deliberate (operator, 2026-10-03), because junction reads tie between a gene
+and its processed pseudogene: a spliced read from the parent gene aligns equally
+well, unspliced, to the intronless retrocopy.
+
+Measured on the FORTE truth set (33 samples, 94 rows) and the STAR probes (3
+samples, 978 rows), with the counts at the default as the reference:
+
+| Threshold | What it keeps | Effect |
+|:--|:--|:--|
+| `--min-mapq 255` (unique only) | one locus | Truth: ALT −12, REF −25, depth −83. PIK3CA E545K (exon 9, which has a pseudogene copy on chr22) loses 10 of 159 ALT reads. Probes: depth −2.2%, ASJD junction fragments −1.6% |
+| `--min-mapq 1` (default) | up to four loci | Keeps 122 of the truth set's 143 multimapping junction reads; spliced reads are 80% of the two-locus reads against 53% of unique ones, gathered at PTEN (PTENP1), B2M and TP53 |
+| `--min-mapq 0` | five or more loci too | Truth: ALT +6 and REF +33, all at rows consistent with the samples' alleles; probes: depth +0.3%. No ASJD call changes |
+
+Allele-specific expression pipelines (GTEx v8, phASER, ASEReadCounter as used
+there) count only unique STAR alignments and pair that with a remapping test for
+allele bias (WASP). For a genotyper counting given alleles, that filter would cost
+real carriers at genes with pseudogenes. Use `--min-mapq 0` deliberately for
+pseudogene-family genes, as for PMS2 in DNA; it admits reads with five or more
+equally good placements, so it is not the default.
 
 ### Strandedness Filter
 
-For dUTP-stranded RNA-seq libraries, reads are classified by their orientation relative to the gene strand annotation. Both sense and antisense reads are **counted** (they contribute to `rna_sense_depth` and `rna_antisense_depth` respectively), but only sense-strand reads contribute to the primary DP/RD/AD counts when `--enforce-strandedness` is enabled.
+For dUTP-stranded RNA-seq libraries, reads are classified by their orientation relative to the gene strand annotation. Both sense and antisense REF and ALT reads are **counted** (they contribute to `rna_sense_depth` and `rna_antisense_depth` respectively), but only sense-strand reads contribute to the primary DP/RD/AD counts when `--enforce-strandedness` is enabled.
 
-| Read Orientation | Gene Strand | Classification |
-|:-----------------|:------------|:---------------|
-| Forward (R1) | + | Sense |
-| Reverse (R1) | + | Antisense |
-| Forward (R1) | − | Antisense |
-| Reverse (R1) | − | Sense |
+With the default `--strandedness reverse` (dUTP, featureCounts `-s 2`), R1 and
+single-end reads come from the opposite strand of the transcript, and R2 from the
+same strand (`forward` swaps them):
+
+| Read | Orientation | Gene Strand | Classification |
+|:-----|:------------|:------------|:---------------|
+| R1 / single-end | Reverse | + | Sense |
+| R1 / single-end | Forward | + | Antisense |
+| R1 / single-end | Forward | − | Sense |
+| R1 / single-end | Reverse | − | Antisense |
+| R2 | Forward | + | Sense |
+| R2 | Reverse | + | Antisense |
 
 !!! tip
     Disable strandedness filtering with `--no-strandedness` for unstranded RNA-seq libraries.
@@ -207,6 +285,8 @@ These are not configurable via CLI — they are fixed values derived from Li (20
 | `BAQ_PENALTY` | 20 | Subtracted from BQ (clamped to 0, never negative) |
 
 The effective aggressiveness of BAQ is controlled by `--min-baseq` (default 20): a base with BQ 30 near a splice junction becomes BQ 10 after BAQ, which is below the default `--min-baseq` threshold and is therefore excluded from allele evidence.
+
+**The variant's own indel is spared.** When the variant being counted is not an SNV, a read's insertion or deletion that touches the variant's own event (where its alleles can differ, grown through repeats, plus two flank bases) is that variant's evidence, not an alignment artifact beside it, so the bases around it are not penalized. Otherwise, at Q37 (NovaSeq 6000 bins, unbinned or recalibrated data) every ALT read of a small insertion or delins would fall below `--min-baseq` while REF reads, with no indel, kept full quality. Splice junctions, and indels elsewhere in the read (a germline indel beside an SNV), are penalized as before. At Q40 (Q40 − 20 = 20) the difference does not arise.
 
 ### Mode Defaults
 

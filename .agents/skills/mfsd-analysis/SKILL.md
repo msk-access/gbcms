@@ -23,14 +23,21 @@ mFSD (modified Fragment Size Distribution) analysis is **opt-in** via `--mfsd`.
 - ZSTD(1) compression: `parquet = { default-features = false, features = ["arrow", "zstd"] }`
 - `ref_sizes`/`alt_sizes` are Rust-internal — no `#[pyo3(get)]`
 - Called from `pipeline.py` after `count_bam_binned()`, not inside the counting engine
-  (`count_bam` is the feature-gated legacy parity oracle, not the production path)
 
 ## Statistics (watch-outs)
 
-- KS p-value uses an asymptotic approximation — weak at the small ALT-fragment
-  counts (n≈5–20) typical of low-input cfDNA.
-- LLR is a fragment-size Gaussian log-ratio (distinct from the PairHMM LLR);
-  guard against ±∞ from tail fragments by using the closed-form log-ratio.
+- KS p-value is exact up to 10⁷ lattice cells (shares of in-band paths, no
+  overflow; every realistic class pair), Stephens-corrected asymptotic above. The
+  uncorrected series overstated p 1.7–45x for few ALT fragments vs a deep REF.
+  Exact p is conservative with tied integer sizes. At small ALT counts the test has
+  little power (about 8% at 5 fragments), so a non-significant result is not
+  evidence of "no shift" — and never evidence for CH.
+- LLR is a fragment-size Gaussian log-ratio (distinct from the PairHMM LLR),
+  reported as the mean per fragment (n = `mfsd_*_count`); NaN for an empty class,
+  as are empty classes' mean sizes. Closed-form log-ratio, so no ±∞.
+- The report grades evidence (LEANS-SOMATIC / NO-SIZE-EVIDENCE / INSUFFICIENT);
+  nothing leans CH and gene membership is a note, not a gate. The CH-vs-tumor
+  prediction lives outside gbcms (a separate model consuming `fsd.parquet`).
 
 ## Key Files
 - `rust/src/counting/mfsd.rs`: KS test, LLR, pairwise comparisons

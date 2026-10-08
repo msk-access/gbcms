@@ -73,7 +73,7 @@ despite parallel processing. Compression is Zstandard level 1.
 | `0` REF | Molecule carried the reference allele. **First-class** — reference observations are themselves signal for some analyses (e.g. back-mutation). |
 | `1` ALT | Molecule carried the alternate allele. |
 | `2` N | Ambiguous base. In consensus BAMs this marks a **strand-discordant** molecule — diagnostic, not noise. |
-| `3` OTHER | A third allele, or no fragment consensus. |
+| `3` OTHER | A third allele, no fragment consensus, or (for an indel) a molecule whose reads all start or end inside the event's repeat tract, so they cannot tell the alleles apart ([informative reads](allele-classification.md#informative-reads-for-indels)). |
 
 !!! info "N rows depend on `--min-baseq`"
     N bases carry low quality, so they are usually filtered before reaching fragment
@@ -158,7 +158,7 @@ for obs in result.observations:
 |:----------|:------------|
 | `bam` | Indexed BAM/CRAM. |
 | `variants` | Variants to observe. `variant_index` indexes into this list **positionally** — it is never filtered or reordered, so the join key stays meaningful even when a variant fails validation. |
-| `reference_fasta` | Reference for normalization. **Strongly recommended for indels** (see below). |
+| `reference_fasta` | **Required** (or carried by `config`): the reference variants are normalized and judged against. |
 | `is_maf` | Set when variants came from a MAF, whose `-` alleles need anchor resolution. |
 | `filters` | `ReadFilters` — which reads are excluded. |
 | `quality` | `QualityThresholds` — MAPQ and base-quality gates. |
@@ -190,9 +190,10 @@ result = observe_molecules(
 
 `config=` still works and is handy when a pipeline already built one. An individual argument
 **overrides** the matching `config` field, so you can reuse a config and adjust one setting.
-Prefer the individual arguments otherwise: `GbcmsDnaConfig` requires `variant_file`,
-`bam_files`, `reference_fasta` and `output` — none of which this entry point reads, and
-`variant_file`/`reference_fasta` must name files that exist.
+Prefer the individual arguments otherwise: `GbcmsDnaConfig` also requires `variant_file`,
+`bam_files` and `output`, which this entry point never reads (it reads the config's
+`reference_fasta` when none is passed), and `variant_file`/`reference_fasta` must name
+files that exist.
 
 !!! note "`umi_tag=None` is an explicit choice, not an omission"
     For every other argument, `None` means "not supplied" and defers to `config`. `umi_tag`
@@ -221,11 +222,13 @@ Prefer the individual arguments otherwise: `GbcmsDnaConfig` requires `variant_fi
     `dp` unchanged, so those two stop moving together. They measure different things, and
     the rows here reconcile with `dpf`.
 
-!!! warning "Always pass a reference for indels"
-    Normalization supplies left-alignment, `ref_context`, and the **decomposed** form of
-    complex indels — often the form the reads actually carry. Without it those molecules are
-    scored `OTHER` and the variant appears to have **zero ALT support**. Measured on real
-    ACCESS deletions: 13 ALT molecules with a reference, 11 without.
+!!! note "Why a reference is required"
+    Normalization supplies left-alignment, the repeat tract an indel slides over, the
+    reference context each read is judged against, and the **decomposed** form of complex
+    indels. Without it the indel and complex-variant rules cannot run as designed (measured on
+    real ACCESS deletions before it was required: 13 ALT molecules with a reference, 11
+    without), so `observe_molecules` refuses to run without one (since 6.6.0), as the CLI
+    does.
 
 !!! note "`gbcms._rs` is internal"
     `observe_molecules` is the supported surface. `gbcms._rs` is an implementation detail and

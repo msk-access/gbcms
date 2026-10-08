@@ -110,17 +110,29 @@ flowchart LR
 
 | Parameter | Value | Notes |
 |:----------|:------|:-------|
-| `BIN_WINDOW` | **10,000 bp** | Maximum span of a single bin. Variants beyond this distance start a new bin. |
-| `BIN_MAX_VARIANTS` | **200** | Maximum variants per bin. Split enforced to prevent O(V × R) blowup in the shared-read classification loop. |
+| `BIN_WINDOW` | **10,000 bp** | A floor, not a maximum. A bin covers at least this span from its first variant (and that variant's whole REF span); each variant added extends its end to the variant's span plus half a window, so variants closer than that chain the bin further. A variant at or past the end starts a new bin. |
+| `BIN_MAX_VARIANTS` | **200** | Maximum variants per bin. Split enforced to prevent O(V × R) blowup in the shared-read classification loop; in dense inputs it, not the span, ends a bin. |
 | Bin padding | `max(repeat_span + 2, 5)` bp | Ensures reads overlapping bin edges are captured. Uses each variant's detected tandem-repeat span. |
 | Parallelism | Rayon `par_iter()` over bins | Each thread owns its own `BamReader` handle; no locking required across bins. |
 | Output order | Preserved | Variants are sorted by index internally; results are written back in original input order. |
 
 !!! tip "Performance Implication"
-    For a MAF with 500 variants on *TP53* (a 19kb gene), the engine produces ~2-3 bins instead of 500 individual `bam.fetch()` calls. On high-depth targeted panels this can reduce wall-clock counting time by 5-20×.
+    For a MAF with 500 variants on *TP53* (a 19kb gene), the engine produces 3 bins (the 200-variant cap) instead of 500 individual `bam.fetch()` calls. On high-depth targeted panels this can reduce wall-clock counting time by 5-20×.
+
+!!! info "The bin span is a soft floor; it is never capped"
+    Measured by replaying the rule on real inputs (2026-10-05): per-sample variant lists
+    (141,845 samples, 1.04M bins) have a median span of 10 kb, p99 11.6 kb and a maximum
+    of 29 kb (1.6% of bins past the window, none split at the variant cap). One input
+    holding a whole cohort's variants chains further: the ACCESS union (14,296 variants)
+    reaches p99 36 kb, max 47 kb (4.7x the window); the IMPACT union (424,572 variants)
+    p99 23 kb, max 44 kb, where the 200-variant cap ends 1,458 bins first.
+
+    The span only sets how much one fetch reads. It is not capped: a bin's fetch must
+    hold every member's full read window, the anchor variant's included (a cap that cut
+    the end short dropped reads aligned past a long deletion).
 
 !!! info "Not a CLI flag"
-    `BIN_WINDOW` and `BIN_MAX_VARIANTS` are internal performance constants — they do not affect output values. Parity testing (`D1` regression suite) validates that binned and per-variant paths produce identical `BaseCounts`.
+    `BIN_WINDOW` and `BIN_MAX_VARIANTS` are internal performance constants — they do not affect output values. Binning invariance holds them to that: every count is identical under any bin window or cap, one variant per bin, or one variant per call (`tests/test_binning_invariance.py`, a Rust property test, and the per-variant check in every counting test).
 
 ---
 
@@ -165,10 +177,11 @@ Where:
     Alt  |    c        d      |
     -----+--------------------+
     
-    p-value = Fisher's exact test on 2×2 contingency table
+    p-value = two-sided exact Fisher test (R's fisher.test), any depth
 ```
 
-Low p-value (< 0.05) indicates potential strand bias artifact.
+Low p-value (< 0.05) indicates potential strand bias artifact; at deep coverage, read
+the odds ratio for the size of the imbalance.
 
 ### Structural Invariants
 
@@ -219,8 +232,8 @@ rust/src/
 ├── lib.rs                    # PyO3 module exports
 ├── annotation/               # v5.0.0: GTF annotation index (COITree, splice masks)
 │   ├── mod.rs                # AnnotationIndex struct, COITree queries
-│   ├── gtf.rs                # GTF parser (variant-guided streaming)
-│   └── cache.rs              # GTF disk cache (GtfIndexBundle, bincode) — M5a
+│   ├── gtf.rs                # GTF loader (plain or gzip/BGZF, variant-guided streaming)
+│   └── gtf_line.rs           # One GTF line's exon fields (noodles-gtf's grammar)
 ├── counting/
 │   ├── mod.rs                # Submodule re-exports
 │   ├── engine.rs             # Main loop, genomic binning, BAQ, UMI
@@ -340,7 +353,9 @@ typically SNVs on different molecules (trans, separate subclones, or a merged-SN
 annotation). The MNP check correctly reports such a haplotype as absent: each carrier
 matches ALT at some discriminating positions and REF at others, so it lands in
 `partial_alt`. Rescue re-counts every discriminating position as an SNV and reports the
-best-supported component.
+best-supported component. In RNA mode with `--gtf`, each component is counted over its
+MNP's REF span for the exon-edge BAQ rule, so the components and the MNP row are counted
+under one rule and a rescued row reports the MNP's `exon_boundary_dist`.
 
 ### Why Python, Not Rust?
 
@@ -455,15 +470,10 @@ Consequences to keep in mind when reading a rescued row:
 `gbcms_rescue` is empty for non-candidates and is reset for every sample (the prepared
 variant list is shared across the BAMs of a run). For candidates:
 
-| Outcome | Meaning | Counts written |
-|:--------|:--------|:---------------|
-| `rescued` | Best component beats the MNP's `ad`; `gbcms_diagnostic` gains `RESCUED_COMPONENT(chrom:pos:REF>ALT)` and a warning is logged | Adopted component's |
-| `skipped_grouped` | MNP is in a co-annotated group | MNP's |
-| `haplotype_confirmed` | At least one read shows the whole haplotype (`mnp_confirmed_alt > 0`, gate row 5) — the BAM shows the annotated allele | MNP's |
-| `no_improvement` | No component beats the MNP's `ad`: the partial evidence was not component carriers — e.g. reads with an indel inside the block, which the complex path counts as REF with nearby-indel evidence and no single-base count calls ALT. Rescue correctly declines | MNP's |
-| `ref_validation_failed` | No component SNV survived preparation — an anomaly (the MNP itself passed REF validation); logged as a warning | MNP's |
+<!-- Defined once, in QC Flags; this includes that table. -->
+--8<-- "reference/qc-flags.md:rescue"
 
-`MNP_DISC_RATIO(n/m)` and `MNP_RESCUE_ELIGIBLE` describe the annotated MNP's *shape*, so a rescued row keeps them next to `RESCUED_COMPONENT(...)`: rows still awaiting review after a rescue run are those with `MNP_RESCUE_ELIGIBLE` and **without** `RESCUED_COMPONENT` (equivalently, `gbcms_rescue` `outcome` other than `rescued`).
+`MNP_DISC_RATIO(n/m)` and `MNP_RESCUE_ELIGIBLE` describe the annotated MNP's *shape*, so a rescued row keeps them next to `RESCUED_COMPONENT(...)`: rows still awaiting review after a rescue run are those with `MNP_RESCUE_ELIGIBLE` and **without** `RESCUED_COMPONENT` (equivalently, `gbcms_rescue` `outcome` other than `rescued`). The flags: [QC Flags → Diagnostics](qc-flags.md#diagnostics).
 
 `original_ref` / `original_alt` / `original_partial` / `original_confirmed` always carry the
 MNP's own counts (`original_confirmed` is its `mnp_confirmed_alt`).

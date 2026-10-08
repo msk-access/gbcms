@@ -96,21 +96,25 @@ nav:
     - Architecture: reference/architecture.md
     - Input Formats: reference/input-formats.md
     - Output Formats: reference/output-formats.md
+    - QC Flags: reference/qc-flags.md
     - Variant Normalization: reference/variant-normalization.md
     - Read Filters: reference/read-filters.md
     - RNA Splice Handling: reference/rna-splice-handling.md
     - RNA Annotation: reference/rna-annotation.md
     - Allele Classification: reference/allele-classification.md
+    - Read Judgment: reference/read-judgment.md
     - Counting & Metrics: reference/counting-metrics.md
     - mFSD Report: reference/mfsd-report.md
     - Per-Molecule Observations: reference/molecule-observations.md
     - Complex Indels: reference/complex-indels.md
+    - BAM Evidence Caveats: reference/bam-evidence-caveats.md
     - Glossary: reference/glossary.md
   
   - Development:
     - Developer Guide: development/developer-guide.md
     - Testing Guide: development/testing-guide.md
     - Release Guide: development/release-guide.md
+    - Regression Panel: development/regression-panel.md
     - Changelog: development/changelog.md
     - Contributing: development/contributing.md
   
@@ -141,6 +145,8 @@ markdown_extensions:
       base_path:
         - .
         - docs
+      # A missing file or section fails the build (default: silently empty).
+      check_paths: true
       auto_append:
         - includes/abbreviations.md
   - pymdownx.tabbed:
@@ -174,3 +180,11 @@ copyright: |
   <a href="https://www.mskcc.org">MSKCC</a> | 
   Built with <a href="https://antigravity.google/">Antigravity</a> | 
   <a href="https://github.com/msk-access/gbcms/blob/main/LICENSE">AGPL-3.0</a>
+
+# Snippet sources, not pages (read by pymdownx.snippets, not built).
+exclude_docs: |
+  includes/
+
+# A link to a missing heading anchor warns (and fails --strict builds).
+validation:
+  anchors: warn

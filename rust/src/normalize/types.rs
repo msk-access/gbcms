@@ -7,7 +7,8 @@ use crate::types::Variant;
 ///
 /// Every input variant produces exactly one `PreparedVariant`, even if validation
 /// fails — this ensures the output always has the same row count as input.
-#[pyclass]
+// Output only: nothing passes a PreparedVariant back into Rust.
+#[pyclass(skip_from_py_object)]
 #[derive(Debug, Clone)]
 pub struct PreparedVariant {
     /// Ready-to-count variant (normalized coords + ref_context populated).
@@ -24,15 +25,17 @@ pub struct PreparedVariant {
     /// Status reason tags, `|`-separated; empty string when a clean PASS.
     /// PASS reasons: `WARN_REF_CORRECTED`, `WARN_HOMOPOLYMER_DECOMP`, `MULTI_ALLELIC`,
     /// `TRACT_CLUSTER`.
-    /// FAIL reasons: `REF_MISMATCH`, `FETCH_FAILED`, `EMPTY_ALLELE`, `ALT_EQUALS_REF`,
+    /// FAIL reasons: `REF_MISMATCH`, `FETCH_FAILED`, `EMPTY_ALLELE`, `NON_SEQUENCE_ALLELE`, `ALT_EQUALS_REF`,
     /// `ALT_CONTAINS_N`.
     /// `|` is used (not `;`/`,`, both VCF-INFO-unsafe) so the value is byte-identical
     /// in the MAF column and the VCF `GSR` INFO — no boundary conversion needed.
     #[pyo3(get, set)]
     pub gbcms_status_reason: String,
 
-    /// Post-counting diagnostic flags. Semicolon-separated.
-    /// Empty string = no diagnostics. Set by Python pipeline after counting.
+    /// Diagnostic flags. Semicolon-separated. Empty string = no diagnostics.
+    /// Set by the Python pipeline after counting for a PASS row; on a
+    /// `REF_MISMATCH` row, prep sets `REF_AT_OFFSET(k)` where the given REF
+    /// matches the reference exactly nearby.
     /// Examples: "ZERO_ALT", "PARTIAL_DOMINANT;MNP_DISC_RATIO(2/5);MNP_RESCUE_ELIGIBLE".
     #[pyo3(get, set)]
     pub gbcms_diagnostic: String,
@@ -73,9 +76,11 @@ pub struct PreparedVariant {
     #[pyo3(get)]
     pub decomposed_variant: Option<Variant>,
 
-    /// Group ID for overlapping multi-allelic variants at the same locus.
-    /// `None` for isolated variants, `Some(id)` when multiple variants share
-    /// overlapping genomic footprints (same chrom, overlapping REF spans).
+    /// Group ID for co-annotated variants the engine evaluates jointly.
+    /// `None` for isolated variants, `Some(id)` when variants on one chrom have
+    /// overlapping REF spans (MULTI_ALLELIC) or, for length-changing variants,
+    /// overlapping scan windows (TRACT_CLUSTER), closed transitively
+    /// (`assign_multi_allelic_groups`).
     #[pyo3(get)]
     pub multi_allelic_group: Option<u32>,
 }

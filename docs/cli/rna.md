@@ -82,7 +82,7 @@ flowchart LR
 ## Required Arguments
 
 !!! info "Shared Arguments"
-    RNA mode shares all [required arguments](dna.md#required-arguments), [output options](dna.md#output-options), [filtering options](dna.md#filtering-options), [BAQ options](dna.md#baq-options), [UMI options](dna.md#umi-options), [MNP rescue options](dna.md#mnp-rescue-options), and [debugging options](dna.md#debugging-options) with DNA mode. See the [`gbcms dna` reference](dna.md) for full descriptions.
+    RNA mode shares all [required arguments](dna.md#required-arguments), [output options](dna.md#output-options), [filtering options](dna.md#filtering-options), [BAQ options](dna.md#baq-options), [UMI options](dna.md#umi-options), [MNP rescue options](dna.md#mnp-rescue-options), the [homopolymer twin option](dna.md#homopolymer-twin-option), and [debugging options](dna.md#debugging-options) with DNA mode. See the [`gbcms dna` reference](dna.md) for full descriptions.
 
 !!! tip "Provenance & CRAM Support (v5.3.0+)"
     RNA output includes the same provenance metadata as DNA mode — `##gbcms_command`,
@@ -110,13 +110,13 @@ These options are **only available** on `gbcms rna`, not on `gbcms dna`.
 
 | Option | Default | Description |
 |:-------|:--------|:------------|
-| `--gtf` | _(none)_ | Path to Ensembl/GENCODE GTF annotation file (`.gtf` or `.gtf.gz`). Enables exon boundary distance, per-transcript counting, and aberrant splice junction detection. Also back-fills each variant's `gene_strand` — required for `--enforce_strandedness` and ASJD strand-discordance to do anything. |
-| `--gtf-cache-dir` | _(none)_ | Directory holding a prebuilt GTF index. When set, per-sample runs load the cached index (~0.05s) instead of re-parsing the GTF (~9s). Build it once for a cohort with `gbcms build-gtf-cache --gtf <file> --variants <vcf/maf> --cache-dir <dir>`. |
+| `--gtf` | _(none)_ | Path to Ensembl/GENCODE GTF annotation file, plain or gzip/BGZF (`.gtf` or `.gtf.gz`). Enables exon boundary distance, per-transcript counting, and aberrant splice junction detection. Also back-fills each variant's `gene_strand` — required for `--enforce_strandedness` and ASJD strand-discordance to do anything. |
+| `--gtf-cache-dir` | _(none)_ | Deprecated in 6.6.0 and ignored (warns); removed in 6.7.0. The GTF loads in a few seconds, so there is no cache. |
 
 !!! info "What `--gtf` Enables"
     When a GTF file is provided, gbcms builds a `COITree`-based annotation index and adds:
 
-    - **`exon_boundary_dist`** — Distance (bp, unsigned) to the nearest annotated exon boundary; empty when the variant's contig has no annotation in the GTF
+    - **`exon_boundary_dist`** — Distance (bp, unsigned) from the variant's REF span to the nearest annotated exon boundary, `0` when a boundary lies inside it; empty when the variant's contig has no annotation in the GTF
     - **Per-transcript read/fragment counts** — `|`-separated `GENE:TX:READ_COUNT` and `GENE:TX:FRAG_COUNT` strings
     - **ASJD detection** — 14 columns for Aberrant Splice Junction Detection, comparing read splice junctions against annotated transcript splice sites
 
@@ -177,7 +177,7 @@ strand-discordance detection.
 | `--enforce-strandedness/--no-strandedness` | `true` | Filter reads by dUTP strand orientation relative to gene strand |
 
 !!! info "Biological Context: dUTP Stranded Libraries"
-    In dUTP-stranded RNA-seq, the second strand (synthesized with dUTP) is degraded, so sequenced reads reflect the **antisense** strand of the original mRNA. The strandedness filter uses the variant's `gene_strand` annotation (from the input MAF) to determine whether each read's orientation is consistent with the expected transcript direction.
+    In dUTP-stranded RNA-seq, the second strand (synthesized with dUTP) is degraded, so sequenced reads reflect the **antisense** strand of the original mRNA. The strandedness filter uses the variant's gene strand, resolved from the `--gtf` exons at its position, to determine whether each read's orientation is consistent with the expected transcript direction.
 
     **Disable** with `--no-strandedness` for unstranded RNA-seq libraries where read orientation is random.
 
@@ -333,10 +333,10 @@ RNA uses **relaxed gap penalties** to tolerate reverse transcriptase (RT) stutte
 
     | Column | Type | Description |
     |:-------|:-----|:------------|
-    | `rna_sense_depth` | u32 | Reads aligning to the gene **sense** strand |
-    | `rna_antisense_depth` | u32 | Reads aligning to the gene **antisense** strand |
+    | `rna_sense_depth` | u32 | REF and ALT reads on the gene **sense** strand |
+    | `rna_antisense_depth` | u32 | REF and ALT reads on the gene **antisense** strand, tallied even when `--enforce-strandedness` keeps them out of every count |
     | `rna_alt_sense_count` | u32 | ALT-classified reads on the sense strand |
-    | `rna_editing_site` | bool | Variant overlaps a known A→I editing site from `--rna-editing-db` |
+    | `rna_editing_site` | bool | QC flag (`--rna-editing-db`): [definition](../reference/qc-flags.md#qc-columns) |
     | `rna_splice_spanning` | u32 | ALT-classified reads containing splice junctions (CIGAR `N` operations) spanning the variant |
 
     ### VCF INFO Fields (5 additional)
@@ -344,7 +344,7 @@ RNA uses **relaxed gap penalties** to tolerate reverse transcriptase (RT) stutte
     | Field | Type | Description |
     |:------|:-----|:------------|
     | `SEN` | Integer | Sense strand depth |
-    | `ANT` | Integer | Antisense strand depth |
+    | `ANT` | Integer | REF and ALT reads on the antisense strand (tallied under enforcement too) |
     | `ASEN` | Integer | ALT sense strand count |
     | `RED` | Flag | Known A→I RNA editing site overlap (flag; present if true) |
     | `SPL` | Integer | Splice-spanning ALT read count |
@@ -356,7 +356,7 @@ RNA uses **relaxed gap penalties** to tolerate reverse transcriptase (RT) stutte
     | Field | Type | Description |
     |:------|:-----|:------------|
     | `SEN` | Integer | Per-sample sense depth |
-    | `ANT` | Integer | Per-sample antisense depth |
+    | `ANT` | Integer | Per-sample REF and ALT reads on the antisense strand |
     | `ASEN` | Integer | Per-sample ALT sense count |
     | `SPL` | Integer | Per-sample splice-spanning count |
 

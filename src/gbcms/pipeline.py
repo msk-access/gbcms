@@ -28,8 +28,9 @@ from rich.progress import (
 )
 
 from .core.kernel import CoordinateKernel
+from .io.atomic import atomic_path, commit_partial, discard_partial, partial_path
 from .io.input import MafReader, VariantReader, VcfReader
-from .io.output import MafWriter, VcfWriter, declared_contigs
+from .io.output import MafWriter, VcfWriter, build_identity, declared_contigs
 from .models.core import GbcmsBaseConfig, OutputFormat, Variant, VariantType
 from .rescue_audit import (
     MNP_RESCUE_ELIGIBLE,
@@ -132,8 +133,6 @@ def _zero_counts():
         mq0_count=0,
         alt_dist_end_median=_nan,
         ref_dist_end_median=_nan,
-        singleton_alt_count=0,
-        duplex_alt_count=0,
         # Decomposed ALT counting (invariant: any_alt = ad + partial_alt)
         any_alt=0,
         partial_alt=0,
@@ -180,12 +179,177 @@ def _zero_counts():
     )
 
 
+def run_implications(cfg: Any) -> list[str]:
+    """What the options set for a run imply for its counts or columns, one line
+    each, for those that depart from the mode's defaults (an RNA run's defaults
+    are RNA's: BAQ on, strandedness enforced, MAPQ 1)."""
+    out = []
+    default = type(cfg).model_construct()
+    f, d, q, o = cfg.filters, default.filters, cfg.quality, cfg.output
+    filter_effects = {
+        "duplicates": (False, "duplicate reads are counted (flag 0x400)"),
+        "secondary": (False, "secondary alignments join fragment evidence (never read counts)"),
+        "supplementary": (
+            False,
+            "supplementary alignments join fragment evidence (never read counts)",
+        ),
+        "qc_failed": (False, "QC-failed reads are counted (flag 0x200)"),
+        "improper_pair": (True, "reads not flagged as a proper pair are dropped"),
+        "indel": (True, "reads with any CIGAR insertion or deletion are dropped"),
+    }
+    for flag, (value, what) in filter_effects.items():
+        if getattr(f, flag) == value and getattr(d, flag) != value:
+            name = flag.replace("_", "-")
+            out.append(f"--{'' if value else 'no-'}filter-{name}: {what}")
+    if q.min_mapping_quality == 0:
+        out.append("--min-mapq 0: multi-mapped reads (MAPQ 0) are counted")
+    if cfg.apply_baq != default.apply_baq:
+        out.append(
+            "--apply-baq: base qualities near indels are capped (BAQ) before --min-baseq"
+            if cfg.apply_baq
+            else "--no-apply-baq: base qualities near indels are not capped (BAQ off)"
+        )
+    if cfg.umi_tag:
+        out.append(
+            f"--umi-tag {cfg.umi_tag}: fragments are grouped by the {cfg.umi_tag} tag "
+            "(by read name where a read lacks it)"
+        )
+    # --rescue-mnp has its own WARNING at run start (rescued rows' counts).
+    if cfg.rescue_homopolymer:
+        out.append(
+            "--rescue-homopolymer: a row whose corrected allele wins reports it "
+            "(WARN_HOMOPOLYMER_DECOMP)"
+        )
+    if o.mfsd:
+        out.append("--mfsd adds 40 fragment-size (mFSD) columns")
+    if cfg.show_normalization:
+        out.append("--show-normalization adds the norm_* columns")
+    if o.observations_parquet:
+        out.append("--observations-parquet writes one Parquet row per molecule and variant")
+    if cfg.mode == "rna":
+        if getattr(cfg, "library_type", "capture") == "amplicon":
+            out.append(
+                "--library-type amplicon: each read is its own fragment (fragment counts "
+                "approximate read counts) and strandedness is not enforced"
+            )
+        elif not getattr(cfg, "enforce_strandedness", True):
+            out.append("--no-enforce-strandedness: antisense reads are counted")
+        stranded = getattr(cfg, "strandedness", "reverse")
+        if stranded != getattr(default, "strandedness", "reverse"):
+            out.append(
+                "--strandedness unstranded: no read is filtered by strand"
+                if stranded == "unstranded"
+                else f"--strandedness {stranded}: a read's orientation maps to its transcript "
+                "strand the other way round"
+            )
+        if getattr(cfg, "gtf", None):
+            out.append("--gtf adds the exon-distance, per-transcript and ASJD columns")
+        if getattr(cfg, "rna_editing_db", None):
+            out.append("--rna-editing-db adds the rna_editing_site flag")
+    return out
+
+
+#: The first records of a BAM read for its run-start facts.
+BAM_SAMPLE_RECORDS = 20_000
+#: --min-baseq removing more than this share of sampled bases warns. At the
+#: default (Q20) 10 real BAMs lost 0.8-2.1%; a threshold between quality bins
+#: lost 4-12% (RNA at Q25, IMPACT at Q30), and nearly all at Q40 on IMPACT.
+MIN_BASEQ_LOSS_WARN = 0.10
+#: Hard-clipped primary alignments above this share warn (none in 10 real BAMs).
+HARD_CLIP_WARN = 0.01
+
+
+def log_bam_properties(
+    label: str, bam_path: Path, *, min_baseq: int, reference: Any = None
+) -> None:
+    """One INFO line of facts from a BAM's header and first records, and a
+    WARNING for each property that changes how its counts read: --min-baseq
+    removing more than 10% of sampled bases, ALT contigs in the header, or more
+    than 1% hard-clipped primary alignments. Unmarked duplicates are only a fact:
+    consensus and RNA BAMs legitimately carry none."""
+    try:
+        _log_bam_properties(label, bam_path, min_baseq=min_baseq, reference=reference)
+    except Exception as exc:  # noqa: BLE001 — facts only; counting handles the BAM
+        logger.info("BAM %s: run-start properties not read (%s); counting proceeds", label, exc)
+
+
+def _log_bam_properties(label: str, bam_path: Path, *, min_baseq: int, reference: Any) -> None:
+    import pysam
+
+    fh = pysam.AlignmentFile(
+        str(bam_path), reference_filename=str(reference) if reference else None
+    )
+    with fh:
+        names = [sq.get("SN", "") for sq in fh.header.to_dict().get("SQ", [])]
+        alts = [n for n in names if n.endswith("_alt") or n.startswith("HLA-")]
+        records = dups = primaries = hard = 0
+        quals: dict[int, int] = {}
+        for i, r in enumerate(fh):
+            if i >= BAM_SAMPLE_RECORDS:
+                break
+            records += 1
+            dups += bool(r.flag & 0x400)
+            if r.flag & 0x904:
+                continue
+            primaries += 1
+            if r.cigartuples and any(op == 5 for op, _ in r.cigartuples):
+                hard += 1
+            q = r.query_qualities
+            if q is not None:
+                for value, n in Counter(q).items():
+                    quals[value] = quals.get(value, 0) + n
+    bases = sum(quals.values())
+    below = sum(n for v, n in quals.items() if v < min_baseq) / bases if bases else 0.0
+    alphabet = sorted(quals)
+    bq = (
+        f"{len(alphabet)} value{'' if len(alphabet) == 1 else 's'}"
+        + (f" ({alphabet[0]}-{alphabet[-1]})" if alphabet else "")
+        + (" (binned)" if 0 < len(alphabet) <= 8 else "")
+    )
+    clipped = hard / primaries if primaries else 0.0
+    logger.info(
+        "BAM %s: first %d records: duplicates flagged %.1f%%; base qualities %s; bases "
+        "below --min-baseq %d: %.1f%%; ALT contigs %d; hard-clipped primaries %.1f%%",
+        label,
+        records,
+        100 * dups / records if records else 0.0,
+        bq,
+        min_baseq,
+        100 * below,
+        len(alts),
+        100 * clipped,
+    )
+    if below > MIN_BASEQ_LOSS_WARN:
+        logger.warning(
+            "BAM %s: --min-baseq %d removes %.1f%% of sampled bases (base qualities %s): "
+            "counts lose that evidence; check the threshold against the BAM's quality values",
+            label,
+            min_baseq,
+            100 * below,
+            bq,
+        )
+    if alts:
+        logger.warning(
+            "BAM %s: the header has %d ALT contig(s) (e.g. %s): without ALT-aware alignment, "
+            "reads where ALT haplotypes exist get low MAPQ and --min-mapq drops them",
+            label,
+            len(alts),
+            alts[0],
+        )
+    if clipped > HARD_CLIP_WARN:
+        logger.warning(
+            "BAM %s: %.1f%% of sampled primary alignments are hard-clipped: their clipped "
+            "bases are not in the BAM, so evidence in them cannot be read",
+            label,
+            100 * clipped,
+        )
+
+
 def read_variant_file(path: Path) -> list[Variant]:
     """Read raw variants from a ``.vcf``/``.vcf.gz``/``.vcf.bgz``/``.maf`` file.
 
     Format is selected by extension. This is the pre-normalization read, so no
-    reference is required. Shared by the Pipeline (``_load_variants``) and the
-    ``build-gtf-cache`` command, which only needs the variant chromosomes.
+    reference is required.
     """
     reader: VariantReader
     name_lower = path.name.lower()
@@ -264,6 +428,46 @@ def _naming_difference(variants: list[Variant], other_names: list[str]) -> tuple
     return None
 
 
+def _allele_key(variant: Any) -> tuple[str, int, str, str]:
+    """A prepared variant's allele: rows equal here are one allele given twice."""
+    return (variant.chrom, variant.pos, variant.ref_allele.upper(), variant.alt_allele.upper())
+
+
+def duplicate_alleles(prepared: Any, valid_indices: list[int]) -> list[list[int]]:
+    """Groups (two or more, in input order) of valid rows that preparation made one
+    allele, such as an insertion of a repeat unit written at either end of the repeat.
+    Each such row is counted in full and is never another's sibling."""
+    by_allele: dict[tuple[str, int, str, str], list[int]] = {}
+    for i in valid_indices:
+        by_allele.setdefault(_allele_key(prepared[i].variant), []).append(i)
+    return [rows for rows in by_allele.values() if len(rows) > 1]
+
+
+def sibling_lists(prepared: Any, valid_indices: list[int]) -> list[list]:
+    """For each valid row (in ``valid_indices`` order), the other alleles of its
+    co-annotated group, one variant per allele. A row given twice (one allele written
+    two ways, as a repeat unit inserted at either end of the repeat, or the same row
+    given verbatim) is not its own competitor: each twin would fit a carrier exactly
+    as the row does, and the guard calls such a read neither row's. Twins are left
+    out, so each row counts every carrier."""
+    keys = {i: _allele_key(prepared[i].variant) for i in valid_indices}
+    groups: dict[int, list[int]] = {}
+    for i in valid_indices:
+        group = prepared[i].multi_allelic_group
+        if group is not None:
+            groups.setdefault(group, []).append(i)
+    out: list[list] = []
+    for i in valid_indices:
+        group = prepared[i].multi_allelic_group
+        seen, siblings = {keys[i]}, []
+        for j in groups.get(group, []) if group is not None else []:
+            if keys[j] not in seen:
+                seen.add(keys[j])
+                siblings.append(prepared[j].variant)
+        out.append(siblings)
+    return out
+
+
 class Pipeline:
     """Main pipeline for processing BAM files and counting bases at variant positions."""
 
@@ -315,48 +519,7 @@ class Pipeline:
         logger.info("Starting gbcms pipeline")
         logger.info("Output directory: %s", self.config.output.directory)
 
-        # Log all resolved parameters at DEBUG for full reproducibility (#19)
-        logger.debug(
-            "Parameters:\n"
-            "  mode=%s\n"
-            "  reference_fasta=%s\n"
-            "  variant_file=%s\n"
-            "  bam_files=%s\n"
-            "  threads=%d\n"
-            "  output_format=%s\n"
-            "  output_suffix=%s\n"
-            "  column_prefix=%s\n"
-            "  min_mapq=%d\n"
-            "  min_baseq=%d\n"
-            "  fragment_qual_threshold=%d\n"
-            "  context_padding=%d\n"
-            "  adaptive_context=%s\n"
-            "  alignment_backend=%s\n"
-            "  apply_baq=%s\n"
-            "  umi_tag=%s\n"
-            "  show_normalization=%s\n"
-            "  rescue_mnp=%s\n"
-            "  mfsd=%s",
-            self.config.mode,
-            self.config.reference_fasta,
-            self.config.variant_file,
-            list(self.config.bam_files.keys()),
-            self.config.threads,
-            self.config.output.format.value,
-            self.config.output.suffix or "(none)",
-            self.config.output.column_prefix or "(none)",
-            self.config.quality.min_mapping_quality,
-            self.config.quality.min_base_quality,
-            self.config.quality.fragment_qual_threshold,
-            self.config.quality.context_padding,
-            self.config.quality.adaptive_context,
-            self.config.alignment.backend,
-            self.config.apply_baq,
-            self.config.umi_tag or "none",
-            self.config.show_normalization,
-            self.config.rescue_mnp,
-            self.config.output.mfsd,
-        )
+        self._log_run_settings()
         if self.config.rescue_mnp:
             logger.warning(
                 "MNP rescue enabled (--rescue-mnp, threshold=%.2f): rescued rows report a "
@@ -399,6 +562,7 @@ class Pipeline:
             is_maf,
             self.config.threads,
             self.config.quality.adaptive_context,
+            self.config.rescue_homopolymer,
         )
 
         # Split into valid (for counting) and all (for output)
@@ -427,10 +591,46 @@ class Pipeline:
         if len(invalid) > 5:
             logger.warning("... and %d more rejected variants", len(invalid) - 5)
 
-        # Log variant type breakdown for transparency
-        # MNPs (same-length multi-base substitutions) are classified as
-        # COMPLEX by kernel.py but dispatched to check_mnp by the Rust
-        # counting engine based on ref_len == alt_len.
+        # One allele on several rows: given verbatim (a cohort MAF listing a recurrent
+        # variant once per sample) it is noted; written two ways, it may be an input
+        # error, so it warns. Either way each row counts every carrier.
+        def _row(i: int) -> str:
+            p = prepared[i]
+            return (
+                f"{variants[i].output_chrom}:{p.original_pos + 1} {p.original_ref}>{p.original_alt}"
+            )
+
+        verbatim: list[list[int]] = []
+        two_ways: list[list[int]] = []
+        for rows in duplicate_alleles(prepared, valid_indices):
+            (verbatim if len({_row(i) for i in rows}) == 1 else two_ways).append(rows)
+        if verbatim:
+            logger.info(
+                "%d allele(s) given verbatim on more than one row (e.g. %s, %d rows); "
+                "each row counts every carrier, none as another's sibling",
+                len(verbatim),
+                _row(verbatim[0][0]),
+                len(verbatim[0]),
+            )
+        for rows in two_ways[:5]:
+            v = prepared[rows[0]].variant
+            logger.warning(
+                "One allele given %d ways: %s are %s:%d %s>%s after normalization; "
+                "each row counts every carrier, none as another's sibling",
+                len(rows),
+                ", ".join(_row(i) for i in rows),
+                variants[rows[0]].output_chrom,
+                v.pos + 1,
+                v.ref_allele,
+                v.alt_allele,
+            )
+        if len(two_ways) > 5:
+            logger.warning("... and %d more alleles given more than one way", len(two_ways) - 5)
+
+        # Log variant type breakdown for transparency. MNPs (same-length
+        # multi-base substitutions) are dispatched by allele lengths in the Rust
+        # engine: a per-position quality gate, or the exact-carrier rule for a
+        # read with an indel or clip at the block.
         type_counts: dict[str, int] = {}
         mnp_count = 0
         for p in prepared:
@@ -454,8 +654,9 @@ class Pipeline:
         logger.info("Variant types: %s", type_str)
         if mnp_count > 0:
             logger.info(
-                "MNP counting: %d MNPs use selective discriminating-position "
-                "quality gate (atomic block matching, no check_complex fallback)",
+                "MNP counting: %d MNPs use a per-position quality gate over their "
+                "discriminating bases; reads with an indel or clip at the block are "
+                "judged by the exact-carrier rule",
                 mnp_count,
             )
 
@@ -534,6 +735,27 @@ class Pipeline:
         # Include failed_samples in returned stats for callers
         return {**self._stats, "failed_samples": self._failed_samples}
 
+    def _log_run_settings(self) -> None:
+        """One INFO block with every resolved option, grouped as the config is,
+        then what each count- or column-changing option set for this run implies.
+        Generated from the config model, so a new option is listed without edits
+        here."""
+        cfg = self.config
+        dumped = cfg.model_dump(exclude={"command_line"})
+        lines = [f"Run settings ({build_identity()}):"]
+        top = []
+        for name, value in dumped.items():
+            if isinstance(value, dict) and name != "bam_files":
+                inner = ", ".join(f"{k}={v}" for k, v in value.items())
+                lines.append(f"  {name}: {inner}")
+            elif name == "bam_files":
+                top.append(f"bam_files={', '.join(value)}")
+            else:
+                top.append(f"{name}={value}")
+        lines.insert(1, "  run: " + ", ".join(top))
+        lines += [f"  implies: {x}" for x in run_implications(cfg)]
+        logger.info("\n".join(lines))
+
     def _process_sample(
         self,
         sample_name: str,
@@ -563,33 +785,24 @@ class Pipeline:
                 "BAM %s may not contain variant chromosomes. Proceeding anyway.",
                 sample_name,
             )
+        log_bam_properties(
+            sample_name,
+            bam_path,
+            min_baseq=self.config.quality.min_base_quality,
+            reference=self.config.reference_fasta,
+        )
 
         try:
             # Run Rust Engine (only on valid variants)
-            # Build decomposed variants list for dual-counting
+            # The homopolymer twin, dual-counted only on request: prep builds it
+            # only with --rescue-homopolymer, so by default the row counts the
+            # given allele.
             decomposed = [prepared[i].decomposed_variant for i in valid_indices]
 
-            # Build sibling Variant objects for multi-allelic exclusion (Gap 1A)
-            # For each variant in a multi-allelic group, collect the full Variant
-            # objects of all OTHER variants in the same group. This allows the
-            # Rust-side guard to run the complete classification pipeline
-            # (check_allele_with_qual) for indels/complex/MNPs, not just SNPs.
-            group_map: dict[int, list[int]] = {}
-            for vi_pos, vi in enumerate(valid_indices):
-                grp = prepared[vi].multi_allelic_group
-                if grp is not None:
-                    group_map.setdefault(grp, []).append(vi_pos)
-
-            sibling_variants: list[list] = []
-            for vi_pos, vi in enumerate(valid_indices):
-                grp = prepared[vi].multi_allelic_group
-                if grp is not None and grp in group_map:
-                    siblings = [
-                        prepared[valid_indices[j]].variant for j in group_map[grp] if j != vi_pos
-                    ]
-                    sibling_variants.append(siblings)
-                else:
-                    sibling_variants.append([])
+            # Each row's co-annotated other alleles, against which the Rust-side
+            # guards and Phase 3 weigh its reads (the full classification pipeline,
+            # check_allele_with_qual, for indels/complex/MNPs, not just SNPs).
+            sibling_variants = sibling_lists(prepared, valid_indices)
 
             rust_start = time.perf_counter()
             if self.config.alignment.backend != "sw":
@@ -598,27 +811,33 @@ class Pipeline:
             # writes the per-molecule rows straight to Parquet from Rust, so counts are
             # identical and the rows never cross the FFI boundary (flat memory at panel
             # scale). Mirrors how --mfsd-parquet delegates to the native writer.
+            # Written through a temp file renamed once counting succeeds, so a
+            # failed run leaves no partial Parquet.
             _obs_path: str | None = None
+            _obs_final = self.config.output.directory / f"{sample_name}.observations.parquet"
             if self.config.output.observations_parquet:
-                _obs_path = str(
-                    self.config.output.directory / f"{sample_name}.observations.parquet"
-                )
+                _obs_path = str(partial_path(_obs_final))
             _count_fn = (
                 _get_rs().count_bam_binned_observations if _obs_path else _get_rs().count_bam_binned
             )
-            _result = _count_fn(
-                str(bam_path),
-                rs_variants,
-                decomposed,
-                sibling_variants=sibling_variants,
-                **self._engine_kwargs(),
-                **({"observations_path": _obs_path} if _obs_path else {}),
-            )
+            try:
+                _result = _count_fn(
+                    str(bam_path),
+                    rs_variants,
+                    decomposed,
+                    sibling_variants=sibling_variants,
+                    **self._engine_kwargs(),
+                    **({"observations_path": _obs_path} if _obs_path else {}),
+                )
+            except BaseException:
+                if _obs_path:
+                    discard_partial(_obs_final)
+                raise
+
             # The observations entry point returns (counts, rows); rows are empty because
             # they were written to Parquet. Counts are the same either way.
             counts_list = _result[0] if _obs_path else _result
-            if _obs_path:
-                logger.info("Wrote per-molecule observations → %s", _obs_path)
+
             rust_time = time.perf_counter() - rust_start
             logger.debug("Rust count_bam_binned completed in %.3fs", rust_time)
 
@@ -647,12 +866,18 @@ class Pipeline:
 
             # Write Output (all variants, including rejected with zero counts)
             self._write_output(sample_name, variants, full_counts, prepared)
+            # The observations Parquet goes into place only once the MAF/VCF did,
+            # so a failed run never pairs new observations with a missing output.
+            if _obs_path:
+                commit_partial(_obs_final)
+                logger.info("Wrote per-molecule observations → %s", _obs_final)
             self._stats["samples_processed"] += 1
 
             sample_time = time.perf_counter() - sample_start
             logger.debug("Sample %s completed in %.3fs", sample_name, sample_time)
 
         except Exception as e:
+            discard_partial(self.config.output.directory / f"{sample_name}.observations.parquet")
             # logger.exception captures the traceback; the stored message
             # names the exception class because str(e) alone can be a bare
             # dictionary key (KeyError) or even empty.
@@ -699,11 +924,6 @@ class Pipeline:
                 if getattr(self.config, "gtf", None)
                 else None
             ),
-            "gtf_cache_dir": (
-                str(self.config.gtf_cache_dir)  # type: ignore[attr-defined]
-                if getattr(self.config, "gtf_cache_dir", None)
-                else None
-            ),
             "reference_fasta": str(self.config.reference_fasta),
             "library_type": getattr(self.config, "library_type", "capture"),
         }
@@ -733,7 +953,8 @@ class Pipeline:
     def _compute_diagnostics(self, prepared: list, full_counts: list) -> None:
         """Populate gbcms_diagnostic (semicolon-separated) for every PASS variant.
 
-        FAIL variants keep gbcms_diagnostic empty. Logs the per-sample flag
+        FAIL variants keep what preparation set (``REF_AT_OFFSET(k)`` on a
+        ``REF_MISMATCH`` row, else empty). Logs the per-sample flag
         distribution. Flag definitions: :meth:`_diagnostic_flags`.
         """
         flag_counts: dict[str, int] = {}
@@ -783,6 +1004,15 @@ class Pipeline:
                 (>= 2) reads carry a soft clip >= 8bp whose boundary lies within
                 the insert's duplication reach — carriers the aligner may have
                 represented as clips rather than I ops (inspect in IGV).
+            OBSERVED_ALLELE(chrom:pos:REF>ALT:n/0): no read carries the given allele
+                exactly, and n reads carry this one (canonical VCF form, 1-based
+                POS): the input is likely mis-described.
+            COEXISTING_ALLELE(chrom:pos:REF>ALT:n/m): the given allele is present
+                (m reads carry it exactly), but n reads carry a different allele in
+                the same stretch: a caveat for reading the VAF.
+                Both are named when n >= 3, n > m, n is at least 5% of the scanned
+                reads, and the allele is not already an input row. Counts stay the
+                given allele's (count the given allele).
             SW_FALLBACK(n): under the PairHMM backend, n depth reads could not
                 be evaluated by the pangenomic haplotype matrix (reference context
                 missing — e.g. an indel near a contig end — or not containing the
@@ -849,6 +1079,20 @@ class Pipeline:
         if sw_fallback > 0:
             flags.append(f"SW_FALLBACK({sw_fallback})")
 
+        # The reads carry a different allele than the input, more often than the
+        # given one. The counts stay the given allele's; the flag names what the
+        # reads show. No read carrying the given allele exactly (m = 0) points at
+        # a mis-described input (OBSERVED_ALLELE); a present given allele beside a
+        # more frequent one is a coexisting allele (COEXISTING_ALLELE).
+        observed = getattr(counts, "observed_reads", 0)
+        if observed > 0:
+            given = counts.observed_given_reads
+            name = "OBSERVED_ALLELE" if given == 0 else "COEXISTING_ALLELE"
+            flags.append(
+                f"{name}({variant.chrom}:{counts.observed_pos}:"
+                f"{counts.observed_ref}>{counts.observed_alt}:{observed}/{given})"
+            )
+
         return flags
 
     def _rescue_mnp_pass(
@@ -902,6 +1146,12 @@ class Pipeline:
             pv.gbcms_rescue = ""
 
         rescue_start = time.perf_counter()
+        # A row whose group holds another allele: that row may own its reads. A group
+        # of one allele given twice holds none, so its rows are rescued as if alone.
+        valid = [i for i, p in enumerate(prepared) if p.gbcms_status == "PASS"]
+        contested = {
+            i for i, sibs in zip(valid, sibling_lists(prepared, valid), strict=True) if sibs
+        }
         outcomes: Counter[str] = Counter()
         candidates: list[tuple[int, list[tuple[int, str, str]]]] = []
         for i, (pv, counts) in enumerate(zip(prepared, full_counts, strict=True)):
@@ -913,7 +1163,7 @@ class Pipeline:
                 continue
             v = pv.variant
             contig = variants[i].output_chrom
-            if pv.multi_allelic_group is not None:
+            if i in contested:
                 pv.gbcms_rescue = format_rescue_audit(OUTCOME_SKIPPED_GROUPED, counts)
                 outcomes[OUTCOME_SKIPPED_GROUPED] += 1
                 logger.debug(
@@ -1048,7 +1298,19 @@ class Pipeline:
             self.config.threads,
             self.config.quality.adaptive_context,
         )
-        valid = [sp for sp in snv_prepared if sp.gbcms_status == "PASS"]
+        # Each component is counted under its MNP row's exon-edge rule: the
+        # boundary distance is measured over the MNP's REF span, so an adopted
+        # component's counts and exon_boundary_dist are the row's.
+        spans: list[tuple[int, int]] = []
+        for i, positions in candidates:
+            mnp = prepared[i].variant
+            spans += [(mnp.pos, mnp.pos + len(mnp.ref_allele) - 1)] * len(positions)
+        valid = []
+        for sp, span in zip(snv_prepared, spans, strict=True):
+            if sp.gbcms_status == "PASS":
+                v = sp.variant  # a copy: set the span on it, then count it
+                v.boundary_span = span
+                valid.append(v)
         for sp in snv_prepared:
             if sp.gbcms_status != "PASS":
                 logger.warning(
@@ -1064,10 +1326,14 @@ class Pipeline:
         counted = iter(
             rs.count_bam_binned(
                 str(bam_path),
-                [sp.variant for sp in valid],
+                valid,
                 [None] * len(valid),
                 sibling_variants=[[] for _ in valid],
                 **self._engine_kwargs(),
+                # A second pass over the same BAM: its per-BAM warnings (records
+                # without bases or qualities, an absent --umi-tag) were given by
+                # the main pass.
+                warn_per_bam=False,
             )
             if valid
             else []
@@ -1216,32 +1482,32 @@ class Pipeline:
             output_path,
         )
 
-        for i, (v, counts) in enumerate(zip(variants, counts_list, strict=True)):
-            pv = prepared[i] if prepared else None
+        with writer:
+            for i, (v, counts) in enumerate(zip(variants, counts_list, strict=True)):
+                pv = prepared[i] if prepared else None
 
-            # Build norm_variant only when normalization display is enabled
-            norm_v = None
-            if pv and pv.was_normalized:
-                norm_v = Variant(
-                    chrom=pv.variant.chrom,
-                    pos=pv.variant.pos,
-                    ref=pv.variant.ref_allele,
-                    alt=pv.variant.alt_allele,
-                    variant_type=VariantType(pv.variant.variant_type),
+                # Build norm_variant only when normalization display is enabled
+                norm_v = None
+                if pv and pv.was_normalized:
+                    norm_v = Variant(
+                        chrom=pv.variant.chrom,
+                        pos=pv.variant.pos,
+                        ref=pv.variant.ref_allele,
+                        alt=pv.variant.alt_allele,
+                        variant_type=VariantType(pv.variant.variant_type),
+                    )
+
+                writer.write(
+                    v,
+                    counts,
+                    sample_name=sample_name,
+                    gbcms_status=pv.gbcms_status if pv else "PASS",
+                    gbcms_status_reason=pv.gbcms_status_reason if pv else "",
+                    gbcms_diagnostic=pv.gbcms_diagnostic if pv else "",
+                    gbcms_rescue=pv.gbcms_rescue if pv else "",
+                    norm_variant=norm_v,
                 )
 
-            writer.write(
-                v,
-                counts,
-                sample_name=sample_name,
-                gbcms_status=pv.gbcms_status if pv else "PASS",
-                gbcms_status_reason=pv.gbcms_status_reason if pv else "",
-                gbcms_diagnostic=pv.gbcms_diagnostic if pv else "",
-                gbcms_rescue=pv.gbcms_rescue if pv else "",
-                norm_variant=norm_v,
-            )
-
-        writer.close()
         logger.debug("Results written to %s", output_path)
 
         # Write companion mFSD Parquet when --mfsd-parquet is enabled.
@@ -1258,14 +1524,15 @@ class Pipeline:
                 if not isinstance(c, types.SimpleNamespace)
             ]
             excluded = len(variants) - len(counted)
-            _get_rs().write_fsd_parquet(
-                str(fsd_path),
-                [v.output_chrom for v, _ in counted],
-                [v.pos + 1 for v, _ in counted],  # 1-based MAF/VCF convention
-                [v.ref for v, _ in counted],
-                [v.alt for v, _ in counted],
-                [c for _, c in counted],
-            )
+            with atomic_path(fsd_path) as fsd_tmp:
+                _get_rs().write_fsd_parquet(
+                    str(fsd_tmp),
+                    [v.output_chrom for v, _ in counted],
+                    [v.pos + 1 for v, _ in counted],  # 1-based MAF/VCF convention
+                    [v.ref for v, _ in counted],
+                    [v.alt for v, _ in counted],
+                    [c for _, c in counted],
+                )
             if excluded:
                 logger.info(
                     "mFSD Parquet written: %s (%d variants; %d rejected "

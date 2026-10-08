@@ -13,6 +13,11 @@ composition, and sample-naming strategy all depend on the CLI flags used.
 
 ## How the Output Path Is Decided
 
+Every output (MAF, VCF, the merged MAF, `gbcms convert` and `gbcms normalize`
+files, the Parquet files and the mFSD report) is written to a temp file beside
+it (`.<name>.partial`) and renamed into place once complete. A run that fails
+leaves nothing at the output path and removes its temp file.
+
 The diagram below shows every decision point from CLI flags to the final
 output column set. Follow your input type and desired output format to see
 exactly what you get.
@@ -136,7 +141,7 @@ self-describing.
     ##INFO=<ID=FSB_PVAL,...>
     ##INFO=<ID=FSB_OR,...>
     ##INFO=<ID=SEN,Number=1,Type=Integer,Description="Reads on the transcript sense strand">
-    ##INFO=<ID=ANT,Number=1,Type=Integer,Description="Reads on the antisense strand">
+    ##INFO=<ID=ANT,Number=1,Type=Integer,Description="REF and ALT reads on the antisense strand, tallied even where strandedness enforcement keeps them out of every count">
     ##INFO=<ID=ASEN,Number=1,Type=Integer,Description="ALT reads on the transcript sense strand">
     ##INFO=<ID=RED,Number=0,Type=Flag,Description="Locus is a candidate A-to-I RNA editing site">
     ##INFO=<ID=SPL,Number=1,Type=Integer,Description="ALT reads spanning a splice junction (CIGAR N)">
@@ -154,7 +159,7 @@ self-describing.
     ##FORMAT=<ID=PAD,...>
     ##FORMAT=<ID=NAD,...>
     ##FORMAT=<ID=SEN,Number=1,Type=Integer,Description="Sense strand depth">
-    ##FORMAT=<ID=ANT,Number=1,Type=Integer,Description="Antisense strand depth">
+    ##FORMAT=<ID=ANT,Number=1,Type=Integer,Description="REF and ALT reads on the antisense strand, tallied even where strandedness enforcement keeps them out of every count">
     ##FORMAT=<ID=ASEN,Number=1,Type=Integer,Description="ALT sense strand count">
     ##FORMAT=<ID=SPL,Number=1,Type=Integer,Description="Splice-spanning ALT count">
     #CHROM  POS  ID  REF  ALT  QUAL  FILTER  INFO  FORMAT  <sample_name>
@@ -185,7 +190,13 @@ self-describing.
     base comes from `--fasta`; one the reference cannot supply is written as `N`
     and counted in a WARNING. The MAF alleles are read as maf2vcf reads them
     (see [Input Formats](input-formats.md#maf-alleles)); unlike maf2vcf, a
-    differing `Tumor_Seq_Allele1` is not written as a second ALT.
+    differing `Tumor_Seq_Allele1` is not written as a second ALT. A row whose
+    allele is not a base sequence (FAIL `NON_SEQUENCE_ALLELE`, or an empty
+    allele, FAIL `EMPTY_ALLELE`), or a deletion spanning its whole contig (no base
+    before or after it to anchor a record; FAIL `FETCH_FAILED`), is written as the
+    symbolic record `<NON_SEQUENCE>` at `Start_Position`, REF the reference base
+    there (declared in a `##ALT` header line), so the VCF stays valid. A MAF
+    deletion at `Start_Position` 1 is otherwise counted in the base-after form.
 
     | MAF `Start` `Ref` > `Alt` | VCF `POS` `REF` > `ALT` |
     |:--------------------------|:------------------------|
@@ -211,9 +222,10 @@ The `INFO` column is a semicolon-separated list of `KEY=VALUE` pairs.
     | Field | Type | Description |
     |:------|:-----|:------------|
     | `DP` | Integer | Total read depth at position |
-    | `GS` | String | gbcms normalization/counting status. Pipe-separated multi-value in VCF (e.g., `PASS\|WARN_REF_CORRECTED`). Semicolons in MAF. |
-    | `GD` | String | Post-counting diagnostic flags. Pipe-separated in VCF (e.g., `ZERO_ALT\|PARTIAL_DOMINANT`). Semicolons in MAF. `.` if none. |
-    | `GR` | String | Rescue audit trail — the `gbcms_rescue` value with `;` written as `\|`. `.` for non-candidates. |
+    | `GS` | String | gbcms verdict: `PASS` or `FAIL`. |
+    | `GSR` | String | Status reason tags, `\|`-separated (the `gbcms_status_reason` value); `.` when none. Each reason: [QC Flags → Verdict and status reasons](qc-flags.md#verdict-and-status-reasons). |
+    | `GD` | String | Diagnostic flags (the `gbcms_diagnostic` value), `\|`-separated; `.` when none. Each flag: [QC Flags → Diagnostics](qc-flags.md#diagnostics). |
+    | `GR` | String | Rescue audit trail (the `gbcms_rescue` value with `;` written as `\|`); `.` for non-candidates. Outcomes: [QC Flags → MNP rescue](qc-flags.md#mnp-rescue). |
     | `AAD` | Integer | Any ALT Depth — reads with ALT evidence at ≥1 discriminating position. Invariant: `AAD = AD + PAD` |
     | `PAD` | Integer | Partial ALT Depth — reads matching ALT at some but not all discriminating positions. Populated for all variant types including INDELs (via Phase 3 structural evidence propagation). |
     | `NAD` | Integer | N-base Depth — reads with N base at ≥1 discriminating position (duplex masking QC metric) |
@@ -227,7 +239,7 @@ The `INFO` column is a semicolon-separated list of `KEY=VALUE` pairs.
     | Field | Type | Description |
     |:------|:-----|:------------|
     | `SEN` | Integer | Total reads on the transcript **sense** strand |
-    | `ANT` | Integer | Total reads on the **antisense** strand |
+    | `ANT` | Integer | REF and ALT reads on the **antisense** strand (tallied even when strandedness enforcement excludes them from counts) |
     | `ASEN` | Integer | ALT reads on the sense strand |
     | `SPL` | Integer | ALT reads spanning a splice junction (reads with `N` CIGAR op) |
     | `RED` | Flag | Present when the locus overlaps a known A-to-I RNA editing site (requires `--rna-editing-db`) |
@@ -239,8 +251,8 @@ The `INFO` column is a semicolon-separated list of `KEY=VALUE` pairs.
     | `MFSD_DELTA_ALT_REF` | Float | mean(ALT) − mean(REF) fragment size delta (bp) |
     | `MFSD_KS_ALT_REF` | Float | 2-sample KS D-statistic (ALT vs REF fragments) |
     | `MFSD_PVAL_ALT_REF` | Float | KS test p-value (ALT vs REF) |
-    | `MFSD_ALT_LLR` | Float | Log-likelihood ratio for ALT fragments vs healthy/tumor Gaussian model |
-    | `MFSD_REF_LLR` | Float | Log-likelihood ratio for REF fragments |
+    | `MFSD_ALT_LLR` | Float | Log-likelihood ratio for ALT fragments vs healthy/tumor Gaussian model, mean per fragment |
+    | `MFSD_REF_LLR` | Float | Log-likelihood ratio for REF fragments, mean per fragment |
     | `MFSD_ALT_COUNT` | Integer | ALT-classified fragments in 50–1000 bp size window |
     | `MFSD_REF_COUNT` | Integer | REF-classified fragments in 50–1000 bp size window |
     | `MFSD_SUB_NUC_REF_FRAC` | Float | Sub-nucleosomal (<150 bp) fraction of REF fragments |
@@ -255,7 +267,7 @@ The `INFO` column is a semicolon-separated list of `KEY=VALUE` pairs.
 
     | Field | Type | Description |
     |:------|:-----|:------------|
-    | `EBD` | Integer | Distance to nearest annotated exon boundary (`.` when no GTF) |
+    | `EBD` | Integer | Distance from the REF span to the nearest annotated exon boundary, `0` when a boundary lies inside it (`.` when no GTF) |
     | `TXRC` | String | Per-transcript read counts. Format: `ENST:AD,RD,DP\|ENST:AD,RD,DP` |
     | `TXFC` | String | Per-transcript fragment counts. Format: `ENST:ADF,RDF,DPF\|ENST:ADF,RDF,DPF` |
     | `ASJD` | Flag | Allele-Specific Junction Divergence detected |
@@ -278,6 +290,22 @@ The `INFO` column is a semicolon-separated list of `KEY=VALUE` pairs.
     | `NORM_POS` | Integer | Left-aligned VCF position (1-based) after normalization |
     | `NORM_REF` | String | Left-aligned REF allele |
     | `NORM_ALT` | String | Left-aligned ALT allele |
+
+=== "MAF input"
+
+    Each record of MAF input names the MAF row it came from, so a result can be
+    looked up by its input (VCF input's MAF output carries `vcf_pos`, `vcf_ref`
+    and `vcf_alt` the same way). Values are percent-encoded where an INFO value
+    cannot hold a character as written (`;`, `=`, `,`, `%`, `:`, whitespace).
+    The alleles are the row's as written, a placeholder such as `0` or `--`
+    included (preparation reads it as `-`); an empty one is `.`, the VCF missing
+    value, and a literal `.` is written `%2E`.
+
+    | Field | Type | Description |
+    |:------|:-----|:------------|
+    | `MAF_START` | Integer | `Start_Position` of the MAF row |
+    | `MAF_REF` | String | `Reference_Allele` of the MAF row |
+    | `MAF_ALT` | String | The MAF row's variant allele (`Tumor_Seq_Allele2`, or `Tumor_Seq_Allele1` when Allele2 is empty or the reference) |
 
 ---
 
@@ -312,7 +340,7 @@ The `INFO` column is a semicolon-separated list of `KEY=VALUE` pairs.
     | Tag | Values | Description |
     |:----|:-------|:------------|
     | `SEN` | integer | Sense-strand read depth |
-    | `ANT` | integer | Antisense-strand read depth |
+    | `ANT` | integer | REF and ALT reads on the antisense strand (tallied under strandedness enforcement too) |
     | `ASEN` | integer | ALT count on sense strand |
     | `SPL` | integer | Splice-junction-spanning ALT count |
 
@@ -342,7 +370,7 @@ metadata for reproducibility:
 === "DNA mode"
 
     ```
-    #gbcms v5.3.0
+    #gbcms v6.6.0 (9c371263)
     #command gbcms dna --bam tumor:tumor.bam --fasta ref.fa --threads 4
     Hugo_Symbol	Chromosome	Start_Position	...
     ```
@@ -350,14 +378,14 @@ metadata for reproducibility:
 === "RNA mode"
 
     ```
-    #gbcms v5.3.0
+    #gbcms v6.6.0 (9c371263)
     #command gbcms rna --bam rna_sample:star.bam --fasta ref.fa --gtf genes.gtf
     Hugo_Symbol	Chromosome	Start_Position	...
     ```
 
 | Line | Content |
 |:-----|:--------|
-| `#gbcms vX.Y.Z` | gbcms version that produced this file |
+| `#gbcms vX.Y.Z (commit)` | gbcms version and the commit of the build that produced this file (the commit is absent when the build had neither git nor `GBCMS_BUILD_COMMIT`). Development builds carry a `.devN` version, so two builds of one version are told apart. VCF output's `##source` carries the same. |
 | `#command ...` | Full CLI command used (only when available) |
 
 !!! tip "Reading MAF files with provenance headers"
@@ -387,7 +415,7 @@ The set of columns in the first row of the header depends on whether the
     | `Variant_Classification` | Empty — gbcms does not annotate effects |
     | `Variant_Type` | `SNP`, `DNP`, `TNP`, `ONP`, `INS` or `DEL`, from the trimmed alleles |
     | `Reference_Allele` | MAF REF: shared leading bases trimmed, `-` when nothing is left |
-    | `Tumor_Seq_Allele1` | Empty |
+    | `Tumor_Seq_Allele1` | The MAF reference allele (as `Reference_Allele`): the heterozygous convention MSK's sign-out uses on every row, and maf2vcf's reading of an empty Allele1; gbcms genotypes no sample GT |
     | `Tumor_Seq_Allele2` | MAF ALT: shared leading bases trimmed, `-` when nothing is left |
     | `Tumor_Sample_Barcode` | BAM sample name (from `--bam name:path`) |
     | `Matched_Norm_Sample_Barcode` | Empty |
@@ -454,6 +482,8 @@ The set of columns in the first row of the header depends on whether the
 
 ### gbcms Count Columns
 
+Every flag these columns can carry, with what to do about it, is on one page: [QC Flags](qc-flags.md).
+
 These columns are **always** appended regardless of input format.
 
 === "Default (no prefix)"
@@ -461,10 +491,10 @@ These columns are **always** appended regardless of input format.
     | Column | Type | Description |
     |:-------|:-----|:------------|
     | `gbcms_status` | String | Verdict: exactly `PASS` or `FAIL`. |
-    | `gbcms_status_reason` | String | Reason tag(s), `\|`-separated; empty for a clean PASS. PASS reasons: `WARN_REF_CORRECTED`, `WARN_HOMOPOLYMER_DECOMP`, `MULTI_ALLELIC`, `TRACT_CLUSTER`. FAIL reasons: `REF_MISMATCH`, `FETCH_FAILED`, `EMPTY_ALLELE`, `ALT_EQUALS_REF`, `ALT_CONTAINS_N`. Reasons stack, e.g. `WARN_REF_CORRECTED\|WARN_HOMOPOLYMER_DECOMP`. Identical string in the VCF `GSR` INFO. |
-    | `gbcms_diagnostic` | String | Post-counting diagnostic flags. Semicolon-separated. Empty string when no diagnostics. Flags: `ZERO_ALT`, `PARTIAL_DOMINANT`, `MNP_DISC_RATIO(n/m)`, `MNP_RESCUE_ELIGIBLE`, `HIGH_N_FRACTION(f)`, `CLIP_CANDIDATES(n)` — an insertion locus with no confirmed ALT where n (≥ 2) reads carry a soft clip ≥ 8bp whose boundary lies within the insert's duplication reach (anchor ± insert length + 10): carriers the aligner may have represented as clips rather than insertions (inspect in IGV) — `SW_FALLBACK(n)` — under the default `pairhmm` backend, n depth-contributing reads could not be evaluated by the pangenomic haplotype matrix because the variant's reference context is missing (prep's fetch failed) or does not contain it; they were scored by the Smith-Waterman fallback where SW can run, otherwise left NEITHER (one WARN per variant names the reason and outcome), so the row's counts came partly from a different scorer or are missing reads — `SPLICE_SKIP_DOMINANT(n)` — a deletion-type locus where more reads asserted splicing over the deleted span (CIGAR `N`, excluded from DP as no-observation) than confirmed ALT; RNA aligners write large deletions as splices (STAR: ≥ `alignIntronMin`, default 21bp), so `alt_count`=0 here may mean the carriers exist as junction reads — and `NON_DISCRIMINATING_LOCUS` — the last (PairHMM backend) marks a locus where a nearby germline sibling combination reconstructs the reference haplotype (e.g. a homopolymer deletion cancelled by an adjacent insertion of the same base), so REF and ALT are sequence-indistinguishable and reads tie to NEITHER; it explains a zeroed `ref_count`/`alt_count` at a covered locus rather than leaving it silent. With `--rescue-mnp`, a rescued row also carries `RESCUED_COMPONENT(chrom:pos:REF>ALT)`: its counts are that component SNV's, not the annotated MNP's. Examples: `ZERO_ALT`, `PARTIAL_DOMINANT;MNP_DISC_RATIO(2/5);MNP_RESCUE_ELIGIBLE`. |
-    | `gbcms_rescue` | String | **Conditional** — only present when `--rescue-mnp` is enabled. MNP rescue audit trail, empty for non-candidates. Format: `method=decomposed;outcome=<o>;original_ref=R;original_alt=A;original_partial=P;original_confirmed=C[;adopted=chr:pos(R>A)][;positions=chr:pos(R>A):<ad\|ref_fail>+...]` (positions joined with `+` so the VCF `GR` value parses as one string). Outcomes: `rescued` (the row's counts are the adopted component SNV's), `skipped_grouped`, `haplotype_confirmed`, `no_improvement`, `ref_validation_failed` (counts stay the MNP's). `original_*` are always the MNP's own counts; `original_confirmed` counts reads that showed the whole haplotype. See [Architecture → MNP Rescue Pass](architecture.md#mnp-rescue-pass-rescue-mnp-v430). |
-    | `ref_count` | Integer | REF read depth |
+    | `gbcms_status_reason` | String | Reason tag(s), `\|`-separated; empty for a clean PASS; reasons stack. Identical string in the VCF `GSR` INFO. Each reason: [QC Flags → Verdict and status reasons](qc-flags.md#verdict-and-status-reasons). |
+    | `gbcms_diagnostic` | String | Diagnostic flags, semicolon-separated; empty when none. Set after counting on a PASS row; on a FAIL row only `REF_AT_OFFSET`. Each flag: [QC Flags → Diagnostics](qc-flags.md#diagnostics). |
+    | `gbcms_rescue` | String | **Conditional** — only present when `--rescue-mnp` is enabled. MNP rescue audit trail, empty for non-candidates. Format: `method=decomposed;outcome=<o>;original_ref=R;original_alt=A;original_partial=P;original_confirmed=C[;adopted=chr:pos(R>A)][;positions=chr:pos(R>A):<ad\|ref_fail>+...]` (positions joined with `+` so the VCF `GR` value parses as one string). `original_*` are always the MNP's own counts; `original_confirmed` counts reads that showed the whole haplotype. Outcomes: [QC Flags → MNP rescue](qc-flags.md#mnp-rescue); the pass: [Architecture → MNP Rescue Pass](architecture.md#mnp-rescue-pass-rescue-mnp-v430). |
+    | `ref_count` | Integer | REF read depth. For an indel, only reads that can tell the alleles apart count ([informative reads](allele-classification.md#informative-reads-for-indels)); reads ending inside its repeat tract count in `total_count` only |
     | `alt_count` | Integer | ALT read depth |
     | `any_alt` | Integer | Any ALT Depth — reads with ALT evidence at ≥1 discriminating position. Invariant: `any_alt = alt_count + partial_alt` |
     | `partial_alt` | Integer | Partial ALT Depth — partial or structural ALT evidence that is not a full match. For MNP/complex: reads matching ALT at some but not all discriminating positions. For pure indels: reads whose CIGAR proves an indel of a **different length** (or a same-length insert with different bases) at the anchor — a distinct allele in the same tract — plus Phase-3 structural-evidence propagation. `PARTIAL_DOMINANT` in `gbcms_diagnostic` marks loci where this exceeds `alt_count`. |
@@ -528,10 +558,10 @@ These columns are **always** appended regardless of input format.
 
 | Column | Type | Description |
 |:-------|:-----|:------------|
-| `rna_sense_depth` | Integer | Total reads on the transcript sense strand at this position |
-| `rna_antisense_depth` | Integer | Total reads on the antisense strand |
+| `rna_sense_depth` | Integer | REF and ALT reads on the transcript sense strand at this position |
+| `rna_antisense_depth` | Integer | REF and ALT reads on the antisense strand (first-class, over the anchor). Under `--enforce-strandedness` (the RNA default) these reads are kept out of REF, ALT, depth, fragments and the other counts, but are still classified and tallied here, so the column is the same with `--no-strandedness`. Exceptions: `--rescue-homopolymer` and `--rescue-mnp` choose between counts by ALT depth, so the adopted form (and this column) can differ between the modes; loci without a gene strand (intergenic, or genes of both strands over the locus) report 0, as every read there counts as sense. |
 | `rna_alt_sense_count` | Integer | ALT reads on the sense strand |
-| `rna_editing_site` | Boolean | `True` if the locus overlaps a known A-to-I editing site (requires `--rna-editing-db`) |
+| `rna_editing_site` | Boolean | QC flag (requires `--rna-editing-db`): [definition](qc-flags.md#qc-columns) |
 | `rna_splice_spanning` | Integer | ALT reads whose alignment spans a splice junction (`N` CIGAR operation) |
 
 ---
@@ -546,7 +576,7 @@ These columns are **always** appended regardless of input format.
 
 | Column | Type | Description |
 |:-------|:-----|:------------|
-| `exon_boundary_dist` | Integer | Distance (bp) to the nearest annotated exon boundary, exonic and intronic alike (unsigned). `0` = exactly at an exon boundary. Empty when the variant's contig has no annotation in the GTF. |
+| `exon_boundary_dist` | Integer | Distance (bp) from the variant's REF span to the nearest annotated exon boundary, exonic and intronic alike (unsigned): the least distance from any REF base. `0` = a boundary lies inside the REF span. The span is the normalized (left-aligned, VCF-style) REF: one base for an SNV or insertion, and from the VCF anchor base for a pure deletion. A rescued MNP row (`--rescue-mnp`) reports the MNP's distance. Empty when the variant's contig has no annotation in the GTF. |
 
 #### Per-Transcript Counts
 
@@ -559,7 +589,7 @@ These columns are **always** appended regardless of input format.
 
 | Column | Type | Description |
 |:-------|:-----|:------------|
-| `asjd_flag` | Boolean | `True` when allele-specific junction divergence is detected (Fisher p < 0.05) |
+| `asjd_flag` | Boolean | QC flag: [definition](qc-flags.md#qc-columns) |
 | `asjd_pval` | Float | Raw Fisher exact test p-value comparing REF vs ALT junction usage |
 | `asjd_qval` | Float | Benjamini-Hochberg corrected q-value (FDR control across all variants) |
 | `asjd_ref_junction` | String | Dominant REF junction coordinates (`start-end`: 0-based, half-open intron — `start` is the first intron base, `end` the first base of the downstream exon), empty if no junction |
@@ -572,24 +602,14 @@ These columns are **always** appended regardless of input format.
 | `asjd_n_alt_junc` | Integer | ALT fragments on the dominant junction (deduped per QNAME) |
 | `asjd_n_ref_total` | Integer | Total REF fragments with any splice junction (deduped per QNAME) |
 | `asjd_n_alt_total` | Integer | Total ALT fragments with any splice junction (deduped per QNAME) |
-| `asjd_diagnostic` | String | Semicolon-separated QC flags (see [Diagnostic Flags](#asjd-diagnostic-flags)) |
+| `asjd_diagnostic` | String | Semicolon-separated QC flags (see [ASJD Diagnostic Flags](#asjd-diagnostic-flags)) |
 
 ##### ASJD Diagnostic Flags
 
 All counts below are **per fragment** (a molecule's R1 and R2 are deduped to one vote).
 
-| Flag | Condition | Meaning |
-|:-----|:----------|:--------|
-| `LOW_ALT_JUNC` | `asjd_n_alt_total < 5` | Insufficient ALT junction evidence |
-| `LOW_REF_JUNC` | `asjd_n_ref_total < 10` | Insufficient REF baseline |
-| `NOVEL_ALT_JUNC` | ALT dominant junction differs from REF and is unannotated | ALT uses an unannotated junction |
-| `NON_CANONICAL_MOTIF` | ALT junction differs from REF and its motif is not GT-AG/GC-AG/AT-AC | Likely mapping artifact |
-| `STRAND_DISCORDANT` | ALT junction differs from REF, `asjd_n_alt_junc ≥ 5`, and minority transcript-strand fraction ≥ 0.30 | Mixed transcript-strand support → alignment artifact. Disabled for `--strandedness unstranded` (no transcript strand). |
-| `MULTI_JUNCTION` | ALT fragments use > 2 distinct junctions | Complex splicing event |
-| `RETENTION_DOMINANT(n)` | Variant's REF span reaches within 2bp of an annotated intron boundary (a donor/acceptor site of a transcript on the variant's gene strand — transcript termini and antisense genes excluded); `n ≥ 10` fragments splice over the locus (CIGAR `N` spans it — excluded as no-observation) and outnumber the allele-classified fragments, which are mostly junction-free | The reads that genotype this locus are the intron-retaining minority: `vaf` is the VAF *within that population*, not allelic balance. An allele-specific retention shows a very high `vaf` here; a neutral splice-site variant shows roughly the allelic fraction of the unspliced reads. Explains `LOW_REF_JUNC;LOW_ALT_JUNC` at such loci — the junction evidence exists but is on the excluded reads. |
-| `NOVEL_JUNC_AT_SPLICE_LOSS(n@start-end)` | Same splice-site gate; the top unannotated junction on the spliced-over fragments is anchored (±5bp) to an annotated intron boundary on the gene strand, is not the deletion itself written as a splice (same length, at the locus), and is carried by `n ≥ 5` fragments — more than confirm ALT | The mutant allele's splicing outcome (an exon skip or alternative-site junction) is visible while `alt_count` is not — typically a splice-destroying variant whose carriers splice around the locus. `start-end` is a 0-based, half-open intron interval (the `asjd_*_junction` convention). |
-
-The floors are ASJD's own junction-evidence minimums (`LOW_REF_JUNC` / `LOW_ALT_JUNC`). When `RETENTION_DOMINANT` is present, any junction flags alongside it (`NOVEL_ALT_JUNC`, `MULTI_JUNCTION`, …) describe the allele-classified reads — by the marker's own condition the junction-bearing minority of an intron-retaining population — not the spliced majority, which only the ASJD-2 markers report.
+<!-- Defined once, in QC Flags; this includes that table. -->
+--8<-- "reference/qc-flags.md:asjd"
 
 ---
 
@@ -614,12 +634,12 @@ The floors are ASJD's own junction-evidence minimums (`LOW_REF_JUNC` / `LOW_ALT_
     | `mfsd_alt_count` | Integer | ALT-classified fragments |
     | `mfsd_nonref_count` | Integer | Non-REF, non-ALT fragments |
     | `mfsd_n_count` | Integer | Fragments with no valid insert size |
-    | `mfsd_alt_llr` | Float | Log-likelihood ratio (ALT fragments; positive = tumor-like) |
-    | `mfsd_ref_llr` | Float | Log-likelihood ratio (REF fragments) |
-    | `mfsd_ref_mean` | Float | Mean fragment size for REF class (bp) |
-    | `mfsd_alt_mean` | Float | Mean fragment size for ALT class (bp) |
-    | `mfsd_nonref_mean` | Float | Mean fragment size for non-REF class (bp) |
-    | `mfsd_n_mean` | Float | Mean fragment size for N class (bp) |
+    | `mfsd_alt_llr` | Float | Log-likelihood ratio, mean per fragment (ALT fragments; positive = tumor-like) |
+    | `mfsd_ref_llr` | Float | Log-likelihood ratio, mean per fragment (REF fragments) |
+    | `mfsd_ref_mean` | Float | Mean fragment size for REF class (bp); `NA` when the class is empty |
+    | `mfsd_alt_mean` | Float | Mean fragment size for ALT class (bp); `NA` when the class is empty |
+    | `mfsd_nonref_mean` | Float | Mean fragment size for non-REF class (bp); `NA` when the class is empty |
+    | `mfsd_n_mean` | Float | Mean fragment size for N class (bp); `NA` when the class is empty |
     | `mfsd_delta_alt_ref` | Float | mean(ALT) − mean(REF) delta (bp) |
     | `mfsd_ks_alt_ref` | Float | KS D-stat (ALT vs REF) |
     | `mfsd_pval_alt_ref` | Float | KS p-value (ALT vs REF) |
@@ -643,14 +663,14 @@ The floors are ASJD's own junction-evidence minimums (`LOW_REF_JUNC` / `LOW_ALT_
     | `mfsd_n_rate` | Float | N-class fraction |
     | `mfsd_size_ratio` | Float | mean(ALT) / mean(REF) |
     | `mfsd_quality_score` | Float | 1 − error_rate − n_rate |
-    | `mfsd_alt_confidence` | String | `HIGH` (≥5 ALT fragments), `LOW` (1–4), or `NONE` |
-    | `mfsd_ks_valid` | Boolean | `True` when both ALT and REF have ≥5 fragments for reliable KS test |
+    | `mfsd_alt_confidence` | String | QC flag: [definition](qc-flags.md#qc-columns) |
+    | `mfsd_ks_valid` | Boolean | QC flag: [definition](qc-flags.md#qc-columns) |
     | `mfsd_sub_nuc_ref_frac` | Float | Sub-nucleosomal (<150 bp) fraction of REF fragments |
     | `mfsd_sub_nuc_alt_frac` | Float | Sub-nucleosomal (<150 bp) fraction of ALT fragments |
     | `mfsd_sub_nuc_enrichment` | Float | Sub-nucleosomal enrichment (ALT frac / REF frac); ctDNA indicator |
     | `mfsd_mono_nuc_ref_frac` | Float | Mono-nucleosomal (150–200 bp) fraction of REF fragments |
     | `mfsd_mono_nuc_alt_frac` | Float | Mono-nucleosomal (150–200 bp) fraction of ALT fragments |
-    | `mfsd_ch_flag` | Boolean | `True` when the variant falls in a clonal-hematopoiesis (CH) gene |
+    | `mfsd_ch_flag` | Boolean | QC flag: [definition](qc-flags.md#qc-columns) |
 
 ??? note "Normalization MAF Columns (`--show-normalization` only)"
 
@@ -673,7 +693,10 @@ combined metrics.
 
 ### Type-Prefixed Columns
 
-Each input MAF's gbcms count columns are prefixed with the BAM type label:
+Each input MAF's gbcms columns are prefixed with the BAM type label. That is
+every column gbcms writes, in any mode: counts, status, diagnostics, and the
+mFSD and RNA columns (`duplex_mfsd_ref_mean`); merge takes the set from the
+writer itself:
 
 | Input Label | Example Columns |
 |:------------|:---------------|
@@ -681,7 +704,22 @@ Each input MAF's gbcms count columns are prefixed with the BAM type label:
 | `simplex` | `simplex_ref_count`, `simplex_alt_count`, `simplex_vaf`, ... |
 
 Annotation columns (e.g., `Hugo_Symbol`, `Chromosome`) are taken from the first
-input and **not** duplicated.
+input and **not** duplicated. A row only a later input has takes them from the
+earliest later input that has the row (the column set stays the first input's;
+a row the first input has keeps its own values). For an input that lacks a row,
+the row's read and fragment counts are 0, its status columns empty, and its
+other per-input columns (mFSD, RNA) empty; the log counts the rows each input
+lacks; a row whose flavors' MNP rescue outcomes differ has NA combined cells
+(they would add different alleles). An input written with `--column-prefix` (`duplex_` as the pipeline runs
+it, or `t_`) has its counts under that name and its status, strand-bias, mFSD and
+RNA columns unprefixed: merge finds each and keeps it per input. Rows are joined on `Chromosome` (in any naming),
+`Start_Position`, `Reference_Allele` and `Tumor_Seq_Allele2`, and VCF-input MAFs
+also on the VCF record. `End_Position` follows from Start and REF and is not
+joined on: a row keeps the first input's, or that of the earliest input that has
+the row, and an input that writes it differently is logged. When an input lists
+one variant twice with different `End_Position`, it joins on `End_Position` too.
+The output's columns are the first input's, so without `End_Position` in the
+first input there is none in the output.
 
 ### Combined `simplex_duplex_*` Columns
 
@@ -693,13 +731,29 @@ are distinct — counts are **additive** across BAM types with no double-countin
 |:------|:--------|:------|:-------|
 | **Additive sums** | Read counts, strand counts, fragment counts, fragment strand counts | 12 | `simplex_{x} + duplex_{x}` |
 | **Derived totals** | `total_count`, `total_count_fragment` | 2 | `ref + alt` |
-| **Derived VAFs** | `vaf`, `vaf_fragment` | 2 | `alt / total` (0/0 → 0.0) |
+| **Derived VAFs** | `vaf`, `vaf_fragment` | 2 | `alt / total` (0/0 → 0.0), four decimals as the writers write them |
 | **Strand bias** | `strand_bias_p_value`, `strand_bias_odds_ratio`, `fragment_strand_bias_p_value`, `fragment_strand_bias_odds_ratio` | 4 | Rust Fisher exact 2×2 test |
+
+A missing count is not a zero: when either flavor's cell is missing or not a
+finite number (empty, `NA`, `nan`, `inf`, text) in a row it has, the combined
+cell is `NA`, as are the totals, VAFs and strand bias built from it, and merge
+warns once per column with the number of rows. (A row an input lacks counts 0
+for it.)
 
 !!! note "Schema-Aware"
     If strand-level columns are absent from the input MAFs (e.g., older gbcms versions),
     only the available metrics are computed. Missing columns are logged and skipped —
     the pipeline does not fail.
+
+### Provenance and versions
+
+The merged MAF starts with its own provenance (`#gbcms v…`, `#command …`) and one
+line per input with that input's version line: `#input duplex: gbcms v6.6.0
+(9c371263) (/path/to/duplex.maf)`. Merge warns when the inputs come from
+different gbcms versions or builds (their counts may follow different rules),
+and stops when one input is a VCF-input MAF from before 6.5.0 (`vcf_pos` without
+`vcf_ref`/`vcf_alt`) and another is not: 6.5.0 changed the coordinates and
+alleles of VCF-input rows, so their rows would not join.
 
 ---
 

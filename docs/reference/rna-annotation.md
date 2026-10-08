@@ -18,11 +18,22 @@ With `--gtf`, GTF mode appends **17 columns** total: `exon_boundary_dist` (1),
     (every read reads as sense, so `antisense_depth` stays 0). Strand-specific counting
     therefore requires `--gtf`, not just `--strandedness`.
 
-!!! tip "Cohort runs: pre-build the GTF cache"
-    The GTF is parsed per sample. For a cohort, run `gbcms build-gtf-cache` once and
-    point every sample at the same `--gtf-cache-dir` so each per-sample run reuses the
-    prebuilt index (~9s parse → ~0.05s load). The Nextflow pipeline wires this up
-    automatically via the `GBCMS_BUILD_GTF_CACHE` process (`--gtf_cache`, default on).
+    The strand comes from the exons over the variant's position, all stranded
+    exons agreeing. A position no stranded exon covers (intronic, including the
+    donor +1/+2 and acceptor −1/−2 splice sites) takes the strand of the
+    transcripts spanning it, from first exon start to last exon end, all agreeing.
+    Where both strands' genes cover a position (exons, or transcripts at an
+    intronic position) there is no strand: both genes' transcripts carry the
+    allele, so every read counts. REDItools' annotation mode resolves a site the
+    same way and leaves mixed strands undetermined. A run-level WARNING names the
+    variants left without a strand (the first ten, then a count).
+
+!!! tip "Loading cost"
+    The GTF is loaded per run, plain or gzip/BGZF-compressed. Measured on a whole
+    genome: 2.0 s for Ensembl 111 (2.4 s from `.gtf.gz`), 4.0 s for GENCODE v50
+    basic and 6.5 s for GENCODE v50 comprehensive; fewer variant chromosomes load
+    less. There is no cache to build (`--gtf-cache-dir` and `build-gtf-cache` are
+    deprecated in 6.6.0 and do nothing).
 
 ---
 
@@ -49,12 +60,22 @@ wget https://ftp.ebi.ac.uk/pub/databases/gencode/Gencode_human/release_46/gencod
 
 ### Parsing Details
 
-The GTF parser (`rust/src/annotation/`) reads **exon** feature rows and extracts:
+The GTF loader (`rust/src/annotation/`) reads plain or gzip/BGZF files (detected
+from the content, not the extension) and keeps the **exon** rows of the variant
+chromosomes, extracting:
 
-- `gene_name` attribute → gene symbol
-- `transcript_id` attribute → transcript identifier
 - `seqname` (column 1) → chromosome (with `chr` prefix normalization)
-- `start`, `end` (columns 4-5) → 1-based exon coordinates
+- `start`, `end` (columns 4-5) → 1-based exon coordinates, stored 0-based half-open
+- `strand` (column 7) → `+`, `-` or unstranded `.`
+- `transcript_id` attribute → transcript identifier (a GENCODE `.N` version is stripped)
+
+Each exon row is checked column by column with noodles-gtf's grammar (the parser
+used before 6.6.0): positive integer coordinates, a numeric or `.` score, `+`/`-`/`.`
+strand, a `.`/0/1/2 frame, and `key value;` attributes (an unquoted value ends at
+its `;`). Whitespace runs may separate a key from its value. A row with start after
+end, a coordinate past 2,147,483,647, a missing or empty `transcript_id` (after the
+version is stripped), or bytes that are not UTF-8 text is not loaded. Rejected rows
+are counted in one warning that names the first one's line number and reason.
 
 !!! tip "Chromosome Normalization"
     Chromosomes are normalized by stripping the `chr` prefix for internal matching
@@ -96,16 +117,25 @@ flowchart LR
 
 ## Feature 1: Exon Boundary Distance
 
-For each variant, gbcms computes the distance (bp) to the **nearest annotated exon
-boundary** on its contig, across all transcripts. The distance is unsigned: exonic and
-intronic positions both count up from the edge. The contig is matched in any naming
-(`chr1` ~ `1`, `chrM` ~ `MT`).
+For each variant, gbcms computes the distance (bp) from its REF span to the **nearest
+annotated exon boundary** on its contig, across all transcripts: the least distance from
+any REF base, and 0 when a boundary lies inside the span (as in Ensembl VEP's overlap
+test). The span is the REF as gbcms normalizes it, left-aligned and trimmed as in a VCF,
+so it can differ from the row's coordinates. For an SNV or an insertion (a one-base
+REF) it is the distance from that base. A pure deletion's span starts at its VCF anchor
+base, so its distance to a boundary on its left is one less than VEP's, which drops the
+anchor. The distance is unsigned: exonic and intronic positions both count up from the
+edge. A boundary is an exon's first base or
+the first intron base after it, so an exon's last base is at distance 1. The contig is
+matched in any naming (`chr1` ~ `1`, `chrM` ~ `MT`).
 
 | Value | Meaning |
 |:------|:--------|
-| N > 0 | Variant is N bases from the nearest exon edge (exonic or intronic side) |
-| 0 | Variant is exactly at an exon boundary |
+| N > 0 | The nearest REF base is N bases from the nearest exon edge (exonic or intronic side) |
+| 0 | A REF base is exactly at an exon boundary, or the REF span crosses one |
 | empty | The variant's contig has no annotation in the GTF |
+
+Before 6.6.0 the distance was measured from the variant's first base only (#106).
 
 **Output column**: `exon_boundary_dist` (MAF)
 
@@ -125,7 +155,8 @@ overlaps multiple transcripts with different exon structures.
 ### Algorithm
 
 1. For each variant, query the `COITree` to find all transcripts whose
-   exons overlap the variant position.
+   exons hold the variant position (an exon's first through last base; the
+   intron bases beside it are not the exon's).
 2. For each overlapping transcript, extract the splice site mask.
 3. During counting, reads are attributed to transcripts based on splice
    junction compatibility:
@@ -203,18 +234,8 @@ See [Output Formats → ASJD](output-formats.md#aberrant-splice-junction-detecti
 The `asjd_diagnostic` column provides semicolon-separated QC flags. All junction
 counts are **per fragment** (a molecule's R1 and R2 are deduped to one vote):
 
-| Flag | Condition | Meaning |
-|:-----|:----------|:--------|
-| `LOW_ALT_JUNC` | `asjd_n_alt_total < 5` | Insufficient ALT junction evidence |
-| `LOW_REF_JUNC` | `asjd_n_ref_total < 10` | Insufficient REF baseline |
-| `NOVEL_ALT_JUNC` | ALT dominant junction differs from REF and is unannotated | ALT uses an unannotated junction |
-| `NON_CANONICAL_MOTIF` | ALT junction differs from REF and its motif is not GT-AG/GC-AG/AT-AC | Likely mapping artifact |
-| `STRAND_DISCORDANT` | ALT junction differs from REF, `asjd_n_alt_junc ≥ 5`, and minority transcript-strand fraction ≥ 0.30 | Mixed transcript-strand support → alignment artifact. Disabled for `--strandedness unstranded`. |
-| `MULTI_JUNCTION` | ALT fragments use > 2 distinct junctions | Complex splicing event |
-| `RETENTION_DOMINANT(n)` | Variant's REF span reaches within 2bp of an annotated intron boundary (a donor/acceptor site of a transcript on the variant's gene strand — transcript termini and antisense genes excluded); `n ≥ 10` fragments splice over the locus (CIGAR `N` spans it — excluded as no-observation) and outnumber the allele-classified fragments, which are mostly junction-free | The reads that genotype this locus are the intron-retaining minority: `vaf` is the VAF *within that population*, not allelic balance. An allele-specific retention shows a very high `vaf` here; a neutral splice-site variant shows roughly the allelic fraction of the unspliced reads. Explains `LOW_REF_JUNC;LOW_ALT_JUNC` at such loci — the junction evidence exists but is on the excluded reads. |
-| `NOVEL_JUNC_AT_SPLICE_LOSS(n@start-end)` | Same splice-site gate; the top unannotated junction on the spliced-over fragments is anchored (±5bp) to an annotated intron boundary on the gene strand, is not the deletion itself written as a splice (same length, at the locus), and is carried by `n ≥ 5` fragments — more than confirm ALT | The mutant allele's splicing outcome (an exon skip or alternative-site junction) is visible while `alt_count` is not — typically a splice-destroying variant whose carriers splice around the locus. `start-end` is a 0-based, half-open intron interval (the `asjd_*_junction` convention). |
-
-The floors are ASJD's own junction-evidence minimums (`LOW_REF_JUNC` / `LOW_ALT_JUNC`). When `RETENTION_DOMINANT` is present, any junction flags alongside it (`NOVEL_ALT_JUNC`, `MULTI_JUNCTION`, …) describe the allele-classified reads — by the marker's own condition the junction-bearing minority of an intron-retaining population — not the spliced majority, which only the ASJD-2 markers report.
+<!-- Defined once, in QC Flags; this includes that table. -->
+--8<-- "reference/qc-flags.md:asjd"
 
 ---
 

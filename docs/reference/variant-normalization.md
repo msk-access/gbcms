@@ -77,6 +77,18 @@ When a variant gets a `WARN_REF_CORRECTED` reason (verdict stays `PASS`), the MA
     - Upstream normalization changed coordinates incorrectly
     - MAF annotation artifact (trailing base error) — now handled by tolerant validation
 
+!!! note "A REF written a few bases off: `REF_AT_OFFSET(k)`"
+    REF validation compares only at the stated position. When a `REF_MISMATCH`
+    row's REF (3 or more bases, as the row gives it) matches the reference
+    exactly within 3 bases of its position, `gbcms_diagnostic` says where:
+    `REF_AT_OFFSET(-1)` means one base before. In a repeat every such offset is
+    listed, nearest first (`REF_AT_OFFSET(-1/+1)`). The row stays FAIL and is not
+    counted: gbcms counts the allele as given and does not move it. A shorter
+    REF is not placed, since a 2-base REF matches within 3 bases by chance
+    about one time in three. In the MSK sign-out data, 87 of 154 `REF_MISMATCH`
+    rows sit 1–3 bases off, most of them legacy indels at Start−1 whose alleles
+    still carry the VCF anchor base (Start advanced as if it were trimmed).
+
 ---
 
 ## Step 3: Left-Alignment
@@ -90,13 +102,23 @@ For indels and complex variants, gbcms applies **bcftools-style left-alignment**
 | `max_norm_window` | 2500bp | Safety cap for centromeric/telomeric regions |
 | Trigger | `ref_len ≠ alt_len` or both >1bp | SNPs are never left-aligned |
 
+Every reference window prep fetches (the left-align window, `ref_context`, the
+adaptive repeat scan, an indel's shift region and the event reference) is clamped
+to the contig: near a contig end it holds the bases that exist. The FASTA reader
+rejects a window that passes the end. So before 6.6.0, each window failed within
+its own reach of a contig end: left-alignment within about 100bp, `ref_context`
+within its padding, the shift region within 256bp and the event reference within
+60bp. Exact fetches (REF validation, a MAF anchor) are not clamped: a REF running
+past the end fails validation.
+
 !!! tip "Dynamic Window Expansion"
     If a variant shifts all the way to the window edge during left-alignment, it may not have fully converged. The engine automatically **doubles the window** (100 → 200 → 400 → ... → 2500bp) and retries. This ensures correct normalization even for variants in massive tandem repeats (e.g., centromeric regions) without penalizing the common case.
 
 Every variant that reaches REF validation gets a **type label derived from its
 final alleles** (after anchor resolution, REF correction and alignment), with the
 same rule the readers use. A row rejected before that (`EMPTY_ALLELE`,
-`ALT_EQUALS_REF`, a failed MAF anchor fetch) keeps the reader's label.
+`NON_SEQUENCE_ALLELE`, `ALT_EQUALS_REF`, a failed MAF anchor fetch) keeps the
+reader's label.
 
 | Condition | Assigned Type |
 |:----------|:-------------|
@@ -175,7 +197,12 @@ Adaptive padding=13: GCTTAAAAA... + REF/ALT + ...AAAAATTGAC  (anchored)
 
 ## Step 5: Homopolymer Decomposition Detection
 
-Some variant callers merge nearby events in a homopolymer run into one complex variant with an inflated deletion, e.g. `CCCCCC→T` where the reads show a smaller change at the run's end. For such calls gbcms also counts a **corrected allele** and reports whichever of the two more reads support.
+Some variant callers merge nearby events in a homopolymer run into one complex variant with an inflated deletion, e.g. `CCCCCC→T` where the reads show a smaller change at the run's end. With `--rescue-homopolymer`, gbcms also counts a **corrected allele** for such calls and reports whichever of the two more reads support.
+
+!!! info "Off by default: the row counts the given allele"
+    gbcms takes the input allele as correct. By default the row reports the given allele's counts. When the reads carry a different allele, `gbcms_diagnostic` names it: `OBSERVED_ALLELE(chrom:pos:REF>ALT:n/0)` when no read carries the given allele, `COEXISTING_ALLELE(...:n/m)` when the given allele is present beside a more frequent one. Prep still builds the corrected allele; it is counted only with `--rescue-homopolymer`.
+
+    The twin became opt-in because its arbitration is not an exact haplotype match. At the case it was built for (SOX2, below), the reads carry `CCCCT`, a 1bp deletion plus C→T, not the twin `CCCCCT`. The twin wins there by tolerance. At other real twin loci it claims most of the called allele's own exact carriers. `OBSERVED_ALLELE` names `CCCCT` exactly.
 
 ### Detection Criteria
 
@@ -218,7 +245,7 @@ Step 3: corrected_alt = C × (ref_len - 1) + alt_last = CCCCC + T = CCCCCT
 
 ### Dual-Counting Flow
 
-The corrected variant is stored in `PreparedVariant.decomposed_variant`. During counting, **both** the original and corrected alleles are counted independently. The result with the higher `alt_count` wins:
+With `--rescue-homopolymer` (`prepare_variants(..., rescue_homopolymer=True)`), the corrected variant is stored in `PreparedVariant.decomposed_variant`; without it, prep builds no twin. During counting, **both** the original and corrected alleles are counted independently. The result with the higher `alt_count` wins:
 
 ```mermaid
 flowchart TD
@@ -226,8 +253,8 @@ flowchart TD
     Input -->|"in parallel"| CountOrig
     Input -->|"in parallel"| CountDecomp
 
-    CountOrig["count_bam(original: CCCCCC→T)"]
-    CountDecomp["count_bam(corrected: CCCCCC→CCCCCT)"]
+    CountOrig["count (original: CCCCCC→T)"]
+    CountDecomp["count (corrected: CCCCCC→CCCCCT)"]
 
     CountOrig --> Compare
     CountDecomp --> Compare
@@ -246,9 +273,9 @@ The corrected allele is scored as unique sequence (`repeat_span` 0). In RNA with
     The flag appears only when the corrected allele got more ALT support than the called one. If the original gets more, it is used as-is with a normal `PASS` status. The comparison is not an exact haplotype match, though. Reads at real loci carry several forms: the called delins, the corrected allele, a 1bp deletion plus the change, or other alleles of the run. Both classifiers can claim reads of forms neither describes exactly. Inspect the reads at flagged loci; a redesign is tracked in the project plan.
 
 !!! example "Real-World: SOX2"
-    **SOX2** at chr3:181430901: `CCCCCC→T` (6bp→1bp, net −5bp).
-    Original count: **alt=3**. Corrected `CCCCCC→CCCCCT` count: **alt=79**.
-    Corrected wins → `gbcms_status = PASS`, `gbcms_status_reason = WARN_HOMOPOLYMER_DECOMP`.
+    **SOX2** at chr3:181430901: `CCCCCC→T` (6bp→1bp, net −5bp). The reads carry `CCCCT`.
+    - **Default:** the row reports `CCCCCC→T` (alt=3), and `gbcms_diagnostic` names `CCCCT`.
+    - **With `--rescue-homopolymer`:** the corrected `CCCCCC→CCCCCT` (alt=79) wins, and the row reports `gbcms_status = PASS`, `gbcms_status_reason = WARN_HOMOPOLYMER_DECOMP`.
 
 ---
 
@@ -260,18 +287,8 @@ PASS). Both appear in the MAF (two columns) and the VCF INFO (`GS` = verdict,
 `GSR` = reasons). `|` is used (never `;`/`,`, which are VCF-unsafe), so the reason
 string is byte-identical in the MAF and the VCF.
 
-| `gbcms_status` | `gbcms_status_reason` | Meaning | Counted? |
-|:-------|:--------|:--------|:--------:|
-| `PASS` | *(empty)* | REF matches FASTA exactly | ✅ |
-| `PASS` | `WARN_REF_CORRECTED` | REF ≥90% match; corrected to FASTA REF | ✅ |
-| `PASS` | `WARN_HOMOPOLYMER_DECOMP` | Passed, but the corrected/decomposed allele was used | ✅ |
-| `PASS` | `MULTI_ALLELIC` | Passed; overlaps a sibling variant at the same locus (sibling-ALT exclusion active) | ✅ |
-| `PASS` | `TRACT_CLUSTER` | Passed; shares a repeat-tract scan window with a co-annotated length-changing variant (exclusive AD assignment active) | ✅ |
-| `FAIL` | `REF_MISMATCH` | REF allele <90% match against reference genome | ❌ |
-| `FAIL` | `FETCH_FAILED` | Could not fetch the reference region | ❌ |
-| `FAIL` | `EMPTY_ALLELE` | Empty REF or ALT (malformed / non-left-anchored indel) | ❌ |
-| `FAIL` | `ALT_EQUALS_REF` | ALT equals REF (any case; `-` for both in a MAF): no change to count | ❌ |
-| `FAIL` | `ALT_CONTAINS_N` | ALT allele contains an `N` base | ❌ |
+<!-- The reasons are defined once, in QC Flags; this includes that table. -->
+--8<-- "reference/qc-flags.md:status"
 
 Reasons **stack**: a PASS variant can carry `WARN_REF_CORRECTED|WARN_HOMOPOLYMER_DECOMP`.
 

@@ -13,6 +13,13 @@ class Variant:
     ref_context_start: int
     repeat_span: int
     gene_strand: str | None
+    @property
+    def shift_region(self) -> tuple[int, int] | None: ...
+    @property
+    def event_ref(self) -> tuple[int, str] | None: ...
+    # 0-based inclusive span the exon-boundary distance is measured over (None:
+    # the variant's own REF span); MNP rescue sets it to the MNP's span.
+    boundary_span: tuple[int, int] | None
     def __init__(
         self,
         chrom: str,
@@ -24,6 +31,9 @@ class Variant:
         ref_context_start: int = 0,
         repeat_span: int = 0,
         gene_strand: str | None = None,
+        shift_region: tuple[int, int] | None = None,
+        event_ref: tuple[int, str] | None = None,
+        boundary_span: tuple[int, int] | None = None,
     ) -> None: ...
 
 class BaseCounts:
@@ -95,8 +105,6 @@ class BaseCounts:
     mq0_count: int
     alt_dist_end_median: float
     ref_dist_end_median: float
-    singleton_alt_count: int
-    duplex_alt_count: int
     # Decomposed ALT counting (diagnostic, all variant types)
     # Invariant: any_alt = ad + partial_alt
     any_alt: int
@@ -124,12 +132,21 @@ class BaseCounts:
     # Insertion loci: reads with a >= 8bp soft clip whose boundary lies within
     # the insert's duplication reach. Diagnostic only (CLIP_CANDIDATES flag).
     clip_candidates: int
+    # The allele the reads carry when it is not the given one (1-based VCF-style
+    # POS/REF/ALT; observed_reads 0 when none is named) and the reads carrying the
+    # given ALT exactly. Diagnostic only (OBSERVED_ALLELE flag).
+    observed_pos: int
+    observed_ref: str
+    observed_alt: str
+    observed_reads: int
+    observed_given_reads: int
     # GTF-informed annotation (None when no GTF)
     exon_boundary_dist: int | None
-    # P4b: Per-transcript counts (empty string when no GTF or no overlap)
+    # Per-transcript counts (empty string when no GTF or no overlap)
     transcript_read_counts: str
     transcript_fragment_counts: str
-    # P4c: ASJD fields (defaults: flag=False, pval/qval=0.0, strings="", bools=False, ints=0)
+    # ASJD fields (defaults: flag=False, strings="", bools=False, ints=0; pval/qval=0.0
+    # in DNA mode or without a GTF, 1.0 in RNA mode with a GTF and no junction reads)
     asjd_flag: bool
     asjd_pval: float
     asjd_qval: float
@@ -178,10 +195,12 @@ class PreparedVariant:
     gbcms_status: str  # verdict: "PASS" or "FAIL"
     # Status reason tags, '|'-separated; empty when a clean PASS.
     # PASS: WARN_REF_CORRECTED, WARN_HOMOPOLYMER_DECOMP, MULTI_ALLELIC, TRACT_CLUSTER.
-    # FAIL: REF_MISMATCH, FETCH_FAILED, EMPTY_ALLELE, ALT_EQUALS_REF, ALT_CONTAINS_N.
+    # FAIL: REF_MISMATCH, FETCH_FAILED, EMPTY_ALLELE, NON_SEQUENCE_ALLELE, ALT_EQUALS_REF,
+    # ALT_CONTAINS_N.
     gbcms_status_reason: str
-    # Post-counting diagnostic flags (set by pipeline._compute_diagnostics).
-    # Semicolon-separated. Empty string when no diagnostics.
+    # Diagnostic flags: post-counting on a PASS row (pipeline._compute_diagnostics);
+    # on a REF_MISMATCH row, prep's REF_AT_OFFSET(k) where the given REF matches
+    # the reference exactly nearby. Semicolon-separated. Empty when none.
     # Examples: "ZERO_ALT", "PARTIAL_DOMINANT;MNP_DISC_RATIO(2/5);MNP_RESCUE_ELIGIBLE".
     gbcms_diagnostic: str
     # Rescue audit trail (set by pipeline._rescue_mnp_pass; format in
@@ -195,32 +214,6 @@ class PreparedVariant:
     decomposed_variant: Variant | None
     multi_allelic_group: int | None
 
-def count_bam(
-    bam_path: str,
-    variants: list[Variant],
-    decomposed: list[Variant | None],
-    min_mapq: int,
-    min_baseq: int,
-    filter_duplicates: bool,
-    filter_secondary: bool,
-    filter_supplementary: bool,
-    filter_qc_failed: bool,
-    filter_improper_pair: bool,
-    filter_indel: bool,
-    threads: int,
-    fragment_qual_threshold: int = 10,
-    sibling_variants: list[list[Variant]] | None = None,
-    alignment_backend: str = "pairhmm",
-    hmm_llr_threshold: float = 2.3,
-    hmm_gap_open: float = 1e-4,
-    hmm_gap_extend: float = 0.1,
-    hmm_gap_open_repeat: float = 1e-2,
-    hmm_gap_extend_repeat: float = 0.5,
-    mode: str = "dna",
-    enforce_strandedness: bool = False,
-    strandedness: str = "reverse",
-    reference_fasta: str | None = None,
-) -> list[BaseCounts]: ...
 def count_bam_binned(
     bam_path: str,
     variants: list[Variant],
@@ -235,7 +228,7 @@ def count_bam_binned(
     filter_indel: bool,
     threads: int,
     fragment_qual_threshold: int = 10,
-    sibling_variants: list[list[Variant]] | None = None,
+    sibling_variants: list[list[Variant]] = ...,
     alignment_backend: str = "pairhmm",
     hmm_llr_threshold: float = 2.3,
     hmm_gap_open: float = 1e-4,
@@ -250,9 +243,11 @@ def count_bam_binned(
     mfsd: bool = False,
     rna_editing_db: str | None = None,
     gtf_path: str | None = None,
-    gtf_cache_dir: str | None = None,
     reference_fasta: str | None = None,
     library_type: str = "capture",
+    bin_window: int | None = None,
+    bin_max_variants: int | None = None,
+    warn_per_bam: bool = True,
 ) -> list[BaseCounts]: ...
 def count_bam_binned_observations(
     bam_path: str,
@@ -283,17 +278,14 @@ def count_bam_binned_observations(
     mfsd: bool = False,
     rna_editing_db: str | None = None,
     gtf_path: str | None = None,
-    gtf_cache_dir: str | None = None,
     reference_fasta: str | None = None,
     library_type: str = "capture",
     observations_path: str | None = None,
+    bin_window: int | None = None,
+    bin_max_variants: int | None = None,
 ) -> tuple[list[BaseCounts], list[Observation]]: ...
-def build_gtf_cache(
-    gtf_path: str,
-    variant_chroms: list[str],
-    cache_dir: str,
-) -> int: ...
 def reset_log_caching() -> None: ...
+def build_commit() -> str: ...
 def prepare_variants(
     variants: list[Variant],
     fasta_path: str,
@@ -301,6 +293,7 @@ def prepare_variants(
     is_maf: bool,
     threads: int = 1,
     adaptive_context: bool = True,
+    rescue_homopolymer: bool = False,
 ) -> list[PreparedVariant]: ...
 def write_fsd_parquet(
     path: str,
@@ -321,6 +314,6 @@ def fisher_exact_2x2(a: int, b: int, c: int, d: int) -> tuple[float, float]:
 
     Returns:
         (p_value, odds_ratio) tuple. p_value is the two-sided Fisher exact
-        probability; odds_ratio is ad/bc (inf when bc=0).
+        probability; odds_ratio is ad/bc (NaN when bc=0).
     """
     ...

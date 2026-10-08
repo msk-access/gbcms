@@ -10,6 +10,46 @@ Newest at the top.
 
 ---
 
+## [REJ-20261007-002] Credit ALT from placements scored by readable mismatches (C37 option C′)
+- **Target:** insertion read judgment — `insert_placements` / the windowed scan
+  (`rust/src/counting/variant_checks.rs`), RJ-21.
+- **Proposed:** score every junction a read's same-length insert could sit at by its
+  readable mismatches (not only those a fits-gated slide reaches) and call ALT when a
+  minimum-cost placement shows the ALT.
+- **Reason vetoed:** operator, after the C37 measurement (#245): at BRCA2 13:32906888
+  the reads it would turn from REF into ALT carry a recurring other allele (G>A plus an
+  A insertion, 11+ reads in two samples); AD would rise 23→28 and 28→40. A per-read
+  rule cannot tell a singleton error from a recurring allele, so placement scoring may
+  decide "another allele versus separate event", never ALT.
+- **Date:** 2026-10-07
+
+## [REJ-20261007-001] Judge the strict path's junction insert over its best-aligned placements (C37 option B)
+- **Target:** `resolve_anchor_insertion_candidate` (`rust/src/counting/variant_checks.rs`)
+  — the junction ALT with a flank substitution a slide absorbs into another insert.
+- **Proposed:** make the strict path judge like C36's windowed scan (only the
+  fewest-mismatch placements count), so the junction ALT gives way to the slid insert.
+- **Reason vetoed:** operator, after the C37 measurement (#245): all 28 RC reads are
+  the given ALT plus a single-molecule substitution (24 in no other read, 5 an SNV on
+  the haplotype, no other allele recurring); ABRA2 put them at the junction because a
+  singleton gets no contig of its own; GATK, ABRA2, bcftools and the literal counters
+  all credit them ALT. The change would drop real carriers (BRCA2 AAG AD 13→10, 43→39).
+- **Date:** 2026-10-07
+
+## [REJ-20261006-001] Give ALT the REF margin: no ALT call on a read whose last base is the deciding base
+- **Target:** pure-indel read judgment (RJ-1/RJ-3; `tests/census.py` policy rules) — the
+  one-anchor ALT verdict.
+- **Proposed:** require one base past the deciding base for ALT as well as REF, so a
+  terminal sequencing error cannot turn a REF read into an ALT read.
+- **Reason vetoed:** operator, after the C35 BAM check (#242): at the 18 changed RC rows,
+  reads ending on the deciding base show a third base (always an error) 0 times in 348
+  ACCESS reads and once in 71 IMPACT reads, predicting ~0 and ~0.5 false ALT against 32
+  and 13 terminal ALT reads. The REF margin guards a systematic aligner bias (an ALT read
+  near its end written REF with a cheaper mismatch); a false terminal ALT needs a random
+  Q20+ error, the same one-base evidence an SNV ALT call rests on. A symmetric margin
+  would drop ~45 real carriers there. Kept; the third-base control becomes a validation
+  check, not a rule.
+- **Date:** 2026-10-06
+
 ## [REJ-20260923-004] Drop the contig name from MNP rescue labels
 - **Target:** `src/gbcms/pipeline.py` — `RESCUED_COMPONENT(...)` / `gbcms_rescue` labels
 - **Proposed:** write `pos(REF>ALT)` only, since the row names the contig.

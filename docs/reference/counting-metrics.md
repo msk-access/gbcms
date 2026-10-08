@@ -61,6 +61,9 @@ flowchart TD
 !!! info "Anchor Overlap Standard"
     DP gating uses **single-position** anchor overlap: `read_start ≤ variant.pos`. This matches the depth definition used by Mutect2, VarDictJava, and `samtools mpileup` — depth is measured at the variant position, not across the entire REF allele span. Reads fetched from the wider ±5bp window that don't overlap the anchor are excluded from DP unless classified as REF/ALT via shifted indel detection.
 
+!!! info "Carriers in soft-clipped bases (complex variants, DNA)"
+    Aligners soft-clip an ALT read whose allele sits near its end, while the REF reads beside it align in full; counting only aligned overlap would drop those carriers and read VAF low. For variants the [exact-carrier rule](allele-classification.md#the-exact-carrier-rule) judges (delins, Del+SNV, and MNP reads with an indel or a clip at the block), a read whose aligned span stops short of POS is counted — in DP, REF/ALT and fragments — when the rule **decides** it from its own bases with an aligned window anchor, and a window it was decided on reads its soft-clipped bases. An unclipped read that misses POS (one starting inside a long deletion) stays out: no ALT read can start there. Every base read must lie inside a well-defined fragment (paired, mate mapped on the same contig in the opposite orientation, TLEN set): past the fragment end a clip is adapter. A clipped read the rule cannot decide stays out, so DP gains only informative reads. DNA only: an RNA read's clip may hold the next exon's bases. Admitted reads appear in the `--trace` log (`admitted ... by its soft-clipped bases`) and as a per-variant debug count.
+
 !!! info "Splice-Skip Exclusion (RNA)"
     A read whose CIGAR `N` (RefSkip) spans **every discriminating position** of a variant observes nothing there, so it is excluded from DP and fragment depth entirely, even when its genomic span (which includes the N) crosses the anchor. At skipped positions this matches samtools pileup's zero coverage exactly (an intronic locus in a spliced-out intron gets depth only from pre-mRNA reads). At an **anchor-preserved deletion** it is deliberately *stricter* than pileup depth at POS: a read whose M ends on the anchor base and splices over the deleted span would be counted by pileup at the anchor, but it carries no information about the event, and keeping it in DP would deflate VAF with unobservant reads. Either way the REF/ALT ledger stays independent of the aligner's D-vs-N representation choice. See [RNA Splice-Junction Handling](rna-splice-handling.md) for the full evidence rule. Per-variant exclusion totals appear in the debug-level `Phase stats` log line (`splice_skip_excluded=`), and deletion-type loci where exclusions exceed confirmed ALT are flagged `SPLICE_SKIP_DOMINANT(n)` in `gbcms_diagnostic`.
 
@@ -204,6 +207,20 @@ Computed at **both** levels:
 | **SB_pval** / **SB_OR** | Read | Strand bias from individual reads |
 | **FSB_pval** / **FSB_OR** | Fragment | Strand bias from collapsed fragments |
 
+The p-value is the exact two-sided Fisher test as R's `fisher.test` defines it: the
+sum of the probabilities of every table with the observed margins that is no more
+likely than the observed table (with R's tie tolerance, 1 + 10⁻⁷). It is computed in
+log space, so it is exact at any depth. Before 6.6.0 it was 0 once both strands were
+deep (from about 1,030 reads on a strand-balanced table), and strongly biased tables
+were floored near 10⁻¹⁰.
+
+!!! note "Depth and effect size"
+    The p-value is computed on the raw counts. At deep coverage a small strand
+    imbalance is statistically clear, so the p-value can be small while the bias is
+    slight. Read the odds ratio (`SB_OR`, `FSB_OR`) for the size of the imbalance.
+    GATK's FisherStrand instead scales tables above 400 reads down to 200 before
+    testing; gbcms reports the exact p of the observed table.
+
 !!! warning "Paired-End Data: Use FSB, Not SB"
     For paired-end sequencing (e.g., MSK-ACCESS), R1 and R2 from the same fragment are **not** independent observations. Read-level SB (`SB_pval`) artificially doubles the sample size N in the Fisher's test contingency table, producing deflated p-values that can falsely flag true variants as strand bias artifacts. **Clinical filtering pipelines should use `FSB_pval`** (fragment-level), which correctly treats each physical fragment as a single independent observation.
 
@@ -214,7 +231,7 @@ Computed at **both** levels:
 
 ## Complete Output Column Reference
 
-The core counting fields of the `BaseCounts` struct returned by `count_bam_binned()` — the binned counting entry point that groups variants into ~10kb genomic bins for a single `bam.fetch()` per bin before classifying reads. See [Architecture → Genomic Binning](architecture.md#genomic-binning) for how bins are built. (The gated mFSD, RNA, and ASJD fields — plus QC fields like `mq0_count`, `singleton_alt_count`, `duplex_alt_count`, `alt_dist_end_median`/`ref_dist_end_median`, and `non_discriminating_locus` — are documented in their own sections above and in the [output-formats reference](output-formats.md).)
+The core counting fields of the `BaseCounts` struct returned by `count_bam_binned()` — the binned counting entry point that groups variants into ~10kb genomic bins for a single `bam.fetch()` per bin before classifying reads. See [Architecture → Genomic Binning](architecture.md#genomic-binning) for how bins are built. (The gated mFSD, RNA, and ASJD fields — plus QC fields like `mq0_count`, `alt_dist_end_median`/`ref_dist_end_median`, and `non_discriminating_locus` — are documented in their own sections above and in the [output-formats reference](output-formats.md).)
 
 | Column | Type | Description |
 |:-------|:-----|:------------|
@@ -282,8 +299,12 @@ Enabled with `--mfsd`. All 41 columns (and their VCF INFO equivalents) are absen
 |:------|:-----------|
 | `REF` | Fragment supporting the reference allele, valid insert size (50–1000 bp) |
 | `ALT` | Fragment supporting the alternate allele, valid insert size |
-| `NonREF` | Fragment supporting a third allele (neither REF nor ALT) |
+| `NonREF` | Fragment supporting a third allele, or with no REF/ALT consensus (neither REF nor ALT, not N) |
 | `N` | Fragment where the base at the variant position was called `N` |
+
+A fragment whose reads all start or end inside an indel's repeat tract carries no
+readable allele ([informative reads](allele-classification.md#informative-reads-for-indels)).
+It counts in fragment depth but in none of the four classes.
 
 ### MAF Columns (41 total)
 
@@ -300,29 +321,36 @@ Enabled with `--mfsd`. All 41 columns (and their VCF INFO equivalents) are absen
 
 | Column | Description |
 |:-------|:------------|
-| `mfsd_alt_llr` | LLR for ALT fragments: Σ log(P_tumor/P_healthy). Positive = tumor-like (short fragments). |
-| `mfsd_ref_llr` | LLR for REF fragments |
+| `mfsd_alt_llr` | Fragment-size LLR for ALT fragments, the mean per fragment of log(P_tumor/P_healthy) (n is `mfsd_alt_count`). Positive = tumor-like (short fragments). `NA` when the class is empty. |
+| `mfsd_ref_llr` | Fragment-size LLR for REF fragments, mean per fragment. `NA` when the class is empty. |
 
 #### Mean Fragment Sizes
 
 | Column | Description |
 |:-------|:------------|
 | `mfsd_ref_mean` | Mean insert size (bp) for REF fragments. `NA` when class is empty. |
-| `mfsd_alt_mean` | Mean insert size (bp) for ALT fragments |
-| `mfsd_nonref_mean` | Mean insert size (bp) for NonREF fragments |
-| `mfsd_n_mean` | Mean insert size (bp) for N fragments |
+| `mfsd_alt_mean` | Mean insert size (bp) for ALT fragments. `NA` when class is empty. |
+| `mfsd_nonref_mean` | Mean insert size (bp) for NonREF fragments. `NA` when class is empty. |
+| `mfsd_n_mean` | Mean insert size (bp) for N fragments. `NA` when class is empty. |
 
 #### Pairwise KS Statistics (6 pairs × 3 values = 18 columns, + 1 FDR q-value)
 
 Each pair yields: `delta` (mean difference in bp), `ks` (KS D-statistic), `pval` (KS p-value).
-Values are `NA` when either class has fewer than 5 fragments (`mfsd_ks_valid = False`).
+When either class has fewer than 5 fragments the test does not run
+(`mfsd_ks_valid = False`): `ks` is `NA` and `pval` is `1.0000`, a placeholder;
+`delta` is still the mean difference when both classes have fragments. Read
+`mfsd_ks_valid` before the KS columns.
 
-> The `pval` is the **exact** two-sample KS p-value for small samples (the
-> low-input cfDNA regime), falling back to the asymptotic Kolmogorov series only
-> for large fragment counts. The exact value matters because at small N the KS
-> statistic is highly discrete — the asymptotic approximation mis-estimates the
-> p-value, and below a handful of fragments the test has essentially no power
-> (e.g. n=m=3 cannot reach p < 0.05 even when fully separated).
+> The `pval` is the **exact** two-sample KS p-value whenever the two classes span at
+> most 10⁷ lattice cells (n·m) — every class pair a targeted panel produces — and
+> the asymptotic Kolmogorov series with Stephens' finite-sample correction above.
+> Exact matters where cfDNA decides: a few ALT fragments against thousands of REF
+> fragments, where the uncorrected series overstates p (about 1.7x at 5 ALT
+> fragments near p = 0.05, and up to 45x for a strong shift). Fragment sizes are
+> integers, so ties are common; the exact p-value treats sizes as continuous, which
+> is conservative with ties. Below a handful of fragments the test has little power
+> (about 8% at 5 ALT fragments on real cfDNA), so a non-significant p is not
+> evidence of "no shift".
 
 | Pairs |
 |:------|
@@ -335,9 +363,10 @@ Values are `NA` when either class has fewer than 5 fragments (`mfsd_ks_valid = F
 
 An additional column, `mfsd_qval_alt_ref`, carries the Benjamini-Hochberg FDR
 q-value for the ALT-vs-REF KS p-value, corrected across all variants with a valid
-ALT-vs-REF test in the sample. The mFSD report classifies TUMOR-LIKE / CH-LIKE on
-this q-value, not the raw p-value. It is `NA` when the KS test was invalid, and
-equals the p-value until the post-counting BH pass runs.
+ALT-vs-REF test in the sample. The mFSD report's LEANS-SOMATIC class uses this
+q-value, not the raw p-value. When the KS test did not run it stays the p-value
+placeholder (`1.0000`) and is left out of the correction; a variant on a contig
+absent from the BAM is likewise left out.
 
 #### Derived Metrics
 
@@ -347,8 +376,8 @@ equals the p-value until the post-counting BH pass runs.
 | `mfsd_n_rate` | N / total_mFSD fragments. `NA` when total = 0. |
 | `mfsd_size_ratio` | mean(ALT) / mean(REF). `NA` when REF mean = 0 or ALT count = 0. |
 | `mfsd_quality_score` | 1 − error_rate − n_rate. `NA` when either rate is `NA`. |
-| `mfsd_alt_confidence` | `HIGH` (≥5 ALT frags), `LOW` (1–4), `NONE` (0) |
-| `mfsd_ks_valid` | `True` when both ALT and REF have ≥5 fragments |
+| `mfsd_alt_confidence` | QC flag: [definition](qc-flags.md#qc-columns) |
+| `mfsd_ks_valid` | QC flag: [definition](qc-flags.md#qc-columns) |
 
 #### Nucleosomal Fractions
 
@@ -364,7 +393,7 @@ equals the p-value until the post-counting BH pass runs.
 
 | Column | Description |
 |:-------|:------------|
-| `mfsd_ch_flag` | `True` when the variant falls in a clonal-hematopoiesis (CH) gene |
+| `mfsd_ch_flag` | QC flag: [definition](qc-flags.md#qc-columns) |
 
 ### VCF INFO Fields (13 total)
 
@@ -376,8 +405,8 @@ Added to `##INFO` header and per-variant INFO column when `--mfsd` is set.
 | `MFSD_KS_ALT_REF` | Float | KS D-statistic (ALT vs REF) |
 | `MFSD_PVAL_ALT_REF` | Float | KS p-value (ALT vs REF) |
 | `MFSD_QVAL_ALT_REF` | Float | Benjamini-Hochberg FDR q-value for the ALT-vs-REF KS p-value |
-| `MFSD_ALT_LLR` | Float | LLR for ALT fragments |
-| `MFSD_REF_LLR` | Float | LLR for REF fragments |
+| `MFSD_ALT_LLR` | Float | Fragment-size LLR for ALT fragments, mean per fragment |
+| `MFSD_REF_LLR` | Float | Fragment-size LLR for REF fragments, mean per fragment |
 | `MFSD_ALT_COUNT` | Integer | ALT-classified fragment count |
 | `MFSD_REF_COUNT` | Integer | REF-classified fragment count |
 | `MFSD_SUB_NUC_REF_FRAC` | Float | Sub-nucleosomal (<150 bp) fraction of REF fragments |
@@ -415,10 +444,10 @@ RNA-seq reads exhibit orientation biases (dUTP strandedness), splice junctions (
 
 | Column | Type | Description |
 |:-------|:-----|:------------|
-| `rna_sense_depth` | u32 | Reads aligning to the gene **sense** strand |
-| `rna_antisense_depth` | u32 | Reads aligning to the gene **antisense** strand |
+| `rna_sense_depth` | u32 | REF and ALT reads aligning to the gene **sense** strand |
+| `rna_antisense_depth` | u32 | REF and ALT reads aligning to the gene **antisense** strand |
 | `rna_alt_sense_count` | u32 | ALT-classified reads on the sense strand |
-| `rna_editing_site` | bool | Variant overlaps a known A→I editing site from `--rna-editing-db` |
+| `rna_editing_site` | bool | QC flag (`--rna-editing-db`): [definition](qc-flags.md#qc-columns) |
 | `rna_splice_spanning` | u32 | ALT-classified reads containing splice junctions (CIGAR `N`) spanning the variant |
 
 ### VCF Fields

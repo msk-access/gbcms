@@ -29,7 +29,7 @@ Test coverage:
   11. DEL + REF agree: both reads M-block at DEL site → REF
 """
 
-from helpers import build_bam, count_both, make_read
+from helpers import build_bam, count_checked, make_read
 
 from gbcms._rs import Variant
 
@@ -61,7 +61,7 @@ def _make_paired(name, seq, start, cigar, is_read1, is_reverse, quals=None):
 
 
 def _count_indel_variant(bam_path, ref_allele, alt_allele, variant_type, pos=100):
-    """Count a single variant using both APIs with parity assertion."""
+    """Count a single variant, checked for binning invariance."""
     variant = Variant(
         chrom="chr1",
         pos=pos,
@@ -69,7 +69,7 @@ def _count_indel_variant(bam_path, ref_allele, alt_allele, variant_type, pos=100
         alt_allele=alt_allele,
         variant_type=variant_type,
     )
-    return count_both(
+    return count_checked(
         bam_path,
         [variant],
         min_mapq=0,

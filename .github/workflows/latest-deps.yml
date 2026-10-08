@@ -1,0 +1,151 @@
+name: Latest dependencies
+
+# Monthly, and by hand before a release: the suite on the newest release of every
+# Python dependency (no lock) on
+# every supported Python, with the semver-compatible Rust updates applied, so a
+# breaking release is found before a user installs it. A failure opens (or updates)
+# one issue labelled `latest-deps`. Also reports, without failing, how far the
+# Docker image's lock trails the latest releases.
+
+on:
+  schedule:
+    # Monthly: PR CI already installs the latest releases, so this only covers quiet
+    # stretches (GitHub disables schedules after 60 days without repo activity).
+    # A scheduled run tests the default branch, main: the release users install.
+    # Before a release, run it by hand on the release branch.
+    - cron: "17 6 1 * *"  # the 1st, 06:17 UTC
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  python:
+    name: Python ${{ matrix.python-version }} (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest]
+        python-version: ['3.10', '3.11', '3.12', '3.13', '3.14']
+        include:
+          - {os: macos-latest, python-version: '3.14'}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v5
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v6
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Install system dependencies (Ubuntu)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential zlib1g-dev libbz2-dev liblzma-dev \
+            libcurl4-openssl-dev libssl-dev git autoconf samtools
+
+      - name: Install system dependencies (macOS)
+        if: runner.os == 'macOS'
+        run: brew install htslib samtools autoconf automake
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install uv
+        run: curl -LsSf https://astral.sh/uv/install.sh | sh
+
+      - name: Semver-compatible Rust updates
+        run: |
+          cd rust
+          cargo update
+          git diff --stat Cargo.lock
+
+      - name: Build and install on the latest releases
+        run: |
+          uv pip install --system --upgrade maturin
+          maturin build --release --out dist
+          uv pip install --system --upgrade dist/*.whl
+          uv pip install --system --upgrade --group test
+          python -m pip check
+          python -m pip list --format=freeze | grep -i -E '^(pysam|typer|click|rich|pydantic|polars)=='
+
+      - name: Run tests
+        run: pytest -q -p no:cacheprovider
+
+  rust:
+    name: Rust unit tests (compatible updates)
+    # macOS: the extension-module crate links its test binaries the way the shipped
+    # extension does, which Linux cannot (see test.yml's rust-test job).
+    runs-on: macos-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v5
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+
+      - name: Semver-compatible updates, then clippy and the unit tests
+        run: |
+          cd rust
+          cargo update
+          cargo clippy --all-targets -- -D warnings
+          cargo test
+
+  lock:
+    name: Docker lock against the latest releases (informational)
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v5
+
+      - name: Install uv
+        run: curl -LsSf https://astral.sh/uv/install.sh | sh
+
+      - name: Compare the lock with a refreshed one
+        run: |
+          uv pip compile pyproject.toml --upgrade --generate-hashes --python-version 3.11 \
+            --python-platform x86_64-manylinux_2_28 -o /tmp/refreshed.lock -q
+          pins() { grep -E '^[A-Za-z0-9._-]+==' "$1" | cut -d' ' -f1 | sort; }
+          {
+            echo "### Docker lock vs the latest releases"
+            if diff <(pins docker/requirements.lock) <(pins /tmp/refreshed.lock) > /tmp/pins.diff; then
+              echo "The lock is current."
+            else
+              echo "Refreshing it (release guide step 4) would change:"
+              echo '```diff'
+              cat /tmp/pins.diff
+              echo '```'
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  report:
+    name: Open or update the failure issue
+    needs: [python, rust]
+    if: failure()
+    runs-on: ubuntu-latest
+    permissions:
+      issues: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+      RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+
+    steps:
+      - name: Report
+        run: |
+          gh label create latest-deps --color B60205 \
+            --description "The scheduled latest-dependencies job failed" --force
+          num=$(gh issue list --label latest-deps --state open --json number --jq '.[0].number')
+          if [ -n "$num" ]; then
+            gh issue comment "$num" --body "Failed again: $RUN_URL"
+          else
+            gh issue create --label latest-deps --title "Latest dependencies fail" --body \
+              "The latest-dependencies run on the newest releases failed: $RUN_URL. Find the release that broke it in the run's install step, then fix gbcms or cap the dependency."
+          fi

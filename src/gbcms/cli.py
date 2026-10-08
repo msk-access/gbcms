@@ -18,7 +18,7 @@ from pathlib import Path
 
 import typer
 
-from . import __version__
+from .io.output import build_identity
 from .models.core import (
     AlignmentConfig,
     GbcmsDnaConfig,
@@ -73,6 +73,15 @@ _RESCUE_MNP_HELP = (
     "adopted — check gbcms_rescue before trusting a rescued VAF."
 )
 
+_RESCUE_HOMOPOLYMER_HELP = (
+    "Dual-count the homopolymer twin: for a delins whose REF is a run of one base and "
+    "whose ALT is the base after the run (CCCCCC>T), also count CCCCCT and report "
+    "whichever has more ALT reads, flagged WARN_HOMOPOLYMER_DECOMP. Both counts accept "
+    "near-matches, so the winner can report another allele's reads under the row's "
+    "label. Off by default: the row counts the given allele, and OBSERVED_ALLELE in "
+    "gbcms_diagnostic names the allele the reads carry."
+)
+
 app = typer.Typer(help="gbcms: Get Base Counts Multi-Sample")
 
 
@@ -116,7 +125,7 @@ def _variant_format(path: Path) -> str:
 
 
 def _exit_on_sample_failure(result: dict) -> None:
-    """Propagate per-sample *failures* to the process exit code (HI-1).
+    """Propagate per-sample *failures* to the process exit code.
 
     ``Pipeline.run()`` catches per-sample errors, records them in ``failed_samples``,
     and returns normally, so a run where a BAM failed (e.g. a Rust panic surfaced as
@@ -152,7 +161,7 @@ def _exit_on_sample_failure(result: dict) -> None:
 def version_callback(value: bool) -> None:
     """Print version and exit."""
     if value:
-        typer.echo(f"gbcms {__version__}")
+        typer.echo(build_identity())
         raise typer.Exit()
 
 
@@ -244,7 +253,7 @@ def dna(
         "--mfsd-report",
         help=(
             "Generate an interactive HTML report with per-variant fragment "
-            "size distributions and CH-vs-ctDNA fragment origin signals. "
+            "size distributions and graded fragment-size evidence. "
             "Implies --mfsd and --mfsd-parquet. Output: "
             "<sample>.mfsd_report.html alongside the main output."
         ),
@@ -329,6 +338,11 @@ def dna(
         "--rescue-mnp",
         help=_RESCUE_MNP_HELP,
     ),
+    rescue_homopolymer: bool = typer.Option(
+        False,
+        "--rescue-homopolymer",
+        help=_RESCUE_HOMOPOLYMER_HELP,
+    ),
     rescue_mnp_threshold: float = typer.Option(
         1.0,
         "--rescue-mnp-threshold",
@@ -411,7 +425,7 @@ def dna(
     # ── 1. Logging (must be first so all subsequent checks log correctly) ──────
     setup_logging(verbose=verbose, trace=trace)
     command_line = _log_command()
-    logger.info("Running gbcms v%s in DNA mode", __version__)
+    logger.info("Running %s in DNA mode", build_identity())
     # ── 2. Pre-model validation (semantic + cross-option checks) ───────────────
 
     # GAP 12: Reject unsupported variant file extensions before any I/O.
@@ -473,13 +487,6 @@ def dna(
         raise typer.Exit(code=1)
 
     logger.info("Found %d BAM file(s) to process", len(bams_dict))
-    logger.info(
-        "Config: min_mapq=%d, apply_baq=%s, alignment_backend=%s, umi_tag=%s",
-        min_mapq,
-        apply_baq,
-        alignment_backend.value,
-        umi_tag or "none",
-    )
 
     try:
         # Build nested config objects
@@ -540,6 +547,7 @@ def dna(
             umi_tag=umi_tag,
             rescue_mnp=rescue_mnp,
             rescue_mnp_threshold=rescue_mnp_threshold,
+            rescue_homopolymer=rescue_homopolymer,
         )
 
         result = Pipeline(config).run()
@@ -548,7 +556,7 @@ def dna(
         logger.exception("Pipeline failed: %s", e)
         raise typer.Exit(code=1) from e
 
-    # HI-1: exit non-zero if any sample failed (or none were processed). Outside the
+    # Exit non-zero if any sample failed (or none were processed). Outside the
     # try so typer.Exit isn't caught by `except Exception` above.
     _exit_on_sample_failure(result)
 
@@ -628,22 +636,21 @@ def rna(
         None,
         "--gtf",
         help=(
-            "Path to GTF annotation file (Ensembl/GENCODE). Enables exon "
-            "boundary distance calculation and BAQ suppression at annotated "
-            "splice junctions. Only chromosomes with variants are loaded."
+            "Path to GTF annotation file (Ensembl/GENCODE), plain or gzip/BGZF "
+            "(.gtf.gz). Enables exon boundary distance calculation and BAQ "
+            "suppression at annotated splice junctions. Only chromosomes with "
+            "variants are loaded."
         ),
     ),
     gtf_cache_dir: Path | None = typer.Option(
         None,
         "--gtf-cache-dir",
         help=(
-            "Directory for caching the parsed GTF index. On first use the parsed "
-            "annotation is written here; later runs over the same GTF and variant "
-            "set reuse it, skipping the multi-second GTF text parse. Point every "
-            "sample in a cohort at one shared directory to parse the GTF only once."
+            "Deprecated in 6.6.0 and ignored; removed in 6.7.0. The GTF index cache "
+            "is gone: the GTF loads in a few seconds without one."
         ),
     ),
-    # P5: Library type flag
+    # Library type flag
     library_type: str = typer.Option(
         "capture",
         "--library-type",
@@ -712,6 +719,11 @@ def rna(
         False,
         "--rescue-mnp",
         help=_RESCUE_MNP_HELP,
+    ),
+    rescue_homopolymer: bool = typer.Option(
+        False,
+        "--rescue-homopolymer",
+        help=_RESCUE_HOMOPOLYMER_HELP,
     ),
     rescue_mnp_threshold: float = typer.Option(
         1.0,
@@ -795,7 +807,7 @@ def rna(
     # ── 1. Logging ──
     setup_logging(verbose=verbose, trace=trace)
     command_line = _log_command()
-    logger.info("Running gbcms v%s in RNA mode", __version__)
+    logger.info("Running %s in RNA mode", build_identity())
     # ── 2. Pre-model validation ──
     is_maf = _variant_format(variant_file) == "maf"
 
@@ -849,17 +861,6 @@ def rna(
             "(no transcript strand to filter against)"
         )
 
-    logger.info(
-        "Config: min_mapq=%d, apply_baq=%s, alignment_backend=%s, "
-        "enforce_strandedness=%s, strandedness=%s, library_type=%s, umi_tag=%s",
-        min_mapq,
-        apply_baq,
-        alignment_backend.value,
-        enforce_strandedness,
-        strandedness,
-        library_type,
-        umi_tag or "none",
-    )
     if rna_editing_db:
         logger.info("RNA editing database: %s", rna_editing_db)
     if gtf:
@@ -924,6 +925,7 @@ def rna(
             library_type=library_type,
             rescue_mnp=rescue_mnp,
             rescue_mnp_threshold=rescue_mnp_threshold,
+            rescue_homopolymer=rescue_homopolymer,
         )
 
         result = Pipeline(config).run()
@@ -932,7 +934,7 @@ def rna(
         logger.exception("Pipeline failed: %s", e)
         raise typer.Exit(code=1) from e
 
-    # HI-1: exit non-zero if any sample failed (or none were processed). Outside the
+    # Exit non-zero if any sample failed (or none were processed). Outside the
     # try so typer.Exit isn't caught by `except Exception` above.
     _exit_on_sample_failure(result)
 
@@ -951,55 +953,31 @@ def build_gtf_cache(
         "--variants",
         "-v",
         exists=True,
-        help=(
-            "Variant file (VCF/MAF) for the cohort. Only its chromosome set is used. "
-            "It MUST be the same variant file the per-sample 'gbcms rna' runs use, so "
-            "the cache key lines up and those runs reuse this entry."
-        ),
+        help="Variant file (VCF/MAF) for the cohort.",
     ),
     gtf_cache_dir: Path = typer.Option(
         ...,
         "--gtf-cache-dir",
-        help=(
-            "Shared directory to write the cache into (created if missing). Point every "
-            "per-sample 'gbcms rna --gtf-cache-dir' at this same directory."
-        ),
+        help="Directory the cache was written into (no longer written).",
     ),
     verbose: bool = typer.Option(False, "--verbose", "-V", help="Enable verbose debug logging"),
 ):
     """
-    Pre-build the GTF index cache so a cohort parses the GTF only once.
+    Deprecated in 6.6.0: does nothing; removed in 6.7.0.
 
-    Parses the GTF for the chromosomes covered by --variants and writes the
-    serialized index into --gtf-cache-dir. Run this ONCE before fanning out the
-    per-sample 'gbcms rna' jobs (all pointed at the same --gtf-cache-dir): each then
-    loads the prebuilt index in ~0.05s instead of re-parsing the GTF (~9s).
-
-    Why a separate step: when many samples launch concurrently they all cold-miss
-    and each re-parses the GTF, so the cache alone saves nothing until a later wave.
-    Building it up front lets every sample start warm.
+    It pre-built a GTF index cache for a cohort. The GTF now loads in a few
+    seconds (plain or .gtf.gz), so there is no cache to build. The command still
+    checks its options, so a pipeline that calls it keeps working until it is
+    removed.
     """
-    from gbcms import _rs
-    from gbcms.pipeline import read_variant_file
-
     setup_logging(verbose=verbose, trace=False)
 
     _variant_format(variants)
 
-    chroms = [v.chrom for v in read_variant_file(variants)]
-    if not chroms:
-        logger.error("No variants found in %s — nothing to scope the GTF cache to.", variants)
-        raise typer.Exit(code=1)
-
-    logger.info("Building GTF index cache for %d variants -> %s", len(chroms), gtf_cache_dir)
-    n_exons = _rs.build_gtf_cache(str(gtf), chroms, str(gtf_cache_dir))
-    logger.info(
-        "GTF index cache ready in %s (%d exons across %d chromosomes). Per-sample runs "
-        "using --gtf-cache-dir %s will now skip the GTF parse.",
-        gtf_cache_dir,
-        n_exons,
-        len(set(chroms)),
-        gtf_cache_dir,
+    logger.warning(
+        "build-gtf-cache is deprecated and does nothing: the GTF index cache is gone "
+        "(the GTF loads in a few seconds without one). Drop this step and "
+        "--gtf-cache-dir; both will be removed in 6.7.0."
     )
 
 
@@ -1139,9 +1117,10 @@ def merge(
     """
     Merge per-BAM-type genotyped MAFs into a single type-prefixed output.
 
-    Performs an outer join on the 5-column variant key (Chromosome,
-    Start_Position, End_Position, Reference_Allele, Tumor_Seq_Allele2),
-    prefixes all gbcms count columns with the BAM type label, and
+    Performs an outer join on the variant (Chromosome, Start_Position,
+    Reference_Allele, Tumor_Seq_Allele2; End_Position is filled from the
+    inputs that have each row), prefixes all gbcms count columns with the BAM
+    type label, and
     optionally computes additive simplex+duplex combined columns.
 
     Example::
@@ -1157,7 +1136,7 @@ def merge(
 
     setup_logging(verbose=verbose, trace=False)
     _log_command()
-    logger.info("gbcms merge v%s", __version__)
+    logger.info("%s merge", build_identity())
 
     # ── Pre-model: parse type:path pairs ──────────────────────────────────
     parsed: dict[str, Path] = {}
@@ -1194,6 +1173,7 @@ def merge(
             output=output,
             add_combined=add_combined,
             legacy_naming=legacy_naming,
+            command_line=" ".join(sys.argv),
         )
     except ValidationError as e:
         logger.error("Configuration error: %s", e)

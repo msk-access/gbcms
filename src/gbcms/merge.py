@@ -8,8 +8,9 @@ WGS-scale performance.
 Architecture:
     1. Scan each input MAF lazily via ``io.batch.scan_maf``
     2. Detect whether columns are already prefixed or need renaming
-    3. Progressive outer join on the 5-column variant key (plus the VCF
-       record — vcf_pos / vcf_ref / vcf_alt — when every input carries it)
+    3. Progressive outer join on the variant — contig, Start and alleles
+       (plus the VCF record — vcf_pos / vcf_ref / vcf_alt — when every input
+       carries it); End_Position is filled from the inputs that have each row
     4. Optionally compute additive ``simplex_duplex_*`` combined columns
     5. Materialize and write via ``io.batch.write_maf``
 
@@ -23,6 +24,7 @@ Design decisions:
 """
 
 import logging
+import re
 import time
 from pathlib import Path
 
@@ -30,6 +32,13 @@ import polars as pl
 
 from gbcms.core.kernel import CoordinateKernel
 from gbcms.io.batch import scan_maf, write_maf
+from gbcms.io.output import (
+    _fmt,
+    _fmt_sci,
+    gbcms_column_basenames,
+    gbcms_prefixed_basenames,
+    provenance_line,
+)
 from gbcms.models.core import MergeConfig
 from gbcms.rescue_audit import rescued_component
 
@@ -40,7 +49,8 @@ logger = logging.getLogger(__name__)
 
 # ── Constants (single source of truth — canonical basenames from output.py) ──
 
-# 5-column variant key used for outer joins.
+# The MAF variant columns. Every input needs all but End_Position, which
+# follows from Start and REF and is optional in a MAF.
 VARIANT_KEY: list[str] = [
     "Chromosome",
     "Start_Position",
@@ -52,7 +62,13 @@ VARIANT_KEY: list[str] = [
 # Naming-independent contig key the joins use in place of Chromosome, so MAFs
 # whose inputs name contigs differently (chr1 vs 1, chrM vs MT) still join.
 _CONTIG_KEY = "_contig_key"
-JOIN_KEY: list[str] = [_CONTIG_KEY, *VARIANT_KEY[1:]]
+# A variant is its contig, Start and alleles. End_Position is not joined on:
+# inputs that write it differently for one variant still join, and each row's
+# End_Position is filled from the inputs that have the row.
+JOIN_KEY: list[str] = [
+    _CONTIG_KEY,
+    *(k for k in VARIANT_KEY[1:] if k != "End_Position"),
+]
 # VCF-input MAFs also carry the VCF record each row came from. It is unique per
 # record ALT, whereas two records can trim to one MAF record (TCT>TCG and T>G at
 # the changed base), so the joins add it whenever every input has it. The MAF
@@ -61,8 +77,9 @@ JOIN_KEY: list[str] = [_CONTIG_KEY, *VARIANT_KEY[1:]]
 # columns, so a row only a later input has keeps its coordinates and alleles.
 VCF_RECORD_KEY: list[str] = [*JOIN_KEY, "vcf_pos", "vcf_ref", "vcf_alt"]
 # Prefixes of the other per-input join helpers (row numbers, each later
-# input's own contig names). Input columns with these names are rejected.
-_HELPER_PREFIXES = ("_row_", "_chrom_")
+# input's own contig names and End_Position, a later-only row's annotations).
+# Input columns with these names are rejected.
+_HELPER_PREFIXES = ("_row_", "_chrom_", "_end_", "_ann_")
 
 
 def _row_col(bam_type: str) -> str:
@@ -111,9 +128,8 @@ def _with_contig_key(lf: pl.LazyFrame, bam_type: str) -> pl.LazyFrame:
     )
 
 
-# gbcms count column basenames (without any prefix).
-# These columns contain numeric counts/rates and will be type-prefixed.
-# Reference: MafWriter._gbcms_column_names() in io/output.py lines 190-219.
+# gbcms count column basenames (without any prefix): the counts a row an input
+# lacks gets as 0 for that input (see GBCMS_META_BASENAMES for its empty ones).
 GBCMS_COUNT_BASENAMES: list[str] = [
     "ref_count",
     "alt_count",
@@ -149,8 +165,11 @@ GBCMS_META_BASENAMES: list[str] = [
     "fragment_strand_bias_odds_ratio",
 ]
 
-# Combined set of all gbcms basenames for detection.
-ALL_GBCMS_BASENAMES: set[str] = set(GBCMS_COUNT_BASENAMES) | set(GBCMS_META_BASENAMES)
+# Every column gbcms writes, in any mode (mFSD, RNA, GTF, rescue,
+# normalization), unprefixed: each is kept per input (``duplex_mfsd_ref_mean``).
+# Taken from the writer so a new output column cannot fall back to "the first
+# input's value" unnoticed.
+ALL_GBCMS_BASENAMES: set[str] = set(gbcms_column_basenames())
 
 # Additive count basenames for simplex+duplex combination.
 # Duplex and simplex BAMs contain distinct consensus molecules — there is
@@ -190,10 +209,11 @@ COMBINED_ADDITIVE_ALL: list[str] = (
 def merge_mafs(config: MergeConfig) -> None:
     """Merge per-BAM-type genotyped MAFs into a single type-prefixed output.
 
-    Performs an outer join on the 5-column variant key (on the VCF record —
-    vcf_pos / vcf_ref / vcf_alt — when every input is VCF-derived), prefixes
-    gbcms count columns with the BAM type label, optionally computes combined
-    simplex_duplex columns, and writes the merged result.
+    Performs an outer join on the variant (contig, Start and alleles; plus the
+    VCF record — vcf_pos / vcf_ref / vcf_alt — when every input is
+    VCF-derived), prefixes gbcms count columns with the BAM type label,
+    optionally computes combined simplex_duplex columns, and writes the merged
+    result.
 
     Args:
         config: Validated MergeConfig with inputs, output path, and options.
@@ -212,7 +232,9 @@ def merge_mafs(config: MergeConfig) -> None:
     # ── 1. Scan and rename ────────────────────────────────────────────────────
     frames: dict[str, pl.LazyFrame] = {}
     input_columns: dict[str, list[str]] = {}
+    versions: dict[str, str | None] = {}
     for bam_type, path in config.inputs.items():
+        versions[bam_type] = _version_line(path)
         logger.info("Scanning %s MAF: %s", bam_type, path)
         lf = scan_maf(path)
 
@@ -236,8 +258,11 @@ def merge_mafs(config: MergeConfig) -> None:
         frames[bam_type] = _with_contig_key(lf, bam_type).with_row_index(_row_col(bam_type))
         input_columns[bam_type] = schema_names
 
+    _refuse_mixed_vcf_representations(input_columns, versions)
+    _warn_mixed_versions(versions)
+
     # ── 2. Progressive outer join ─────────────────────────────────────────────
-    join_key = _join_key(input_columns)
+    join_key = _join_key(frames, input_columns)
     for bam_type, lf in frames.items():
         _warn_duplicate_keys(lf, join_key, bam_type)
     types = list(frames.keys())
@@ -246,41 +271,39 @@ def merge_mafs(config: MergeConfig) -> None:
     for join_type in types[1:]:
         # Select only variant key + gbcms columns from the joining frame
         # to avoid duplicating annotation columns across inputs.
-        # The joining frame's own Chromosome is kept aside (not a join key) so
-        # rows only it has keep their name, and naming differences can be
-        # reported after materialization.
+        # The joining frame's own Chromosome and End_Position are kept aside
+        # (not join keys) so rows only it has keep them, and differences can
+        # be reported after materialization.
         join_frame = frames[join_type]
-        count_cols = [
-            c for c in join_frame.collect_schema().names() if _is_prefixed_gbcms_col(c, join_type)
-        ]
+        join_names = join_frame.collect_schema().names()
+        count_cols = [c for c in join_names if _is_prefixed_gbcms_col(c, join_type)]
+        aside = {"Chromosome": f"_chrom_{join_type}"}
+        if "End_Position" in join_names and "End_Position" not in join_key:
+            aside["End_Position"] = f"_end_{join_type}"
         merged = merged.join(
-            join_frame.select([*join_key, "Chromosome", _row_col(join_type), *count_cols]).rename(
-                {"Chromosome": f"_chrom_{join_type}"}
-            ),
+            join_frame.select([*join_key, *aside, _row_col(join_type), *count_cols]).rename(aside),
             on=join_key,
             how="full",
             coalesce=True,
         )
         logger.info("  Joined '%s' (%d count cols)", join_type, len(count_cols))
 
-    # ── 3. Fill nulls → "0" for count columns, "" for meta columns ─────────
-    output_schema = merged.collect_schema().names()
-    count_cols_in_output = [
-        c
-        for c in output_schema
-        if any(c == f"{t}_{base}" for t in types for base in GBCMS_COUNT_BASENAMES)
-    ]
-    meta_cols_in_output = [
-        c
-        for c in output_schema
-        if any(c == f"{t}_{base}" for t in types for base in GBCMS_META_BASENAMES)
-    ]
-    if count_cols_in_output:
-        merged = merged.with_columns([pl.col(c).fill_null("0") for c in count_cols_in_output])
-        logger.info("  Filled nulls → '0' for %d count columns", len(count_cols_in_output))
-    if meta_cols_in_output:
-        merged = merged.with_columns([pl.col(c).fill_null("") for c in meta_cols_in_output])
-        logger.info("  Filled nulls → '' for %d meta columns", len(meta_cols_in_output))
+    # ── 3. A row an input lacks: its counts 0, its status columns empty ─────
+    # A row the input has keeps its cells as written: a missing count stays
+    # missing (it is not a zero), and the combined columns say NA for it.
+    output_schema = set(merged.collect_schema().names())
+    fills = []
+    for t in types:
+        absent = pl.col(_row_col(t)).is_null()
+        for bases, value in ((GBCMS_COUNT_BASENAMES, "0"), (GBCMS_META_BASENAMES, "")):
+            for base in bases:
+                col = f"{t}_{base}"
+                if col in output_schema:
+                    fills.append(
+                        pl.when(absent).then(pl.lit(value)).otherwise(pl.col(col)).alias(col)
+                    )
+    if fills:
+        merged = merged.with_columns(fills)
 
     # ── 4. Combined simplex+duplex columns ────────────────────────────────────
     if config.add_combined and "simplex" in frames and "duplex" in frames:
@@ -288,7 +311,19 @@ def merge_mafs(config: MergeConfig) -> None:
         logger.info("  Added simplex_duplex combined columns")
 
     # ── 5. Materialize and write ──────────────────────────────────────────────
-    result = _in_input_order(_resolve_contig_names(merged.collect(), types), types)
+    collected = _fill_later_only_rows(merged.collect(), frames, types, join_key)
+    for t in types:
+        lacking = collected.filter(pl.col(_row_col(t)).is_null()).height
+        if lacking:
+            logger.info(
+                "  '%s' lacks %d of %d merged rows: its counts there are written as 0",
+                t,
+                lacking,
+                collected.height,
+            )
+    result = _in_input_order(
+        _resolve_end_positions(_resolve_contig_names(collected, types), types), types
+    )
     logger.info(
         "Merged result: %d rows × %d columns",
         result.height,
@@ -301,29 +336,21 @@ def merge_mafs(config: MergeConfig) -> None:
             "contain data and share variant key columns."
         )
 
-    # Log unmatched variant counts per type for monitoring
-    # A variant is "unmatched" if its count columns are all "0" for that type
-    for t in types:
-        t_ref_col = f"{t}_ref_count"
-        if t_ref_col in result.columns:
-            n_unmatched = result.filter(pl.col(t_ref_col) == "0").height
-            if n_unmatched > 0:
-                logger.info(
-                    "  %d/%d variants have no %s counts (filled with 0)",
-                    n_unmatched,
-                    result.height,
-                    t,
-                )
-
     if "duplex" in frames and "simplex" in frames:
-        _warn_mixed_rescue(result, combined=config.add_combined)
+        result = _mixed_rescue(result, combined=config.add_combined)
 
     # Legacy naming pass (rename {type}_{metric} → t_{metric}_{type})
     if config.legacy_naming:
         result = _apply_legacy_naming(result, types)
         logger.info("  Applied legacy t_{metric}_{type} naming")
 
-    write_maf(result, config.output)
+    header = [provenance_line()]
+    if config.command_line:
+        header.append(f"#command {config.command_line}")
+    header += [
+        f"#input {t}: {versions[t] or 'no gbcms version line'} ({config.inputs[t]})" for t in types
+    ]
+    write_maf(result, config.output, header=header)
     elapsed = time.perf_counter() - t_start
     logger.info("Merge complete in %.1fs", elapsed)
 
@@ -331,13 +358,109 @@ def merge_mafs(config: MergeConfig) -> None:
 # ── Helpers ──────────────────────────────────────────────────────────────────
 
 
-def _join_key(input_columns: dict[str, list[str]]) -> list[str]:
+def _version_line(path: Path) -> str | None:
+    """The ``gbcms v...`` provenance an input MAF starts with (``#gbcms v6.5.0``,
+    with a build commit since 6.6.0), or None when it has none."""
+    with open(path) as fh:
+        for line in fh:
+            if not line.startswith("#"):
+                return None
+            if line.startswith("#gbcms v"):
+                return line[1:].strip()
+    return None
+
+
+_VERSION_LINE = re.compile(r"gbcms v(\S+)(?: \(([0-9a-f]+)\))?")
+
+
+def _parse_version(line: str | None) -> tuple[str, str | None] | None:
+    """(version, commit) from a ``gbcms v6.6.0.dev0 (9c371263)`` line."""
+    m = _VERSION_LINE.match(line or "")
+    return (m.group(1), m.group(2)) if m else None
+
+
+def _release(version: str) -> tuple[int, ...]:
+    """The numeric release of a version string (``6.6.0.dev0`` → (6, 6, 0))."""
+    return tuple(int(x) for x in re.findall(r"\d+", version)[:3])
+
+
+def _refuse_mixed_vcf_representations(
+    input_columns: dict[str, list[str]], versions: dict[str, str | None]
+) -> None:
+    """Stop when one input is a VCF-input MAF from before 6.5.0 and another is
+    not. Before 6.5.0 a VCF-input MAF carried ``vcf_pos`` (with ``vcf_id``,
+    ``vcf_region``) but not ``vcf_ref``/``vcf_alt``, and many indel and MNP rows
+    had other coordinates and alleles (6.5.0 follows vcf2maf), so their rows do
+    not join: merged, the same variant appears twice, each half empty. Only an
+    input whose version line is missing or older than 6.5.0 has that shape: a
+    later MAF-input output can carry ``vcf_pos`` from vcf2maf."""
+
+    def old_shape(t: str) -> bool:
+        cols = set(input_columns[t])
+        if "vcf_pos" not in cols or {"vcf_ref", "vcf_alt"} <= cols:
+            return False
+        parsed = _parse_version(versions.get(t))
+        return parsed is None or _release(parsed[0]) < (6, 5, 0)
+
+    old = sorted(t for t in input_columns if old_shape(t))
+    if old and len(old) < len(input_columns):
+        others = sorted(set(input_columns) - set(old))
+        raise ValueError(
+            f"Input(s) {old} are VCF-input MAFs from before gbcms 6.5.0 (vcf_pos without "
+            f"vcf_ref/vcf_alt), and {others} are not: 6.5.0 changed the coordinates and "
+            "alleles of VCF-input rows, so their rows would not join. Genotype every "
+            "input with one gbcms version and merge again."
+        )
+
+
+def _warn_mixed_versions(versions: dict[str, str | None]) -> None:
+    """Warn when the inputs come from different gbcms versions or builds (their
+    counts may follow different rules, which their sums would hide), or when only
+    some inputs say which version wrote them. Builds of one version differ only
+    when both name a commit."""
+    parsed = {t: _parse_version(v) for t, v in versions.items()}
+    seen = list(parsed.values())
+
+    def differ(a: tuple[str, str | None] | None, b: tuple[str, str | None] | None) -> bool:
+        if a is None or b is None:
+            return (a is None) != (b is None)
+        return a[0] != b[0] or (a[1] is not None and b[1] is not None and a[1] != b[1])
+
+    if any(differ(a, b) for i, a in enumerate(seen) for b in seen[i + 1 :]):
+        logger.warning(
+            "Inputs come from different gbcms versions (%s): counts made by different "
+            "versions may follow different rules; merge outputs of one version",
+            ", ".join(f"{t}: {versions[t] or 'no version line'}" for t in versions),
+        )
+
+
+def _join_key(frames: dict[str, pl.LazyFrame], input_columns: dict[str, list[str]]) -> list[str]:
     """The VCF record key when every input carries it (all VCF-derived), else
-    the MAF variant key."""
+    the MAF variant key. End_Position joins too when every input has it and one
+    lists a variant (contig, Start, alleles) more than once with different
+    End_Position, so each such row pairs with its own counterpart rather than
+    with every one of them."""
+    key = JOIN_KEY
+    if all("End_Position" in cols for cols in input_columns.values()):
+        split = [t for t, lf in frames.items() if _end_splits_a_variant(lf)]
+        if split:
+            logger.info(
+                "  Joining on End_Position too: %s list(s) a variant more than once with "
+                "different End_Position",
+                ", ".join(f"'{t}'" for t in split),
+            )
+            key = [*JOIN_KEY, "End_Position"]
     if all(set(VCF_RECORD_KEY[len(JOIN_KEY) :]) <= set(cols) for cols in input_columns.values()):
         logger.info("  Joining on the VCF record (vcf_pos, vcf_ref, vcf_alt): every input has it")
-        return VCF_RECORD_KEY
-    return JOIN_KEY
+        return [*key, *VCF_RECORD_KEY[len(JOIN_KEY) :]]
+    return key
+
+
+def _end_splits_a_variant(lf: pl.LazyFrame) -> bool:
+    """Whether an input lists one variant (the join key) with more than one
+    End_Position."""
+    split = lf.group_by(JOIN_KEY).agg(pl.col("End_Position").n_unique().alias("ends"))
+    return bool(split.filter(pl.col("ends") > 1).select(pl.len()).collect().item())
 
 
 def _warn_duplicate_keys(lf: pl.LazyFrame, join_key: list[str], bam_type: str) -> None:
@@ -353,6 +476,60 @@ def _warn_duplicate_keys(lf: pl.LazyFrame, join_key: list[str], bam_type: str) -
             dups.height,
             int(dups["len"].sum()),
         )
+
+
+def _fill_later_only_rows(
+    result: pl.DataFrame,
+    frames: dict[str, pl.LazyFrame],
+    types: list[str],
+    join_key: list[str],
+) -> pl.DataFrame:
+    """Fill the first input's annotation columns of rows the first input lacks.
+
+    Non-key columns come from the first input, so a row only a later input has
+    would otherwise carry them empty (gene, sample barcode, classification...).
+    Each such row takes them from the earliest later input that has the row and
+    the column; the column set stays the first input's, and a row the first
+    input has keeps its own values. Contig names and End_Position have their
+    own rules (:func:`_resolve_contig_names`, :func:`_resolve_end_positions`).
+    No work when every row is in the first input, as when every flavor was
+    genotyped from one variant file.
+    """
+    first = types[0]
+    lacks_first = pl.col(_row_col(first)).is_null()
+    missing = result.filter(lacks_first)
+    if missing.height == 0:
+        return result
+    first_names = frames[first].collect_schema().names()
+    ann = [
+        c
+        for c in first_names
+        if c not in join_key
+        and c not in ("Chromosome", "End_Position")
+        and not c.startswith("_")
+        and not _is_prefixed_gbcms_col(c, first)
+    ]
+    filled = 0
+    for t in types[1:]:
+        names = set(frames[t].collect_schema().names())
+        cols = [c for c in ann if c in names]
+        if not cols:
+            continue
+        # By the later input's own row (not the join key): two rows sharing a key
+        # (one variant listed for two samples) each keep their own annotations.
+        row = _row_col(t)
+        later = frames[t].select([row, *[pl.col(c).alias(f"_ann_{t}_{c}") for c in cols]])
+        missing = missing.join(later.collect(), on=row, how="left")
+        missing = missing.with_columns(
+            [pl.coalesce(c, f"_ann_{t}_{c}").alias(c) for c in cols]
+        ).drop([f"_ann_{t}_{c}" for c in cols])
+        filled += len(cols)
+    if filled:
+        logger.info(
+            "  %d row(s) only a later input has: their annotation columns are that input's",
+            missing.height,
+        )
+    return pl.concat([result.filter(~lacks_first), missing.select(result.columns)])
 
 
 def _resolve_contig_names(result: pl.DataFrame, types: list[str]) -> pl.DataFrame:
@@ -392,6 +569,40 @@ def _resolve_contig_names(result: pl.DataFrame, types: list[str]) -> pl.DataFram
     return result.drop([_CONTIG_KEY, *later])
 
 
+def _resolve_end_positions(result: pl.DataFrame, types: list[str]) -> pl.DataFrame:
+    """Fill End_Position from the inputs that have each row and drop the helpers.
+
+    End_Position is not a join key, so a row only a later input has would
+    otherwise lose it. A row the first input has keeps its End_Position as
+    written. One INFO line per later input that writes it differently for
+    rows it shares with the output. No-op on the column set when the first
+    input has no End_Position (the output's columns are the first input's).
+    """
+    later = [f"_end_{t}" for t in types[1:] if f"_end_{t}" in result.columns]
+    if not later:
+        return result
+    if "End_Position" in result.columns:
+        result = result.with_columns(pl.coalesce("End_Position", *later).alias("End_Position"))
+        for col in later:
+            differ = result.filter(
+                pl.col(col).is_not_null() & (pl.col(col) != pl.col("End_Position"))
+            )
+            if differ.height:
+                row = differ.row(0, named=True)
+                logger.info(
+                    "  '%s' writes End_Position differently from the merged output ('%s' vs "
+                    "'%s' at %s:%s, %d row(s)): joined on Start and alleles; the output keeps "
+                    "the earliest input's",
+                    col.removeprefix("_end_"),
+                    row[col],
+                    row["End_Position"],
+                    row["Chromosome"],
+                    row["Start_Position"],
+                    differ.height,
+                )
+    return result.drop(later)
+
+
 def _in_input_order(result: pl.DataFrame, types: list[str]) -> pl.DataFrame:
     """Merged rows in the inputs' order, then the row numbers dropped.
 
@@ -403,24 +614,25 @@ def _in_input_order(result: pl.DataFrame, types: list[str]) -> pl.DataFrame:
     return result.sort(rows, nulls_last=True).drop(rows)
 
 
-def _warn_mixed_rescue(result: pl.DataFrame, combined: bool) -> None:
-    """Warn on rows whose duplex and simplex MNP rescue outcomes differ.
+def _mixed_rescue(result: pl.DataFrame, combined: bool) -> pl.DataFrame:
+    """Rows whose duplex and simplex MNP rescue outcomes differ: warned, and
+    their combined columns NA.
 
     A rescued row reports a component SNV's counts under the MNP's coordinates.
     When only one flavor was rescued — or the two adopted different components —
-    the two flavors' counts describe different alleles in one row: anyone
-    comparing or summing the duplex and simplex columns would be misled, with
-    or without ``--add-combined``. With it, the ``simplex_duplex_*`` columns
-    add them outright, and the per-row message says so. Counts are left as
-    they are; the rows are named in the log. No-op when rescue was run on
-    neither flavor (no ``gbcms_rescue`` column). When it was run on only one,
-    that is logged once and the other flavor is treated as reporting the MNP on
-    every row, so each row rescued in the rescue-on flavor is named.
+    the two flavors' counts describe different alleles in one row, so summing
+    them in ``simplex_duplex_*`` would add two alleles: those cells are NA (a
+    missing value, as for a missing count), and each row is named in the log.
+    The per-flavor columns stay as they are. A row one flavor lacks is not mixed:
+    nothing is summed across alleles there. No-op when rescue was run on neither
+    flavor (no ``gbcms_rescue`` column). When it was run on only one, that is
+    logged once and the other flavor is treated as reporting the MNP on every
+    row, so each row rescued in the rescue-on flavor is mixed.
     """
     d, s = "duplex_gbcms_rescue", "simplex_gbcms_rescue"
     present = [col for col in (d, s) if col in result.columns]
     if not present:
-        return
+        return result
     if len(present) == 1:
         ran, other = ("duplex", "simplex") if present[0] == d else ("simplex", "duplex")
         logger.warning(
@@ -431,13 +643,18 @@ def _warn_mixed_rescue(result: pl.DataFrame, combined: bool) -> None:
             ran,
             other,
         )
-    mixed = 0
-    for row in result.select([*VARIANT_KEY, *present]).iter_rows(named=True):
+    statuses = [c for c in ("duplex_gbcms_status", "simplex_gbcms_status") if c in result.columns]
+    key = [k for k in VARIANT_KEY if k in result.columns]
+    mixed: list[int] = []
+    for i, row in enumerate(result.select([*key, *present, *statuses]).iter_rows(named=True)):
+        # A flavor that lacks the row has an empty status: nothing is mixed.
+        if any(not row.get(c) for c in statuses):
+            continue
         d_comp = rescued_component(row.get(d) or "")
         s_comp = rescued_component(row.get(s) or "")
         if d_comp == s_comp:
             continue
-        mixed += 1
+        mixed.append(i)
         logger.warning(
             "Mixed MNP rescue at %s:%s %s>%s — duplex %s, simplex %s%s",
             row["Chromosome"],
@@ -446,14 +663,30 @@ def _warn_mixed_rescue(result: pl.DataFrame, combined: bool) -> None:
             row["Tumor_Seq_Allele2"],
             f"reports component {d_comp}" if d_comp else "reports the MNP",
             f"reports component {s_comp}" if s_comp else "reports the MNP",
-            "; the simplex_duplex_* columns add counts of different alleles" if combined else "",
+            (
+                "; its simplex_duplex_* columns are NA (they would add different alleles)"
+                if combined
+                else ""
+            ),
         )
-    if mixed:
-        logger.warning(
-            "Mixed MNP rescue: %d row(s) where duplex and simplex rescue outcomes differ "
-            "(see gbcms_rescue per flavor)",
-            mixed,
-        )
+    if not mixed:
+        return result
+    logger.warning(
+        "Mixed MNP rescue: %d row(s) where duplex and simplex rescue outcomes differ "
+        "(see gbcms_rescue per flavor)%s",
+        len(mixed),
+        "; their simplex_duplex_* columns are NA" if combined else "",
+    )
+    combined_cols = [c for c in result.columns if c.startswith("simplex_duplex_")]
+    if not combined_cols:
+        return result
+    is_mixed = pl.int_range(0, result.height).is_in(mixed)
+    return result.with_columns(
+        [
+            pl.when(is_mixed).then(pl.lit("NA")).otherwise(pl.col(c).cast(pl.Utf8)).alias(c)
+            for c in combined_cols
+        ]
+    )
 
 
 def _validate_variant_key(
@@ -466,20 +699,40 @@ def _validate_variant_key(
     Raises:
         ValueError: If any key column is missing, with actionable message.
     """
-    missing = [k for k in VARIANT_KEY if k not in columns]
+    missing = [k for k in VARIANT_KEY if k not in columns and k != "End_Position"]
     if missing:
         raise ValueError(
             f"Input MAF for '{bam_type}' ({path}) is missing variant key "
-            f"columns: {missing}. Expected all of: {VARIANT_KEY}"
+            f"columns: {missing}. Expected all of: "
+            f"{[k for k in VARIANT_KEY if k != 'End_Position']} (End_Position is optional)"
         )
 
 
-def _build_rename_map(columns: list[str], bam_type: str) -> dict[str, str]:
-    """Build a column rename map: unprefixed gbcms cols → type-prefixed.
+def _writer_prefix(columns: set[str]) -> str:
+    """The ``--column-prefix`` an input's counts were written with: ``""``,
+    ``duplex_`` as the pipeline runs it, ``t_`` for legacy names. Found from the
+    core counts every gbcms output has (``ref_count`` and ``alt_count``); a name
+    that is itself a gbcms column (``mfsd_ref_count``) is not a prefixed count."""
+    if {"ref_count", "alt_count"} <= columns:
+        return ""
+    found = [
+        col[: -len("ref_count")]
+        for col in columns
+        if col.endswith("ref_count")
+        and col not in ALL_GBCMS_BASENAMES
+        and f"{col[: -len('ref_count')]}alt_count" in columns
+    ]
+    return min(found, key=len) if found else ""
 
-    Detects whether columns are already prefixed with the bam_type label.
-    If already prefixed (e.g., ``duplex_ref_count``), returns empty dict
-    to avoid double-prefixing.
+
+def _build_rename_map(columns: list[str], bam_type: str) -> dict[str, str]:
+    """Rename every gbcms column of an input to ``{bam_type}_{basename}``.
+
+    The writer's ``--column-prefix`` sits on the counts and normalization
+    columns only; status, diagnostics, strand bias, mFSD and RNA columns are
+    written unprefixed. Each column is found under the name the writer gave it,
+    so an input written with ``--column-prefix duplex_`` (as the pipeline runs)
+    or ``t_`` keeps all its gbcms columns per input, not only its counts.
 
     Args:
         columns: List of column names in the MAF.
@@ -487,29 +740,18 @@ def _build_rename_map(columns: list[str], bam_type: str) -> dict[str, str]:
 
     Returns:
         Dict mapping original column name → prefixed column name.
-        Empty dict if columns are already prefixed.
     """
-    prefix = f"{bam_type}_"
-
-    # Check if columns are already prefixed
-    already_prefixed = any(
-        c.startswith(prefix) for c in columns if _strip_prefix(c) in ALL_GBCMS_BASENAMES
-    )
-    if already_prefixed:
-        logger.debug(
-            "Columns in '%s' MAF already have '%s' prefix",
-            bam_type,
-            prefix,
-        )
-        return {}
-
-    # Build rename map for unprefixed gbcms columns
+    target = f"{bam_type}_"
+    present = set(columns)
+    writer = _writer_prefix(present)
+    prefixed = gbcms_prefixed_basenames()
     rename_map: dict[str, str] = {}
-    for col in columns:
-        if col in ALL_GBCMS_BASENAMES:
-            rename_map[col] = f"{prefix}{col}"
+    for base in sorted(ALL_GBCMS_BASENAMES):
+        src = f"{writer}{base}" if base in prefixed else base
+        if src in present and src != f"{target}{base}" and f"{target}{base}" not in present:
+            rename_map[src] = f"{target}{base}"
 
-    if not rename_map:
+    if not rename_map and not any(f"{target}{b}" in present for b in ALL_GBCMS_BASENAMES):
         logger.warning(
             "No gbcms count columns found in '%s' MAF. " "Available columns: %s",
             bam_type,
@@ -575,17 +817,11 @@ def _add_combined_columns(lf: pl.LazyFrame) -> pl.LazyFrame:
         """String count column → Int64, tolerating float formatting.
 
         A pandas/R round-trip renders integer columns as '12.0'; a direct
-        Int64 cast would null that (and fill_null would silently turn it
-        into 0), so cast through Float64 and round. Genuinely non-numeric
-        values (e.g. 'NA') still become null → 0 here — they are counted
-        and warned about before this runs (see merge_mafs)."""
-        return (
-            pl.col(col)
-            .cast(pl.Float64, strict=False)
-            .round(0)
-            .cast(pl.Int64, strict=False)
-            .fill_null(0)
-        )
+        Int64 cast would null that, so cast through Float64 and round. A
+        missing or non-numeric cell (empty, 'NA', 'nan', 'inf', text) is null:
+        a missing count is not a zero, so every combined value built from it
+        is NA (and counted in a warning per column below)."""
+        return pl.col(col).cast(pl.Float64, strict=False).round(0).cast(pl.Int64, strict=False)
 
     def _sum(metric: str) -> pl.Expr:
         """Sum simplex_{metric} + duplex_{metric}, casting from string."""
@@ -600,11 +836,16 @@ def _add_combined_columns(lf: pl.LazyFrame) -> pl.LazyFrame:
         ).alias(f"simplex_duplex_{total_name}")
 
     def _vaf(alt_metric: str, total_name: str, vaf_name: str) -> pl.Expr:
-        """Compute VAF = combined_alt / combined_total, 0/0 → 0.0."""
+        """Compute VAF = combined_alt / combined_total, 0/0 → 0.0, NA → NA."""
         alt = pl.col(f"simplex_duplex_{alt_metric}").cast(pl.Float64)
         total = pl.col(f"simplex_duplex_{total_name}").cast(pl.Float64)
-        return (pl.when(total > 0).then(alt / total).otherwise(0.0)).alias(
-            f"simplex_duplex_{vaf_name}"
+        return (
+            pl.when(total.is_null())
+            .then(None)
+            .when(total > 0)
+            .then(alt / total)
+            .otherwise(0.0)
+            .alias(f"simplex_duplex_{vaf_name}")
         )
 
     # ── Determine which additive metrics exist in the merged output ─────
@@ -629,6 +870,37 @@ def _add_combined_columns(lf: pl.LazyFrame) -> pl.LazyFrame:
             len(skipped),
             sorted(skipped),
         )
+
+    # Materialize once: the bad-cell count below and the strand-bias pass would
+    # otherwise each run the scan and join again.
+    lf = lf.collect().lazy()
+
+    # A count cell neither absent (a row the input lacks counts 0, filled
+    # above) nor a finite number: the combined value is NA. One warning per
+    # column, with the number of rows.
+    def _bad(col: str) -> pl.Expr:
+        v = pl.col(col).cast(pl.Float64, strict=False)
+        return v.is_null() | ~v.is_finite()
+
+    bad = (
+        lf.select(
+            [
+                (_bad(f"simplex_{m}") | _bad(f"duplex_{m}")).sum().alias(m)
+                for m in available_additive
+            ]
+        )
+        .collect()
+        .row(0, named=True)
+    )
+    for metric, n in bad.items():
+        if n:
+            logger.warning(
+                "  %s: %d row(s) have a missing or non-numeric count in duplex or simplex; "
+                "simplex_duplex_%s (and the totals and VAF built from it) is NA there",
+                metric,
+                n,
+                metric,
+            )
 
     # ── Phase 1: Additive sums (lazy, vectorized) ────────────────────────
     sum_exprs = [_sum(m) for m in available_additive]
@@ -675,9 +947,26 @@ def _add_combined_columns(lf: pl.LazyFrame) -> pl.LazyFrame:
             compute_read_sb=has_read_strand,
             compute_fragment_sb=has_frag_strand,
         )
-        return df.lazy()
+        lf = df.lazy()
 
-    return lf
+    return _write_combined_as_text(lf)
+
+
+def _write_combined_as_text(lf: pl.LazyFrame) -> pl.LazyFrame:
+    """The combined counts and VAFs as the writers write theirs: integers, VAFs
+    as ``f"{v:.4f}"``, NA where a value is missing. (Strand bias is formatted
+    where it is computed.)"""
+    names = lf.collect_schema().names()
+    exprs = []
+    for col in names:
+        if not col.startswith("simplex_duplex_") or "strand_bias" in col:
+            continue
+        if col in ("simplex_duplex_vaf", "simplex_duplex_vaf_fragment"):
+            text = pl.col(col).map_elements(lambda v: f"{v:.4f}", return_dtype=pl.Utf8)
+            exprs.append(text.fill_null("NA").alias(col))
+        else:
+            exprs.append(pl.col(col).cast(pl.Utf8).fill_null("NA").alias(col))
+    return lf.with_columns(exprs) if exprs else lf
 
 
 def _compute_combined_strand_bias(
@@ -721,8 +1010,12 @@ def _compute_combined_strand_bias(
         )
         df = df.with_columns(
             [
-                pl.Series("simplex_duplex_strand_bias_p_value", sb_results[0]),
-                pl.Series("simplex_duplex_strand_bias_odds_ratio", sb_results[1]),
+                pl.Series(
+                    "simplex_duplex_strand_bias_p_value", [_fmt_sci(v) for v in sb_results[0]]
+                ),
+                pl.Series(
+                    "simplex_duplex_strand_bias_odds_ratio", [_fmt(v) for v in sb_results[1]]
+                ),
             ]
         )
 
@@ -738,12 +1031,18 @@ def _compute_combined_strand_bias(
         )
         df = df.with_columns(
             [
-                pl.Series("simplex_duplex_fragment_strand_bias_p_value", fsb_results[0]),
-                pl.Series("simplex_duplex_fragment_strand_bias_odds_ratio", fsb_results[1]),
+                pl.Series(
+                    "simplex_duplex_fragment_strand_bias_p_value",
+                    [_fmt_sci(v) for v in fsb_results[0]],
+                ),
+                pl.Series(
+                    "simplex_duplex_fragment_strand_bias_odds_ratio",
+                    [_fmt(v) for v in fsb_results[1]],
+                ),
             ]
         )
     # ── Sanitize NaN/Inf in strand bias columns ─────────────────────────────
-    # Fisher exact test returns NaN for OR when alt_total ≤ 1 (issue #19).
+    # Fisher exact test returns NaN for OR when alt_total ≤ 1.
     # Polars writes NaN as literal 'NaN' in CSV — convert to 'NA' for MAF.
     sb_cols = [c for c in df.columns if "strand_bias" in c and c.startswith("simplex_duplex_")]
     if sb_cols:
@@ -794,11 +1093,12 @@ def _apply_fisher(
 
     for i in range(df.height):
         # Values are Int64 from the additive sum phase
-        a = int(rf[i]) if rf[i] is not None else 0
-        b = int(rr[i]) if rr[i] is not None else 0
-        c = int(af[i]) if af[i] is not None else 0
-        d = int(ar[i]) if ar[i] is not None else 0
-        p, odds = fisher_fn(a, b, c, d)
+        # A missing combined count (NA) leaves no table to test: NA.
+        if None in (rf[i], rr[i], af[i], ar[i]):
+            p_values.append(float("nan"))
+            odds_ratios.append(float("nan"))
+            continue
+        p, odds = fisher_fn(int(rf[i]), int(rr[i]), int(af[i]), int(ar[i]))
         p_values.append(p)
         odds_ratios.append(odds)
 

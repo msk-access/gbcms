@@ -20,8 +20,14 @@ Thank you for your interest in contributing to GetBaseCounts! This document prov
    # Install Rust (if not installed)
    curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
    
-   # Build and install in development mode
-   pip install maturin
+   # A virtual environment: the build below installs into one, and the system
+   # pip is often externally managed.
+   python3 -m venv .venv
+   source .venv/bin/activate
+
+   # Build and install in development mode. Needs pip>=25.1 (or `maturin develop --uv`):
+   # it also installs the `dev` dependency group (PEP 735).
+   pip install --upgrade "pip>=25.1" maturin
    maturin develop --release
    ```
 
@@ -104,9 +110,10 @@ Changes to the counting engine (`rust/src/counting/` — especially `engine.rs` 
 - **Unit tests**: `cargo test` must pass (all existing tests + new tests for the change)
 - **BAM-slice regression**: Run the BAM-slice regression suite and verify no unintended
   count shifts (see the developer guide for the current slice set)
-- **Binned↔legacy parity**: any change to read classification / filtering / fragment
-  consensus / fetch-window logic must be mirrored in the legacy `count_single_variant`,
-  or the parity tests fail (see `.agents/rules/architecture.md`)
+- **Binning invariance**: counts must not depend on bin geometry; the binning-invariance
+  tests and `count_checked` compare every field (see `.agents/rules/architecture.md`)
+- **Read census**: pure-indel counting is checked against `tests/census.py`; a change
+  that moves the census property test needs a decision, not a new expectation
 - **Variant-type coverage**: If modifying a specific variant type (SNP/MNP/Indel/Complex),
   ensure the regression MAF includes representative variants of that type
 - **MnpResult paths**: Any changes to MNP handling must test all 5 `MnpResult` variants:
@@ -130,7 +137,7 @@ Changes to the counting engine (`rust/src/counting/` — especially `engine.rs` 
    make test && make lint                                   # Python: pytest + ruff/black/mypy
    cd rust && cargo clippy --all-targets -- -D warnings && cargo test && cd ..
    ```
-   The load-bearing invariants (binned↔legacy parity, one base-quality gate across
+   The load-bearing invariants (binning invariance, one base-quality gate across
    alignment backends, the 4 counting-test invariants) are in `.agents/rules/architecture.md`
    (in the repo root) — read them before touching the engine.
 
