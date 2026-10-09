@@ -17,8 +17,14 @@
 >   tooling. Aggregates and allele shapes only in issues, PRs and this plan.
 > - Check `.agents/learnings/REJECTED.md` before proposing an alternative.
 
-**Status (2026-10-08).** Draft for operator review; nothing is implemented. The
-decision tables below need the operator before any ticket starts.
+**Status (2026-10-08).** Draft for operator review; nothing is implemented.
+- **Decided (operator, 2026-10-08):** 2 (C41: keep allele-level REF and VAF, add docs),
+  4 (close #244 and replace it with the Phase-3 sub-issue), 5 (re-measure #246 and close
+  it unless seen) and 6 (remove `build-gtf-cache`). Go-aheads: the GIAB region fetch,
+  the WES slices on HPC, filing the issue structure, and this PR.
+- **Open:** 1 (C39) and 3 (C40). The operator asked for real examples drawn out, the
+  community standard and the RNA effects, and whether the AD changes move toward
+  truth. They will be re-checked on GIAB germline hets (truth 0.5) and the WES arm.
 
 Priority: **H** high, **M** medium, **L** low. **[counts]** can change counts.
 **[decide]** needs an operator decision first. **[new]** has no issue yet.
