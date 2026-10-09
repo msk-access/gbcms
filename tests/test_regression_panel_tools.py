@@ -599,7 +599,6 @@ def _times(root, build, records):
     )
 
 
-@pytest.mark.xfail(strict=True, reason="prepare reads MAF presence, not the time records")
 def test_attribute_prepare_skips_a_run_whose_latest_attempt_failed(tmp_path, capsys):
     """A run that crashed partway leaves a partial MAF (a row short). prepare reads the
     time records as compare_panel.py does: it skips a run whose latest attempt failed in
@@ -625,7 +624,6 @@ def test_attribute_prepare_skips_a_run_whose_latest_attempt_failed(tmp_path, cap
     assert "r001_dna_tumor" in capsys.readouterr().out
 
 
-@pytest.mark.xfail(strict=True, reason="check compares a failed reduced run's partial output")
 def test_attribute_check_reports_a_failed_reduced_run(tmp_path, capsys):
     """A reduced run whose latest attempt failed cannot vouch for the reduction: check
     names it as failed (to re-submit) and exits 1, rather than comparing its output."""
@@ -647,7 +645,6 @@ def test_attribute_check_reports_a_failed_reduced_run(tmp_path, capsys):
     assert "latest attempt failed" in printed and "r001_dna_tumor" in printed
 
 
-@pytest.mark.xfail(strict=True, reason="attribute trusts a failed checkpoint run's output")
 def test_attribute_does_not_trace_through_a_failed_checkpoint_run(tmp_path, capsys):
     """A checkpoint run whose latest attempt failed is not evidence, even when its MAF
     holds the row: the cell is unattributed and the run is named, to re-submit."""
