@@ -362,6 +362,163 @@ def _delins_reads(n: int, alt: str, shape: str):
     return out
 
 
+# Pure deletions of 50 bp or more, judged at the POS breakpoint (RJ-24): (deleted
+# bases, microhomology). The contig is longer, so a 1 kb deletion fits; reads are 100
+# bases, each the forward read of a proper pair (its fragment admits clipped bases).
+LONG_DEL = {"del 60": (60, 0), "del 60 mh3": (60, 3), "del 1000": (1000, 0)}
+LONG_L, LONG_READ = 2000, 100
+# Where a recurring change sits past the junction, and inside REF's window.
+RECUR_PAST = 1
+
+
+def _long_contig(n: int, mh: int) -> str:
+    """Random C/G/T with the deletion [A, A + n) sliding exactly `mh` bases right and
+    none left."""
+    rng = random.Random(254)
+    seq = [rng.choice("CGT") for _ in range(LONG_L)]
+    for i in range(mh):
+        seq[A + i] = seq[A + n + i]
+    if seq[A + mh] == seq[A + n + mh]:
+        seq[A + mh] = next(b for b in "CGT" if b != seq[A + n + mh])
+    if seq[A - 1] == seq[A + n - 1]:
+        seq[A - 1] = next(b for b in "CGT" if b != seq[A + n - 1])
+    return "".join(seq)
+
+
+def _other(base: str) -> str:
+    return "A" if base != "A" else "C"
+
+
+def _long_del_reads(n: int, mh: int, shape: str) -> list:
+    """The four reads of a long-deletion shape, as pysam records (pairs' forward reads;
+    a supplementary record where the shape has one)."""
+    contig = _long_contig(n, mh)
+    hap = contig[:A] + contig[A + n :]  # ALT: genome g >= A + n sits at g - n
+    win = mh + 4  # past the junction: the microhomology and four clean bases
+    reads = []
+
+    def add(name, seq, pos, cigar, flag=0):
+        r = make_read(name, seq, pos, tuple(cigar), flag=0x1 | 0x2 | 0x20 | 0x40 | flag)
+        r.next_reference_id = 0
+        r.next_reference_start = pos + 250
+        r.template_length = 400
+        reads.append(r)
+
+    def carrier(i, s, right, sub=None):
+        """An exact D carrier from `s` holding `right` bases past the junction."""
+        left = A - s
+        seq = list(hap[s : A + right])
+        if sub is not None:
+            seq[sub - n - s] = _other(seq[sub - n - s])
+        add(f"c{i}", "".join(seq), s, [(0, left), (2, n), (0, right)])
+
+    def ref_read(i, s, length, sub=None):
+        seq = list(contig[s : s + length])
+        if sub is not None:
+            seq[sub - s] = _other(seq[sub - s])
+        add(f"r{i}", "".join(seq), s, [(0, length)])
+
+    for i in range(N_READS):
+        if shape == "exact D carrier, long flanks":
+            carrier(i, A - 50 - i, LONG_READ - 50 - i)
+        elif shape == "exact D carrier, four bases past the microhomology":
+            carrier(i, A - (LONG_READ - win), win)
+        elif shape == "exact D carrier, three bases past the microhomology":
+            carrier(i, A - (LONG_READ - win + 1), win - 1)
+        elif shape == "right-clipped carrier, the junction in the clip":
+            s = A - 70 - i
+            add(f"c{i}", hap[s : s + LONG_READ], s, [(0, A - s), (4, LONG_READ - (A - s))])
+        elif shape == "left-clipped carrier aligned from the right flank":
+            c = 20 + i  # bases before the junction, in the clip
+            add(f"c{i}", hap[A - c : A - c + LONG_READ], A + n, [(4, c), (0, LONG_READ - c)])
+        elif shape == "split carrier: a soft-clipped primary and a hard-clipped supplementary":
+            s = A - 70 - i
+            seq = hap[s : s + LONG_READ]
+            add(f"c{i}", seq, s, [(0, A - s), (4, LONG_READ - (A - s))])
+            add(f"c{i}", seq[A - s :], A + n, [(5, A - s), (0, LONG_READ - (A - s))], flag=0x800)
+        elif shape == "hard-clipped primary aligned from the right flank":
+            c = 20 + i
+            add(f"c{i}", hap[A : A - c + LONG_READ], A + n, [(5, c), (0, LONG_READ - c)])
+        elif shape == "REF read, long flanks":
+            ref_read(i, A - 50 - i, LONG_READ)
+        elif shape == "REF read, four deleted bases past the microhomology":
+            ref_read(i, A + win - LONG_READ, LONG_READ)
+        elif shape == "REF read, three deleted bases past the microhomology":
+            ref_read(i, A + win - 1 - LONG_READ, LONG_READ)
+        elif shape == "REF read with an error 20 bases past the window":
+            ref_read(i, A - 50 - i, LONG_READ, sub=A + win + 20)
+        elif shape == "REF read with an error inside the window":
+            ref_read(i, A - 50 - i, LONG_READ, sub=A + mh + 1)
+        elif shape == "a deletion two bases shorter at the same start":
+            s = A - 50 - i
+            other = contig[:A] + contig[A + n - 2 :]
+            add(
+                f"c{i}",
+                other[s : s + LONG_READ],
+                s,
+                [(0, A - s), (2, n - 2), (0, LONG_READ - (A - s))],
+            )
+        elif shape == "the deletion written as two with two bases kept between":
+            s = A - 50 - i
+            kept = contig[:A] + contig[A + 30 : A + 32] + contig[A + n :]
+            rest = LONG_READ - (A - s) - 2
+            add(
+                f"c{i}",
+                kept[s : s + LONG_READ],
+                s,
+                [(0, A - s), (2, 30), (0, 2), (2, n - 32), (0, rest)],
+            )
+        elif shape == "REF read starting inside the deletion":
+            ref_read(i, A + 10 + i, LONG_READ)
+        elif shape == "carriers with a recurring change two bases past the microhomology":
+            carrier(i, A - 50 - i, LONG_READ - 50 - i, sub=A + n + mh + RECUR_PAST)
+        elif shape == "REF reads with a recurring change inside the window":
+            ref_read(i, A - 50 - i, LONG_READ, sub=A + mh + RECUR_PAST)
+        else:
+            raise KeyError(shape)
+    return reads
+
+
+_LONG_DEL_ALL = (
+    "exact D carrier, long flanks",
+    "exact D carrier, four bases past the microhomology",
+    "exact D carrier, three bases past the microhomology",
+    "right-clipped carrier, the junction in the clip",
+    "left-clipped carrier aligned from the right flank",
+    "split carrier: a soft-clipped primary and a hard-clipped supplementary",
+    "hard-clipped primary aligned from the right flank",
+    "REF read, long flanks",
+    "REF read, four deleted bases past the microhomology",
+    "REF read, three deleted bases past the microhomology",
+    "REF read with an error 20 bases past the window",
+    "REF read with an error inside the window",
+    "a deletion two bases shorter at the same start",
+    "the deletion written as two with two bases kept between",
+    "REF read starting inside the deletion",
+    "carriers with a recurring change two bases past the microhomology",
+    "REF reads with a recurring change inside the window",
+)
+LONG_DEL_SHAPES = {
+    "del 60": _LONG_DEL_ALL,
+    "del 60 mh3": (
+        "exact D carrier, long flanks",
+        "exact D carrier, four bases past the microhomology",
+        "exact D carrier, three bases past the microhomology",
+        "left-clipped carrier aligned from the right flank",
+        "REF read, long flanks",
+        "REF read, four deleted bases past the microhomology",
+        "REF read, three deleted bases past the microhomology",
+    ),
+    "del 1000": (
+        "exact D carrier, long flanks",
+        "right-clipped carrier, the junction in the clip",
+        "left-clipped carrier aligned from the right flank",
+        "REF read, long flanks",
+        "REF read starting inside the deletion",
+    ),
+}
+
+
 DELINS_SHAPES = {
     "delins 28>6": (
         "exact carrier, eight flank bases right",
@@ -396,6 +553,9 @@ def cases() -> list[Case]:
     for v, shapes in DELINS_SHAPES.items():
         for shape in shapes:
             out.append(Case(f"{v} | {shape}", "C39 one-sided windows", v, shape))
+    for v, shapes in LONG_DEL_SHAPES.items():
+        for shape in shapes:
+            out.append(Case(f"{v} | {shape}", "C40 long deletions", v, shape))
     out.append(
         Case(
             "u-8 | sibling SNV inside the span", "C2 siblings", "u-8", "sibling SNV inside the span"
@@ -548,6 +708,24 @@ def run(case: Case, workdir: Path) -> tuple[tuple[int, int, int], str]:
         )
         (c,) = _rs.count_bam_binned(bam, [pv.variant], [None], **ARGS)
         return (c.rd, c.ad, c.partial_alt), ""
+    if case.variant in LONG_DEL:
+        n, mh = LONG_DEL[case.variant]
+        contig = _long_contig(n, mh)
+        _, bam = write_contig(d, contig, _long_del_reads(n, mh, case.shape), "c")
+        fa = str(d / "c.fa")
+        (pv,) = _rs.prepare_variants(
+            [_rs.Variant("1", A - 1, contig[A - 1 : A + n], contig[A - 1], "DEL")],
+            fa,
+            5,
+            False,
+            1,
+            True,
+        )
+        (c,) = _rs.count_bam_binned(bam, [pv.variant], [None], **ARGS)
+        verdicts = Counter(x.value for x in census(bam, contig, pv.variant).counts.elements())
+        return (c.rd, c.ad, c.partial_alt), ", ".join(
+            f"{k} {m}" for k, m in sorted(verdicts.items())
+        )
     run_len, r, a = COMPLEX[case.variant]
     contig = _complex_contig(run_len)
     haps, ends = _complex_reads(run_len, r, a)
@@ -578,6 +756,7 @@ DECISIONS = {
     "C28 anchor deleted": "decided: a read deleting the anchor is judged by its bases (C28 #202)",
     "C25 long events": "decided: junction windows read on through the read (C25 #199)",
     "C39 one-sided windows": "decided: one pair of equal-length junction windows at one flank (C39 #253)",
+    "C40 long deletions": "decided: 50+ bp deletions judged by their bases at the POS breakpoint (C40 #254)",
     "read inputs": "decided: a read contributes its molecule's bases, with qualities (C17 #176, C19 #182; C29 #207 a fix)",
     "C35 unreadable inserts": "decided: an insertion's ALT needs one of the read's own inserted bases read (C35 #240)",
     "C36 inserts of other bases": "decided: a same-length insert of other bases is judged by its bases, never Phase 3 (C36 #243)",
@@ -586,7 +765,21 @@ DECISIONS = {
 
 # Decided calls the engine does not give yet: the red-first cases of a rule being
 # built, strict xfails in test_read_judgment_spec.py until it lands.
-PENDING: set[str] = set()
+PENDING: set[str] = {
+    "del 60 | exact D carrier, three bases past the microhomology",
+    "del 60 | right-clipped carrier, the junction in the clip",
+    "del 60 | left-clipped carrier aligned from the right flank",
+    "del 60 | split carrier: a soft-clipped primary and a hard-clipped supplementary",
+    "del 60 | REF read, three deleted bases past the microhomology",
+    "del 60 | REF read with an error inside the window",
+    "del 60 | a deletion two bases shorter at the same start",
+    "del 60 | the deletion written as two with two bases kept between",
+    "del 60 mh3 | exact D carrier, three bases past the microhomology",
+    "del 60 mh3 | left-clipped carrier aligned from the right flank",
+    "del 60 mh3 | REF read, three deleted bases past the microhomology",
+    "del 1000 | right-clipped carrier, the junction in the clip",
+    "del 1000 | left-clipped carrier aligned from the right flank",
+}
 
 # (ref_count, alt_count, partial_alt) for the case's four reads.
 EXPECT = {
@@ -778,6 +971,41 @@ EXPECT = {
     "hp+A | the ALT at the junction with a substitution in the run": (0, 4, 0),
     "hp+A | the ALT with its anchor substituted, written one junction left": (0, 0, 4),
     "u+10 | the ALT with its anchor substituted, written one junction left": (0, 0, 4),
+    "del 60 | exact D carrier, long flanks": (0, 4, 0),
+    "del 60 | exact D carrier, four bases past the microhomology": (0, 4, 0),
+    # three junction bases past the microhomology: too few to judge (RJ-24)
+    "del 60 | exact D carrier, three bases past the microhomology": (0, 0, 0),
+    "del 60 | right-clipped carrier, the junction in the clip": (0, 4, 0),
+    "del 60 | left-clipped carrier aligned from the right flank": (0, 4, 0),
+    "del 60 | split carrier: a soft-clipped primary and a hard-clipped supplementary": (0, 4, 0),
+    "del 60 | hard-clipped primary aligned from the right flank": (0, 0, 0),
+    "del 60 | REF read, long flanks": (4, 0, 0),
+    "del 60 | REF read, four deleted bases past the microhomology": (4, 0, 0),
+    # REF needs as many deleted bases as ALT needs right-flank bases (RJ-24)
+    "del 60 | REF read, three deleted bases past the microhomology": (0, 0, 0),
+    # nothing past the window is checked, for either allele (RJ-24)
+    "del 60 | REF read with an error 20 bases past the window": (4, 0, 0),
+    "del 60 | REF read with an error inside the window": (0, 0, 0),
+    # another allele, one mismatch from each window more than the other: neither
+    "del 60 | a deletion two bases shorter at the same start": (0, 0, 0),
+    # another allele, closer to ALT than REF over the windows: partial
+    "del 60 | the deletion written as two with two bases kept between": (0, 0, 4),
+    "del 60 | REF read starting inside the deletion": (0, 0, 0),
+    # a recurring change is a separate event: masked, the carriers count
+    "del 60 | carriers with a recurring change two bases past the microhomology": (0, 4, 0),
+    "del 60 | REF reads with a recurring change inside the window": (4, 0, 0),
+    "del 60 mh3 | exact D carrier, long flanks": (0, 4, 0),
+    "del 60 mh3 | exact D carrier, four bases past the microhomology": (0, 4, 0),
+    "del 60 mh3 | exact D carrier, three bases past the microhomology": (0, 0, 0),
+    "del 60 mh3 | left-clipped carrier aligned from the right flank": (0, 4, 0),
+    "del 60 mh3 | REF read, long flanks": (4, 0, 0),
+    "del 60 mh3 | REF read, four deleted bases past the microhomology": (4, 0, 0),
+    "del 60 mh3 | REF read, three deleted bases past the microhomology": (0, 0, 0),
+    "del 1000 | exact D carrier, long flanks": (0, 4, 0),
+    "del 1000 | right-clipped carrier, the junction in the clip": (0, 4, 0),
+    "del 1000 | left-clipped carrier aligned from the right flank": (0, 4, 0),
+    "del 1000 | REF read, long flanks": (4, 0, 0),
+    "del 1000 | REF read starting inside the deletion": (0, 0, 0),
 }
 
 
