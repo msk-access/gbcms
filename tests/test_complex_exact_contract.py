@@ -16,6 +16,7 @@ import random
 
 import pysam
 import pytest
+from census import Verdict, census
 from helpers import count_checked, make_read
 
 from gbcms import _rs as gbcms_rs
@@ -903,3 +904,35 @@ def test_a_read_spliced_through_the_event_is_depth_only(tmp_path):
     c = count_checked(bam, [_prepared(fa, ref_allele, alt, pos=p)])[0]
     _invariants(c)
     assert (c.rd, c.ad, c.partial_alt) == (0, 0, 0)
+
+
+def test_a_ref_molecule_with_one_flank_error_is_not_alt(tmp_path):
+    """CTC>AT; four REF molecules, mostly low quality around the event, with one
+    clear (Q37) error two bases left of it (G>T). Both alleles' windows are read from
+    the same anchor, so the error counts against both readings and the REF reading
+    still fits: the reads are REF. When each allele was read from whichever anchor
+    fitted it best, the ALT reading was anchored one base along, never saw the
+    error, and fit through the low-quality bases, so these REF molecules counted ALT
+    (RD 0, AD 4 in 6.6.0)."""
+    ctx = "GATCCTGACTTCGCATGTCCAGTGACTCATGCGTTACAGGCTTAGCCATGCTTGACGTA"
+    at = 400
+    rng = random.Random(7)
+    contig = [rng.choice("CT") for _ in range(900)]
+    contig[at - 25 : at - 25 + len(ctx)] = list(ctx)
+    contig = "".join(contig)
+    assert contig[at : at + 3] == "CTC" and contig[at - 2] == "G"
+    low = [37, 0, 12, 37, 37, 0, 2, 2, 2, 0, 37, 12, 23, 12, 23, 2, 23, 2]  # query 14..31
+    reads = []
+    for i in range(4):
+        s = at - 20
+        seq = list(contig[s : s + READ])
+        seq[18] = "T"  # reference position at - 2
+        quals = [37] * READ
+        quals[14:32] = low
+        reads.append(make_read(f"r{i}", "".join(seq), s, ((0, READ),), quals=quals))
+    fa, bam = _files(tmp_path, contig, reads)
+    v = _prepared(fa, "CTC", "AT", pos=at)
+    c = count_checked(bam, [v])[0]
+    _invariants(c)
+    assert (c.rd, c.ad, c.partial_alt) == (4, 0, 0)
+    assert census(bam, contig, v).counts[Verdict.REF] == 4
