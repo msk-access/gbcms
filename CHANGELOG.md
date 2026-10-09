@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed — release tooling
+
+- **Attribution leaves out runs whose latest attempt failed (#255).** `attribute.py`
+  `prepare`, `check` and `attribute` read the builds' time records as
+  `compare_panel.py` does, and name each run they skip. A run that crashed partway
+  leaves a partial MAF, which otherwise reads as changed rows. A reduced run whose
+  latest attempt failed fails `check`, and `attribute` treats its output as missing,
+  whatever it holds. The 6.6.0 gate needed those MAFs set aside by hand.
+
 ## [6.6.0] - 2026-10-07 — every read judged by its own bases
 
 ### Changed — release infrastructure (#136, #137, #152)
