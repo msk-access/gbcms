@@ -588,3 +588,85 @@ def test_the_time_flag_pairs_runs_and_ignores_second_scale_ones(tmp_path):
     gate = (tmp_path / "rep" / "gate.txt").read_text()
     assert "EXPLAIN: dna wall time x2.00" in gate and "mq0 wall time" not in gate
     assert "GATE: ATTENTION: run time or memory" in gate
+
+
+def _times(root, build, records):
+    """A build's time records, as run_panel.sh writes them: (run_id, exit, end_epoch)."""
+    (root / build).mkdir(parents=True, exist_ok=True)
+    rows = "".join(f"{rid}\tdna\t{rc}\t1\tNA\t{end}\n" for rid, rc, end in records)
+    (root / build / "times.0.tsv").write_text(
+        "run_id\tarm\texit\twall_s\tmax_rss_kb\tend_epoch\n" + rows
+    )
+
+
+@pytest.mark.xfail(strict=True, reason="prepare reads MAF presence, not the time records")
+def test_attribute_prepare_skips_a_run_whose_latest_attempt_failed(tmp_path, capsys):
+    """A run that crashed partway leaves a partial MAF (a row short). prepare reads the
+    time records as compare_panel.py does: it skips a run whose latest attempt failed in
+    either build, names it, and keeps a run that failed once and then succeeded."""
+    attribute = _load("attribute")
+    tier, out, attrib = _tier(tmp_path), tmp_path / "out", tmp_path / "attrib"
+    _out(out, "new", "r001_dna_tumor", (10, 12, 5))
+    rows = [v + ("50", "10", "0", "60", "50", "10", "PASS") for v in VARIANTS[:2]]
+    _write(out / "base" / "r001_dna_tumor" / "S.maf", OUT_COLS, rows)  # crashed: a row short
+    _out(out, "base", "r002_dna_duplex", (1, 1, 1))
+    _out(out, "new", "r002_dna_duplex", (1, 4, 1))  # a real change
+    for rid in ("r002_dna_simplex", "r001_normal"):
+        for build in ("base", "new"):
+            _out(out, build, rid, (1, 1, 1))
+    _times(
+        out,
+        "base",
+        [("r001_dna_tumor", 1, 5), ("r002_dna_duplex", 1, 6), ("r002_dna_duplex", 0, 9)],
+    )
+    _times(out, "new", [("r001_dna_tumor", 0, 5), ("r002_dna_duplex", 0, 6)])
+    attribute.prepare(str(tier), str(out), "base", "new", str(attrib), 100)
+    assert [r["run_id"] for r in _read(attrib / "runs.tsv")] == ["r002_dna_duplex"]
+    assert "r001_dna_tumor" in capsys.readouterr().out
+
+
+@pytest.mark.xfail(strict=True, reason="check compares a failed reduced run's partial output")
+def test_attribute_check_reports_a_failed_reduced_run(tmp_path, capsys):
+    """A reduced run whose latest attempt failed cannot vouch for the reduction: check
+    names it as failed (to re-submit) and exits 1, rather than comparing its output."""
+    attribute = _load("attribute")
+    tier, out, attrib = _tier_one(tmp_path), tmp_path / "out", tmp_path / "attrib"
+    cols = KEY + ("alt_count",)
+    for build, alt in (("base", "12"), ("new", "20")):
+        _write(out / build / "r001_dna_tumor" / "S.maf", cols, [V3[0] + (alt,), V3[1] + ("3",)])
+        _write(attrib / "out" / build / "r001_dna_tumor" / "S.maf", cols, [V3[0] + (alt,)])
+    _write(
+        attrib / "runs.tsv",
+        RUN_COLS,
+        [("r001_dna_tumor", "r001", "dna", "dna", "dmp", "a.bam", "x", "")],
+    )
+    _times(attrib / "out", "new", [("r001_dna_tumor", 1, 7)])
+    with pytest.raises(SystemExit):
+        attribute.check(str(tier), str(out), "base", "new", str(attrib))
+    printed = capsys.readouterr().out
+    assert "latest attempt failed" in printed and "r001_dna_tumor" in printed
+
+
+@pytest.mark.xfail(strict=True, reason="attribute trusts a failed checkpoint run's output")
+def test_attribute_does_not_trace_through_a_failed_checkpoint_run(tmp_path, capsys):
+    """A checkpoint run whose latest attempt failed is not evidence, even when its MAF
+    holds the row: the cell is unattributed and the run is named, to re-submit."""
+    attribute = _load("attribute")
+    tier, out, attrib = _tier_one(tmp_path), tmp_path / "out", tmp_path / "attrib"
+    cols = KEY + ("alt_count",)
+    _write(out / "base" / "r001_dna_tumor" / "S.maf", cols, [V3[0] + ("12",)])
+    _write(out / "new" / "r001_dna_tumor" / "S.maf", cols, [V3[0] + ("20",)])
+    _write(
+        attrib / "runs.tsv",
+        RUN_COLS,
+        [("r001_dna_tumor", "r001", "dna", "dna", "dmp", "a.bam", "x", "")],
+    )
+    cps = tmp_path / "cps.tsv"
+    _write(cps, ("order", "label", "sha", "interval_merges"), [("1", "#1 a", "aaa1111", "#1")])
+    _write(attrib / "out" / "base" / "r001_dna_tumor" / "S.maf", cols, [V3[0] + ("12",)])
+    _write(attrib / "out" / "cp_aaa1111" / "r001_dna_tumor" / "S.maf", cols, [V3[0] + ("20",)])
+    _times(attrib / "out", "cp_aaa1111", [("r001_dna_tumor", 1, 7)])
+    with pytest.raises(SystemExit):
+        attribute.attribute(str(tier), str(out), "base", "new", str(attrib), str(cps))
+    assert _read(attrib / "attribution_cells.tsv") == []
+    assert "r001_dna_tumor" in capsys.readouterr().out
