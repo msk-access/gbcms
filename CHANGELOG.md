@@ -7,6 +7,52 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed — complex events read by one pair of equal-length windows (#253)
+
+- **The rule (RJ-23).** A complex event (delins, an anchor-changing indel, an MNP
+  read with an indel at the block) is read by one pair of windows of equal length,
+  inward from the POS flank: the shorter allele's whole window (its event, grown
+  through repeats, with two flank bases each side) against as many of the longer
+  allele's bases, then on through the rest of the longer allele as far as the read
+  reaches. A REF and an ALT molecule get the same number of read starts that can
+  judge them. Before, the shorter window was padded with flank to the longer one's
+  length, which cost reads, and events past 50 bases were read at both junctions,
+  which let the longer allele count at either end. When both alleles pass 50 bases
+  the windows run from the flank nearer the first difference (an event ending a
+  long run is out of a read's reach from the other); an RNA variant whose POS flank
+  an exon edge cuts reads from the other flank. A read judged from the right counts
+  although it starts past POS, as the other allele's molecule starting there would.
+- **A change beside the event is a separate event.** A change recurring within 25
+  bases of the event (overlapping mates count once) is masked in both windows, as
+  RJ-8 treats another indel outside the window, so a read carrying the given
+  allele counts ALT. One on the ALT reads alone (a phased neighbour, or an event
+  the input under-describes) is named in `gbcms_diagnostic` under the
+  `OBSERVED_ALLELE`/`COEXISTING_ALLELE` rule. Withholding those reads was measured
+  and not adopted: on HG002 it took 5 het delins with a phased SNV in cis from VAF
+  0.42 to 0.09.
+- **Placement.** Windows anchor on the aligned base of the reading flank. A read
+  whose clip, or whose own deletion, holds that flank (an aligner using a
+  microhomology at the event's far end) is placed from the other flank at each
+  allele's length.
+- **Measured** against 6.6.0 on the 6.6.0 gate panel's delins rows (IMPACT) and on
+  HG002 germline het delins (GIAB v5.0q, truth 0.5; WGS 35x, BWA-MEM):
+
+  | | 6.6.0 | 6.7.0 |
+  |:--|:--|:--|
+  | Panel, span 20+ (14 rows): AD / RD; within 10% of sign-out | 1,203 / 4,117; 0/14 | 1,650 / 5,458; 8/14 |
+  | Panel, span under 20 (70 rows) | 9,557 / 24,053; 52/70 | 9,836 / 25,163; 61/70 |
+  | Panel, recurrent neighbour (49 rows) | 2,398 / 14,609; 19/49 | 3,969 / 15,678; 26/49 |
+  | HG002, span 20+: median VAF; within 0.35–0.65 | 0.464; 166/237 | 0.472; 179/236 |
+  | HG002, span 5–19 | 0.500; 124/149 | 0.500; 123/149 |
+
+  Pure indels and SNVs are unchanged (195 germline het indels: 2 count changes).
+- **Spec.** Reads ending inside a long insertion that hold the REF window's length
+  are judged (ALT where their bases contradict REF), a carrier ending on the base
+  after its run is ALT, and a read one base from each allele is neither, not
+  partial. `tests/test_carrier_window_balance.py` checks that equal molecules give
+  AD = RD for shrinking, growing, long, both-long and run-ending shapes, in DNA and
+  in RNA read from the right.
+
 ## [6.6.0] - 2026-10-07 — every read judged by its own bases
 
 ### Changed — release infrastructure (#136, #137, #152)
