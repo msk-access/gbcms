@@ -2952,10 +2952,12 @@ fn count_per_transcript(
                 continue;
             }
 
-            // ── Anchor overlap check (as in the main counts, which admit reads
-            // by their soft-clipped bases only outside RNA mode; per-transcript
+            // ── Anchor overlap check, as in the main counts: a read decided from
+            // windows read from the right flank counts without overlapping the
+            // variant position (clip admission is DNA only, and per-transcript
             // counts run only in RNA mode)
-            if !(r_start <= variant.pos && r_end > variant.pos) {
+            let overlaps_anchor = r_start <= variant.pos && r_end > variant.pos;
+            if !(overlaps_anchor || result.read_from_right) {
                 continue;
             }
 

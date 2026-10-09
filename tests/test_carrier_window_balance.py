@@ -142,6 +142,41 @@ def test_windows_read_from_the_right_judge_ref_and_alt_molecules_alike(tmp_path,
     assert 0 <= c.rd - c.ad <= (2 if edge else 0), (c.rd, c.ad)
 
 
+def test_per_transcript_counts_read_from_the_right_admit_alike(tmp_path):
+    """As above with the exon edge annotated: the transcript's counts admit a read
+    decided from the right-read windows as the main counts do, so a REF molecule
+    starting inside the REF bases counts there too and AD and RD stay equal (the two
+    spliced REF reads aside)."""
+    n, alt = SHAPES["28>6"]
+    contig = _contig()
+    reads = _reads(contig, n, alt)
+    n0, n1 = A - 140, A - 5
+    for i in range(2):
+        s = n0 - 30 - i
+        seq = contig[s:n0] + contig[n1 : n1 + 70 + i]
+        reads.append(make_read(f"spl{i}", seq, s, ((0, n0 - s), (3, n1 - n0), (0, 70 + i))))
+    fa, bam = write_contig(tmp_path, contig, reads, "c")
+    gtf = tmp_path / "t.gtf"
+    gtf.write_text(
+        "".join(
+            f'1\tTEST\texon\t{s + 1}\t{e}\t.\t+\t.\tgene_id "G1"; transcript_id "T1";\n'
+            for s, e in ((A - 200, n0), (n1, A + 400))
+        )
+    )
+    (pv,) = _rs.prepare_variants(
+        [_rs.Variant("1", A, contig[A : A + n], alt, "X")], fa, 5, False, 1, True
+    )
+    (c,) = count_checked(
+        bam, [pv.variant], mode="rna", reference_fasta=fa, apply_baq=False, gtf_path=str(gtf)
+    )
+    _invariants(c)
+    assert 0 <= c.rd - c.ad <= 2, (c.rd, c.ad)
+    name, counts = c.transcript_read_counts.split(":")
+    tx_ad, tx_rd, _ = (int(x) for x in counts.split(","))
+    assert name == "T1" and tx_ad > 0
+    assert 0 <= tx_rd - tx_ad <= 2, (tx_rd, tx_ad)
+
+
 def test_a_carrier_whose_deletion_covers_the_reading_flank_is_read_from_the_other(tmp_path):
     """A 30-to-1 delins whose left flank `CA` recurs at the end of the REF allele: an
     aligner may delete the flank and the first 28 REF bases, align the carrier's `CA`
