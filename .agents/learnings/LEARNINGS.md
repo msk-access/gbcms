@@ -17,6 +17,21 @@ regenerating a section.
 
 ---
 
+## [LRN-20261009-001] rule-trigger | an external review is checked against tickets, REJECTED.md and measurements before tickets
+- **Status:** resolved (rule promoted)
+- **Cause:** rule-trigger
+- **Summary:** asked to "verify what makes sense" in an outside review, I compared it
+  with current behaviour only and offered to file tickets. The existing rule (grep
+  `REJECTED.md` before re-proposing) never fired, because the proposals were not mine,
+  and I neither mapped them to the open tickets nor measured their value. The operator
+  asked to measure first; measuring showed most of the value was already covered
+  (existing flags caught 39 of 43 low-explainability rows) and found an open ticket
+  (C33 #214) already fixed.
+- **Promotion target:** `AGENTS.md` (Learning loop) — `DONE:` one line: an external
+  review or proposal is mapped to behaviour, open tickets, `REJECTED.md` and prior
+  probes, and measured on our data, before any ticket is filed.
+- **Related:** [[external-review-measure-first]] memory.
+
 ## [LRN-20261008-001] rule-body | a VAF claim follows the documented definition
 - **Status:** resolved (rule promoted)
 - **Cause:** rule-body

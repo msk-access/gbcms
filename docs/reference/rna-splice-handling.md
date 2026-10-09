@@ -84,7 +84,7 @@ per-type classification):
   the exon arms into a junction-chimeric sequence in which the missing
   intron reads as deletion evidence).
 - A complex variant's exact-carrier windows for a read spliced in their
-  flank or padding are built over the reference spliced at the read's own
+  flank are built over the reference spliced at the read's own
   junctions (RJ-19, C32 #213): the read's bases past a splice are the next
   exon's, so both alleles' haplotypes continue there (the far exon read from
   the FASTA), and repeat growth and flank are measured on that spliced

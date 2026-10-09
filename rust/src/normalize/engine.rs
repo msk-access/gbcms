@@ -451,8 +451,9 @@ fn indel_shift_region(
 /// Reference bases around the event: its change interval (the shift region for
 /// a pure indel), widened to the alleles' own span, plus [`EVENT_REF_MARGIN`]
 /// bases on each side (room to left-align the alleles reads carry there), and
-/// more where a complex variant's exact-carrier windows need it: an event grown
-/// through a long repeat, with its flank and padding. For the observed-allele
+/// more where a complex variant's exact-carrier rule needs it: an event grown
+/// through a long repeat, with its flank and the reach of the neighbouring-change
+/// guard on each side. For the observed-allele
 /// diagnostic and the exact-carrier rule; None when the fetch fails.
 fn event_core_ref(reader: &mut fasta::IndexedReader<File>, v: &Variant, tally: &PrepTally) -> Option<(i64, String)> {
     let (c_lo, c_hi) = window::change_interval(v);
@@ -475,10 +476,9 @@ fn event_core_ref(reader: &mut fasta::IndexedReader<File>, v: &Variant, tally: &
         // A window that came back short reached the contig end.
         let at_contig_end = lo + (seq.len() as i64) < hi;
         let seq = String::from_utf8_lossy(&seq).to_ascii_uppercase();
-        // Fetch more on a short side, up to the cap or a contig end. (Padding the
-        // exact-carrier windows move away from a contig end always fits in the
-        // other side's margin: an event grown far enough to exhaust it is past
-        // LONG_EVENT, whose junction windows are not padded.)
+        // Fetch more on a short side, up to the cap or a contig end. (At a contig
+        // end the rule still judges with the flank there is: the guard reads only
+        // the bases the reference holds.)
         let (short_left, short_right) = carrier::reference_short(lo, &seq, v).unwrap_or((false, false));
         let more_left = short_left && lo > 0 && left < EVENT_REF_MAX_MARGIN;
         let more_right = short_right && !at_contig_end && right < EVENT_REF_MAX_MARGIN;
