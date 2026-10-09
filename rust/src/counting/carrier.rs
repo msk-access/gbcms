@@ -164,10 +164,10 @@ const GUARD_REACH: usize = 25;
 const ROOM: usize = FLANK + GUARD_REACH;
 /// Fragments, and share of the fragments reading that base, a neighbouring change
 /// must recur on before it is taken as part of the reads' haplotype.
-const GUARD_MIN_READS: u32 = 3;
-const GUARD_MIN_SHARE: f64 = 0.2;
+pub(crate) const GUARD_MIN_READS: u32 = 3;
+pub(crate) const GUARD_MIN_SHARE: f64 = 0.2;
 /// Share of the REF reads on which a change is no longer the ALT's alone.
-const GUARD_REF_SHARE: f64 = 0.05;
+pub(crate) const GUARD_REF_SHARE: f64 = 0.05;
 /// Longest tandem-repeat unit the event is grown through (besides the length change).
 const MAX_UNIT: usize = 6;
 /// Masked base: matches any haplotype base.
@@ -841,8 +841,16 @@ pub(crate) struct Guard {
     pub scanned: u32,
 }
 
+impl Guard {
+    /// The guard found for `v`.
+    pub(crate) fn new(v: &Variant, masked: Vec<i64>, larger: Option<ObservedAllele>, scanned: u32) -> Self {
+        Self { key: (v.pos, v.ref_allele.clone(), v.alt_allele.clone()), masked, larger, scanned }
+    }
+}
+
 /// A variant's [`Guard`], found from its reads on first use: only the exact-carrier
-/// rule reads it, so an SNV or a pure indel never pays for it.
+/// rule and the junction judge read it, so an SNV or a short pure indel never pays
+/// for it.
 pub(crate) struct CarrierGuard<'a> {
     found: std::cell::OnceCell<Option<Guard>>,
     find: Box<dyn Fn() -> Option<Guard> + 'a>,
@@ -1014,12 +1022,7 @@ pub(crate) fn guard_for(
         "carrier guard at {}:{} {}>{}: {} recurring changes beside the event masked, {} on the ALT reads alone",
         v.chrom, v.pos + 1, v.ref_allele, v.alt_allele, masked.len(), alt_only.iter().map(Vec::len).sum::<usize>(),
     );
-    Some(Guard {
-        key: (v.pos, v.ref_allele.clone(), v.alt_allele.clone()),
-        masked,
-        larger,
-        scanned,
-    })
+    Some(Guard::new(v, masked, larger, scanned))
 }
 
 /// The minimal differing interval of `a` (REF offsets) against `b`, trimming the

@@ -1213,7 +1213,11 @@ fn count_bin_shared(
         let guard_of = |v| {
             carrier::CarrierGuard::new(move || {
                 let counted = |r: &Record| counted_read(r, v, mode, enforce_strandedness, strandedness, min_mapq);
-                carrier::guard_for(cache, v, &counted, min_baseq)
+                if junction::judges(v) {
+                    junction::guard_for(cache, v, &counted, min_baseq)
+                } else {
+                    carrier::guard_for(cache, v, &counted, min_baseq)
+                }
             })
         };
         let guard = guard_of(variant);

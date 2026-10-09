@@ -31,12 +31,17 @@
 //!   alignment deletes or inserts [`MIN_OWN_INDEL`] bases or more inside the deleted
 //!   span carries another allele (C26): partial evidence.
 
+use log::trace;
 use rust_htslib::bam::record::{Cigar, Record};
 
 use crate::shared::bam_utils::fragment_query_span;
 use crate::types::Variant;
 
-use super::carrier::{aligned_query_range, one_base_evidence, readable_range, score, ReadRules, Reading, WILD};
+use super::carrier::{
+    aligned_query_range, one_base_evidence, readable_range, score, Guard, ReadRules, Reading, GUARD_MIN_READS,
+    GUARD_MIN_SHARE, GUARD_REF_SHARE, WILD,
+};
+use super::observed::{canonical, ObservedAllele};
 use super::utils::{find_read_pos, median_qual, ClassifyPhase, ClassifyResult};
 use super::variant_checks::deleted_anchor_query;
 use super::window::{allele_kind, AlleleKind};
@@ -231,6 +236,122 @@ pub(crate) fn classify(
     Some(out)
 }
 
+/// The neighbouring-change guard for a long deletion (the carrier rule's, RJ-23,
+/// over the junction windows): from the reads `counted` admits, once per fragment,
+/// each read holding the windows from its aligned first window base is taken as the
+/// allele whose continuation it follows (its [`K`] bases past the microhomology fit
+/// that allele to within one base and the other by two or more), and its confident
+/// changes are tallied per window offset. A change on at least [`GUARD_MIN_READS`]
+/// fragments and [`GUARD_MIN_SHARE`] of that allele's reads, with neither
+/// neighbouring offset recurring too (a run of changes is an indel at the junction:
+/// another allele, not masked), is masked at its offset in both windows. On the ALT
+/// reads alone (under [`GUARD_REF_SHARE`] of REF's) it also makes the larger allele
+/// the diagnostic names. None when nothing recurs, or the variant is not judged
+/// here.
+pub(crate) fn guard_for(
+    read_cache: &[Record],
+    v: &Variant,
+    counted: &dyn Fn(&Record) -> bool,
+    min_baseq: u8,
+) -> Option<Guard> {
+    let j = junction(v)?;
+    let (start, seq) = v.event_ref.as_ref()?;
+    let reference: Vec<u8> = seq.bytes().map(|b| b.to_ascii_uppercase()).collect();
+    let n = j.ref_w.len();
+    let cont = K + j.mh;
+    let windows = [&j.ref_w, &j.alt_w];
+    // Per allele (REF 0, ALT 1) and offset: fragments reading it, and changing it;
+    // the bases ALT's changes show (A C G T).
+    let (mut cover, mut change) = ([vec![0u32; n], vec![0u32; n]], [vec![0u32; n], vec![0u32; n]]);
+    let mut shown = vec![[0u32; 4]; n];
+    let mut fragments: std::collections::HashSet<&[u8]> = std::collections::HashSet::new();
+    let mut scanned = 0u32;
+    for record in read_cache {
+        if !counted(record) {
+            continue;
+        }
+        let bases = record.seq().as_bytes();
+        let quals = record.qual();
+        let Some(q) = find_read_pos(record, j.first()).filter(|&q| q + n <= bases.len() && quals.len() >= q + n)
+        else {
+            continue;
+        };
+        let read: Vec<u8> = bases[q..q + n].iter().map(u8::to_ascii_uppercase).collect();
+        let confident = |o: usize| read[o] != WILD && quals[q + o] >= min_baseq;
+        let off = |w: &[u8], o: usize| confident(o) && read[o] != w[o];
+        let misses = |w: &[u8]| (cont..n).filter(|&o| off(w, o)).count();
+        let allele = match (misses(&j.ref_w), misses(&j.alt_w)) {
+            (0..=1, 2..) => 0,
+            (2.., 0..=1) => 1,
+            _ => continue,
+        };
+        if !fragments.insert(record.qname()) {
+            continue;
+        }
+        scanned += 1;
+        for o in 0..n {
+            cover[allele][o] += 1;
+            if off(windows[allele], o) {
+                change[allele][o] += 1;
+                if let (1, Some(k)) = (allele, b"ACGT".iter().position(|&b| b == read[o])) {
+                    shown[o][k] += 1;
+                }
+            }
+        }
+    }
+    let share = |a: usize, o: usize| if cover[a][o] == 0 { 0.0 } else { change[a][o] as f64 / cover[a][o] as f64 };
+    let recurs = |a: usize, o: usize| change[a][o] >= GUARD_MIN_READS && share(a, o) >= GUARD_MIN_SHARE;
+    let neighbour_recurs = |a: usize, o: usize| (o > 0 && recurs(a, o - 1)) || (o + 1 < n && recurs(a, o + 1));
+    let isolated = |a: usize, o: usize| !neighbour_recurs(a, o);
+    let (mut masked, mut alt_only) = (Vec::new(), Vec::new());
+    for o in 0..n {
+        let hit = [0, 1].map(|a| recurs(a, o) && isolated(a, o));
+        if hit[0] || hit[1] {
+            for p in [j.genome(false, o), j.genome(true, o)] {
+                if !masked.contains(&p) {
+                    masked.push(p);
+                }
+            }
+        }
+        if hit[1] && share(0, o) < GUARD_REF_SHARE {
+            alt_only.push(o);
+        }
+    }
+    if masked.is_empty() {
+        return None;
+    }
+    // The larger allele: the ALT haplotype from the windows' first base through its
+    // farthest change, each changed base as most ALT reads show it, against the
+    // genome over the same span (the deleted bases included).
+    let larger = alt_only.iter().max().and_then(|&far| {
+        let alt: Vec<u8> = (0..=far)
+            .map(|o| match alt_only.contains(&o) {
+                true => b"ACGT"[(0..4).max_by_key(|&k| shown[o][k]).unwrap_or(0)],
+                false => j.alt_w[o],
+            })
+            .collect();
+        let (g0, g1) = (j.first(), j.genome(true, far));
+        let at = |g: i64| usize::try_from(g - start).ok().filter(|&i| i < reference.len());
+        let ref_part = reference.get(at(g0)?..=at(g1)?)?.to_vec();
+        let base = |g: i64| at(g).map(|i| reference[i]);
+        let carriers = alt_only.iter().map(|&o| change[1][o]).min().unwrap_or(0);
+        let given = alt_only.iter().map(|&o| cover[1][o] - change[1][o]).max().unwrap_or(0);
+        let text = |x: Vec<u8>| String::from_utf8_lossy(&x).into_owned();
+        canonical(g0, ref_part, alt, &base).map(|(pos, r, a)| ObservedAllele {
+            pos,
+            ref_allele: text(r),
+            alt_allele: text(a),
+            carriers,
+            given_carriers: given,
+        })
+    });
+    trace!(
+        "junction guard at {}:{} {}>{}: {} window offsets masked, {} on the ALT reads alone ({} fragments read)",
+        v.chrom, v.pos + 1, v.ref_allele, v.alt_allele, masked.len() / 2, alt_only.len(), scanned,
+    );
+    Some(Guard::new(v, masked, larger, scanned))
+}
+
 /// Whether the read's own alignment carries a deletion or an insertion of
 /// [`MIN_OWN_INDEL`] bases or more starting inside the genomic span `[lo, hi)`.
 fn own_indel_inside(record: &Record, (lo, hi): (i64, i64)) -> bool {
@@ -264,6 +385,7 @@ fn crosses_splice(record: &Record, lo: usize, hi: usize) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use rust_htslib::bam::record::CigarString;
 
     /// A deletion of `len` bases after the anchor at `pos`, prepared on `ctx`
     /// (which starts at genome position 0).
@@ -330,6 +452,47 @@ mod tests {
         assert_eq!(j.ref_w.len(), 2 * K + 3);
         assert_eq!(&j.ref_w[K..K + 3], &j.alt_w[K..K + 3]);
         assert_ne!(j.ref_w[K + 3], j.alt_w[K + 3]);
+    }
+
+    /// `n` reads of `seq` aligned at `pos` by `cigar`, each its own fragment.
+    fn reads(seq: &[u8], cigar: Vec<Cigar>, pos: i64, n: usize, tag: &str) -> Vec<Record> {
+        (0..n)
+            .map(|i| {
+                let mut r = Record::new();
+                let name = format!("{tag}{i}");
+                r.set(name.as_bytes(), Some(&CigarString(cigar.clone())), seq, &vec![30; seq.len()]);
+                r.set_pos(pos);
+                r
+            })
+            .collect()
+    }
+
+    #[test]
+    fn the_guard_masks_an_isolated_recurring_change_and_not_a_run() {
+        // 60 bases deleted after the anchor at 99; carriers from 40 read the flank,
+        // the junction and 40 right-flank bases.
+        let mut c: Vec<u8> = cgt(300, 19).into_bytes();
+        c[100] = b'A';
+        c[99] = b'A';
+        let ctx = String::from_utf8(c).unwrap();
+        let v = del(&ctx, 99, 60);
+        let j = junction(&v).unwrap();
+        let hap = [&ctx.as_bytes()[40..100], &ctx.as_bytes()[160..200]].concat();
+        let cigar = vec![Cigar::Match(60), Cigar::Del(60), Cigar::Match(40)];
+        let refs = reads(&ctx.as_bytes()[40..140], vec![Cigar::Match(100)], 40, 4, "r");
+        // one change two bases past the junction on every carrier: masked, named
+        let mut one = hap.clone();
+        one[61] = if one[61] == b'A' { b'C' } else { b'A' };
+        let all = [reads(&one, cigar.clone(), 40, 4, "c"), refs.clone()].concat();
+        let g = guard_for(&all, &v, &|_| true, 20).expect("a recurring change");
+        assert_eq!(g.masked, vec![j.genome(false, K + 1), j.genome(true, K + 1)]);
+        assert!(g.larger.is_some());
+        // two inserted bases at the junction shift every base after it: a run of
+        // changes (another allele), not masked
+        let ins = [&hap[..60], b"TT", &hap[60..98]].concat();
+        let cig = vec![Cigar::Match(60), Cigar::Del(60), Cigar::Ins(2), Cigar::Match(38)];
+        let all = [reads(&ins, cig, 40, 4, "t"), refs].concat();
+        assert!(guard_for(&all, &v, &|_| true, 20).is_none());
     }
 
     #[test]

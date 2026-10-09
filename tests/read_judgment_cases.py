@@ -448,7 +448,9 @@ def _long_del_reads(n: int, mh: int, shape: str) -> list:
         elif shape == "REF read with an error 20 bases past the window":
             ref_read(i, A - 50 - i, LONG_READ, sub=A + win + 20)
         elif shape == "REF read with an error inside the window":
-            ref_read(i, A - 50 - i, LONG_READ, sub=A + mh + 1)
+            # an error is one read's: the other three are clean (one shared by every
+            # read is a recurring change, masked)
+            ref_read(i, A - 50 - i, LONG_READ, sub=A + mh + 1 if i == 0 else None)
         elif shape == "a deletion two bases shorter at the same start":
             s = A - 50 - i
             other = contig[:A] + contig[A + n - 2 :]
@@ -775,10 +777,7 @@ DECISIONS = {
 
 # Decided calls the engine does not give yet: the red-first cases of a rule being
 # built, strict xfails in test_read_judgment_spec.py until it lands.
-PENDING: set[str] = {
-    "del 60 | carriers with a recurring change two bases past the microhomology",
-    "del 60 | REF reads with a recurring change inside the window",
-}
+PENDING: set[str] = set()
 
 # (ref_count, alt_count, partial_alt) for the case's four reads.
 EXPECT = {
@@ -984,7 +983,7 @@ EXPECT = {
     "del 60 | REF read, three deleted bases past the microhomology": (0, 0, 0),
     # nothing past the window is checked, for either allele (RJ-24)
     "del 60 | REF read with an error 20 bases past the window": (4, 0, 0),
-    "del 60 | REF read with an error inside the window": (0, 0, 0),
+    "del 60 | REF read with an error inside the window": (3, 0, 0),
     # another allele, one mismatch from each window more than the other: neither
     "del 60 | a deletion two bases shorter at the same start": (0, 0, 0),
     # another allele, closer to ALT than REF over the windows: partial
