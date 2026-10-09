@@ -535,14 +535,6 @@ class GbcmsRnaConfig(GbcmsBaseConfig):
         ),
     )
 
-    gtf_cache_dir: Path | None = Field(
-        default=None,
-        description=(
-            "Deprecated in 6.6.0 and ignored (removed in 6.7.0). The GTF index cache "
-            "is gone: the GTF loads in a few seconds without one."
-        ),
-    )
-
     # Library type flag — controls fragment consensus behavior
     library_type: str = Field(
         default="capture",
@@ -604,19 +596,6 @@ class GbcmsRnaConfig(GbcmsBaseConfig):
             if not v.name.endswith((".gtf", ".gtf.gz")):
                 raise ValueError(f"GTF file must have .gtf or .gtf.gz extension, got: {v.name}")
         return v
-
-    @field_validator("gtf_cache_dir")
-    @classmethod
-    def ignore_gtf_cache_dir(cls, v: Path | None) -> None:
-        """Warn that the GTF cache is deprecated, and drop the setting."""
-        if v is not None:
-            import logging
-
-            logging.getLogger("gbcms.models").warning(
-                "--gtf-cache-dir is deprecated and ignored: the GTF index cache is gone "
-                "(the GTF loads in a few seconds without one). It will be removed in 6.7.0."
-            )
-        return None
 
     @model_validator(mode="after")
     def validate_amplicon_strandedness(self) -> "GbcmsRnaConfig":
