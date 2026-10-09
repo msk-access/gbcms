@@ -22,12 +22,15 @@
   4 (close #244 and replace it with the Phase-3 sub-issue), 5 (re-measure #246 and close
   it unless seen) and 6 (remove `build-gtf-cache`). Go-aheads: the GIAB region fetch,
   the WES slices on HPC, filing the issue structure, and this PR.
-- **Open:** 1 (C39) and 3 (C40). The operator asked for real examples drawn out, the
-  community standard, the RNA effects, and whether the AD changes move toward truth.
-  - Added: the GIAB truth (D9: HG002 germline hets), the read-start arithmetic on a
-    worked example, the RNA section, and what the AD drop consists of.
-  - One sub-decision is shared by both: a change recurring next to the event on ALT
-    reads only.
+- **Decided (operator, 2026-10-08, after the worked examples and the GIAB truth):**
+  - 1 (C39): one-sided, equal-length junction windows for every complex event (POS
+    flank in DNA; in RNA the flank not cut by an exon edge).
+  - 3 (C40): one window at the POS breakpoint for both alleles at 50+ bp deletions,
+    whatever the representation, k = 4 clean bases each side past the microhomology
+    (10 in low complexity), REF read at the POS breakpoint.
+  - The shared sub-decision: a change recurring next to the event on ALT reads only is
+    a larger allele (withheld; `OBSERVED_ALLELE` names it), for delins and pure
+    deletions alike.
 - **Issues (2026-10-08):** parents A–F are #258–#263 under #196; new tickets #264–#269;
   #244 closed as measured.
 
@@ -38,9 +41,9 @@ Priority: **H** high, **M** medium, **L** low. **[counts]** can change counts.
 
 | ID | Ticket | Pri | Flags | Issue | Parent (proposed) |
 |:--|:--|:-:|:--|:--|:--|
-| C39 | Long delins: read every complex event by one-sided, equal-length junction windows (no padding loss, no REF double count) | H | [counts] [decide] | #253 | A #258 |
+| C39 | Long delins: read every complex event by one-sided, equal-length junction windows (no padding loss, no REF double count) | H | [counts] [decided] | #253 | A #258 |
 | C41 | REF and VAF of indels in repeats against germline truth (allele-level vs by-base, spanning bias) | H | [decided] | #264 | A #258 |
-| C40 | Long deletions: one window at the POS breakpoint for both alleles, clipped bases read (RJ-13) | H | [counts] [decide] | #254 | B #259 |
+| C40 | Long deletions: one window at the POS breakpoint for both alleles, clipped bases read (RJ-13) | H | [counts] [decided] | #254 | B #259 |
 | C42 | Per-locus gap parameters: closed as measured; replaced by Phase-3 routing | L | [decided] | #244 → #265 | A #258 |
 | C38 | Sibling rows: SNV sibling double-counts a compensating-mismatch carrier | L | [counts] [decided: re-measure] | #246 | A #258 |
 | C33 | Exact-carrier REF and ALT windows read from different anchors | L | [counts] | #214 | A #258 (folds into C39) |
@@ -582,7 +585,7 @@ readings' VAFs agree, and when germline hets read 0.5 across span and tract leng
 
 ## Suggested order
 
-1. Decisions 1–8 (operator).
+1. Decisions 1–8 (operator): all decided 2026-10-08.
 2. Measurement infrastructure: D8 #255; H4; D9 and D10 slices (with the asks); D11.
 3. C39 (spec RJ-23 → red-first → build → review → acceptance on every arm).
 4. C40 with C18 and C15 (spec RJ-24, same path), then C31.

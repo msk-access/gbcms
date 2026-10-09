@@ -15,6 +15,7 @@ One line per memory. Full content lives in the linked file. Keep this index tigh
 - [Survey several tools](survey-several-tools.md) — community practice means GATK, samtools/bcftools, fgbio, VarDict, Strelka2, freebayes, bam-readcount, LoFreq, GetBaseCounts, plus the literature and domain tools (RNA: SplitNCigarReads, STAR, ASE counters, RNA callers); say where handling isn't documented.
 - [Better than the standard](better-than-standard.md) — the survey is a floor, not a ceiling: where no tool sets a standard or a measured rule beats the field's, adopt it and say why.
 - [mFSD is graded evidence](mfsd-graded-evidence.md) — fragment size gives increased confidence toward CH or toward somatic (or none), never a hard origin call; don't over-interpret.
+- [Decisions with worked examples](decisions-worked-examples.md) — count-rule decisions come with a real row drawn out, the community standard, the RNA effect and a truth check.
 
 ## References
 - [Claudelicious harness](claudelicious-reference.md) — the upstream pattern this project's harness follows.
@@ -49,6 +50,7 @@ One line per memory. Full content lives in the linked file. Keep this index tigh
 - [VAF uses informative reads](vaf-informative-reads.md) — `vaf` = AD/(RD+AD); per-sample total_count (DP) includes unjudgeable reads; never advise AD/DP (repeat indels: reads ending inside the tract).
 - [pysam validation oracle](pysam-validation-oracle.md) — use fetch()+get_reference_positions (not pileup) to cross-check gbcms counts; RD/AD match exact, DP includes neither.
 - [vcf2maf oracle](vcf2maf-oracle.md) — VCF↔MAF representation is defined as vcf2maf/maf2vcf output; how to run them locally and their quirks (dies on N, empty ALT for REF==ALT).
+- [GIAB truth arm](giab-truth-arm.md) — HG002 v5.0q hets on the DeepVariant 35x WGS BAM; fetch region slices with many parallel connections; run untraced.
 
 ## User (private, local-only — not committed)
 - `user-*.md` memories (e.g. who the operator is, personal defaults) live in this
