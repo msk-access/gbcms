@@ -337,8 +337,9 @@ def _delins_reads(n: int, alt: str, shape: str):
     out = []
     for i in range(N_READS):
         far = 60 + 3 * i
-        if shape == "exact carrier, four flank bases right":
-            out.append((A - far, far + m + 4, carrier))
+        if shape == "exact carrier, eight flank bases right":
+            # eight: the 28-to-6 event grows three bases right through a TCG repeat
+            out.append((A - far, far + m + 8, carrier))
         elif shape == "exact carrier, four flank bases left":
             out.append((A - 4, 4 + m + far, carrier))
         elif shape == "exact carrier, long flanks":
@@ -362,7 +363,7 @@ def _delins_reads(n: int, alt: str, shape: str):
 
 DELINS_SHAPES = {
     "delins 28>6": (
-        "exact carrier, four flank bases right",
+        "exact carrier, eight flank bases right",
         "exact carrier, four flank bases left",
         "exact carrier, long flanks",
         "REF read, four flank bases left",
@@ -371,7 +372,7 @@ DELINS_SHAPES = {
         "carriers ending before a change that recurs on ALT reads only",
     ),
     "delins 60>2": (
-        "exact carrier, four flank bases right",
+        "exact carrier, eight flank bases right",
         "exact carrier, long flanks",
         "REF read, four flank bases left",
         "REF read starting inside the event",
@@ -584,12 +585,7 @@ DECISIONS = {
 
 # Decided calls the engine does not give yet: the red-first cases of a rule being
 # built, strict xfails in test_read_judgment_spec.py until it lands.
-PENDING = {
-    "delins 28>6 | exact carrier, four flank bases right",
-    "delins 28>6 | exact carrier, four flank bases left",
-    "delins 28>6 | REF read, four flank bases right",
-    "delins 60>2 | exact carrier, four flank bases right",
-}
+PENDING: set[str] = set()
 
 # (ref_count, alt_count, partial_alt) for the case's four reads.
 EXPECT = {
@@ -694,12 +690,14 @@ EXPECT = {
     "C>TA run10 | substitution only, ends past the run": (0, 0, 0),
     "C>TA run10 | anchor kept, one A more, ends inside the run": (0, 0, 0),
     "C>TA run10 | anchor kept, one A more, ends on the base after the run": (0, 0, 0),
-    "C>TA run10 | anchor kept, one A more, ends past the run": (0, 0, 4),
+    # one base from each allele (an A more than REF, C for ALT's T): neither (RJ-23)
+    "C>TA run10 | anchor kept, one A more, ends past the run": (0, 0, 0),
     "C>TA run10 | anchor kept, one A fewer, ends inside the run": (0, 0, 0),
     "C>TA run10 | anchor kept, one A fewer, ends on the base after the run": (0, 0, 0),
     "C>TA run10 | anchor kept, one A fewer, ends past the run": (0, 0, 0),
     "C>TA run10 | exact carrier, ends inside the run": (0, 0, 0),
-    "C>TA run10 | exact carrier, ends on the base after the run": (0, 0, 0),
+    # holds the REF window's 15 bases: the T, all eleven A's and the G after (RJ-23)
+    "C>TA run10 | exact carrier, ends on the base after the run": (0, 4, 0),
     "C>TA run10 | exact carrier, ends past the run": (0, 4, 0),
     "C>TA run60 | REF, ends inside the run": (4, 0, 0),
     "C>TA run60 | REF, ends on the base after the run": (4, 0, 0),
@@ -709,7 +707,7 @@ EXPECT = {
     "C>TA run60 | substitution only, ends past the run": (0, 0, 0),
     "C>TA run60 | anchor kept, one A more, ends inside the run": (4, 0, 0),
     "C>TA run60 | anchor kept, one A more, ends on the base after the run": (0, 0, 0),
-    "C>TA run60 | anchor kept, one A more, ends past the run": (0, 0, 4),
+    "C>TA run60 | anchor kept, one A more, ends past the run": (0, 0, 0),
     "C>TA run60 | anchor kept, one A fewer, ends inside the run": (4, 0, 0),
     "C>TA run60 | anchor kept, one A fewer, ends on the base after the run": (0, 0, 0),
     "C>TA run60 | anchor kept, one A fewer, ends past the run": (0, 0, 0),
@@ -732,14 +730,14 @@ EXPECT = {
     "CA>T run60 | exact carrier, ends on the base after the run": (0, 4, 0),
     "CA>T run60 | exact carrier, ends past the run": (0, 4, 0),
     # C39 #253: one-sided, equal-length junction windows (RJ-23).
-    "delins 28>6 | exact carrier, four flank bases right": (0, 4, 0),
+    "delins 28>6 | exact carrier, eight flank bases right": (0, 4, 0),
     "delins 28>6 | exact carrier, four flank bases left": (0, 4, 0),
     "delins 28>6 | exact carrier, long flanks": (0, 4, 0),
     "delins 28>6 | REF read, four flank bases left": (4, 0, 0),
     "delins 28>6 | REF read, four flank bases right": (4, 0, 0),
     "delins 28>6 | REF read starting inside the event": (0, 0, 0),
     "delins 28>6 | carriers ending before a change that recurs on ALT reads only": (0, 0, 4),
-    "delins 60>2 | exact carrier, four flank bases right": (0, 4, 0),
+    "delins 60>2 | exact carrier, eight flank bases right": (0, 4, 0),
     "delins 60>2 | exact carrier, long flanks": (0, 4, 0),
     "delins 60>2 | REF read, four flank bases left": (4, 0, 0),
     "delins 60>2 | REF read starting inside the event": (0, 0, 0),

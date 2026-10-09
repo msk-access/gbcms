@@ -137,9 +137,9 @@ Common issues and solutions for gbcms. Issues are grouped by phase — work top-
 
     A pure large deletion counts a clean read spanning its anchor as REF (`check_deletion`).
     A large delins (a deletion with a replacement) is judged by the
-    [exact-carrier rule](../reference/allele-classification.md#the-exact-carrier-rule): no read
-    holds a ~100bp window whole, so each end is judged by a junction window, and a REF read
-    counts when it carries the reference across either junction.
+    [exact-carrier rule](../reference/allele-classification.md#the-exact-carrier-rule): one pair
+    of equal-length windows read from the POS flank, so a REF read counts when it carries the
+    reference from that flank as far as the ALT read must carry the ALT.
 
     If `ref = 0`, check:
     - The variant was normalized correctly (`gbcms_status` is `PASS`)

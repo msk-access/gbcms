@@ -20,8 +20,8 @@ Complex indels fall into four categories that require special handling beyond th
 !!! note "Cases 1 and 2 are now judged by the exact-carrier rule"
     Del+SNV and delins variants no longer go through `check_complex`'s haplotype scoring or its
     M-block REF fallback. A read is REF or ALT only when its own bases carry that allele across
-    the whole event, read at the event's own position; a large delins is judged at its two
-    junctions. See [the exact-carrier rule](allele-classification.md#the-exact-carrier-rule).
+    the whole event, read at the event's own position; a large delins is judged by one pair of
+    equal-length windows read from its POS flank. See [the exact-carrier rule](allele-classification.md#the-exact-carrier-rule).
     The case studies below record why the routing exists and what the earlier fixes found.
 
 ---

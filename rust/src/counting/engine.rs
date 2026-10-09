@@ -1203,10 +1203,23 @@ fn count_bin_shared(
         // spliced read continues into its next exon.
         let edges = carrier::ClipEdges::new(|| clip_edges(variant, &read_cache, annotation));
         let spliced = carrier::SplicedCache::default();
+        // A neighbouring change recurring on the ALT reads only (a larger haplotype
+        // than the given allele) grows the exact-carrier windows past it, from the
+        // reads the counts read; found on first use, for the main and per-transcript
+        // counts alike.
+        let guard = carrier::CarrierGuard::new(|| {
+            let counted = |r: &Record| counted_read(r, variant, mode, enforce_strandedness, strandedness, min_mapq);
+            carrier::guard_for(&read_cache, variant, &counted, min_baseq)
+        });
         let rules = if mode == "rna" {
-            carrier::ReadRules { clip_edges: Some(&edges), reference: far_reference, spliced: Some(&spliced) }
+            carrier::ReadRules {
+                clip_edges: Some(&edges),
+                reference: far_reference,
+                spliced: Some(&spliced),
+                guard: Some(&guard),
+            }
         } else {
-            carrier::ReadRules::DNA
+            carrier::ReadRules { guard: Some(&guard), ..carrier::ReadRules::DNA }
         };
 
         let (counts_orig, obs_orig) = count_variant_from_cache(
@@ -1477,6 +1490,14 @@ fn count_variant_from_cache(
         counts.observed_alt = o.alt_allele;
         counts.observed_reads = o.carriers;
         counts.observed_given_reads = o.given_carriers;
+    } else if let Some((pos, r, a, n, m)) = rules.guard.and_then(|g| g.get(variant)).and_then(|g| g.larger.clone()) {
+        // The ALT reads carry the given allele with a neighbouring change: the
+        // exact-carrier windows grew past it, so name the larger allele they carry.
+        counts.observed_pos = pos + 1;
+        counts.observed_ref = r;
+        counts.observed_alt = a;
+        counts.observed_reads = n;
+        counts.observed_given_reads = m;
     }
     let use_baq = baq_applies(apply_baq, exon_boundary_dist);
     // The variant's own indel span that BAQ leaves alone, once per variant.

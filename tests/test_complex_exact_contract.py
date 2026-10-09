@@ -611,9 +611,11 @@ def test_an_event_ending_a_long_run_is_judged_exactly(tmp_path):
         assert (c.rd, c.ad) == (0, carriers)
 
 
-def test_reads_ending_inside_the_event_are_not_partial(tmp_path):
-    """ALT reads ending inside a 40bp insertion, clipped there as aligners do, show
-    only part of it: depth only, never partial_alt."""
+def test_reads_ending_inside_the_event_are_judged_by_the_bases_they_hold(tmp_path):
+    """ALT reads ending inside a 40bp insertion, clipped there as aligners do, hold
+    the REF window's length of it (two flank bases and four inserted bases, against
+    the two REF bases and two flank bases): their bases contradict REF, so they are
+    ALT, as a REF read holding those six bases is REF (RJ-23). Never partial_alt."""
     ref = _ref()
     rng = random.Random(3)
     alt = ""
@@ -627,7 +629,7 @@ def test_reads_ending_inside_the_event_are_not_partial(tmp_path):
     fa, bam = _files(tmp_path, ref, reads)
     c = count_checked(bam, [_prepared(fa, ref[POS : POS + 2], alt)])[0]
     _invariants(c)
-    assert (c.rd, c.ad, c.partial_alt) == (0, 0, 0)
+    assert (c.rd, c.ad, c.partial_alt) == (0, 30, 0)
     assert c.dp == 30
 
 

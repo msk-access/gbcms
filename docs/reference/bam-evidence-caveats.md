@@ -53,7 +53,7 @@ caveat in gbcms's output.
 | RNA: editing (A-to-I) inside a window | Flag only | Proposed | R3 #178 |
 | RNA: allele-specific expression and NMD | RNA VAF reported as is | Decided (interpretation) | — |
 | RNA: strandedness | Gating exists; observability open | Decided | R2 #114 |
-| Reads ending inside the event; low depth | Depth only | Decided (done) | — |
+| Reads ending inside the event; low depth | Depth only until a read holds the shorter allele's window | Decided (done) | C39 #253 |
 | Purity, clonality, contamination, CH | Counts, not calls | Decided (interpretation) | — |
 
 ## 1. Where the aligner put things, not what the molecule is
@@ -250,9 +250,11 @@ caveat in gbcms's output.
 
 ## 5. Not the BAM, but easy to misread from counts
 
-- **Reads ending inside the event, and low depth:** such reads count toward depth
-  only, since they cannot show either allele. At low depth, informative reads are
-  few, so compare `alt_count + ref_count` with depth.
+- **Reads ending inside the event, and low depth:** a read that ends before
+  holding the shorter allele's window (its event with two flank bases) counts
+  toward depth only, since it cannot show either allele; one that holds it and
+  ends inside the longer allele is judged by the bases it has (RJ-23). At low
+  depth, informative reads are few, so compare `alt_count + ref_count` with depth.
 - **Purity, clonality, contamination, clonal haematopoiesis, germline vs
   somatic:** counts are evidence, not calls. A matched normal and, for cfDNA,
   [mFSD](mfsd-report.md) help interpret them.

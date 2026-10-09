@@ -44,7 +44,7 @@ pub(crate) struct ObservedAllele {
 }
 
 /// An allele in canonical form: 0-based POS, REF, ALT (left-aligned, minimal).
-type Allele = (i64, Vec<u8>, Vec<u8>);
+pub(crate) type Allele = (i64, Vec<u8>, Vec<u8>);
 
 /// The most frequent allele the reads carry at the event that is neither REF,
 /// the given allele, nor a co-annotated sibling's, if at least [`MIN_CARRIERS`]
@@ -187,7 +187,7 @@ pub(crate) fn observed_allele(
 /// the known reference. The standard algorithm: while the last bases agree,
 /// drop them; when an allele empties, extend both one reference base left;
 /// then drop shared leading bases, keeping one.
-fn canonical(pos: i64, r: Vec<u8>, a: Vec<u8>, base: &dyn Fn(i64) -> Option<u8>) -> Option<Allele> {
+pub(crate) fn canonical(pos: i64, r: Vec<u8>, a: Vec<u8>, base: &dyn Fn(i64) -> Option<u8>) -> Option<Allele> {
     if r == a {
         return None;
     }

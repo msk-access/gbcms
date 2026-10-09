@@ -273,3 +273,57 @@ def test_a_present_allele_with_a_more_frequent_neighbour_is_coexisting(tmp_path)
     flags = row["gbcms_diagnostic"].split(";")
     assert "COEXISTING_ALLELE(1:306:C>G:15/5)" in flags
     assert not any(f.startswith("OBSERVED_ALLELE") for f in flags)
+
+
+# A delins in unique sequence (RJ-23): 28 A/G bases replaced by T/C bases, with a
+# change seven bases past it on some reads.
+DELINS_AT, DELINS_LEN, DELINS_ALT = 400, 28, "TTCTCT"
+CHANGE_AT = DELINS_AT + DELINS_LEN + 6
+
+
+def _delins_carriers(ref, n, change):
+    """Reads carrying the delins (an insertion plus a deletion), and a C seven
+    bases past it when `change`."""
+    hap = ref[:DELINS_AT] + DELINS_ALT + ref[DELINS_AT + DELINS_LEN :]
+    if change:
+        at = CHANGE_AT - DELINS_LEN + len(DELINS_ALT)
+        hap = hap[:at] + "C" + hap[at + 1 :]
+    reads = []
+    for i in range(n):
+        s = DELINS_AT - 50 + i
+        left = DELINS_AT - s
+        cigar = ((0, left), (1, len(DELINS_ALT)), (2, DELINS_LEN), (0, READ - left - 6))
+        reads.append(make_read(f"d{i}", hap[s : s + READ], s, cigar))
+    return reads
+
+
+def _delins_row(ref):
+    return (DELINS_AT + 1, ref[DELINS_AT : DELINS_AT + DELINS_LEN], DELINS_ALT)
+
+
+def test_a_change_beside_the_delins_on_its_carriers_only_names_the_larger_allele(tmp_path):
+    """Every carrier also shows a C seven bases past the event, no REF read does:
+    the carriers' haplotype is larger than the given allele. The windows grow past
+    the change, so no carrier counts as the given ALT, and the diagnostic names the
+    larger allele they carry."""
+    ref = _ref()
+    assert ref[CHANGE_AT] != "C"
+    reads = _delins_carriers(ref, 15, change=True) + _ref_reads(ref, 10, start=360)
+    (row,) = _run(tmp_path, ref, reads, [_delins_row(ref)])
+    assert (int(row["ref_count"]), int(row["alt_count"])) == (10, 0)
+    larger_ref = ref[DELINS_AT : CHANGE_AT + 1]
+    larger_alt = DELINS_ALT + ref[DELINS_AT + DELINS_LEN : CHANGE_AT] + "C"
+    flag = f"OBSERVED_ALLELE(1:{DELINS_AT + 1}:{larger_ref}>{larger_alt}:15/0)"
+    assert flag in row["gbcms_diagnostic"].split(";"), row["gbcms_diagnostic"]
+
+
+def test_a_change_beside_the_delins_on_ref_reads_too_is_masked(tmp_path):
+    """REF reads show the C too (a germline SNP beside the event): it is not part
+    of this row's allele. The base is masked, every carrier counts, and nothing is
+    named."""
+    ref = _ref()
+    snp = ref[:CHANGE_AT] + "C" + ref[CHANGE_AT + 1 :]
+    reads = _delins_carriers(ref, 15, change=True) + _ref_reads(snp, 10, start=360)
+    (row,) = _run(tmp_path, ref, reads, [_delins_row(ref)])
+    assert (int(row["ref_count"]), int(row["alt_count"])) == (10, 15)
+    assert "OBSERVED_ALLELE" not in row["gbcms_diagnostic"]

@@ -5,7 +5,9 @@ A heterozygous locus read at every start: one REF read and one ALT read starting
 each position along their own haplotypes, all the same length. Whatever reads the
 rule leaves as depth, it must leave as many of each allele, so AD equals RD exactly:
 a window of one allele that a read can hold from more (or fewer) starts than the
-other's biases the VAF toward that allele. Synthetic and PHI-free.
+other's biases the VAF toward that allele. Each read is the forward read of a
+proper pair, so its fragment admits the ALT bases it holds in a soft clip, as a
+real pair's does. Synthetic and PHI-free.
 """
 
 import random
@@ -75,27 +77,20 @@ def _reads(contig: str, n: int, alt: str):
         cig = tuple((op, ln) for op, ln in cig if ln > 0)
         reads.append(make_read(f"alt{k}", seq, pos, cig))
         k += 1
+    for r in reads:
+        _pair(r)
     return reads
 
 
-# Shapes the rule does not balance yet: strict xfails until one-sided windows land.
-PENDING = {"96>2"}
+def _pair(read) -> None:
+    """The forward, first read of a proper pair whose fragment runs well past it."""
+    read.flag = 0x1 | 0x2 | 0x20 | 0x40
+    read.next_reference_id = 0
+    read.next_reference_start = read.reference_start + 250
+    read.template_length = 400
 
 
-@pytest.mark.parametrize(
-    "shape",
-    [
-        (
-            pytest.param(
-                s,
-                marks=pytest.mark.xfail(strict=True, reason="long event; the rule is being built"),
-            )
-            if s in PENDING
-            else s
-        )
-        for s in sorted(SHAPES)
-    ],
-)
+@pytest.mark.parametrize("shape", sorted(SHAPES))
 def test_equal_windows_judge_ref_and_alt_molecules_alike(tmp_path, shape):
     n, alt = SHAPES[shape]
     contig = _contig()
