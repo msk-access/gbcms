@@ -2272,7 +2272,7 @@ fn alt_across_ops(record: &Record, variant: &Variant, quals: &[u8], min_baseq: u
 /// The query offset just past the read's deletion that covers reference position
 /// `anchor` (the first base it reads after it), or None when no deletion of the
 /// read covers it.
-fn deleted_anchor_query(record: &Record, anchor: i64) -> Option<usize> {
+pub(crate) fn deleted_anchor_query(record: &Record, anchor: i64) -> Option<usize> {
     let (mut rp, mut qp) = (record.pos(), 0usize);
     for op in record.cigar().iter() {
         match op {

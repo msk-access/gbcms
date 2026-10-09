@@ -104,3 +104,38 @@ def test_equal_windows_judge_ref_and_alt_molecules_alike(tmp_path, shape):
     assert c.ad == c.ad_fwd + c.ad_rev
     assert c.ad > 0, f"{shape}: no ALT read judged"
     assert c.ad == c.rd, f"{shape}: AD {c.ad} vs RD {c.rd} from equal molecules"
+
+
+def test_a_carrier_whose_deletion_covers_the_reading_flank_is_read_from_the_other(tmp_path):
+    """A 30-to-1 delins whose left flank `CA` recurs at the end of the REF allele: an
+    aligner may delete the flank and the first 28 REF bases, align the carrier's `CA`
+    to the REF's last two, and write the ALT `G` as a mismatch (as BWA did on an 82-to-1
+    panel delins). The reading flank is under the read's own deletion, so the read is
+    placed from the other flank at each allele's length, as a read whose clip holds
+    the flank is: its bases hold the whole ALT window, so it is ALT."""
+    n = 30
+    c = list(_contig())
+    c[A - 2 : A] = "CA"
+    c[A] = "T"
+    c[A + n - 3 : A + n + 3] = "CAAGTT"
+    contig = "".join(c)
+    hap = contig[:A] + "G" + contig[A + n :]
+    reads = []
+    for i in range(6):
+        s = A - 90 + i
+        seq = hap[s : A + 4]  # ends three bases past the ALT: CA G GTT
+        reads.append(make_read(f"alt{i}", seq, s, ((0, A - 2 - s), (2, n - 1), (0, 6))))
+    reads += [
+        make_read(f"ref{i}", contig[s : s + READ], s, ((0, READ),))
+        for i, s in enumerate(range(A - 60, A - 54))
+    ]
+    for r in reads:
+        _pair(r)
+    fa, bam = write_contig(tmp_path, contig, reads, "c")
+    (pv,) = _rs.prepare_variants(
+        [_rs.Variant("1", A, contig[A : A + n], "G", "X")], fa, 5, False, 1, True
+    )
+    (got,) = _rs.count_bam_binned(bam, [pv.variant], [None], **ARGS)
+    assert got.rd == got.rd_fwd + got.rd_rev and got.ad == got.ad_fwd + got.ad_rev
+    assert got.dp >= got.rd + got.ad
+    assert (got.rd, got.ad) == (6, 6)

@@ -67,6 +67,7 @@ use rust_htslib::bam::record::{Cigar, Record};
 
 use super::observed::canonical;
 use super::rna;
+use super::variant_checks::deleted_anchor_query;
 use super::window::AlleleKind;
 use super::utils::{find_read_pos, median_qual, soft_clips, ClassifyPhase, ClassifyResult};
 use crate::normalize::fasta::CachedFasta;
@@ -1064,10 +1065,13 @@ fn repeat_end(r: &[u8], b: usize, max_unit: usize) -> usize {
 /// flank's end base (the left flank's first base, or the right flank's last) reads
 /// both windows from it: the windows share it, so the read is placed truly whatever
 /// its own gap. A read whose soft clip holds that flank (the aligner clipped the
-/// event and the flank) is placed from the other flank as each allele would sit
-/// there, at its own length; a placement counts only when it falls in the clip,
-/// and both windows are read from it. A read that merely starts (or ends) inside
-/// the windows holds them from neither flank: depth only, for either allele alike.
+/// event and the flank), or whose own deletion covers it (the aligner used a
+/// microhomology at the event's far end and wrote the rest as mismatches), is
+/// placed from the other flank as each allele would sit there, at its own length;
+/// a placement counts only when it falls in the clip or the deletion covers the
+/// flank, and both windows are read from it. A read that merely starts (or ends)
+/// inside the windows holds them from neither flank: depth only, for either allele
+/// alike.
 /// Of the placements, one where its allele fits counts; with none, the closer
 /// reading. None when the read cannot be placed or does not hold both windows' held
 /// bases. Only the query bases `[first, after)` are read, and windows built in
@@ -1101,17 +1105,21 @@ fn read_pair(
         (true, _, Some(e)) => return from(e),
         _ => {}
     }
-    // The reading flank in the read's clip: placed from the other flank, as each
-    // allele would sit, when that falls inside the clip.
+    // The reading flank in the read's clip, or under its own deletion: placed from
+    // the other flank, as each allele would sit, when that falls inside the clip
+    // or the deletion holds the flank's end base.
     let (first, after) = aligned_query_range(record)?;
+    let flank_end = if tail { rw.right.map(|g| g - 1) } else { rw.left };
+    let deleted = flank_end.is_some_and(|g| deleted_anchor_query(record, map.to_genome(g)).is_some());
     let candidates: Vec<(i64, bool)> = [(rw, false), (aw, true)]
         .iter()
         .filter_map(|&(w, is_alt)| {
             let n = w.allele.len() as i64;
             let s = if tail { at_left.map(|s| s + n)? } else { at_right.map(|e| e - n)? };
-            // the flank's end base must lie in the clip on the reading side
+            // the flank's end base must lie in the clip on the reading side, or under
+            // the read's own deletion
             let in_clip = if tail { s > after as i64 } else { s < first as i64 };
-            in_clip.then_some((s, is_alt))
+            (in_clip || deleted).then_some((s, is_alt))
         })
         .collect();
     let pairs: Vec<((Reading, Reading), bool)> =
