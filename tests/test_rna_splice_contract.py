@@ -30,9 +30,11 @@ import glob
 import random
 
 import pysam
-from helpers import count_bam_checked, make_read, read_maf_output
+import pytest
+from helpers import count_bam_checked, count_checked, make_read, read_maf_output
 from typer.testing import CliRunner
 
+from gbcms import _rs
 from gbcms.cli import app
 
 runner = CliRunner()
@@ -520,7 +522,7 @@ def test_spliced_reads_count_the_same_under_any_bin_geometry(tmp_path):
     only: no aligned base flanks a deletion at the junction) and span-aligned REF
     testimony count the same with one variant per bin (count_checked compares
     every field)."""
-    from helpers import build_bam, count_checked
+    from helpers import build_bam
 
     from gbcms._rs import Variant
 
@@ -869,3 +871,56 @@ def test_span_ref_testimony_excludes_deleted_span_coverage(tmp_path):
         int(r["ref_count"]) == 3
     ), f"mixed M/D span coverage must not count REF, got rd={r['ref_count']}"
     assert int(r["total_count"]) == 5
+
+
+# A delins TGC>CA in a stretch no run or tandem unit touches, and a germline SNP on
+# the base before it that every REF read carries: the exact-carrier guard masks that
+# base (it recurs on REF reads), so it fits either allele's window.
+_MASK_AT = 300
+
+
+def _mask_ref() -> str:
+    rng = random.Random(7)
+    ref = [rng.choice("ACGT") for _ in range(1200)]
+    ref[_MASK_AT - 6 : _MASK_AT + 9] = "GATCAG" + "TGC" + "ATGTCA"
+    return "".join(ref)
+
+
+def _mask_reads(ref: str, snp_at: int, spliced: bool, tag: str) -> list:
+    """Six REF reads carrying a SNP at `snp_at`; spliced ones end their exon one
+    base past the event's first right-flank base and resume 100 bases on."""
+    seq_ref = ref[:snp_at] + ("A" if ref[snp_at] != "A" else "C") + ref[snp_at + 1 :]
+    j, gap, out = _MASK_AT + 4, 100, []
+    for i in range(6):
+        s = _MASK_AT - 40 - i
+        if spliced:
+            left = j - s
+            seq = seq_ref[s:j] + seq_ref[j + gap : j + gap + 100 - left]
+            out.append(make_read(f"{tag}{i}", seq, s, ((0, left), (3, gap), (0, 100 - left))))
+        else:
+            out.append(make_read(f"{tag}{i}", seq_ref[s : s + 100], s, ((0, 100),)))
+    return out
+
+
+@pytest.mark.parametrize("snp_at", [1100, _MASK_AT - 1])
+def test_spliced_reads_keep_the_masked_flank_base(tmp_path, snp_at):
+    """Six unspliced and six spliced REF molecules carrying the same SNP, far away
+    (a control) or on the flank base the guard masks: a spliced read is judged on
+    windows rebuilt over the reference spliced at its junction, and the mask stays
+    on that base there, so all twelve are REF in RNA as in DNA."""
+    ref = _mask_ref()
+    reads = _mask_reads(ref, snp_at, False, "u") + _mask_reads(ref, snp_at, True, "s")
+    bam = _bam(tmp_path, ref, reads)
+    fa = str(_fasta(tmp_path, ref))
+    (pv,) = _rs.prepare_variants(
+        [_rs.Variant(BAM_CONTIG, _MASK_AT, ref[_MASK_AT : _MASK_AT + 3], "CA", "COMPLEX")],
+        fa,
+        5,
+        False,
+        1,
+        True,
+    )
+    for mode in ("dna", "rna"):
+        (c,) = count_checked(str(bam), [pv.variant], mode=mode, reference_fasta=fa, min_mapq=1)
+        assert c.dp >= c.rd + c.ad and c.rd == c.rd_fwd + c.rd_rev
+        assert (c.rd, c.ad) == (12, 0), (mode, c.rd, c.ad)

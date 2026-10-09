@@ -1206,11 +1206,15 @@ fn count_bin_shared(
         // A neighbouring change recurring on the ALT reads only (a larger haplotype
         // than the given allele) grows the exact-carrier windows past it, from the
         // reads the counts read; found on first use, for the main and per-transcript
-        // counts alike.
-        let guard = carrier::CarrierGuard::new(|| {
-            let counted = |r: &Record| counted_read(r, variant, mode, enforce_strandedness, strandedness, min_mapq);
-            carrier::guard_for(&read_cache, variant, &counted, min_baseq)
-        });
+        // counts alike. The decomposed form is another allele: it finds its own.
+        let cache = &read_cache;
+        let guard_of = |v| {
+            carrier::CarrierGuard::new(move || {
+                let counted = |r: &Record| counted_read(r, v, mode, enforce_strandedness, strandedness, min_mapq);
+                carrier::guard_for(cache, v, &counted, min_baseq)
+            })
+        };
+        let guard = guard_of(variant);
         let rules = if mode == "rna" {
             carrier::ReadRules {
                 clip_edges: Some(&edges),
@@ -1240,6 +1244,7 @@ fn count_bin_shared(
         // allele calls per molecule (including the losing allele form) — and the counts
         // would stay right while the export was wrong. Only the winner's rows survive.
         let (mut final_counts, final_obs) = if let Some(ref decomp) = decomposed[vi] {
+            let decomp_guard = guard_of(decomp);
             let (counts_decomp, obs_decomp) = count_variant_from_cache(
                 &read_cache, decomp, siblings,
                 min_mapq, min_baseq,
@@ -1247,7 +1252,7 @@ fn count_bin_shared(
                 fragment_qual_threshold, backend,
                 apply_baq, umi_tag, mode, enforce_strandedness, strandedness, mfsd,
                 editing_sites, annotation, amplicon_mode,
-                emit_obs, vi as u32, &rules,
+                emit_obs, vi as u32, &carrier::ReadRules { guard: Some(&decomp_guard), ..rules },
             )?;
 
             if counts_decomp.ad > counts_orig.ad {
@@ -1490,14 +1495,16 @@ fn count_variant_from_cache(
         counts.observed_alt = o.alt_allele;
         counts.observed_reads = o.carriers;
         counts.observed_given_reads = o.given_carriers;
-    } else if let Some((pos, r, a, n, m)) = rules.guard.and_then(|g| g.get(variant)).and_then(|g| g.larger.clone()) {
+    } else if let Some(o) = rules.guard.and_then(|g| g.get(variant)).and_then(|g| {
+        g.larger.as_ref().and_then(|l| observed::larger_allele(l, g.scanned, variant, sibling_variants))
+    }) {
         // The ALT reads carry the given allele with a neighbouring change: the
         // exact-carrier windows grew past it, so name the larger allele they carry.
-        counts.observed_pos = pos + 1;
-        counts.observed_ref = r;
-        counts.observed_alt = a;
-        counts.observed_reads = n;
-        counts.observed_given_reads = m;
+        counts.observed_pos = o.pos + 1;
+        counts.observed_ref = o.ref_allele;
+        counts.observed_alt = o.alt_allele;
+        counts.observed_reads = o.carriers;
+        counts.observed_given_reads = o.given_carriers;
     }
     let use_baq = baq_applies(apply_baq, exon_boundary_dist);
     // The variant's own indel span that BAQ leaves alone, once per variant.
@@ -1723,14 +1730,20 @@ fn count_variant_from_cache(
         // so it counts like a read aligned over the anchor. DNA only: an RNA
         // read's clip may hold the next exon's bases.
         let clip_admitted = !overlaps_anchor && mode != "rna" && result.clip_admissible;
-        if !overlaps_anchor && !clip_admitted {
+        // Decided from windows read from the right flank: a REF and an ALT molecule
+        // hold them from the same starts, so one starting past the variant position
+        // counts as the other allele's would.
+        let right_admitted = !overlaps_anchor && result.read_from_right;
+        if !overlaps_anchor && !clip_admitted && !right_admitted {
             continue;
         }
-        if clip_admitted {
+        if clip_admitted || right_admitted {
             trace!(
-                "read {} admitted at {}:{} {}>{} by its soft-clipped bases (ref={} alt={})",
+                "read {} admitted at {}:{} {}>{} by {} (ref={} alt={})",
                 String::from_utf8_lossy(record.qname()), variant.chrom, variant.pos + 1,
-                variant.ref_allele, variant.alt_allele, is_ref, is_alt,
+                variant.ref_allele, variant.alt_allele,
+                if right_admitted { "windows read from the right flank" } else { "its soft-clipped bases" },
+                is_ref, is_alt,
             );
         }
 
@@ -2706,10 +2719,10 @@ fn classify_complex<F: Fn(u8, u8) -> i32>(
         result.carrier_judged = true;
         trace!(
             "{}:{} {}>{} read={}: exact-carrier rule ({}): ref={} alt={} nearby={} uninformative={} \
-             clip_admissible={} mnp_confirmed={}",
+             clip_admissible={} read_from_right={} mnp_confirmed={}",
             variant.chrom, variant.pos + 1, variant.ref_allele, variant.alt_allele, read_name(record),
             route, result.is_ref, result.is_alt, result.has_nearby_evidence, result.uninformative,
-            result.clip_admissible, result.mnp_confirmed,
+            result.clip_admissible, result.read_from_right, result.mnp_confirmed,
         );
         return result;
     }

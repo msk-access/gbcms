@@ -17,30 +17,35 @@ from pathlib import Path
 import pytest
 
 sys.path.insert(0, str(Path(__file__).parent))
-from helpers import make_read, write_contig  # noqa: E402
+from helpers import count_checked, make_read, write_contig  # noqa: E402
 
 from gbcms import _rs  # noqa: E402
 
 A, L, READ = 400, 900, 100
-ARGS = {
-    "min_mapq": 20,
-    "min_baseq": 20,
-    "filter_duplicates": True,
-    "filter_secondary": True,
-    "filter_supplementary": True,
-    "filter_qc_failed": False,
-    "filter_improper_pair": False,
-    "filter_indel": False,
-    "threads": 1,
-}
-# (reference bases replaced, ALT): shrinking, growing, a long shrinking one (windows
-# past 50 bases) and a small one.
+
+
+def _at(n: int, seed: int) -> str:
+    """An A/T allele (the contig is C/G/T), so the event grows only where it should."""
+    rng = random.Random(seed)
+    return "".join("A" if i % 3 == 0 else rng.choice("AT") for i in range(n))
+
+
+# (reference bases replaced, ALT): shrinking, growing, long ones with a short other
+# allele, both alleles long (windows past 50 bases, read to one base past the first
+# difference: 48>46 grows four bases left into a CCTT), and small ones.
 SHAPES = {
     "28>6": (28, "ATATGA"),
     "6>28": (6, "ATATGAATTATAGGATAATTGTAAATAT"),
     "35>1": (35, "A"),
     "96>2": (96, "AT"),
+    "120>3": (120, "ATA"),
+    "3>80": (3, _at(80, 4)),
+    "70>60": (70, _at(60, 1)),
+    "60>70": (60, _at(70, 2)),
+    "55>54": (55, _at(54, 3)),
+    "48>46": (48, _at(46, 5)),
     "3>5": (3, "ATTAA"),
+    "2>1": (2, "A"),
 }
 
 
@@ -90,6 +95,13 @@ def _pair(read) -> None:
     read.template_length = 400
 
 
+def _invariants(c) -> None:
+    assert c.dp >= c.rd + c.ad
+    assert c.dpf >= c.rdf + c.adf
+    assert c.rd == c.rd_fwd + c.rd_rev
+    assert c.ad == c.ad_fwd + c.ad_rev
+
+
 @pytest.mark.parametrize("shape", sorted(SHAPES))
 def test_equal_windows_judge_ref_and_alt_molecules_alike(tmp_path, shape):
     n, alt = SHAPES[shape]
@@ -98,12 +110,36 @@ def test_equal_windows_judge_ref_and_alt_molecules_alike(tmp_path, shape):
     (pv,) = _rs.prepare_variants(
         [_rs.Variant("1", A, contig[A : A + n], alt, "X")], fa, 5, False, 1, True
     )
-    (c,) = _rs.count_bam_binned(bam, [pv.variant], [None], **ARGS)
-    assert c.dp >= c.rd + c.ad
-    assert c.rd == c.rd_fwd + c.rd_rev
-    assert c.ad == c.ad_fwd + c.ad_rev
+    (c,) = count_checked(bam, [pv.variant])
+    _invariants(c)
     assert c.ad > 0, f"{shape}: no ALT read judged"
     assert c.ad == c.rd, f"{shape}: AD {c.ad} vs RD {c.rd} from equal molecules"
+
+
+@pytest.mark.parametrize("edge", [False, True])
+def test_windows_read_from_the_right_judge_ref_and_alt_molecules_alike(tmp_path, edge):
+    """RNA, 28>6: with `edge`, two REF reads splice into an exon starting inside the
+    left flank, so an exon edge cuts it and the windows are read from the right
+    flank. A REF molecule starting inside the 28 REF bases holds them as an ALT
+    molecule starting at the same place does: it counts though it starts past the
+    variant position, so AD and RD stay equal (the two spliced reads aside)."""
+    n, alt = SHAPES["28>6"]
+    contig = _contig()
+    reads = _reads(contig, n, alt)
+    if edge:
+        n0, n1 = A - 140, A - 5  # junction [A-140, A-5): the exon starts in the flank
+        for i in range(2):
+            s = n0 - 30 - i
+            seq = contig[s:n0] + contig[n1 : n1 + 70 + i]
+            reads.append(make_read(f"spl{i}", seq, s, ((0, n0 - s), (3, n1 - n0), (0, 70 + i))))
+    fa, bam = write_contig(tmp_path, contig, reads, "c")
+    (pv,) = _rs.prepare_variants(
+        [_rs.Variant("1", A, contig[A : A + n], alt, "X")], fa, 5, False, 1, True
+    )
+    (c,) = count_checked(bam, [pv.variant], mode="rna", reference_fasta=fa, apply_baq=False)
+    _invariants(c)
+    assert c.ad > 0
+    assert 0 <= c.rd - c.ad <= (2 if edge else 0), (c.rd, c.ad)
 
 
 def test_a_carrier_whose_deletion_covers_the_reading_flank_is_read_from_the_other(tmp_path):
@@ -135,7 +171,22 @@ def test_a_carrier_whose_deletion_covers_the_reading_flank_is_read_from_the_othe
     (pv,) = _rs.prepare_variants(
         [_rs.Variant("1", A, contig[A : A + n], "G", "X")], fa, 5, False, 1, True
     )
-    (got,) = _rs.count_bam_binned(bam, [pv.variant], [None], **ARGS)
-    assert got.rd == got.rd_fwd + got.rd_rev and got.ad == got.ad_fwd + got.ad_rev
-    assert got.dp >= got.rd + got.ad
+    (got,) = count_checked(bam, [pv.variant])
+    _invariants(got)
     assert (got.rd, got.ad) == (6, 6)
+
+
+def test_an_event_ending_a_long_run_is_read_from_the_right_alike(tmp_path):
+    """GTT>CA where the G ends a 70-base G run: the event grows left through the run,
+    past a read's reach from the left flank, so both alleles are read from the
+    right. REF and ALT molecules starting past the variant position (inside TT or
+    the ALT bases) hold the right windows alike and count alike."""
+    c = list(_contig())
+    c[A - 69 : A + 3] = "G" * 70 + "TT"
+    contig = "".join(c)
+    fa, bam = write_contig(tmp_path, contig, _reads(contig, 3, "CA"), "c")
+    (pv,) = _rs.prepare_variants([_rs.Variant("1", A, "GTT", "CA", "X")], fa, 5, False, 1, True)
+    (c,) = count_checked(bam, [pv.variant])
+    _invariants(c)
+    assert c.ad > 0
+    assert c.ad == c.rd, (c.rd, c.ad)

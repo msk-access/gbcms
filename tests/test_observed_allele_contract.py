@@ -281,7 +281,7 @@ DELINS_AT, DELINS_LEN, DELINS_ALT = 400, 28, "TTCTCT"
 CHANGE_AT = DELINS_AT + DELINS_LEN + 6
 
 
-def _delins_carriers(ref, n, change):
+def _delins_carriers(ref, n, change, tag="d", offset=0):
     """Reads carrying the delins (an insertion plus a deletion), and a C seven
     bases past it when `change`."""
     hap = ref[:DELINS_AT] + DELINS_ALT + ref[DELINS_AT + DELINS_LEN :]
@@ -290,10 +290,10 @@ def _delins_carriers(ref, n, change):
         hap = hap[:at] + "C" + hap[at + 1 :]
     reads = []
     for i in range(n):
-        s = DELINS_AT - 50 + i
+        s = DELINS_AT - 50 + i + offset
         left = DELINS_AT - s
         cigar = ((0, left), (1, len(DELINS_ALT)), (2, DELINS_LEN), (0, READ - left - 6))
-        reads.append(make_read(f"d{i}", hap[s : s + READ], s, cigar))
+        reads.append(make_read(f"{tag}{i}", hap[s : s + READ], s, cigar))
     return reads
 
 
@@ -311,8 +311,7 @@ def test_a_change_beside_the_delins_on_its_carriers_only_names_the_larger_allele
     reads = _delins_carriers(ref, 15, change=True) + _ref_reads(ref, 10, start=360)
     (row,) = _run(tmp_path, ref, reads, [_delins_row(ref)])
     assert (int(row["ref_count"]), int(row["alt_count"])) == (10, 0)
-    larger_ref = ref[DELINS_AT : CHANGE_AT + 1]
-    larger_alt = DELINS_ALT + ref[DELINS_AT + DELINS_LEN : CHANGE_AT] + "C"
+    _, larger_ref, larger_alt = _larger(ref)
     flag = f"OBSERVED_ALLELE(1:{DELINS_AT + 1}:{larger_ref}>{larger_alt}:15/0)"
     assert flag in row["gbcms_diagnostic"].split(";"), row["gbcms_diagnostic"]
 
@@ -327,3 +326,35 @@ def test_a_change_beside_the_delins_on_ref_reads_too_is_masked(tmp_path):
     (row,) = _run(tmp_path, ref, reads, [_delins_row(ref)])
     assert (int(row["ref_count"]), int(row["alt_count"])) == (10, 15)
     assert "OBSERVED_ALLELE" not in row["gbcms_diagnostic"]
+
+
+def _larger(ref):
+    return (
+        DELINS_AT + 1,
+        ref[DELINS_AT : CHANGE_AT + 1],
+        DELINS_ALT + ref[DELINS_AT + DELINS_LEN : CHANGE_AT] + "C",
+    )
+
+
+def test_a_larger_allele_on_a_minority_of_carriers_is_not_named(tmp_path):
+    """Three carriers show the C, nine do not: the larger allele is named only as
+    any observed allele is, when more reads carry it than the given one."""
+    ref = _ref()
+    reads = (
+        _delins_carriers(ref, 3, change=True, tag="x")
+        + _delins_carriers(ref, 9, change=False, tag="y", offset=10)
+        + _ref_reads(ref, 10, start=360)
+    )
+    (row,) = _run(tmp_path, ref, reads, [_delins_row(ref)])
+    flags = row["gbcms_diagnostic"].split(";")
+    assert not any(f.startswith(("OBSERVED_ALLELE", "COEXISTING_ALLELE")) for f in flags), flags
+
+
+def test_a_larger_allele_already_an_input_row_is_not_named(tmp_path):
+    """The larger allele is itself an input row: it is not an allele the input
+    misses, so the given delins row does not name it (as for any observed allele)."""
+    ref = _ref()
+    reads = _delins_carriers(ref, 15, change=True) + _ref_reads(ref, 10, start=360)
+    rows = _run(tmp_path, ref, reads, [_delins_row(ref), _larger(ref)])
+    given = next(r for r in rows if r["Tumor_Seq_Allele2"] == DELINS_ALT)
+    assert "OBSERVED_ALLELE" not in given["gbcms_diagnostic"], given["gbcms_diagnostic"]

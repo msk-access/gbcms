@@ -34,15 +34,20 @@
 //!   anchor give a REF and an ALT molecule the same number of read starts that can
 //!   judge them, so neither allele is favoured by where reads start, with no padding
 //!   (which cost reads) and no second junction (which lets the longer allele count at
-//!   both ends). When both alleles are longer than [`LONG_EVENT`] bases the windows
-//!   end one base past the first difference instead. The flank is the left one; an
-//!   RNA variant whose left flank an exon edge cuts reads from the right.
+//!   both ends). The flank is the left (POS) one; an RNA variant whose left flank an
+//!   exon edge cuts reads from the right. When both alleles are longer than
+//!   [`LONG_EVENT`] bases the windows end one base past the first difference
+//!   instead, read from the flank nearer it (an event ending a long run is out of a
+//!   read's reach from the other). A read judged from the right counts though it
+//!   starts past the variant position, as the other allele's molecule starting at
+//!   the same place would.
 //! - **A neighbouring change on the ALT reads.** A change that recurs at a fixed
-//!   distance from the event on the reads carrying the ALT core, and not on the REF
-//!   reads, makes their haplotype larger than the given allele: both windows grow
-//!   past it ([`guard_for`]), so a read counts ALT only when it shows the reference
-//!   base there. One that recurs on REF reads too (a germline SNP) is masked in both
-//!   windows instead.
+//!   distance from the event on the fragments carrying the ALT core, and not on the
+//!   REF fragments, makes their haplotype larger than the given allele: both windows
+//!   grow past it ([`guard_for`]), so a read counts ALT only when it shows the
+//!   reference base there, and the larger allele is named as any observed allele
+//!   is. One that recurs on REF fragments too (a germline SNP) is masked in both
+//!   windows instead, spliced ones included.
 //! - **Outcomes.** A read decides only where it holds both the REF and the ALT
 //!   window. A read matching both (through masked bases) is neither. A read
 //!   holding no pair is depth only, like a pure-indel read ending inside its
@@ -65,7 +70,7 @@ use std::rc::Rc;
 use log::trace;
 use rust_htslib::bam::record::{Cigar, Record};
 
-use super::observed::canonical;
+use super::observed::{canonical, ObservedAllele};
 use super::rna;
 use super::variant_checks::deleted_anchor_query;
 use super::window::AlleleKind;
@@ -155,8 +160,11 @@ const FLANK: usize = 2;
 const LONG_EVENT: usize = 50;
 /// How far from the event a neighbouring change on the ALT reads is looked for.
 const GUARD_REACH: usize = 25;
-/// Reads, and share of the reads reading that base, a neighbouring change must
-/// recur on before it is taken as part of the reads' haplotype.
+/// Reference bases prep fetches on each side of the event: the flank, and the
+/// reach the neighbouring-change guard may grow it by.
+const ROOM: usize = FLANK + GUARD_REACH;
+/// Fragments, and share of the fragments reading that base, a neighbouring change
+/// must recur on before it is taken as part of the reads' haplotype.
 const GUARD_MIN_READS: u32 = 3;
 const GUARD_MIN_SHARE: f64 = 0.2;
 /// Share of the REF reads on which a change is no longer the ALT's alone.
@@ -188,9 +196,19 @@ struct Window {
     after: usize,
 }
 
+impl Window {
+    /// Whether a read reads the window from its right flank: windows laid out from
+    /// the right, or windows cut at an exon edge on the left (no flank base left
+    /// there; the event's own first base is no anchor, as an aligner may write it as
+    /// an insertion), while a right flank remains.
+    fn reads_from_right(&self) -> bool {
+        if self.tail { self.after > 0 } else { self.before == 0 && self.after > 0 }
+    }
+}
+
 /// The REF and ALT windows, paired.
 struct Windows {
-    pairs: Vec<(Window, Window)>,
+    pair: (Window, Window),
     /// Where the alleles differ, genomic [start, end): the trims' union, before
     /// repeat growth. A read spliced through it shows neither allele; a read
     /// spliced beside it is judged on windows rebuilt around it over the reference
@@ -225,27 +243,19 @@ impl Windows {
             }
             (Window { allele, hold: w.hold, tail: w.tail, left, right, before, after }, dl, dr)
         };
-        let pairs = self
-            .pairs
-            .iter()
-            .map(|(r, a)| {
-                let ((mut r, dl, dr), (mut a, _, _)) = (cut(r), cut(a));
-                let hold = r.hold.saturating_sub(if r.tail { dr } else { dl }).min(r.allele.len()).min(a.allele.len());
-                r.hold = hold;
-                a.hold = hold;
-                (r, a)
-            })
-            .collect();
-        Windows { pairs, event: self.event }
+        let ((mut r, dl, dr), (mut a, _, _)) = (cut(&self.pair.0), cut(&self.pair.1));
+        let hold = r.hold.saturating_sub(if r.tail { dr } else { dl }).min(r.allele.len()).min(a.allele.len());
+        r.hold = hold;
+        a.hold = hold;
+        Windows { pair: (r, a), event: self.event }
     }
 
     /// The reference span the windows cover.
     fn span(&self) -> (i64, i64) {
-        self.pairs.iter().fold((i64::MAX, i64::MIN), |(lo, hi), (r, a)| {
-            let starts = [r.left, a.left].into_iter().flatten();
-            let ends = [r.right, a.right].into_iter().flatten();
-            (starts.fold(lo, i64::min), ends.fold(hi, i64::max))
-        })
+        let (r, a) = &self.pair;
+        let lo = [r.left, a.left].into_iter().flatten().fold(i64::MAX, i64::min);
+        let hi = [r.right, a.right].into_iter().flatten().fold(i64::MIN, i64::max);
+        (lo, hi)
     }
 }
 
@@ -332,38 +342,25 @@ pub(crate) fn classify(
         return Some(ClassifyResult::no_coverage(ClassifyPhase::MaskedCompare));
     };
 
-    // Per pair the read holds: (matches REF, matches ALT).
-    let mut held: Vec<(bool, bool)> = Vec::with_capacity(win.pairs.len());
-    let (mut mm_ref, mut mm_alt, mut alt_masked, mut had_n) = (0usize, 0usize, 0usize, false);
+    // The read's REF and ALT readings, when it holds the pair.
+    let (rw, aw) = &win.pair;
+    let reading = read_pair(record, &seq, quals, min_baseq, rw, aw, map, readable);
+    // (matches REF, matches ALT)
+    let held = reading.as_ref().map(|(r, a)| (r.mismatches == 0, a.mismatches == 0));
+    let (mm_ref, mm_alt) = reading.as_ref().map_or((0, 0), |(r, a)| (r.mismatches, a.mismatches));
+    let alt_masked = reading.as_ref().map_or(0, |(_, a)| a.masked);
+    let had_n = reading.as_ref().is_some_and(|(r, a)| r.had_n || a.had_n);
     // The read's evidence for ALT over REF (log10), every base weighed by its
     // quality: a low-quality base counts for little instead of fitting anything.
-    let mut evidence = 0.0f64;
-    let mut alt_weight = 0.0f64;
-    let mut alt_spans: Vec<(usize, usize)> = Vec::new();
-    let mut qual_bases: Vec<u8> = Vec::new();
-    let mut read_spans: Vec<(usize, usize)> = Vec::new();
-    for (rw, aw) in &win.pairs {
-        let Some((r, a)) = read_pair(record, &seq, quals, min_baseq, rw, aw, map, readable) else {
-            continue;
-        };
-        mm_ref += r.mismatches;
-        mm_alt += a.mismatches;
-        alt_masked += a.masked;
-        // Bases matching both alleles cancel: the evidence is what mismatches REF
-        // less what mismatches ALT, so the two readings need not cover the same
-        // bases.
-        evidence += r.mismatch_weight - a.mismatch_weight;
-        alt_weight += a.mismatch_weight;
-        alt_spans.push(a.span);
-        had_n |= r.had_n || a.had_n;
-        for (lo, hi) in [r.span, a.span] {
-            qual_bases.extend_from_slice(&quals[lo..hi]);
-            read_spans.push((lo, hi));
-        }
-        held.push((r.mismatches == 0, a.mismatches == 0));
-    }
+    // Bases matching both alleles cancel: the evidence is what mismatches REF less
+    // what mismatches ALT, so the two readings need not cover the same bases.
+    let evidence = reading.as_ref().map_or(0.0, |(r, a)| r.mismatch_weight - a.mismatch_weight);
+    let alt_weight = reading.as_ref().map_or(0.0, |(_, a)| a.mismatch_weight);
+    let alt_spans: Vec<(usize, usize)> = reading.iter().map(|(_, a)| a.span).collect();
+    let read_spans: Vec<(usize, usize)> = reading.iter().flat_map(|(r, a)| [r.span, a.span]).collect();
+    let qual_bases: Vec<u8> = read_spans.iter().flat_map(|&(lo, hi)| quals[lo..hi].iter().copied()).collect();
     let qual = median_qual(&qual_bases, min_baseq);
-    let every = |want: (bool, bool)| !held.is_empty() && held.iter().all(|&h| h == want);
+    let every = |want: (bool, bool)| held == Some(want);
     let mut result = if every((false, true)) && evidence < one_base_evidence(min_baseq) {
         // Its clearly read bases fit the ALT, but weighed by quality its bases do not
         // favour ALT over REF by as much as one base read at the minimum quality: a
@@ -374,7 +371,7 @@ pub(crate) fn classify(
         ClassifyResult::is_alt(qual, ClassifyPhase::MaskedCompare)
     } else if every((true, false)) {
         ClassifyResult::is_ref(qual, ClassifyPhase::MaskedCompare)
-    } else if !held.is_empty() && mm_alt < mm_ref {
+    } else if held.is_some() && mm_alt < mm_ref {
         // Another allele, closer to ALT: partial evidence.
         ClassifyResult::neither_with_nearby(qual, ClassifyPhase::MaskedCompare)
     } else {
@@ -382,7 +379,7 @@ pub(crate) fn classify(
     };
     // A read holding no pair cannot show the allele: depth only (as a pure-indel
     // read that ends inside its tract), and no mFSD class.
-    result.uninformative = held.is_empty();
+    result.uninformative = held.is_none();
     if entering && !result.uninformative {
         // Against REF spliced where the read splices (its own alignment), over the
         // bases its ALT reading read: ALT needs one minimum-quality base's evidence
@@ -411,6 +408,12 @@ pub(crate) fn classify(
     result.clip_admissible = (result.is_ref || result.is_alt)
         && aligned_query_range(record).is_some_and(|(first, after)| read_spans.iter().any(|&(a, b)| a < first || b > after))
         && fragment_query_span(record).is_some_and(|(lo, hi)| read_spans.iter().all(|&(a, b)| a >= lo && b <= hi));
+    // Windows read from the right flank are held from there by a REF and an ALT
+    // molecule alike, so one starting past the variant position (inside the
+    // longer allele) is judged as the other allele's molecule starting there is:
+    // it counts without overlapping the variant position.
+    result.read_from_right =
+        (result.is_ref || result.is_alt) && rw.reads_from_right();
     Some(result)
 }
 
@@ -486,6 +489,11 @@ impl SpliceMap {
             .find(|&&(s, _, len)| g >= s && g < s + len)
             .map_or(g, |&(s, gs, _)| gs + (g - s))
     }
+
+    /// The spliced-space position of genome position `g`, when a segment holds it.
+    fn to_spliced(&self, g: i64) -> Option<i64> {
+        self.segments.iter().find(|&&(_, gs, len)| g >= gs && g < gs + len).map(|&(s, gs, _)| s + (g - gs))
+    }
 }
 
 /// The windows a spliced read is judged on: built by [`windows`] over the
@@ -525,9 +533,11 @@ fn spliced_windows(
         let mut on_spliced = v.clone();
         on_spliced.event_ref = Some((start, String::from_utf8(spliced).ok()?));
         on_spliced.ref_context = None;
-        // genome positions are not spliced-space ones: masks stay in genome space
-        let spliced_layout = Layout { masked: Vec::new(), ..layout.clone() };
-        Some(Rc::new((windows(&on_spliced, &spliced_layout)?, SpliceMap { segments })))
+        // masked positions are genome ones: each kept where a segment holds it
+        let map = SpliceMap { segments };
+        let masked = layout.masked.iter().filter_map(|&p| map.to_spliced(p)).collect();
+        let spliced_layout = Layout { masked, ..layout.clone() };
+        Some(Rc::new((windows(&on_spliced, &spliced_layout)?, map)))
     })();
     if let (Some(c), Some(k)) = (cache, key) {
         c.0.borrow_mut().insert(k, built.clone());
@@ -640,15 +650,14 @@ pub(crate) fn judges(v: &Variant) -> bool {
 
 /// Whether a reference fetched from `start` is too short to judge the variant:
 /// (on the left, on the right), for prep to fetch more. None when it holds the
-/// event with its flank and padding, or the variant is not judged by this rule.
+/// event with [`ROOM`] bases each side, or the variant is not judged by this rule.
 pub(crate) fn reference_short(start: i64, reference: &str, v: &Variant) -> Option<(bool, bool)> {
     if !judges(v) {
         return None;
     }
     let reference = upper(reference);
     let ev = event(start, &reference, v)?;
-    let (need_l, need_r) = ev.room_needed();
-    let short = (ev.lo < need_l, ev.hi + need_r > reference.len());
+    let short = (ev.lo < ROOM, ev.hi + ROOM > reference.len());
     (short.0 || short.1).then_some(short)
 }
 
@@ -704,14 +713,6 @@ struct Event {
     /// ...and that grown through repeats touching it.
     lo: usize,
     hi: usize,
-}
-
-impl Event {
-    /// Reference bases wanted left and right of the event: the flank, and the reach
-    /// the neighbouring-change guard may grow it by.
-    fn room_needed(&self) -> (usize, usize) {
-        (FLANK + GUARD_REACH, FLANK + GUARD_REACH)
-    }
 }
 
 /// The event on `reference` (starting at `start`). None with an empty allele or a
@@ -807,15 +808,18 @@ fn windows(v: &Variant, layout: &Layout) -> Option<Windows> {
     }
     let (ref_win, alt_win) = (&reference[lo..hi], &hap[lo..alt_hi]);
     let (c_lo, c_hi) = ev.core;
-    // Windows of one length for both alleles: the shorter allele's whole window or,
-    // when both alleles are long, through one base past the first difference read
-    // from the flank, from the flank nearer it (a structural choice, the same for
-    // every read and both alleles).
+    // Windows of one length for both alleles: the shorter allele's whole window,
+    // read from the POS (left) flank, or the right one when an RNA exon edge cuts
+    // it; or, when both alleles are long, through one base past the first
+    // difference from the flank nearer it (an event ending a long run is out of a
+    // read's reach from the other). Long or not is the event's own size: the
+    // guard's growth only tightens the rule.
     let short = ref_win.len().min(alt_win.len());
+    let long = short - (fl - FLANK) - (fr - FLANK) > LONG_EVENT;
     let j_left = (ev.first - lo + 2).max(fl + 2).min(short);
     let j_right = (hi - ev.last + 2).max(fr + 2).min(short);
-    let tail = layout.from_right || (short > LONG_EVENT && j_right < j_left);
-    let j = if short <= LONG_EVENT { short } else if tail { j_right } else { j_left };
+    let tail = layout.from_right || (long && j_right < j_left);
+    let j = if !long { short } else if tail { j_right } else { j_left };
     // Both windows are anchored at the window's ends: the left flank's first base
     // and one past the right flank's last, shared by the two alleles.
     let window = |allele: &[u8]| Window {
@@ -828,7 +832,7 @@ fn windows(v: &Variant, layout: &Layout) -> Option<Windows> {
         after: hi - c_hi,
     };
     let pair = (window(ref_win), window(alt_win));
-    Some(Windows { pairs: vec![pair], event: (g(c_lo), g(c_hi)) })
+    Some(Windows { pair, event: (g(c_lo), g(c_hi)) })
 }
 
 /// The neighbouring-change guard of one variant: how far each flank grows, the
@@ -840,10 +844,13 @@ pub(crate) struct Guard {
     pub grow_left: usize,
     pub grow_right: usize,
     pub masked: Vec<i64>,
-    /// 0-based POS, REF, ALT (left-aligned, minimal VCF form) of the reads' larger
-    /// allele; reads carrying it; reads carrying the ALT core with the reference
-    /// base where it differs.
-    pub larger: Option<(i64, String, String, u32, u32)>,
+    /// The reads' larger allele (0-based POS, left-aligned minimal VCF form): its
+    /// carriers are the fewest ALT reads showing any one change, its given carriers
+    /// the most showing the reference base at one.
+    pub larger: Option<ObservedAllele>,
+    /// Fragments read: those showing one allele's core exactly between the flank
+    /// bases.
+    pub scanned: u32,
 }
 
 /// A variant's [`Guard`], found from its reads on first use: only the exact-carrier
@@ -871,12 +878,14 @@ impl<'a> CarrierGuard<'a> {
 /// The guard for a complex variant, from the reads `counted` admits: each read that
 /// holds both of the event's flank bases aligned and shows one allele's core
 /// exactly between them (masked bases fit) is read outward up to [`GUARD_REACH`]
-/// bases on each side, and its confident changes from the reference are tallied per
-/// distance. A change on at least [`GUARD_MIN_READS`] ALT reads and
-/// [`GUARD_MIN_SHARE`] of those reading that base, and on under [`GUARD_REF_SHARE`]
-/// of the REF reads reading it, grows that flank past it; one that recurs on REF
-/// reads too (or on ALT and REF alike) is masked. None when nothing recurs, or the
-/// variant is not judged by this rule.
+/// bases on each side (as far as the reference holds), and its confident changes
+/// from the reference are tallied per distance, once per fragment. A change on at
+/// least [`GUARD_MIN_READS`] ALT fragments and [`GUARD_MIN_SHARE`] of those reading
+/// that base, and on under [`GUARD_REF_SHARE`] of the REF fragments reading it,
+/// grows that flank past it (one inside the flank is judged by the windows as they
+/// are, and named all the same); one that recurs on REF fragments too (or on ALT
+/// and REF alike) is masked. None when nothing recurs, or the variant is not judged
+/// by this rule.
 pub(crate) fn guard_for(
     read_cache: &[Record],
     v: &Variant,
@@ -900,9 +909,12 @@ pub(crate) fn guard_for(
     // event (index 0 is the flank base beside it): reads reading the base, and reads
     // showing a confident change there.
     let mut cover = vec![vec![vec![0u32; GUARD_REACH]; 2]; 2];
+    let mut scanned = 0u32;
     let mut change = cover.clone();
     // the bases the ALT reads show where they change, per side and distance (A C G T)
     let mut alt_bases = vec![vec![[0u32; 4]; GUARD_REACH]; 2];
+    // one tally per fragment: overlapping mates are one molecule's evidence
+    let mut fragments: std::collections::HashSet<&[u8]> = std::collections::HashSet::new();
     for record in read_cache {
         if !counted(record) {
             continue;
@@ -931,6 +943,10 @@ pub(crate) fn guard_for(
             (false, true) => 1,
             _ => continue,
         };
+        if !fragments.insert(record.qname()) {
+            continue;
+        }
+        scanned += 1;
         for (side, reach) in [(0usize, reach_l), (1usize, reach_r)] {
             for i in 0..reach {
                 let off = if side == 0 { ev.lo - 1 - i } else { ev.hi + i };
@@ -966,12 +982,13 @@ pub(crate) fn guard_for(
             }
         }
     }
-    if grow == [0, 0] && masked.is_empty() {
+    let no_change = grown.iter().all(Vec::is_empty);
+    if no_change && masked.is_empty() {
         return None;
     }
     // The larger allele: the given one with every grown change, each base as most of
     // the ALT reads show it; its carriers are the fewest showing any one change.
-    let larger = if grow == [0, 0] {
+    let larger = if no_change {
         None
     } else {
         let far = |side: usize| grown[side].iter().max().copied();
@@ -998,8 +1015,13 @@ pub(crate) fn guard_for(
         // named like every observed allele: left-aligned, minimal VCF form
         let base = |p: i64| usize::try_from(p - start).ok().and_then(|o| reference.get(o).copied());
         let text = |x: Vec<u8>| String::from_utf8_lossy(&x).into_owned();
-        canonical(g(lo), reference[lo..hi].to_vec(), alt, &base)
-            .map(|(pos, r, a)| (pos, text(r), text(a), carriers, given))
+        canonical(g(lo), reference[lo..hi].to_vec(), alt, &base).map(|(pos, r, a)| ObservedAllele {
+            pos,
+            ref_allele: text(r),
+            alt_allele: text(a),
+            carriers,
+            given_carriers: given,
+        })
     };
     trace!(
         "carrier guard at {}:{} {}>{}: flanks grown by {:?} past a change on the ALT reads only, {} positions masked",
@@ -1011,6 +1033,7 @@ pub(crate) fn guard_for(
         grow_right: grow[1],
         masked,
         larger,
+        scanned,
     })
 }
 
@@ -1089,10 +1112,7 @@ fn read_pair(
 ) -> Option<(Reading, Reading)> {
     let at_left = rw.left.and_then(|g| find_read_pos(record, map.to_genome(g))).map(|q| q as i64);
     let at_right = rw.right.and_then(|g| find_read_pos(record, map.to_genome(g - 1))).map(|q| q as i64 + 1);
-    // A window is read from a flank only while it keeps a flank base there: windows
-    // cut at an exon edge on the reading side are read from the other one (the
-    // event's own first base is no anchor; an aligner may write it as an insertion).
-    let tail = if rw.tail { rw.after > 0 } else { rw.before == 0 && rw.after > 0 };
+    let tail = rw.reads_from_right();
     let read = |w: &Window, s: i64| read_at(seq, quals, min_baseq, w, s, tail, readable);
     // Both windows from one placement of the reading flank's end base: their shared
     // start (left), or their shared end (right; each starts its own length before it).
@@ -1252,8 +1272,7 @@ mod tests {
     }
 
     fn only_pair(w: &Windows) -> (&Window, &Window) {
-        assert_eq!(w.pairs.len(), 1);
-        (&w.pairs[0].0, &w.pairs[0].1)
+        (&w.pair.0, &w.pair.1)
     }
 
     #[test]
@@ -1323,7 +1342,7 @@ mod tests {
     }
 
     #[test]
-    fn long_events_are_read_from_one_flank_too() {
+    fn a_long_allele_against_a_short_one_holds_the_short_window_whole() {
         // A 69-base REF replaced by TG: one pair, the whole short ALT window held and
         // as many REF bases from the same flank, the rest of the REF read on.
         let mut ctx = String::from("ACGTTGCA");
@@ -1342,6 +1361,44 @@ mod tests {
         let (r, a) = only_pair(&w);
         assert!(r.tail && a.tail);
         assert_eq!(&r.allele[r.allele.len() - 2..], &a.allele[a.allele.len() - 2..]);
+    }
+
+    #[test]
+    fn both_long_alleles_are_read_from_the_flank_nearer_the_first_difference() {
+        // 70 bases replaced by 60 others (A/T against a C/G/T reference: they differ
+        // from the first base): past 50 bases neither window fits a read, so both
+        // hold one base past the first difference from the flank nearer it.
+        let mut x = 11u32;
+        let mut cgt = |n: usize| -> String {
+            (0..n)
+                .map(|_| {
+                    x = x.wrapping_mul(1_103_515_245).wrapping_add(12_345);
+                    ['C', 'G', 'T'][(x >> 16) as usize % 3]
+                })
+                .collect()
+        };
+        let ctx = format!("{}{}{}", cgt(40), cgt(70), cgt(40));
+        let alt: String = (0..60).map(|i| if i % 3 == 0 { 'A' } else { 'T' }).collect();
+        let v = var(&ctx, 40, &ctx[40..110], &alt);
+        let w = windows(&v, &Layout::default()).unwrap();
+        let (r, a) = only_pair(&w);
+        let (start, reference) = prepared_reference(&v).unwrap();
+        let ev = event(start, &reference, &v).unwrap();
+        let from_left = ev.first - (ev.lo - FLANK) + 2;
+        let from_right = (ev.hi + FLANK) - ev.last + 2;
+        assert_eq!((r.tail, a.tail), (from_right < from_left, from_right < from_left));
+        let held = from_left.min(from_right);
+        assert!(held < LONG_EVENT);
+        assert_eq!((r.hold, a.hold), (held, held));
+        // A 40-to-36 event is not long: grown 20 bases right by the guard, its
+        // windows stay whole (growth only tightens the rule).
+        let alt: String = (0..36).map(|i| if i % 3 == 0 { 'A' } else { 'T' }).collect();
+        let v = var(&ctx, 40, &ctx[40..80], &alt);
+        let grown = Layout { grow_right: 20, ..Layout::default() };
+        let w = windows(&v, &grown).unwrap();
+        let (r, a) = only_pair(&w);
+        assert!(a.allele.len() > LONG_EVENT);
+        assert_eq!((r.hold, a.hold), (a.allele.len(), a.allele.len()));
     }
 
     #[test]
@@ -1366,6 +1423,17 @@ mod tests {
         rec
     }
 
+    /// `n` copies of `rec`, each its own fragment (named `tag` and a number).
+    fn fragments(rec: &Record, n: usize, tag: &str) -> Vec<Record> {
+        (0..n)
+            .map(|i| {
+                let mut r = rec.clone();
+                r.set_qname(format!("{tag}{i}").as_bytes());
+                r
+            })
+            .collect()
+    }
+
     #[test]
     fn the_guard_reads_only_the_flank_the_reference_holds() {
         // A delins three bases from the reference's start (a contig start, where
@@ -1376,9 +1444,12 @@ mod tests {
         let mut seq = hap.as_bytes().to_vec();
         seq[5 + 4] = b'C';
         let carrier = aligned(&seq, vec![Cigar::Match(3), Cigar::Ins(2), Cigar::Del(4), Cigar::Match(36)], 0);
-        let reads: Vec<Record> = (0..4).map(|_| carrier.clone()).collect();
+        let reads = fragments(&carrier, 4, "a");
         let g = guard_for(&reads, &v, &|_| true, 20).expect("the change past the event");
         assert_eq!((g.grow_left, g.grow_right), (0, 3));
+        // Two fragments, each read by two overlapping mates: under the fragments needed.
+        let mates = [fragments(&carrier, 2, "m"), fragments(&carrier, 2, "m")].concat();
+        assert!(guard_for(&mates, &v, &|_| true, 20).is_none(), "mates are one fragment");
     }
 
     #[test]
@@ -1412,9 +1483,10 @@ mod tests {
         for snp in [false, true] {
             let shared: &[usize] = if snp { &[hi + 6] } else { &[] };
             let ref_read = aligned(&with_c(&ctx, shared), vec![Cigar::Match(98)], 0);
-            let reads: Vec<Record> = (0..4).map(|_| carrier.clone()).chain((0..4).map(|_| ref_read.clone())).collect();
+            let reads = [fragments(&carrier, 4, "a"), fragments(&ref_read, 4, "r")].concat();
             let g = guard_for(&reads, &v, &|_| true, 20).expect("a recurring change");
-            let (pos, r, a, n, m) = g.larger.clone().expect("a larger allele");
+            let l = g.larger.clone().expect("a larger allele");
+            let (pos, r, a, n, m) = (l.pos, l.ref_allele, l.alt_allele, l.carriers, l.given_carriers);
             // left-aligned and minimal: the grown event's shared bases are trimmed
             if snp {
                 // the shared C is masked; the larger allele stops at the other one
