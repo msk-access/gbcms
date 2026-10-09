@@ -51,10 +51,10 @@ on `feature/6.7.0-plan` (not pushed). Measured on the gate panel's delins and 50
 deletion rows, a 193-row germline-het pilot in IMPACT normals, and four surveys; local
 harness `~/test/gbcms/harness/plan670/` (PHI). Headlines: one-sided equal-length junction
 windows keep VAF unbiased and recover the long-delins carriers (AD +45%, sign-out 0/14 →
-9/14); 6.6.0's past-50-base rule counts REF at both junctions (VAF ×0.64–0.71); long
+9/14); past 50 bases 6.6.0's written counts already match one-sided reading; long
 deletions read 4–7% low (clipped ALT, REF needs 1–2 bases); allele-level VAF holds 0.5
 at germline hets in repeats, by-base 3–6 points low; Phase 3 decides ≤0.3% of reads
-(#244: close). No implementation until the plan is approved.
+(#244: close). Plan approved 2026-10-08; implementing (D8 #270, H4 #271, C39 next).
 
 ### Previous: 6.6.0 release
 `release/6.6.0` was cut from develop c01749ab on 2026-10-07: version bump, the cycle

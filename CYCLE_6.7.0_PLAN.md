@@ -41,7 +41,7 @@ Priority: **H** high, **M** medium, **L** low. **[counts]** can change counts.
 
 | ID | Ticket | Pri | Flags | Issue | Parent (proposed) |
 |:--|:--|:-:|:--|:--|:--|
-| C39 | Long delins: read every complex event by one-sided, equal-length junction windows (no padding loss, no REF double count) | H | [counts] [decided] | #253 | A #258 |
+| C39 | Long delins: read every complex event by one-sided, equal-length junction windows (no padding loss) | H | [counts] [decided] | #253 | A #258 |
 | C41 | REF and VAF of indels in repeats against germline truth (allele-level vs by-base, spanning bias) | H | [decided] | #264 | A #258 |
 | C40 | Long deletions: one window at the POS breakpoint for both alleles, clipped bases read (RJ-13) | H | [counts] [decided] | #254 | B #259 |
 | C42 | Per-locus gap parameters: closed as measured; replaced by Phase-3 routing | L | [decided] | #244 → #265 | A #258 |
@@ -112,8 +112,8 @@ bases, windows become junction windows read from either flank.
 | | one-sided junction windows, read from the left flank | 1,761 | 5,790 | **0.99** | 9/14 |
 | | one-sided junction windows, read from the right flank | 1,820 | 5,763 | **1.00** | 9/14 |
 | | junction windows from either flank (today's rule past 50 bases) | 1,869 | 6,984 | **0.87** | 9/14 |
-| 4 clean, window over 50 (junctions today) | 6.6.0 | 458 | 2,403 | 1.00 | 2/4 |
-| | one-sided, left / right | 466 / 465 | 1,351 / 1,350 | **1.46 / 1.59** | 2/4 |
+| 4 clean, window over 50 (junctions today) | 6.6.0 | 458 | 1,356 | 1.00 | 2/4 |
+| | one-sided, left / right | 466 / 465 | 1,351 / 1,350 | 1.03 / 1.12 | 2/4 |
 | 70 clean, span under 20 | 6.6.0 | 9,557 | 24,053 | 1.00 | 52/70 |
 | | one-sided, left / right | 10,342 / 10,304 | 26,086 / 26,017 | 1.00 | 66/70 |
 | 49 with a recurrent neighbour | 6.6.0 | 2,401 | 14,964 | 1.00 | 19/49 |
@@ -148,9 +148,12 @@ The delins are rebuilt from the v5.0q records dipcall splits (same-phase records
   and ALT the same number of read starts that can judge them (63 and 63; 97 and 97).
   No padding gives 63 and 97, predicting VAF 0.53; 0.54 was measured. Either flank
   gives 132 and 97, predicting 0.35; 0.36 was measured.
-- **6.6.0's long-event rule has that second bias today.** On the 4 clean delins with a
-  window over 50, it counts REF at both junctions: VAF reads 0.63–0.69 of the
-  one-sided value.
+- **Past 50 bases, 6.6.0 shows no such bias in its counts.** Its rule reads junctions
+  from either flank, but only reads over the variant's first base (or admitted by a
+  clip) are counted, so a REF read holding only the far junction is classified and
+  never counted. On the 4 clean long delins its written REF (1,356) matches the
+  one-sided reading (1,351). (Corrected 2026-10-09: an earlier draft read the engine's
+  per-read trace, which also logs those uncounted reads, and reported VAF ×0.64–0.71.)
 - **Recurrent neighbours.** In 49 rows the well-anchored ALT carriers share a confident
   change at a fixed distance (up to 25 bp) from the event. In 47 it is on ALT reads
   only: the reads carry a larger haplotype than the given allele. In 2 it is also on
@@ -178,7 +181,7 @@ discriminating bases at one breakpoint; three tools correct spanning bias with a
 
 | | Rule | AD (long delins) | VAF | Cost / risk |
 |:--|:--|:--|:--|:--|
-| A | Keep 6.6.0 | baseline | unbiased under 50 bases; REF double-counted past 50 | loses ~30% of carriers; long-event VAF ×0.64–0.71 |
+| A | Keep 6.6.0 | baseline | unbiased | loses ~30% of carriers on long delins |
 | B | Whole allele, minimal flank, no padding | +42% | ×1.22 (shorter allele favoured) | biased; credits larger alleles at recurrent loci |
 | C | **One-sided, equal-length junction windows for every complex event**, plus an observed-flank guard | +45% (RD +41%) | ×0.98–1.00 | needs a per-variant pass for the guard |
 | D | B plus a spanning-corrected VAF (GangSTR-style weights) | +42% | corrected | a new column; counts and VAF disagree |
@@ -214,7 +217,7 @@ discriminating bases at one breakpoint; three tools correct spanning bias with a
 **Recommendation: C.** It departs from practice (no tool reads equal one-sided
 windows), but it measures better than each alternative. It keeps the unbiased VAF the
 padding was there for, reaches the carriers likelihood callers and the sign-out count,
-and removes today's long-event REF double count. D needs a column and lets counts and
+and replaces two rules (padded windows, either-flank junctions) with one. D needs a column and lets counts and
 VAF disagree. One sub-decision remains: a change that recurs on every ALT read next to
 the event, on ALT reads only. It applies to delins and pure deletions alike (3 of the
 panel's 31 long-deletion rows have one, 3–7 bases from the junction):
