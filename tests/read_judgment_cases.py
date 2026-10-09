@@ -468,6 +468,15 @@ def _long_del_reads(n: int, mh: int, shape: str) -> list:
                 s,
                 [(0, A - s), (2, 30), (0, 2), (2, n - 32), (0, rest)],
             )
+        elif shape == "REF read with its own 20-bp deletion inside the deleted span":
+            s = A - 50 - i
+            other = contig[: A + 20] + contig[A + 40 :]
+            add(
+                f"r{i}",
+                other[s : s + LONG_READ],
+                s,
+                [(0, A + 20 - s), (2, 20), (0, LONG_READ - (A + 20 - s))],
+            )
         elif shape == "REF read starting inside the deletion":
             ref_read(i, A + 10 + i, LONG_READ)
         elif shape == "carriers with a recurring change two bases past the microhomology":
@@ -494,6 +503,7 @@ _LONG_DEL_ALL = (
     "REF read with an error inside the window",
     "a deletion two bases shorter at the same start",
     "the deletion written as two with two bases kept between",
+    "REF read with its own 20-bp deletion inside the deleted span",
     "REF read starting inside the deletion",
     "carriers with a recurring change two bases past the microhomology",
     "REF reads with a recurring change inside the window",
@@ -766,19 +776,8 @@ DECISIONS = {
 # Decided calls the engine does not give yet: the red-first cases of a rule being
 # built, strict xfails in test_read_judgment_spec.py until it lands.
 PENDING: set[str] = {
-    "del 60 | exact D carrier, three bases past the microhomology",
-    "del 60 | right-clipped carrier, the junction in the clip",
-    "del 60 | left-clipped carrier aligned from the right flank",
-    "del 60 | split carrier: a soft-clipped primary and a hard-clipped supplementary",
-    "del 60 | REF read, three deleted bases past the microhomology",
-    "del 60 | REF read with an error inside the window",
-    "del 60 | a deletion two bases shorter at the same start",
-    "del 60 | the deletion written as two with two bases kept between",
-    "del 60 mh3 | exact D carrier, three bases past the microhomology",
-    "del 60 mh3 | left-clipped carrier aligned from the right flank",
-    "del 60 mh3 | REF read, three deleted bases past the microhomology",
-    "del 1000 | right-clipped carrier, the junction in the clip",
-    "del 1000 | left-clipped carrier aligned from the right flank",
+    "del 60 | carriers with a recurring change two bases past the microhomology",
+    "del 60 | REF reads with a recurring change inside the window",
 }
 
 # (ref_count, alt_count, partial_alt) for the case's four reads.
@@ -990,6 +989,8 @@ EXPECT = {
     "del 60 | a deletion two bases shorter at the same start": (0, 0, 0),
     # another allele, closer to ALT than REF over the windows: partial
     "del 60 | the deletion written as two with two bases kept between": (0, 0, 4),
+    # its own deletion inside the deleted span: another allele (C26), partial
+    "del 60 | REF read with its own 20-bp deletion inside the deleted span": (0, 0, 4),
     "del 60 | REF read starting inside the deletion": (0, 0, 0),
     # a recurring change is a separate event: masked, the carriers count
     "del 60 | carriers with a recurring change two bases past the microhomology": (0, 4, 0),

@@ -65,6 +65,7 @@ use super::rna;
 use super::window::{self, AlleleKind};
 use super::observed;
 use super::carrier;
+use super::junction;
 use crate::shared::baq::apply_heuristic_baq;
 
 
@@ -772,10 +773,10 @@ fn count_bam_binned_core(
             info!(
                 "{}: depth reads by deciding rule over {} variant(s): withdrawn as uninformative \
                  {} REF, {} ALT ({} unjudged); ALT kept by its bases {}; exact-carrier rule {} \
-                 judged, {} fell back; sibling guards {} REF excluded, {} ALT claimed; clip \
-                 admissions {}; SW fallback {}",
+                 judged, {} fell back; junction judge {}; sibling guards {} REF excluded, {} ALT \
+                 claimed; clip admissions {}; SW fallback {}",
                 bam_label, all_counts.len(), t.ref_withdrawn, t.alt_withdrawn, t.alt_unjudged,
-                t.alt_by_bases, t.carrier_judged, t.carrier_fallback, t.sibling_ref_excluded,
+                t.alt_by_bases, t.carrier_judged, t.carrier_fallback, t.junction_judged, t.sibling_ref_excluded,
                 t.sibling_alt_claimed, t.clip_admitted, sw,
             );
 
@@ -1775,6 +1776,7 @@ fn count_variant_from_cache(
             d.alt_unjudged += u64::from(result.alt_unjudged);
             d.alt_by_bases += u64::from(result.alt_by_bases);
             d.carrier_judged += u64::from(result.carrier_judged);
+            d.junction_judged += u64::from(result.junction_judged);
             d.carrier_fallback += u64::from(result.carrier_fallback);
             d.sibling_ref_excluded += u64::from(result.is_ref && ref_claimed_by_sibling);
             d.sibling_alt_claimed += u64::from(result.is_alt && claimed_by_sibling);
@@ -2052,13 +2054,13 @@ fn count_variant_from_cache(
     debug!(
         "Phase stats {}:{} {}>{}: P0={} P1={} P2={} P2.5={} P3={} splice_skip_excluded={} \
          sw_fallback={} clip_candidates={} | withdrawn ref={} alt={} (unjudged {}) \
-         alt_by_bases={} carrier judged={} fallback={} sibling ref_excluded={} alt_claimed={} \
-         clip_admitted={} ({} backend, {} reads overlapping the window)",
+         alt_by_bases={} carrier judged={} fallback={} junction judged={} sibling ref_excluded={} \
+         alt_claimed={} clip_admitted={} ({} backend, {} reads overlapping the window)",
         variant.chrom, variant.pos + 1, variant.ref_allele, variant.alt_allele,
         phase_counts[0], phase_counts[1], phase_counts[2], phase_counts[3], phase_counts[4],
         counts.splice_skip_excluded, counts.sw_fallback_reads, counts.clip_candidates,
         d.ref_withdrawn, d.alt_withdrawn, d.alt_unjudged, d.alt_by_bases, d.carrier_judged,
-        d.carrier_fallback, d.sibling_ref_excluded, d.sibling_alt_claimed, d.clip_admitted,
+        d.carrier_fallback, d.junction_judged, d.sibling_ref_excluded, d.sibling_alt_claimed, d.clip_admitted,
         match backend {
             AlignmentBackend::SmithWaterman => "SW",
             AlignmentBackend::PairHMM { .. } => "HMM",
@@ -2671,6 +2673,26 @@ fn check_allele_with_qual<F: Fn(u8, u8) -> i32>(
         // Pure insertion: CIGAR-based fast paths, then backend-aware Phase 3 fallback
         let result = check_insertion(record, variant, siblings, quals, min_baseq, alt_aligner, ref_aligner, backend);
         ref_needs_the_window(record, variant, alt_needs_the_window(record, variant, quals, min_baseq, result))
+    } else if kind == AlleleKind::Deletion && junction::judges(variant) {
+        // A deletion of 50+ bp: judged by its bases at the POS breakpoint, however
+        // the aligner wrote it (RJ-24); the CIGAR checks only when the prepared
+        // reference cannot hold its windows.
+        if let Some(result) = junction::classify(record, variant, quals, min_baseq, rules) {
+            trace!(
+                "{}:{} {}>{} read={}: junction judge: ref={} alt={} nearby={} uninformative={} \
+                 clip_admissible={}",
+                variant.chrom, variant.pos + 1, variant.ref_allele, variant.alt_allele, read_name(record),
+                result.is_ref, result.is_alt, result.has_nearby_evidence, result.uninformative,
+                result.clip_admissible,
+            );
+            return result;
+        }
+        trace!(
+            "{}:{} {}>{} read={}: the prepared reference cannot hold the junction windows → CIGAR checks",
+            variant.chrom, variant.pos + 1, variant.ref_allele, variant.alt_allele, read_name(record),
+        );
+        let result = check_deletion(record, variant, siblings, quals, min_baseq, alt_aligner, ref_aligner, backend);
+        ref_needs_the_window(record, variant, alt_needs_the_window(record, variant, quals, min_baseq, result))
     } else if kind == AlleleKind::Deletion {
         // Pure deletion: CIGAR-based fast paths, then backend-aware Phase 3 fallback
         let result = check_deletion(record, variant, siblings, quals, min_baseq, alt_aligner, ref_aligner, backend);
@@ -2795,6 +2817,8 @@ fn deciding_rule(r: &ClassifyResult) -> &'static str {
         "carrier_fallback"
     } else if r.carrier_judged {
         "exact_carrier"
+    } else if r.junction_judged {
+        "junction"
     } else if r.sw_fallback {
         "sw_fallback"
     } else {

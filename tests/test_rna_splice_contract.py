@@ -620,13 +620,11 @@ def test_mq0_tracking_precedes_strandedness_filter(tmp_path):
     assert c.ad == c.ad_fwd + c.ad_rev
 
 
-def test_large_deletion_band_near_junction(tmp_path):
-    """The ≥50bp in-band resolution verifies deleted bases through
-    ref_context at genomic offsets. Pre-removal, the co-occurring spliced
-    population made consensus splicing drain the intron from ref_context, so
-    the band's context guard read shifted bytes and rejected in-band
-    carriers. Pinned green: the guard verifies against genomic context
-    regardless of how many reads splice over the span."""
+def test_large_deletion_near_junction(tmp_path):
+    """A 60bp deletion with reads spliced over its span present: the spliced reads
+    are excluded (no observation there), and the exact carriers and REF reads are
+    judged by their bases at the POS breakpoint (RJ-24) on the genomic reference,
+    however many reads splice over the span."""
     ref = _mk_ref()
     anchor, glen = 300, 60
     if ref[anchor] == ref[anchor + glen]:  # pin against left-alignment
@@ -635,16 +633,12 @@ def test_large_deletion_band_near_junction(tmp_path):
     rows_v = [(anchor + 1, ref[anchor : anchor + 1 + glen], ref[anchor])]
     reads = (
         _exonic_reads(ref, anchor, 6)
-        # in-band carriers: D(59) for an expected D(60) — 1 span base
-        # retained, nothing changed outside → same event, band-verified
-        + _del_reads(ref, anchor + 1, 59, 4)
+        + _del_reads(ref, anchor + 1, glen, 4)  # exact carriers
         + _spliced_reads(ref, anchor + 1, 100, 5)  # N over the span
     )
     rows = _run(tmp_path, _vcf(tmp_path, rows_v), _bam(tmp_path, ref, reads), _fasta(tmp_path, ref))
     r = rows[0]
-    assert (
-        int(r["alt_count"]) == 4
-    ), f"in-band carriers must stay ALT with spliced reads present, got ad={r['alt_count']}"
+    assert int(r["alt_count"]) == 4, r["alt_count"]
     assert int(r["ref_count"]) == 6
     assert int(r["total_count"]) == 10  # spliced-over reads excluded
 

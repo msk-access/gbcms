@@ -179,6 +179,8 @@ pub struct ClassifyResult {
     pub alt_by_bases: bool,
     /// The exact-carrier rule judged the read.
     pub carrier_judged: bool,
+    /// The junction judge (a deletion of 50+ bp at its POS breakpoint) judged the read.
+    pub junction_judged: bool,
 }
 
 impl ClassifyResult {
@@ -212,6 +214,7 @@ impl ClassifyResult {
             alt_withdrawn: false,
             alt_by_bases: false,
             carrier_judged: false,
+            junction_judged: false,
         }
     }
 

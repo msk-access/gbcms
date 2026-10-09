@@ -50,7 +50,9 @@ fragment. A read whose left flank is clipped, or deleted by its own alignment, i
 placed from the other side at each allele's length; hard-clipped bases are absent.
 Nothing past the window is read. Such reads decided through a clip count toward
 depth, as in the engine. The census does not mask a change recurring in the windows
-across reads (the engine does): reads carrying one are neither here.
+across reads (the engine does): reads carrying one are neither here. Nor does it
+read the CIGAR: a read fitting REF whose own alignment deletes or inserts 5+ bases
+inside the deleted span is another allele in the engine (C26), REF here.
 
 Engine REF/ALT counts must equal the census REF/ALT counts. Every other verdict is
 neither, whether partial or uninformative. The census is exact for clean bases,
