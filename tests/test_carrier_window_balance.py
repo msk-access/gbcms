@@ -1,0 +1,111 @@
+"""Complex variants: windows of equal length at one anchor judge REF and ALT molecules
+alike (docs/reference/read-judgment.md, RJ-23).
+
+A heterozygous locus read at every start: one REF read and one ALT read starting at
+each position along their own haplotypes, all the same length. Whatever reads the
+rule leaves as depth, it must leave as many of each allele, so AD equals RD exactly:
+a window of one allele that a read can hold from more (or fewer) starts than the
+other's biases the VAF toward that allele. Synthetic and PHI-free.
+"""
+
+import random
+import sys
+from pathlib import Path
+
+import pytest
+
+sys.path.insert(0, str(Path(__file__).parent))
+from helpers import make_read, write_contig  # noqa: E402
+
+from gbcms import _rs  # noqa: E402
+
+A, L, READ = 400, 900, 100
+ARGS = {
+    "min_mapq": 20,
+    "min_baseq": 20,
+    "filter_duplicates": True,
+    "filter_secondary": True,
+    "filter_supplementary": True,
+    "filter_qc_failed": False,
+    "filter_improper_pair": False,
+    "filter_indel": False,
+    "threads": 1,
+}
+# (reference bases replaced, ALT): shrinking, growing, a long shrinking one (windows
+# past 50 bases) and a small one.
+SHAPES = {
+    "28>6": (28, "ATATGA"),
+    "6>28": (6, "ATATGAATTATAGGATAATTGTAAATAT"),
+    "35>1": (35, "A"),
+    "96>2": (96, "AT"),
+    "3>5": (3, "ATTAA"),
+}
+
+
+def _contig() -> str:
+    rng = random.Random(253)
+    return "".join(rng.choice("CGT") for _ in range(L))
+
+
+def _reads(contig: str, n: int, alt: str):
+    """One REF and one ALT read at every start along each haplotype that reaches the
+    event's neighbourhood; a read starting inside the ALT event is written with the
+    event bases it holds soft-clipped, as an aligner without the event would."""
+    reads, k = [], 0
+    for s in range(A - READ - 10, A + n + 20):
+        seq = contig[s : s + READ]
+        reads.append(make_read(f"ref{k}", seq, s, ((0, READ),)))
+        k += 1
+    hap = contig[:A] + alt + contig[A + n :]
+    for h in range(A - READ - 10, A + len(alt) + 20):
+        seq = hap[h : h + READ]
+        if h + READ <= A:
+            cig, pos = ((0, READ),), h
+        elif h < A and A - h + len(alt) >= READ:  # ends inside the ALT bases: clipped
+            before = A - h
+            cig, pos = ((0, before), (4, READ - before)), h
+        elif h < A:  # crosses the event: the insertion and the deletion as written
+            before = A - h
+            cig, pos = ((0, before), (1, len(alt)), (2, n), (0, READ - before - len(alt))), h
+        elif h < A + len(alt):  # starts inside the ALT bases: they are clipped
+            clip = A + len(alt) - h
+            cig, pos = ((4, clip), (0, READ - clip)), A + n
+        else:
+            cig, pos = ((0, READ),), h - len(alt) + n
+        cig = tuple((op, ln) for op, ln in cig if ln > 0)
+        reads.append(make_read(f"alt{k}", seq, pos, cig))
+        k += 1
+    return reads
+
+
+# Shapes the rule does not balance yet: strict xfails until one-sided windows land.
+PENDING = {"96>2"}
+
+
+@pytest.mark.parametrize(
+    "shape",
+    [
+        (
+            pytest.param(
+                s,
+                marks=pytest.mark.xfail(strict=True, reason="long event; the rule is being built"),
+            )
+            if s in PENDING
+            else s
+        )
+        for s in sorted(SHAPES)
+    ],
+)
+def test_equal_windows_judge_ref_and_alt_molecules_alike(tmp_path, shape):
+    n, alt = SHAPES[shape]
+    contig = _contig()
+    fa, bam = write_contig(tmp_path, contig, _reads(contig, n, alt), "c")
+    (pv,) = _rs.prepare_variants(
+        [_rs.Variant("1", A, contig[A : A + n], alt, "X")], fa, 5, False, 1, True
+    )
+    (c,) = _rs.count_bam_binned(bam, [pv.variant], [None], **ARGS)
+    assert c.dp >= c.rd + c.ad
+    assert c.rd == c.rd_fwd + c.rd_rev
+    assert c.ad == c.ad_fwd + c.ad_rev
+    assert c.ad > 0, f"{shape}: no ALT read judged"
+    assert c.ad == c.rd, f"{shape}: AD {c.ad} vs RD {c.rd} from equal molecules"
