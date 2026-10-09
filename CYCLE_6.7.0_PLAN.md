@@ -101,35 +101,54 @@ bases, windows become junction windows read from either flank.
 |:--|:--|--:|--:|--:|--:|
 | 14 clean, span 20+ (whole windows today) | 6.6.0 | 1,203 | 4,117 | 1.00 | 0/14 |
 | | whole allele, 2 flank bases, no padding (what the sign-out counts track) | 1,712 | 4,569 | **1.22** | 9/14 |
-| | one-sided junction windows, read from the left flank | 1,742 | 5,804 | **0.98** | 9/14 |
-| | one-sided junction windows, read from the right flank | 1,712 | 5,770 | **1.00** | 9/14 |
-| | junction windows from either flank (today's rule past 50 bases) | 1,774 | 6,984 | **0.87** | 9/14 |
+| | one-sided junction windows, read from the left flank | 1,761 | 5,790 | **0.99** | 9/14 |
+| | one-sided junction windows, read from the right flank | 1,820 | 5,763 | **1.00** | 9/14 |
+| | junction windows from either flank (today's rule past 50 bases) | 1,869 | 6,984 | **0.87** | 9/14 |
 | 4 clean, window over 50 (junctions today) | 6.6.0 | 458 | 2,403 | 1.00 | 2/4 |
-| | one-sided, left / right | 459 / 460 | 1,351 / 1,350 | **1.40 / 1.56** | 3/4, 2/4 |
+| | one-sided, left / right | 466 / 465 | 1,351 / 1,350 | **1.46 / 1.59** | 2/4 |
 | 70 clean, span under 20 | 6.6.0 | 9,557 | 24,053 | 1.00 | 52/70 |
-| | one-sided, right | 10,227 | 26,076 | 1.00 | 68/70 |
+| | one-sided, left / right | 10,342 / 10,304 | 26,086 / 26,017 | 1.00 | 66/70 |
 | 49 with a recurrent neighbour | 6.6.0 | 2,401 | 14,964 | 1.00 | 19/49 |
-| | whole allele, 2 flank bases | 6,853 | 15,125 | 1.04 | 23/49 |
-| | one-sided + observed-flank guard | 1,030–1,100 | 13,500–13,640 | 0.97–0.99 | 8–12/49 |
+| | one-sided, no guard | 6,909–6,944 | 16,188–16,370 | 1.02–1.04 | 23/49 |
+| | one-sided + observed-flank guard | 1,154–1,199 | 13,485–13,633 | 0.99–1.01 | 12/49 |
 
-- **Padding costs reads, not bias.** On long delins the padded windows drop 31% of the
-  ALT carriers and 29% of the REF reads that one-sided windows judge, and the VAF is
-  the same (left 0.98, right 1.00). The carriers lost are the ones the gate saw:
-  sign-out agreement 0/14 → 9/14. (On short delins the oracle's left reading under-reads
-  9 of 70 rows, a limit of its ungapped placement where the aligner shifted the anchor;
-  the build's own left and right readings are compared there.)
-- **The two biased alternatives behave as predicted.** Whole alleles without padding
-  favour the shorter allele (VAF ×1.22). Reading junctions from either flank favours
-  the longer one (×0.87), because a REF read can prove REF at either end while the
-  shorter ALT has one window.
+**Against truth (D9, HG002 germline hets, VAF 0.5; WGS 35x, bwa-mem, no realignment).**
+The delins are rebuilt from the v5.0q records dipcall splits (same-phase records within
+10 bp), and isolated from other variants.
+
+| HG002 het delins | Rule | Rows | VAF median (IQR) | Rows within 0.35–0.65 | AD | RD |
+|:--|:--|--:|:--|--:|--:|--:|
+| span 20+ (250) | 6.6.0 | 237 | 0.464 (0.357–0.544) | 166 | 2,731 | 3,258 |
+| | no padding | 245 | 0.469 (0.363–0.551) | 176 | 3,147 | 3,663 |
+| | one-sided, left / right | 246 | **0.470 / 0.481** (0.38–0.55) | **186 / 188** | 3,425 / 3,473 | 3,885 / 3,865 |
+| | either flank | 246 | 0.471 (0.381–0.561) | 183 | 3,751 | 4,087 |
+| span 5–19 (150) | every rule | 149 | 0.500 | 124–130 | 2,087–2,306 | 2,143–2,446 |
+
+- **Padding costs reads, not bias.** On the panel's long delins the padded windows
+  drop a third of the reads that one-sided windows judge, ALT and REF alike, with the
+  same VAF (0.99–1.00). The carriers lost are the ones the gate saw: sign-out agreement
+  0/14 → 9/14. On HG002, one-sided windows judge 25% more ALT reads, sit closest to 0.5,
+  and put the most rows in the 0.35–0.65 band.
+- **The two biased alternatives behave as predicted** on the panel, where the length
+  change is large and reads are 101 bp. Whole alleles without padding favour the
+  shorter allele (VAF ×1.22). Reading junctions from either flank favours the longer
+  one (×0.87), because a REF read can prove REF at either end while the shorter ALT
+  has one window. On HG002 the biases are small: its delins mostly change length by a
+  few bases, and its reads are 151 bp.
+- **Read-start arithmetic predicts the row-level effects.** A worked example is a
+  35 bp → 1 bp delins with 101-bp reads. The padded and one-sided rules each give REF
+  and ALT the same number of read starts that can judge them (63 and 63; 97 and 97).
+  No padding gives 63 and 97, predicting VAF 0.53; 0.54 was measured. Either flank
+  gives 132 and 97, predicting 0.35; 0.36 was measured.
 - **6.6.0's long-event rule has that second bias today.** On the 4 clean delins with a
-  window over 50, it counts REF at both junctions: VAF reads 0.64–0.71 of the
+  window over 50, it counts REF at both junctions: VAF reads 0.63–0.69 of the
   one-sided value.
 - **Recurrent neighbours.** In 49 rows the well-anchored ALT carriers share a confident
   change at a fixed distance (up to 25 bp) from the event. In 47 it is on ALT reads
-  only, so the reads carry a larger allele than the one given. In 2 it is also on REF
-  reads (likely a germline SNP in cis). 6.6.0's padding withholds part of these; a
-  minimal-flank rule would credit the larger allele (6,853 vs 2,401 AD).
+  only: the reads carry a larger haplotype than the given allele. In 2 it is also on
+  REF reads (likely a germline SNP in cis). 6.6.0's padding withholds part of these.
+  Pure deletions meet the same shape (decision 3), and 6.6.0 credits them there under
+  RJ-8, so the two paths disagree today; see sub-decision (a)/(b) below.
 
 **Community practice** (s1 survey):
 
@@ -167,20 +186,40 @@ discriminating bases at one breakpoint; three tools correct spanning bias with a
   allele and not the larger one (invariant 7). A recurrent change also present on REF
   reads (a germline SNP) is masked instead, not grown past. The diagnostic names the
   larger allele (`OBSERVED_ALLELE`, unchanged).
-- **The anchor flank.** The POS (left) flank, the breakpoint pure deletions count REF at
-  today. A read whose own clip holds that flank is read there (RJ-13). Reads holding
-  only the right junction become depth for both alleles alike.
+- **The anchor flank.** One flank per variant, the same for both alleles. In DNA it's the
+  POS (left) flank, the breakpoint pure deletions count REF at today. A read whose own
+  clip holds that flank is read there (RJ-13). Reads holding only the other junction
+  become depth for both alleles alike. Any allele-independent choice keeps the windows
+  unbiased; the panel's left and right readings agree (0.99 and 1.00).
+- **RNA.** The rule is the same for RNA's complex events: its windows are built over the
+  reference spliced at the read's junctions (RJ-19), and exon-edge clips are not read
+  (RJ-18). One addition: where the POS flank is cut by an exon edge, reads come from the
+  exon side, so the variant reads from the other flank. The choice is structural (from
+  the exon edges), so it still treats both alleles alike.
+  - Reach today: the FORTE truth arm has 94 rows, one of them a delins, so its counts
+    barely move.
+  - Community: RNA callers add nothing specific for complex events. GATK's RNA best
+    practice is SplitNCigarReads, then the DNA likelihood rule; the ASE counters
+    (ASEReadCounter, phASER) count SNVs only.
+  - Validated with the RJ-19 spliced contracts, plus synthetic delins at exon edges.
 
 **Recommendation: C.** It departs from practice (no tool reads equal one-sided
 windows), but it measures better than each alternative. It keeps the unbiased VAF the
 padding was there for, reaches the carriers likelihood callers and the sign-out count,
 and removes today's long-event REF double count. D needs a column and lets counts and
-VAF disagree. The guard is the one sub-decision:
-- **(a) guard on:** strict, invariant 7. AD on the 47 larger-allele rows falls from
-  2,401 to about 1,065.
-- **(b) guard off:** like 6.6.0's padding, which guards partly by accident.
+VAF disagree. One sub-decision remains: a change that recurs on every ALT read next to
+the event, on ALT reads only. It applies to delins and pure deletions alike (3 of the
+panel's 31 long-deletion rows have one, 3–7 bases from the junction):
+- **(a) a larger allele (invariant 7):** grow both windows past it, so a read must show
+  it is the given allele. AD on those rows falls (delins 2,401 → about 1,180). The
+  diagnostic names what the reads carry (`OBSERVED_ALLELE`).
+- **(b) a separate event (RJ-8):** credit the given allele, as 6.6.0 does for pure
+  deletions today. Delins AD on those rows rises to about 6,900, pure deletions keep
+  theirs.
 
-I recommend (a).
+Either way the two paths should agree. I lean (a), because these neighbours are on ALT
+reads only (somatic haplotypes larger than annotated). But it's a policy call: (b)
+matches what the sign-out credits.
 **Spec:** a new RJ-23 amending RJ-4 and RJ-9. C33 #214 (REF and ALT windows read from
 different anchors) is closed by construction: one anchor for both.
 **Effects map.**
@@ -279,9 +318,42 @@ fragment are judged by the same rules, and split reads join their molecule once.
   | 100+ bp | −15% | −26% | −36% |
 
   Crediting only the clipped carriers at k = 10 adds 1.2–1.4% to AD.
-- WES (BWA only) is not measured here. C18's record shows 0 ALT on WES at 68–106 bp
-  deletions the realigned panel counts, and BWA-MEM writes a D only when the far side
-  outscores the gap (s2). The paired WES loci are decision 7's ask.
+- **What the AD drop is** (6.6.0 ALT reads not kept at k = 4):
+
+  | | 50–99 bp | 100+ bp |
+  |:--|--:|--:|
+  | Kept | 92% | 82% |
+  | Under 4 bases past the junction on one side, past the microhomology | 5.8% | 4.5% |
+  | A confident change next to the junction | 2.3% | 13.8% |
+
+  - The short-junction reads (the ~5%) show too little to tell the alleles apart. Equal
+    windows drop the matching REF reads too, so VAF holds.
+  - The 13.8% sits in 3 of 31 rows (lengths 113, 279, 327 bp). In each, nearly every ALT
+    read has the exact-length D at the given position plus one recurring confident
+    change 3 or 7 bases from the junction. That's the recurring-neighbour question of
+    decision 1, sub-decision (a)/(b). Under (b) those reads stay ALT, and the drop at
+    100+ bp is about 5%, like the 50–99 bp rows.
+- **Which breakpoint REF is read at matters on capture data, row by row.** On 48 panel
+  deletions with REF at both breakpoints, VAF with REF at the left against the right
+  has median 1.02, so no bias on average. But it spans 0.69–1.86 (10–90%), and 19 of 48
+  rows differ by more than 25%: capture depth varies along the event. On WGS (HG002)
+  it doesn't.
+- **Against truth (D9, HG002 germline het deletions of 50+ bp, VAF 0.5; WGS 35x,
+  bwa-mem, no realignment), 280 rows:**
+
+  | Rule | Rows judged | VAF median (IQR) | Within 0.35–0.65 | AD | RD |
+  |:--|--:|:--|--:|--:|--:|
+  | 6.6.0 | 170 | **0.000** (0.000–0.000) | 0 | 31 | 3,409 |
+  | Equal windows at POS, k = 4 | 221 | **0.500** (0.368–0.590) | 140 | 2,826 | 2,936 |
+  | Equal windows at POS, k = 8 | 213 | 0.500 (0.376–0.592) | 134 | 2,608 | 2,718 |
+  | Equal windows at POS, k = 10 | 213 | 0.500 (0.369–0.592) | 128 | 2,497 | 2,627 |
+
+  - 6.6.0 credits no ALT at 287 of 300 such hets: without realignment the carriers are
+    clips (1,719 of the 2,497 junction carriers at k = 10).
+  - C18's WES record says the same at 68–106 bp, and BWA-MEM writes a D only when the
+    far side outscores the gap (s2). This is the WES/WGS failure #254 predicted.
+  - Equal windows read 0.500 at every k; k only trades reads (k = 4 judges 13% more
+    than k = 10).
 
 **Community practice** (s2):
 
@@ -305,7 +377,7 @@ het near 1/3 (the survey's reading of Manta, Delly and SVTyper).
 
 | | Rule | IMPACT AD | VAF | WES |
 |:--|:--|:--|:--|:--|
-| A | Keep | baseline | 4–7% low | ≈0 ALT for deletions longer than about half a read (C18: 0 at 68–106 bp) |
+| A | Keep | baseline | 4–7% low | ≈0 ALT: HG002 WGS VAF 0.000 at 287/300 het deletions |
 | B | Credit clipped junction carriers at k = 10, REF unchanged | +1.2–1.4% | still low | most carriers |
 | C | **One window at the POS breakpoint for both alleles, any representation, k = 4 clean bases each side past the microhomology; a low-complexity far flank raises k to 10 for both** | −3% (50–99), −15% (100+) | unbiased | all carriers that hold the window |
 | D | C at k = 8 | −26 to −30% | unbiased | as C |
@@ -318,8 +390,13 @@ anchors in the clip.
   carriers at 4^−4.
 - The complexity guard covers flanks where chance matches are not 4^−k.
 - B is the field's floor, but it keeps the REF-favouring bias.
+- Truth backs it: on HG002 (BWA only) equal windows read 0.500 where 6.6.0 reads 0.000.
 - Scope: deletions of 50+ bp (RJ-6's regime). The 20–49 bp range is measured on WES
   first.
+- Sub-option for events longer than a read, on capture data: REF read at the POS
+  breakpoint (as today; per-row VAF can swing with depth along the event), or the mean of
+  both breakpoints' REF rounded to a read (steadier; a derived count). I lean POS (a read
+  count stays a read count) and putting the swing in the docs.
 
 **Spec:** a new RJ-24 amending RJ-2 and RJ-6 for 50+ bp deletions.
 
