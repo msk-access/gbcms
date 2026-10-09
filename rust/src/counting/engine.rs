@@ -1203,10 +1203,11 @@ fn count_bin_shared(
         // spliced read continues into its next exon.
         let edges = carrier::ClipEdges::new(|| clip_edges(variant, &read_cache, annotation));
         let spliced = carrier::SplicedCache::default();
-        // A neighbouring change recurring on the ALT reads only (a larger haplotype
-        // than the given allele) grows the exact-carrier windows past it, from the
-        // reads the counts read; found on first use, for the main and per-transcript
-        // counts alike. The decomposed form is another allele: it finds its own.
+        // A change recurring beside a complex event is masked in the exact-carrier
+        // windows, and one the ALT reads alone carry names their larger allele; found
+        // from the reads the counts read, on first use, for the main and
+        // per-transcript counts alike. The decomposed form is another allele: it
+        // finds its own.
         let cache = &read_cache;
         let guard_of = |v| {
             carrier::CarrierGuard::new(move || {
@@ -1498,8 +1499,8 @@ fn count_variant_from_cache(
     } else if let Some(o) = rules.guard.and_then(|g| g.get(variant)).and_then(|g| {
         g.larger.as_ref().and_then(|l| observed::larger_allele(l, g.scanned, variant, sibling_variants))
     }) {
-        // The ALT reads carry the given allele with a neighbouring change: the
-        // exact-carrier windows grew past it, so name the larger allele they carry.
+        // The ALT reads carry the given allele with a change beside it: the counts
+        // stay the given allele's; name the larger allele they carry.
         counts.observed_pos = o.pos + 1;
         counts.observed_ref = o.ref_allele;
         counts.observed_alt = o.alt_allele;

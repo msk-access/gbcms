@@ -351,8 +351,9 @@ def _delins_reads(n: int, alt: str, shape: str):
         elif shape == "REF read starting inside the event":
             out.append((A + n // 2, n - n // 2 + far, []))
         elif shape == "carriers ending before a change that recurs on ALT reads only":
-            # the four reads judged end four bases past the event; four more carriers
-            # read on past the change seven bases out, which every one of them shows
+            # four carriers end four bases past the event (inside its right flank, as
+            # it grows three bases through a TCG repeat: depth only); four more read
+            # on past a change seven bases out, which every one of them shows
             out.append((A - far, far + m + 4, carrier))
             sub = (A + n + RECUR_AT - 1, "X", "A")
             out.append((A - far, far + m + 40, carrier + [sub]))
@@ -736,7 +737,8 @@ EXPECT = {
     "delins 28>6 | REF read, four flank bases left": (4, 0, 0),
     "delins 28>6 | REF read, four flank bases right": (4, 0, 0),
     "delins 28>6 | REF read starting inside the event": (0, 0, 0),
-    "delins 28>6 | carriers ending before a change that recurs on ALT reads only": (0, 0, 4),
+    # the change is a separate event, masked: the carriers past it count ALT (RJ-23)
+    "delins 28>6 | carriers ending before a change that recurs on ALT reads only": (0, 4, 0),
     "delins 60>2 | exact carrier, eight flank bases right": (0, 4, 0),
     "delins 60>2 | exact carrier, long flanks": (0, 4, 0),
     "delins 60>2 | REF read, four flank bases left": (4, 0, 0),

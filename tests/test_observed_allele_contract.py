@@ -301,16 +301,17 @@ def _delins_row(ref):
     return (DELINS_AT + 1, ref[DELINS_AT : DELINS_AT + DELINS_LEN], DELINS_ALT)
 
 
-def test_a_change_beside_the_delins_on_its_carriers_only_names_the_larger_allele(tmp_path):
-    """Every carrier also shows a C seven bases past the event, no REF read does:
-    the carriers' haplotype is larger than the given allele. The windows grow past
-    the change, so no carrier counts as the given ALT, and the diagnostic names the
-    larger allele they carry."""
+def test_a_change_beside_the_delins_on_its_carriers_only_is_counted_and_named(tmp_path):
+    """Every carrier also shows a C seven bases past the event, no REF read does
+    (a phased neighbour, or an event the input under-describes). The change is a
+    separate event, as another indel outside the window is: every carrier carries
+    the given delins and counts ALT, and the diagnostic names the larger allele
+    they carry (RJ-23, operator 2026-10-09)."""
     ref = _ref()
     assert ref[CHANGE_AT] != "C"
     reads = _delins_carriers(ref, 15, change=True) + _ref_reads(ref, 10, start=360)
     (row,) = _run(tmp_path, ref, reads, [_delins_row(ref)])
-    assert (int(row["ref_count"]), int(row["alt_count"])) == (10, 0)
+    assert (int(row["ref_count"]), int(row["alt_count"])) == (10, 15)
     _, larger_ref, larger_alt = _larger(ref)
     flag = f"OBSERVED_ALLELE(1:{DELINS_AT + 1}:{larger_ref}>{larger_alt}:15/0)"
     assert flag in row["gbcms_diagnostic"].split(";"), row["gbcms_diagnostic"]

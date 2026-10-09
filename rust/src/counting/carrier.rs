@@ -41,13 +41,12 @@
 //!   read's reach from the other). A read judged from the right counts though it
 //!   starts past the variant position, as the other allele's molecule starting at
 //!   the same place would.
-//! - **A neighbouring change on the ALT reads.** A change that recurs at a fixed
-//!   distance from the event on the fragments carrying the ALT core, and not on the
-//!   REF fragments, makes their haplotype larger than the given allele: both windows
-//!   grow past it ([`guard_for`]), so a read counts ALT only when it shows the
-//!   reference base there, and the larger allele is named as any observed allele
-//!   is. One that recurs on REF fragments too (a germline SNP) is masked in both
-//!   windows instead, spliced ones included.
+//! - **A change beside the event.** A change that recurs at a fixed distance from
+//!   the event (on the fragments carrying the ALT core, the REF ones, or both) is a
+//!   separate event, as another indel outside the window is: it is masked in both
+//!   windows ([`guard_for`]), so a read carrying the given allele counts whatever it
+//!   shows there. One on the ALT fragments alone makes their haplotype larger than
+//!   the given allele; the diagnostic names that allele as any observed allele is.
 //! - **Outcomes.** A read decides only where it holds both the REF and the ALT
 //!   window. A read matching both (through masked bases) is neither. A read
 //!   holding no pair is depth only, like a pure-indel read ending inside its
@@ -744,13 +743,10 @@ fn event(start: i64, reference: &[u8], v: &Variant) -> Option<Event> {
 }
 
 /// How a variant's windows are laid out beyond the event itself: which flank they
-/// are read from, how far the neighbouring-change guard grows each flank, and the
-/// genome positions it masks.
+/// are read from, and the genome positions the neighbouring-change guard masks.
 #[derive(Clone, Default)]
 struct Layout {
     from_right: bool,
-    grow_left: usize,
-    grow_right: usize,
     masked: Vec<i64>,
 }
 
@@ -759,16 +755,14 @@ impl Layout {
     /// variant), and the flank it is read from (the left one, unless an RNA exon
     /// edge cuts it and not the right).
     fn for_variant(v: &Variant, rules: &ReadRules) -> Layout {
-        let mut layout = rules.guard.and_then(|g| g.get(v)).map_or_else(Layout::default, |g| Layout {
-            from_right: false,
-            grow_left: g.grow_left,
-            grow_right: g.grow_right,
-            masked: g.masked.clone(),
-        });
+        let mut layout = rules
+            .guard
+            .and_then(|g| g.get(v))
+            .map_or_else(Layout::default, |g| Layout { from_right: false, masked: g.masked.clone() });
         if let (Some(edges), Some((lo, hi))) = (rules.clip_edges.map(ClipEdges::get), grown_event(v)) {
             let cuts = |a: i64, b: i64| edges.iter().any(|&e| e > a && e <= b);
-            let (fl, fr) = ((FLANK + layout.grow_left) as i64, (FLANK + layout.grow_right) as i64);
-            if cuts(lo - fl, lo) && !cuts(hi, hi + fr) {
+            let flank = FLANK as i64;
+            if cuts(lo - flank, lo) && !cuts(hi, hi + flank) {
                 trace!("carrier: an exon edge cuts the left flank of {}:{} → windows read from the right", v.chrom, v.pos + 1);
                 layout.from_right = true;
             }
@@ -782,19 +776,15 @@ impl Layout {
 fn windows(v: &Variant, layout: &Layout) -> Option<Windows> {
     let (start, reference) = prepared_reference(v)?;
     let ev = event(start, &reference, v)?;
-    // The flank on each side: FLANK bases, grown past a neighbouring change on the
-    // ALT reads, as far as the prepared reference holds (the guard never grows past it).
-    let fl = (FLANK + layout.grow_left).min(ev.lo);
-    let fr = (FLANK + layout.grow_right).min(reference.len().saturating_sub(ev.hi));
-    if fl < FLANK || fr < FLANK {
+    if ev.lo < FLANK || ev.hi + FLANK > reference.len() {
         return None; // the reference does not hold the event's flank
     }
     let d = ev.d;
-    let lo = ev.lo - fl;
-    let hi = ev.hi + fr;
+    let lo = ev.lo - FLANK;
+    let hi = ev.hi + FLANK;
     let alt_hi = (hi as i64 + d) as usize;
     let g = |off: usize| start + off as i64;
-    // A masked flank base (a change the REF reads share) matches any read base.
+    // A masked flank base (a change recurring beside the event) matches any read base.
     let (mut reference, mut hap) = (reference, ev.hap.clone());
     for &p in &layout.masked {
         let off = p - start;
@@ -812,12 +802,11 @@ fn windows(v: &Variant, layout: &Layout) -> Option<Windows> {
     // read from the POS (left) flank, or the right one when an RNA exon edge cuts
     // it; or, when both alleles are long, through one base past the first
     // difference from the flank nearer it (an event ending a long run is out of a
-    // read's reach from the other). Long or not is the event's own size: the
-    // guard's growth only tightens the rule.
+    // read's reach from the other).
     let short = ref_win.len().min(alt_win.len());
-    let long = short - (fl - FLANK) - (fr - FLANK) > LONG_EVENT;
-    let j_left = (ev.first - lo + 2).max(fl + 2).min(short);
-    let j_right = (hi - ev.last + 2).max(fr + 2).min(short);
+    let long = short > LONG_EVENT;
+    let j_left = (ev.first - lo + 2).max(FLANK + 2).min(short);
+    let j_right = (hi - ev.last + 2).max(FLANK + 2).min(short);
     let tail = layout.from_right || (long && j_right < j_left);
     let j = if !long { short } else if tail { j_right } else { j_left };
     // Both windows are anchored at the window's ends: the left flank's first base
@@ -835,14 +824,13 @@ fn windows(v: &Variant, layout: &Layout) -> Option<Windows> {
     Some(Windows { pair, event: (g(c_lo), g(c_hi)) })
 }
 
-/// The neighbouring-change guard of one variant: how far each flank grows, the
-/// genome positions masked, and the larger allele the ALT reads carry (for the
-/// diagnostic), with the variant it was found for.
+/// The neighbouring-change guard of one variant: the genome positions of the
+/// changes recurring beside the event, masked (a separate event, part of neither
+/// allele), and the larger allele the ALT reads carry (for the diagnostic), with
+/// the variant it was found for.
 #[derive(Debug, Clone)]
 pub(crate) struct Guard {
     key: (i64, String, String),
-    pub grow_left: usize,
-    pub grow_right: usize,
     pub masked: Vec<i64>,
     /// The reads' larger allele (0-based POS, left-aligned minimal VCF form): its
     /// carriers are the fewest ALT reads showing any one change, its given carriers
@@ -881,11 +869,12 @@ impl<'a> CarrierGuard<'a> {
 /// bases on each side (as far as the reference holds), and its confident changes
 /// from the reference are tallied per distance, once per fragment. A change on at
 /// least [`GUARD_MIN_READS`] ALT fragments and [`GUARD_MIN_SHARE`] of those reading
-/// that base, and on under [`GUARD_REF_SHARE`] of the REF fragments reading it,
-/// grows that flank past it (one inside the flank is judged by the windows as they
-/// are, and named all the same); one that recurs on REF fragments too (or on ALT
-/// and REF alike) is masked. None when nothing recurs, or the variant is not judged
-/// by this rule.
+/// that base, and on under [`GUARD_REF_SHARE`] of the REF fragments reading it, is
+/// the ALT reads' alone: with the given allele it makes the larger allele named in
+/// the diagnostic. Every recurring change, the ALT reads' alone or the REF
+/// fragments' too (a germline SNP), is masked: a change beside the event is a
+/// separate event, so a read carrying the given allele counts whatever it shows
+/// there. None when nothing recurs, or the variant is not judged by this rule.
 pub(crate) fn guard_for(
     read_cache: &[Record],
     v: &Variant,
@@ -963,8 +952,8 @@ pub(crate) fn guard_for(
         }
     }
     let share = |n: u32, of: u32| if of == 0 { 0.0 } else { n as f64 / of as f64 };
-    // per side, the distances of the changes the flank grows past
-    let (mut grow, mut masked, mut grown) = ([0usize; 2], Vec::new(), [Vec::new(), Vec::new()]);
+    // per side, the distances of the changes the ALT reads alone carry
+    let (mut masked, mut alt_only) = (Vec::new(), [Vec::new(), Vec::new()]);
     for (side, reach) in [(0usize, reach_l), (1usize, reach_r)] {
         for i in 0..reach {
             let (alt_n, alt_of) = (change[1][side][i], cover[1][side][i]);
@@ -974,35 +963,33 @@ pub(crate) fn guard_for(
             let recurs_on_ref = ref_n >= GUARD_MIN_READS && share(ref_n, ref_of) >= GUARD_MIN_SHARE;
             let off = if side == 0 { ev.lo - 1 - i } else { ev.hi + i };
             if on_alt && !on_ref {
-                // the flank must reach the base: FLANK plus the growth covers i + 1 bases
-                grow[side] = grow[side].max((i + 1).saturating_sub(FLANK));
-                grown[side].push(i);
-            } else if (on_alt && on_ref) || recurs_on_ref {
+                alt_only[side].push(i);
+            }
+            if on_alt || recurs_on_ref {
                 masked.push(g(off));
             }
         }
     }
-    let no_change = grown.iter().all(Vec::is_empty);
-    if no_change && masked.is_empty() {
+    if masked.is_empty() {
         return None;
     }
-    // The larger allele: the given one with every grown change, each base as most of
-    // the ALT reads show it; its carriers are the fewest showing any one change.
-    let larger = if no_change {
+    // The larger allele: the given one with every change the ALT reads alone carry,
+    // each base as most of them show it; its carriers are the fewest showing any one.
+    let larger = if alt_only.iter().all(Vec::is_empty) {
         None
     } else {
-        let far = |side: usize| grown[side].iter().max().copied();
+        let far = |side: usize| alt_only[side].iter().max().copied();
         let lo = far(0).map_or(ev.lo, |i| ev.lo - 1 - i);
         let hi = far(1).map_or(ev.hi, |i| ev.hi + i + 1);
         let (mut carriers, mut given) = (u32::MAX, 0u32);
         for side in 0..2 {
-            for &i in &grown[side] {
+            for &i in &alt_only[side] {
                 carriers = carriers.min(change[1][side][i]);
                 given = given.max(cover[1][side][i] - change[1][side][i]);
             }
         }
         let base_at = |side: usize, i: usize, off: usize| {
-            if !grown[side].contains(&i) {
+            if !alt_only[side].contains(&i) {
                 return reference[off];
             }
             let k = (0..4).max_by_key(|&k| alt_bases[side][i][k]).unwrap_or(0);
@@ -1024,13 +1011,11 @@ pub(crate) fn guard_for(
         })
     };
     trace!(
-        "carrier guard at {}:{} {}>{}: flanks grown by {:?} past a change on the ALT reads only, {} positions masked",
-        v.chrom, v.pos + 1, v.ref_allele, v.alt_allele, grow, masked.len(),
+        "carrier guard at {}:{} {}>{}: {} recurring changes beside the event masked, {} on the ALT reads alone",
+        v.chrom, v.pos + 1, v.ref_allele, v.alt_allele, masked.len(), alt_only.iter().map(Vec::len).sum::<usize>(),
     );
     Some(Guard {
         key: (v.pos, v.ref_allele.clone(), v.alt_allele.clone()),
-        grow_left: grow[0],
-        grow_right: grow[1],
         masked,
         larger,
         scanned,
@@ -1390,15 +1375,6 @@ mod tests {
         let held = from_left.min(from_right);
         assert!(held < LONG_EVENT);
         assert_eq!((r.hold, a.hold), (held, held));
-        // A 40-to-36 event is not long: grown 20 bases right by the guard, its
-        // windows stay whole (growth only tightens the rule).
-        let alt: String = (0..36).map(|i| if i % 3 == 0 { 'A' } else { 'T' }).collect();
-        let v = var(&ctx, 40, &ctx[40..80], &alt);
-        let grown = Layout { grow_right: 20, ..Layout::default() };
-        let w = windows(&v, &grown).unwrap();
-        let (r, a) = only_pair(&w);
-        assert!(a.allele.len() > LONG_EVENT);
-        assert_eq!((r.hold, a.hold), (a.allele.len(), a.allele.len()));
     }
 
     #[test]
@@ -1446,14 +1422,16 @@ mod tests {
         let carrier = aligned(&seq, vec![Cigar::Match(3), Cigar::Ins(2), Cigar::Del(4), Cigar::Match(36)], 0);
         let reads = fragments(&carrier, 4, "a");
         let g = guard_for(&reads, &v, &|_| true, 20).expect("the change past the event");
-        assert_eq!((g.grow_left, g.grow_right), (0, 3));
+        // the C four bases past the deleted A's (genome 11), named with the ALT
+        assert_eq!(g.masked, vec![11]);
+        assert!(g.larger.is_some());
         // Two fragments, each read by two overlapping mates: under the fragments needed.
         let mates = [fragments(&carrier, 2, "m"), fragments(&carrier, 2, "m")].concat();
         assert!(guard_for(&mates, &v, &|_| true, 20).is_none(), "mates are one fragment");
     }
 
     #[test]
-    fn the_guard_names_every_change_the_alt_reads_carry_and_masks_a_shared_one() {
+    fn the_guard_masks_every_recurring_change_and_names_the_alt_reads_own() {
         // 30 A/G bases, a 28-base delins to TTCTCT, 40 A/G bases. Four carriers show
         // a C three and six bases past the event (grown through the runs at its
         // edges); with `snp`, four REF reads show the C six bases past it too.
@@ -1488,13 +1466,14 @@ mod tests {
             let l = g.larger.clone().expect("a larger allele");
             let (pos, r, a, n, m) = (l.pos, l.ref_allele, l.alt_allele, l.carriers, l.given_carriers);
             // left-aligned and minimal: the grown event's shared bases are trimmed
+            // both changes recur beside the event: masked, a separate event
+            assert_eq!(g.masked, vec![(hi + 3) as i64, (hi + 6) as i64]);
             if snp {
-                // the shared C is masked; the larger allele stops at the other one
-                assert_eq!(g.masked, vec![(hi + 6) as i64]);
+                // the shared C is not the ALT reads' alone: the larger allele stops
+                // at the other one
                 assert_eq!((pos, r.as_str(), n, m), (30, &ctx[30..hi + 4], 4, 0));
                 assert_eq!(a, format!("TTCTCT{}C", &ctx[58..hi + 3]));
             } else {
-                assert!(g.masked.is_empty());
                 assert_eq!((pos, r.as_str(), n, m), (30, &ctx[30..hi + 7], 4, 0));
                 assert_eq!(a, format!("TTCTCT{}C{}C", &ctx[58..hi + 3], &ctx[hi + 4..hi + 6]));
             }
