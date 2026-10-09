@@ -23,8 +23,13 @@
   it unless seen) and 6 (remove `build-gtf-cache`). Go-aheads: the GIAB region fetch,
   the WES slices on HPC, filing the issue structure, and this PR.
 - **Open:** 1 (C39) and 3 (C40). The operator asked for real examples drawn out, the
-  community standard and the RNA effects, and whether the AD changes move toward
-  truth. They will be re-checked on GIAB germline hets (truth 0.5) and the WES arm.
+  community standard, the RNA effects, and whether the AD changes move toward truth.
+  - Added: the GIAB truth (D9: HG002 germline hets), the read-start arithmetic on a
+    worked example, the RNA section, and what the AD drop consists of.
+  - One sub-decision is shared by both: a change recurring next to the event on ALT
+    reads only.
+- **Issues (2026-10-08):** parents A–F are #258–#263 under #196; new tickets #264–#269;
+  #244 closed as measured.
 
 Priority: **H** high, **M** medium, **L** low. **[counts]** can change counts.
 **[decide]** needs an operator decision first. **[new]** has no issue yet.
@@ -33,36 +38,36 @@ Priority: **H** high, **M** medium, **L** low. **[counts]** can change counts.
 
 | ID | Ticket | Pri | Flags | Issue | Parent (proposed) |
 |:--|:--|:-:|:--|:--|:--|
-| C39 | Long delins: read every complex event by one-sided, equal-length junction windows (no padding loss, no REF double count) | H | [counts] [decide] | #253 | A |
-| C41 | REF and VAF of indels in repeats against germline truth (allele-level vs by-base, spanning bias) | H | [decide] [new] | from #253 | A |
-| C40 | Long deletions: one window at the POS breakpoint for both alleles, clipped bases read (RJ-13) | H | [counts] [decide] | #254 | B |
-| C42 | Per-locus gap parameters (stutter model) | L | [decide] | #244 | A |
-| C38 | Sibling rows: SNV sibling double-counts a compensating-mismatch carrier | L | [counts] [decide] | #246 | A |
-| C33 | Exact-carrier REF and ALT windows read from different anchors | L | [counts] | #214 | A (folds into C39) |
-| C6 | Error-tolerant exact-length insertion matching (identity band) | L | [counts] | #143 | A |
-| C24 | Local-alignment fallback tail reads stale scores | L | [counts] | #195 | A |
-| R3 | RNA: catalogued editing positions inside carrier windows | L | [counts] | #178 | A |
-| C15 | C12 follow-ups: clipped carriers of pure deletions, anchors in the clip | M | [counts] | #173 | B |
-| C18 | Split-read evidence for long events (supplementary alignments) | M | [counts] | #177 | B |
-| C7 | Clip-borne ITD carriers | L | [counts] | #144 | B |
-| C31 | Fragment end from the mate's unclipped 5' end (MC tag) | L | [counts] | #212 | B |
-| O5 | Mapping-bias diagnostic (ALT reads mapped or clipped worse than REF) | M | | #179 | B |
-| D8 | `attribute.py prepare/check/attribute` skip runs whose latest attempt failed | M | | #255 | C |
-| D9 | Panel arm: GIAB HG002 truth (public, PHI-free) | H | [decide] [new] | — | C |
-| D10 | Panel arm: WES (BWA only) at the panel's paired long-event loci | H | [decide] [new] | — | C |
-| D11 | Panel arm: IMPACT germline hets in matched normals | M | [new] | — | C |
-| C3 | Homopolymer decomposition: fix or retire `--rescue-homopolymer` | M | [counts] [decide] | #111 | D |
-| — | Decomposed-allele wins (umbrella; #145, #146) | M | | #112 | D |
-| M1 | Merge rows whose flavors report different alleles | M | | #128 | D |
-| O10 | End-of-run QC summary | M | | #227 | E |
-| O3 | MNP rescue in fillouts: flag a germline component | L | | #132 | E |
-| O6 | Read-orientation evidence for oxoG/FFPE (decide) | L | [decide] | #180 | E |
-| I5 | Nextflow `GBCMS_CONVERT` module | L | | #127 | E |
-| H4 | Remove `build-gtf-cache` and `--gtf-cache-dir` (deprecated in 6.6.0) | M | [decide] [new] | — | F |
-| D3 | mkdocs-material 2.0 | L | | #138 | F |
-| P1 | Deep-bin fetch reduction | L | | #150 | F |
-| C34 | GTF transcripts keyed by ID alone | L | | #216 | F |
-| I7 | MAF dash insertion at `Start_Position` 0 | L | | #219 | F |
+| C39 | Long delins: read every complex event by one-sided, equal-length junction windows (no padding loss, no REF double count) | H | [counts] [decide] | #253 | A #258 |
+| C41 | REF and VAF of indels in repeats against germline truth (allele-level vs by-base, spanning bias) | H | [decided] | #264 | A #258 |
+| C40 | Long deletions: one window at the POS breakpoint for both alleles, clipped bases read (RJ-13) | H | [counts] [decide] | #254 | B #259 |
+| C42 | Per-locus gap parameters: closed as measured; replaced by Phase-3 routing | L | [decided] | #244 → #265 | A #258 |
+| C38 | Sibling rows: SNV sibling double-counts a compensating-mismatch carrier | L | [counts] [decided: re-measure] | #246 | A #258 |
+| C33 | Exact-carrier REF and ALT windows read from different anchors | L | [counts] | #214 | A #258 (folds into C39) |
+| C6 | Error-tolerant exact-length insertion matching (identity band) | L | [counts] | #143 | A #258 |
+| C24 | Local-alignment fallback tail reads stale scores | L | [counts] | #195 | A #258 |
+| R3 | RNA: catalogued editing positions inside carrier windows | L | [counts] | #178 | A #258 |
+| C15 | C12 follow-ups: clipped carriers of pure deletions, anchors in the clip | M | [counts] | #173 | B #259 |
+| C18 | Split-read evidence for long events (supplementary alignments) | M | [counts] | #177 | B #259 |
+| C7 | Clip-borne ITD carriers | L | [counts] | #144 | B #259 |
+| C31 | Fragment end from the mate's unclipped 5' end (MC tag) | L | [counts] | #212 | B #259 |
+| O5 | Mapping-bias diagnostic (ALT reads mapped or clipped worse than REF) | M | | #179 | B #259 |
+| D8 | `attribute.py prepare/check/attribute` skip runs whose latest attempt failed | M | | #255 | C #260 |
+| D9 | Panel arm: GIAB HG002 truth (public, PHI-free) | H | first run 2026-10-08 | #266 | C #260 |
+| D10 | Panel arm: WES (BWA only) at the panel's paired long-event loci | H | slices on HPC | #267 | C #260 |
+| D11 | Panel arm: IMPACT germline hets in matched normals | M | pilot run | #268 | C #260 |
+| C3 | Homopolymer decomposition: fix or retire `--rescue-homopolymer` | M | [counts] [decide] | #111 | D #261 |
+| — | Decomposed-allele wins (umbrella; #145, #146) | M | | #112 | D #261 |
+| M1 | Merge rows whose flavors report different alleles | M | | #128 | D #261 |
+| O10 | End-of-run QC summary | M | | #227 | E #262 |
+| O3 | MNP rescue in fillouts: flag a germline component | L | | #132 | E #262 |
+| O6 | Read-orientation evidence for oxoG/FFPE (decide) | L | [decide] | #180 | E #262 |
+| I5 | Nextflow `GBCMS_CONVERT` module | L | | #127 | E #262 |
+| H4 | Remove `build-gtf-cache` and `--gtf-cache-dir` (deprecated in 6.6.0) | M | [decided] | #269 | F #263 |
+| D3 | mkdocs-material 2.0 | L | | #138 | F #263 |
+| P1 | Deep-bin fetch reduction | L | | #150 | F #263 |
+| C34 | GTF transcripts keyed by ID alone | L | | #216 | F #263 |
+| I7 | MAF dash insertion at `Start_Position` 0 | L | | #219 | F #263 |
 | D7 | Platforms: RHEL first, macOS second (D7a–D7e) | H | | #232 (#233–#237) | G |
 
 ## What was measured for this plan (2026-10-08)
@@ -503,7 +508,8 @@ Tracker #196 → seven parents, each with its sub-issues (moved from #196's flat
 - **F. Hygiene and infrastructure:** H4 [new], #138, #150, #216, #219.
 - **G. Platforms:** #232 (#233–#237), already a parent.
 
-**Ask:** OK to file the new parents and tickets and re-parent the existing issues.
+Filed 2026-10-08: A #258, B #259, C #260, D #261, E #262, F #263; C41 #264, Phase-3
+routing #265, D9 #266, D10 #267, D11 #268, H4 #269.
 
 ## Tickets by parent
 
