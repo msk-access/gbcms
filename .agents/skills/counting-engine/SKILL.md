@@ -51,8 +51,8 @@ tract-cluster grouping's `window_pad` reaches as far. The variant's bases at a n
 spot are a distinct allele (`has_distinct_allele_nearby`) inside the
 discrimination window, a separate event (REF) outside it; other bases keep
 Phase-3 arbitration via `has_shifted_same_length` (partial propagated on non-ALT).
-A same-length deletion ≥5bp of another haplotype is a distinct allele (not Phase 3;
-only in-band ≥50bp ones keep Phase 3). The strict path also needs no other I/D in
+A same-length deletion ≥5bp of another haplotype is a distinct allele (not Phase 3).
+A prepared deletion of 50bp or more is judged at its POS breakpoint (`junction.rs`, RJ-24). The strict path also needs no other I/D in
 the window (an I/D pair is inspected in either order). An ALT read spanning
 neither ALT-side window (`window::alt_read_is_informative`: a deletion's are an
 insertion's, its extent counts its own gap) must discriminate by its bases

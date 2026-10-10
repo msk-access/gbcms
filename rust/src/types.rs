@@ -20,7 +20,7 @@ pub struct Variant {
     /// Read by the Phase-3 haplotypes, the pangenome matrix and the sibling guard;
     /// the exact-carrier rule and the windowed indel checks fall back to it without
     /// an `event_ref` (the windowed checks also where `event_ref` does not hold the
-    /// bases; the in-band large-deletion check reads its deleted bases from it).
+    /// bases).
     #[pyo3(get, set)]
     pub ref_context: Option<String>,
     /// Genomic start position (0-based) of the ref_context string.

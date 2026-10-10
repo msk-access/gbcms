@@ -397,19 +397,23 @@ def _long_del_reads(n: int, mh: int, shape: str) -> list:
     win = mh + 4  # past the junction: the microhomology and four clean bases
     reads = []
 
-    def add(name, seq, pos, cigar, flag=0):
-        r = make_read(name, seq, pos, tuple(cigar), flag=0x1 | 0x2 | 0x20 | 0x40 | flag)
+    def add(name, seq, pos, cigar, flag=0, quals=None):
+        r = make_read(
+            name, seq, pos, tuple(cigar), flag=0x1 | 0x2 | 0x20 | 0x40 | flag, quals=quals
+        )
         r.next_reference_id = 0
         r.next_reference_start = pos + 250
         r.template_length = 400
         reads.append(r)
 
-    def carrier(i, s, right, sub=None):
-        """An exact D carrier from `s` holding `right` bases past the junction."""
+    def carrier(i, s, right, subs=()):
+        """An exact D carrier from `s` holding `right` bases past the junction, with a
+        third base at each genome position in `subs`."""
         left = A - s
         seq = list(hap[s : A + right])
-        if sub is not None:
-            seq[sub - n - s] = _other(seq[sub - n - s])
+        for g in subs:
+            k = g - s if g < A else g - n - s
+            seq[k] = _other(seq[k])
         add(f"c{i}", "".join(seq), s, [(0, left), (2, n), (0, right)])
 
     def ref_read(i, s, length, sub=None):
@@ -425,9 +429,12 @@ def _long_del_reads(n: int, mh: int, shape: str) -> list:
             carrier(i, A - (LONG_READ - win), win)
         elif shape == "exact D carrier, three bases past the microhomology":
             carrier(i, A - (LONG_READ - win + 1), win - 1)
-        elif shape == "right-clipped carrier, the junction in the clip":
+        elif shape.startswith("right-clipped carrier"):
             s = A - 70 - i
-            add(f"c{i}", hap[s : s + LONG_READ], s, [(0, A - s), (4, LONG_READ - (A - s))])
+            seq = hap[s : s + LONG_READ]
+            if shape.endswith("a recurring change in the flank"):
+                seq = seq[: A - 2 - s] + _other(seq[A - 2 - s]) + seq[A - 1 - s :]
+            add(f"c{i}", seq, s, [(0, A - s), (4, LONG_READ - (A - s))])
         elif shape == "left-clipped carrier aligned from the right flank":
             c = 20 + i  # bases before the junction, in the clip
             add(f"c{i}", hap[A - c : A - c + LONG_READ], A + n, [(4, c), (0, LONG_READ - c)])
@@ -481,8 +488,26 @@ def _long_del_reads(n: int, mh: int, shape: str) -> list:
             )
         elif shape == "REF read starting inside the deletion":
             ref_read(i, A + 10 + i, LONG_READ)
+        elif shape.startswith("REF read starting inside the deletion behind"):
+            # six bases before the right flank, clipped: they would be the flank of a
+            # carrier placed from the right, but are read too poorly to show it
+            s = A + n - 6
+            seq, quals = contig[s : s + LONG_READ], [30] * LONG_READ
+            if "N clip" in shape:
+                seq = "N" * 6 + seq[6:]
+            else:
+                quals[:6] = [2] * 6
+            add(f"r{i}", seq, A + n, [(4, 6), (0, LONG_READ - 6)], quals=quals)
         elif shape == "carriers with a recurring change two bases past the microhomology":
-            carrier(i, A - 50 - i, LONG_READ - 50 - i, sub=A + n + mh + RECUR_PAST)
+            carrier(i, A - 50 - i, LONG_READ - 50 - i, subs=(A + n + mh + RECUR_PAST,))
+        elif shape == "carriers with a recurring change in the flank":
+            carrier(i, A - 50 - i, LONG_READ - 50 - i, subs=(A - 2,))
+        elif shape == "carriers with a run of changes in the flank":
+            carrier(i, A - 50 - i, LONG_READ - 50 - i, subs=(A - 3, A - 2))
+        elif shape == "carriers with a recurring change on the window's last base":
+            carrier(i, A - 50 - i, LONG_READ - 50 - i, subs=(A + n + mh + 3,))
+        elif shape == "carriers with a run of changes from the window's last base on":
+            carrier(i, A - 50 - i, LONG_READ - 50 - i, subs=(A + n + mh + 3, A + n + mh + 4))
         elif shape == "REF reads with a recurring change inside the window":
             ref_read(i, A - 50 - i, LONG_READ, sub=A + mh + RECUR_PAST)
         else:
@@ -507,8 +532,15 @@ _LONG_DEL_ALL = (
     "the deletion written as two with two bases kept between",
     "REF read with its own 20-bp deletion inside the deleted span",
     "REF read starting inside the deletion",
+    "REF read starting inside the deletion behind a low-quality clip",
+    "REF read starting inside the deletion behind an N clip",
     "carriers with a recurring change two bases past the microhomology",
     "REF reads with a recurring change inside the window",
+    "carriers with a recurring change in the flank",
+    "right-clipped carriers with a recurring change in the flank",
+    "carriers with a run of changes in the flank",
+    "carriers with a recurring change on the window's last base",
+    "carriers with a run of changes from the window's last base on",
 )
 LONG_DEL_SHAPES = {
     "del 60": _LONG_DEL_ALL,
@@ -991,9 +1023,20 @@ EXPECT = {
     # its own deletion inside the deleted span: another allele (C26), partial
     "del 60 | REF read with its own 20-bp deletion inside the deleted span": (0, 0, 4),
     "del 60 | REF read starting inside the deletion": (0, 0, 0),
+    # placed from the right, a read must show the flank: a clip read too poorly to
+    # show it is no junction (REF molecules there show the same right flank)
+    "del 60 | REF read starting inside the deletion behind a low-quality clip": (0, 0, 0),
+    "del 60 | REF read starting inside the deletion behind an N clip": (0, 0, 0),
     # a recurring change is a separate event: masked, the carriers count
     "del 60 | carriers with a recurring change two bases past the microhomology": (0, 4, 0),
     "del 60 | REF reads with a recurring change inside the window": (4, 0, 0),
+    "del 60 | carriers with a recurring change in the flank": (0, 4, 0),
+    "del 60 | right-clipped carriers with a recurring change in the flank": (0, 4, 0),
+    "del 60 | carriers with a recurring change on the window's last base": (0, 4, 0),
+    # a run of changes is another allele (here nearer ALT): partial, whether it lies
+    # inside the window or runs on past its edge
+    "del 60 | carriers with a run of changes in the flank": (0, 0, 4),
+    "del 60 | carriers with a run of changes from the window's last base on": (0, 0, 4),
     "del 60 mh3 | exact D carrier, long flanks": (0, 4, 0),
     "del 60 mh3 | exact D carrier, four bases past the microhomology": (0, 4, 0),
     "del 60 mh3 | exact D carrier, three bases past the microhomology": (0, 0, 0),

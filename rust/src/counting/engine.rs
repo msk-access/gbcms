@@ -2681,7 +2681,8 @@ fn check_allele_with_qual<F: Fn(u8, u8) -> i32>(
         // A deletion of 50+ bp: judged by its bases at the POS breakpoint, however
         // the aligner wrote it (RJ-24); the CIGAR checks only when the prepared
         // reference cannot hold its windows.
-        if let Some(result) = junction::classify(record, variant, quals, min_baseq, rules) {
+        if let Some(mut result) = junction::classify(record, variant, quals, min_baseq, rules) {
+            result.junction_judged = true;
             trace!(
                 "{}:{} {}>{} read={}: junction judge: ref={} alt={} nearby={} uninformative={} \
                  clip_admissible={}",
@@ -4942,9 +4943,8 @@ mod tests {
     // These tests verify the wrong-length INDEL handling added to fix
     // PAX5-class discordances (originally Phase-3 fallbacks; now the
     // wrong-length rule resolves lone ops directly as neither + partial
-    // evidence, with Phase 3 kept for shifted same-length candidates and in-band
-    // large deletions whose bases differ). Each test documents which code path in
-    // check_insertion/check_deletion it exercises.
+    // evidence, with Phase 3 kept for shifted same-length candidates). Each test
+    // documents which code path in check_insertion/check_deletion it exercises.
 
     // Aligner construction is inlined in each test below because:
     // 1. Rust's impl Trait creates distinct opaque types per call site

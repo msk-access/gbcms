@@ -210,7 +210,7 @@ def test_anchor_inside_intron_carries_no_information(tmp_path):
 
 def test_gap_representation_does_not_flip_the_call(tmp_path):
     """The same 100bp gap at the anchor: as D(100) it is deletion evidence
-    (in-band → ALT); as N(100) it is asserted splicing — NO evidence either
+    (its junction → ALT, RJ-24); as N(100) it is asserted splicing — NO evidence either
     way. Pre-fix the N form counts definitive REF, so the REF/ALT ledger
     flips on the aligner's arbitrary D-vs-N representation choice. Fixed:
     D reads → ALT, N reads → excluded."""

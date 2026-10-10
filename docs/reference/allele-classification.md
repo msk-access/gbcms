@@ -371,8 +371,11 @@ way), so a CIGAR-only rule read VAF 0.000 at 287 of 300 heterozygous deletions.
   of 60 within 10% of sign-out).
 - **Placement:** the read is read from its aligned first window base; one whose
   soft clip, or own deletion, holds the left flank is placed from the other side at
-  each allele's length. Hard-clipped bases are absent, so a hard-clipped record
-  holds no window on its own.
+  each allele's length, when it reads that placement's flank bases at `--min-baseq`
+  or above (the placement is a hypothesis: a masked flank would fit any, and a REF
+  molecule starting inside the deleted span shows the same right flank as a
+  carrier). Hard-clipped bases are absent, so a hard-clipped record holds no window
+  on its own.
 - **Outcomes:** REF or ALT when the read fits exactly one window (bases below
   `--min-baseq`, and N, fit anything; ALT also needs one minimum-quality base's
   evidence); fitting neither, another allele (`partial_alt` when closer to ALT);
@@ -382,10 +385,12 @@ way), so a CIGAR-only rule read VAF 0.000 at 287 of 300 heterozygous deletions.
 - **Depth:** a decided read whose windows read soft-clipped bases inside its
   fragment counts toward depth in DNA, as for complex variants.
 - **A change recurring** at one window offset on an allele's reads (3+ fragments,
-  20% of that allele's reads, its neighbouring offsets not recurring too) is a
-  separate event: masked at that offset in both windows; on the ALT reads alone it
-  names the larger allele in `gbcms_diagnostic`. A run of changes is an indel at
-  the junction: another allele, not masked.
+  20% of that allele's reads, its neighbouring bases not recurring too, the base
+  either side of the windows included) is a separate event: masked at that offset
+  in both windows; on the ALT reads alone it names the larger allele in
+  `gbcms_diagnostic` (the deletion with the change). A run of changes is an indel
+  at the junction: another allele, not masked. Masks never take every offset where
+  REF and ALT differ: those stay read, and a read changed there is neither.
 - **RNA:** the same, after splice triage (a deletion written as a splice N stays
   excluded).
 

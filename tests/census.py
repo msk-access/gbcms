@@ -47,7 +47,8 @@ one window of equal length per allele, read from the left flank (4 clean flank
 bases, the microhomology, 4 bases of the allele's own continuation: the deleted
 bases for REF, the right flank for ALT), through soft-clipped bases inside the
 fragment. A read whose left flank is clipped, or deleted by its own alignment, is
-placed from the other side at each allele's length; hard-clipped bases are absent.
+placed from the other side at each allele's length, when it reads that placement's
+flank bases unmasked; hard-clipped bases are absent.
 Nothing past the window is read. Such reads decided through a clip count toward
 depth, as in the engine. The census does not mask a change recurring in the windows
 across reads (the engine does): reads carrying one are neither here. Nor does it
@@ -461,7 +462,8 @@ def judge_junction(read, j: Junction, min_baseq: int = 20) -> tuple[Verdict, boo
         got = reading(first)
         return (_verdict(*got) if got else Verdict.NOT_ANCHORED), False
     # The flank in the read's clip, or under its own deletion: placed from the other
-    # side as each allele would sit; a placement where its own allele fits counts.
+    # side as each allele would sit, when the read shows that placement's flank (every
+    # flank base unmasked); a placement where its own allele fits counts.
     lead, _ = _clips(read)
     flank_deleted = _deleted_by_read(read, j.first)
     placed = []
@@ -472,7 +474,7 @@ def judge_junction(read, j: Junction, min_baseq: int = 20) -> tuple[Verdict, boo
         start = q - n + 1
         if start < lead or flank_deleted:
             got = reading(start)
-            if got:
+            if got and "N" not in bases[start : start + JUNCTION_K]:
                 placed.append((allele, got))
     for allele, (fits_alt, fits_ref) in placed:
         if (fits_alt if allele == "ALT" else fits_ref) and not (fits_alt and fits_ref):
