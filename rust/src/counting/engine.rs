@@ -1548,8 +1548,8 @@ fn count_variant_from_cache(
     // ── ref_context is ALWAYS genomic: consensus introns are never spliced out.
     // Splicing it without a coordinate map would shrink the context while
     // ref_context_start stays genomic, so every `pos - ref_context_start`
-    // indexer right of a snipped intron — the deleted-bases check, the
-    // large-deletion band's context guard, haplotype offsets — would read the
+    // indexer right of a snipped intron — the deleted-bases checks, haplotype
+    // offsets — would read the
     // wrong bases, and pre-mRNA / intron-retention reads, whose bases genuinely
     // include intron sequence, would be scored against a haplotype missing
     // those bases. Junction-spanning reads never reach Phase 3 scoring anyway:

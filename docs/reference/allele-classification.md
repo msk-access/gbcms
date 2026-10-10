@@ -48,7 +48,7 @@ flowchart LR
 
     This distinction is critical: the pure-indel CIGAR safeguards cannot correctly classify reads that simultaneously carry the anchor substitution. The exact-carrier rule reads the substituted anchor as part of the allele.
 
-    `check_deletion` falls back to Phase 3 only for an in-band large deletion (≥50bp, another length within 3bp) whose deleted bases differ (see [Deletion — Windowed Safeguards](#windowed-scan-safeguards-1)); a same-length deletion of another haplotype is a distinct allele.
+    A pure deletion of 50 bp or more is judged by its bases at the POS breakpoint ([the junction judge](#deletions-of-50-bp-or-more), RJ-24), however the aligner wrote it. `check_deletion` reaches Phase 3 only for a read that spans the anchor with no aligned base on it and no deletion over it (in practice, its anchor inside a splice N); a same-length deletion of another haplotype is a distinct allele.
 
 ---
 
@@ -352,41 +352,69 @@ Bases deleted after an **anchor** position. Mirrors insertion but looks for `Del
 
     `check_deletion`'s CIGAR safeguards compare anchor bases assuming the anchor is preserved. For these variants, the anchor changes — feeding them to `check_deletion` would incorrectly classify all DEL reads as REF (alt=0).
 
-### Algorithm
+### Deletions of 50 bp or more { #deletions-of-50-bp-or-more }
 
-Same single-walk strategy as insertion, with four additional features:
+A prepared pure deletion of 50 bp or more is judged by **its bases at the POS
+breakpoint**, however the aligner wrote it: a D op, a soft clip, or a split read
+(RJ-24, since 6.7.0). Short-read aligners without realignment write most of these
+carriers as clips (on HG002, BWA-MEM wrote 1,958 of the junction carriers that
+way), so a CIGAR-only rule read VAF 0.000 at 287 of 300 heterozygous deletions.
 
-1. **Placement-aware large-deletion band** — For large deletions (≥50bp), a wrong-length D at
-   the anchor still counts as the annotated event when the read deletes essentially the whole
-   expected span: at most 3 expected-span bases retained, and at most 3 bases deleted/inserted
-   outside the span (within the scan region, and at least the discrimination window). This accepts single-op breakpoint wobble AND
-   split representations (`D(60)+2M+D(40)` for a ~100bp deletion) in pure CIGAR space, while
-   rejecting net-matching but *displaced* deletions whose M ops across the span prove the event
-   is absent. The 50bp threshold is an **artifact-size prior**: slippage/stutter/alignment
-   artifacts are small, so an observed ≥50bp D op is essentially always a real deletion in that
-   molecule — the band only decides *which* event it belongs to. (Validated pure large
-   deletions, 12–539bp, all align as a single exact-length D at the anchor, so the ≤3bp slop is
-   insurance, not an observed need.)
+- **One window per allele, of equal length, read from the left flank:** 4 clean
+  flank bases ending at the anchor, the microhomology (the bases the deletion can
+  slide right through, shared by both alleles), then 4 clean bases of the allele's
+  own continuation: the deleted bases for REF, the right flank for ALT. A REF and
+  an ALT molecule hold their windows from the same read starts.
+- **Nothing past the window is read**, for either allele: checking REF through
+  every deleted base it covers would expose it to errors the ALT reading never
+  meets (measured: HG002 103 vs 100 of 166 deletions in band, the panel 40 vs 29
+  of 60 within 10% of sign-out).
+- **Placement:** the read is read from its aligned first window base; one whose
+  soft clip, or own deletion, holds the left flank is placed from the other side at
+  each allele's length. Hard-clipped bases are absent, so a hard-clipped record
+  holds no window on its own.
+- **Outcomes:** REF or ALT when the read fits exactly one window (bases below
+  `--min-baseq`, and N, fit anything; ALT also needs one minimum-quality base's
+  evidence); fitting neither, another allele (`partial_alt` when closer to ALT);
+  not holding the windows, or crossing a splice inside them, depth only. A read
+  fitting REF whose own alignment deletes or inserts 5+ bases inside the deleted
+  span is another allele (C26).
+- **Depth:** a decided read whose windows read soft-clipped bases inside its
+  fragment counts toward depth in DNA, as for complex variants.
+- **A change recurring** at one window offset on an allele's reads (3+ fragments,
+  20% of that allele's reads, its neighbouring offsets not recurring too) is a
+  separate event: masked at that offset in both windows; on the ALT reads alone it
+  names the larger allele in `gbcms_diagnostic`. A run of changes is an indel at
+  the junction: another allele, not masked.
+- **RNA:** the same, after splice triage (a deletion written as a splice N stays
+  excluded).
 
-2. **Wrong-length rule** — A wrong-length D at the anchor that fails the band is a **distinct
-   allele** in the same tract → neither + `partial_alt`, never Phase 3. See
+The length band that used to credit a deletion of another length within 3 bases
+(and split `D+M+D` representations) is retired: it credited no real read on the
+panel or HG002. A deletion the prepared reference cannot hold the windows of, or an
+unprepared one, keeps the CIGAR checks below.
+
+### Algorithm (CIGAR checks)
+
+Same single-walk strategy as insertion, with three additional features:
+
+1. **Wrong-length rule** — A wrong-length D at the anchor is a **distinct allele** in the
+   same tract → neither + `partial_alt`, never Phase 3. See
    [Wrong-Length Pure Indels](#wrong-length-pure-indels-partial_alt).
 
-3. **A windowed deletion that fails S3** — an exact-length deletion elsewhere is ALT when the
+2. **A windowed deletion that fails S3** — an exact-length deletion elsewhere is ALT when the
    read's bases spell the ALT despite where its gap sits (compensating mismatches); otherwise,
-   at 5bp or more, another allele (`has_distinct_allele_nearby`). Only an **in-band** deletion
-   (≥50bp, another length) whose deleted bases differ flags `has_in_band_mismatch` for
-   Phase-3 arbitration. Short deletions (<5bp) that fail S3 remain CIGAR-definitive REF — they
-   are almost certainly unrelated spurious deletions. See
+   at 5bp or more, another allele (`has_distinct_allele_nearby`). Short deletions (<5bp)
+   that fail S3 remain CIGAR-definitive REF — they are almost certainly unrelated spurious
+   deletions. See
    [Case 3 in the Complex Indels guide](complex-indels.md#case-3-tp53-12bp-left-alignment-shifted-deletion).
 
-4. **Haplotype fallback** — When no CIGAR match is found and the read doesn't cover the anchor
-   with a Match op (e.g., a soft-clip at the anchor), falls back to Phase 3 for
-   haplotype-based comparison — but only when the read actually spans the anchor position.
-   Reads mapping entirely inside a large deleted span carry no information about the variant
-   and are classified neither.
+3. **Haplotype fallback** — A read that spans the anchor with no aligned base on it and no
+   deletion over it (in practice, its anchor inside a splice N) goes to Phase 3 for
+   haplotype-based comparison. Reads mapping entirely inside a large deleted span carry no
+   information about the variant and are classified neither.
 
-#### Part A — CIGAR-Based Strict + Band Detection
+#### Part A — CIGAR-Based Strict Detection
 
 ```mermaid
 flowchart LR
@@ -399,9 +427,7 @@ flowchart LR
     NextDel -->|No| RefCov
     NextDel -->|Yes| LenMatch{"Length matches exactly?"}
     LenMatch -->|Yes| StrictAlt(["🔴 ALT — strict"]):::alt
-    LenMatch -->|No| Band{"≥50bp AND read deletes\nthe expected span?\n(≤3 retained, ≤3 outside)"}
-    Band -->|Yes| BandAlt(["🔴 ALT — in-band\n(wobble / split representation)"]):::alt
-    Band -->|No| WLPartial(["⚪ Neither + partial\n(distinct allele)"]):::partial
+    LenMatch -->|No| WLPartial(["⚪ Neither + partial\n(distinct allele)"]):::partial
     RefCov --> WinCheck
 
     classDef start fill:#9b59b6,color:#fff,stroke:#7d3c98,stroke-width:2px;
@@ -417,7 +443,7 @@ flowchart TD
     WinIn(["→ from CIGAR walk"]):::entry --> CheckWin{"Del within window?\n(±max(5, repeat_span+2),\nor a placement in the shift region)"}
     CheckWin -->|No| Continue["Continue walk"]
     CheckWin -->|Yes| S1{"S1: Length check"}
-    S1 -->|"Exact match, or\n≥50bp with |Δlen| ≤ 3"| S3{"S3: Same haplotype?\n(in-band: bases over the overlap)"}
+    S1 -->|"Exact match"| S3{"S3: Same haplotype?"}
     S1 -->|"Wrong length, ≥5bp"| FlagWL["Flag has_distinct_allele_nearby"]:::partialflag
     S1 -->|"Wrong length, <5bp"| Continue
     S3 -->|Yes| Only{"The read's only change\nacross the window?"}
@@ -426,10 +452,8 @@ flowchart TD
     S3 -->|No| DSpells{"Exact length and the read's\nbases spell the ALT?"}
     DSpells -->|Yes| S2
     DSpells -->|"No, exact length ≥ 5"| FlagWL
-    DSpells -->|"No, in-band ≥ 50bp"| FlagIB["Flag has_in_band_mismatch\n(Phase 3)"]:::fallback
     DSpells -->|"No, < 5bp"| Continue
     S2 --> Continue
-    FlagIB --> Continue
     FlagWL --> Continue
     Continue --> MoreOps{"More ops?"}
     MoreOps -->|Yes| CheckWin
@@ -437,7 +461,6 @@ flowchart TD
 
     classDef entry fill:#3498db,color:#fff,stroke:#2471a3,stroke-width:2px;
     classDef next fill:#3498db,color:#fff,stroke:#2471a3,stroke-width:2px;
-    classDef fallback fill:#f39c12,color:#fff,stroke:#d68910,stroke-width:2px;
     classDef partialflag fill:#8e44ad,color:#fff,stroke:#6c3483,stroke-width:2px;
 ```
 
@@ -448,12 +471,10 @@ flowchart TD
     EvalIn(["→ from windowed scan"]):::entry --> Win{"Windowed match found?"}
     Win -->|Yes| WinAlt(["🔴 ALT — windowed"]):::alt
     Win -->|No| Spans{"Ref coverage at anchor?"}
-    Spans -->|No| AnchorSpan{"Read spans anchor?\n(e.g. soft-clip at anchor)"}
+    Spans -->|No| AnchorSpan{"Read spans anchor?\n(its anchor in a splice N)"}
     AnchorSpan -->|Yes| CPX(["🔄 Phase 3"]):::fallback
     AnchorSpan -->|No| Neither(["⧯ Neither\n(no variant information)"]):::neither
-    Spans -->|Yes| IBCheck{"has_in_band_mismatch?"}
-    IBCheck -->|Yes| CPXP(["🔄 Phase-3 arbitration\n(partial propagated on non-ALT)"]):::fallback
-    IBCheck -->|No| WLCheck{"has_distinct_allele_nearby?"}
+    Spans -->|Yes| WLCheck{"has_distinct_allele_nearby?"}
     WLCheck -->|"Yes, the read changes\nthe discrimination window"| WLPartial(["⚪ Neither + partial\n(another allele, RJ-7)"]):::partial
     WLCheck -->|"Yes, outside the window"| RefSep(["✅ REF\n(a separate event, RJ-8)"]):::ref
     WLCheck -->|No| Ref(["✅ REF"]):::ref
@@ -472,13 +493,13 @@ Three layers of validation prevent false-positive windowed matches:
 
 | Safeguard | Check | Purpose |
 |:----------|:------|:--------|
-| **S1** | Deleted length matches expected `ref_len − 1` exactly, or is within the ≥50bp ±3bp band | Wrong-length deletions never match; ≥5bp ones flag `has_distinct_allele_nearby` (distinct-allele candidates), <5bp ones are alignment noise (CIGAR-definitive) |
+| **S1** | Deleted length matches expected `ref_len − 1` exactly | Wrong-length deletions never match; ≥5bp ones flag `has_distinct_allele_nearby` (distinct-allele candidates), <5bp ones are alignment noise (CIGAR-definitive) |
 | **S2** | Closest match wins (minimum distance from anchor) | When multiple candidates exist, picks the most likely |
-| **S3** | An exact-length deletion gives the variant's haplotype: the reference between the two placements repeats with period `len` (the same bases in a homopolymer, a rotation such as `AC` for `CA` in an STR), and it is the read's only change across the discrimination window (otherwise a distinct allele). An in-band (≥50bp) length compares the deleted bases over the overlapping span | Verifies the shifted Del is the same event. Before 6.6.0 S3 compared the deleted bases themselves, so a rotated STR placement under 5bp counted REF (#189) |
-| **del_len ≥ 5 guard** | A same-length Del that fails S3 counts ALT when the read's bases across the window spell the ALT (the aligner misplaced the gap with compensating mismatches); otherwise, at ≥5bp, it is a distinct allele (`has_distinct_allele_nearby`). An in-band (≥50bp) one whose bases differ flags `has_in_band_mismatch` | Short (1–4bp) Dels failing S3 are almost certainly spurious noise — CIGAR remains definitive. A same-length one ≥5bp gives another haplotype: Phase 3 called such reads ALT (44–94% of synthetic cases; on the RC set every one it reached was another allele by its bases), so it is partial evidence instead (#191) |
+| **S3** | An exact-length deletion gives the variant's haplotype: the reference between the two placements repeats with period `len` (the same bases in a homopolymer, a rotation such as `AC` for `CA` in an STR), and it is the read's only change across the discrimination window (otherwise a distinct allele) | Verifies the shifted Del is the same event. Before 6.6.0 S3 compared the deleted bases themselves, so a rotated STR placement under 5bp counted REF (#189) |
+| **del_len ≥ 5 guard** | A same-length Del that fails S3 counts ALT when the read's bases across the window spell the ALT (the aligner misplaced the gap with compensating mismatches); otherwise, at ≥5bp, it is a distinct allele (`has_distinct_allele_nearby`) | Short (1–4bp) Dels failing S3 are almost certainly spurious noise — CIGAR remains definitive. A same-length one ≥5bp gives another haplotype: Phase 3 called such reads ALT (44–94% of synthetic cases; on the RC set every one it reached was another allele by its bases), so it is partial evidence instead (#191) |
 
-!!! note "has_in_band_mismatch Phase 3 Fallback"
-    Only an in-band large deletion (≥50bp, another length within 3bp) whose deleted bases differ over the overlap flags `has_in_band_mismatch` and goes to Phase-3 haplotype arbitration (WFA+PairHMM under the default backend), propagating `partial_alt` evidence when Phase 3 does not confirm ALT. A same-length deletion that gives another haplotype is judged by the read's bases: ALT when they spell the ALT across the window (the aligner wrote the gap elsewhere with compensating mismatches), otherwise, at ≥5bp, a distinct allele, not Phase 3 (before 6.6.0 Phase 3 often called it ALT; #191). A deletion the aligner wrote elsewhere in the event's shift region (left-alignment moves the caller's anchor left of the reads' `D`) gives the same haplotype and passes S3 directly.
+!!! note "No Phase 3 for a deletion written elsewhere"
+    A same-length deletion that gives another haplotype is judged by the read's bases: ALT when they spell the ALT across the window (the aligner wrote the gap elsewhere with compensating mismatches), otherwise, at ≥5bp, a distinct allele, not Phase 3 (before 6.6.0 Phase 3 often called it ALT; #191). A deletion the aligner wrote elsewhere in the event's shift region (left-alignment moves the caller's anchor left of the reads' `D`) gives the same haplotype and passes S3 directly.
 
     Example: **TP53 `GACCGTGCAAGT→-` (12bp)** — left-alignment moves the anchor 3bp left of the actual `D(12)` position in reads. That placement gives the same haplotype, so S3 (same haplotype) accepts it; before 6.6.0 S3 compared the deleted bases, failed, and Phase 3 classified these reads as ALT.
 
@@ -530,7 +551,6 @@ as the annotated event inflated VAF several-fold at such loci.
 | Evidence at/near the anchor | Classification |
 |:----------------------------|:---------------|
 | Exact-length, sequence-verified indel | **ALT** (structural) |
-| ≥50bp deletion within the placement-aware band (≤3 span bases retained, ≤3 changed outside — covers breakpoint wobble and split `D+M+D` representations) | **ALT** (structural) |
 | Insertion that is a truncation of the expected insert (≥4bp, ≥90% identity, both sequences non-low-complexity, at least one base readable) | **ALT** (structural) |
 | Any other wrong-length pure indel at the anchor | **Neither + `partial_alt`** |
 | Same-length insertion with confidently mismatching bases | **Neither + `partial_alt`** (third allele) |
@@ -546,13 +566,13 @@ wrong-sequence insert to ALT because it still beats the gapped REF alignment. De
 variants are unaffected — they route to `check_complex`, whose Phase-3 realignment correctly
 resolves split and mismatch-absorbed representations of one event.
 
-### Why the 50bp gate
+### Deletions of 50 bp or more
 
-The gate is an **artifact-size prior**, not an event-rarity claim: slippage, stutter, and
-alignment artifacts produce small spurious indel ops, while a read essentially never acquires a
-≥50bp deletion by artifact. Above the gate, an observed big D op is trusted as a *real* deletion
-in that molecule and the band decides whether it is the annotated event; below it, wrong-length
-ops are artifacts or genuine distinct slippage alleles, so no length tolerance is extended.
+A deletion of another length is another allele at any size. From 50 bp a prepared
+deletion is judged by its bases at the POS breakpoint
+([RJ-24](#deletions-of-50-bp-or-more)); the 3-base length band that used to credit
+another length there, on the premise that a large D op is never an artifact, is
+retired: it credited no real read on the panel or HG002.
 
 ### Reading the output
 
@@ -1066,8 +1086,8 @@ inspected as one right after an aligned block is; a deleted anchor followed by
 an insertion is judged by the read's bases (a re-inserted anchor with the insert
 is the ALT). A same-length insertion of other bases beside another indel in the
 window is another allele, not Phase 3's to arbitrate. At 50bp or more the
-large-deletion band judges the read, counting every change across the
-discrimination window. Splices there remain the RNA rules' business.
+junction judge reads the read's bases at the POS breakpoint (RJ-24). Splices there
+remain the RNA rules' business.
 
 ---
 

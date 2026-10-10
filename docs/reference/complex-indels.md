@@ -275,10 +275,12 @@ A read whose CIGAR proves a pure indel of a **different length** at the anchor i
 same-event escapes keep real support counted as ALT:
 
 1. **Exact-length, sequence-verified** indels (unchanged).
-2. **Placement-aware ≥50bp band**: the read deletes essentially the whole expected span
-   (≤3 span bases retained, ≤3 changed outside) — covers breakpoint wobble and split
-   `D+M+D` representations. Net-matching but *displaced* deletions (M ops across the span)
-   are rejected.
+2. **Placement-aware ≥50bp band** (retired in 6.7.0): the read deletes essentially the
+   whole expected span (≤3 span bases retained, ≤3 changed outside) — covered breakpoint
+   wobble and split `D+M+D` representations. A prepared deletion of 50bp or more is now
+   judged by its bases at the POS breakpoint (RJ-24): another length, or a split with
+   bases kept between, is another allele by its bases, and clipped carriers count. The
+   band credited no real read on the panel or HG002.
 3. **Insertion truncation containment**: an observed insert of ≥4bp, strictly shorter than
    expected, ≥90% identical to a slice of the expected insert, with **both** sequences
    non-low-complexity (sequencers truncate long insertions — the observed smear of shorter
@@ -294,7 +296,7 @@ containment.
 ### Reading the Output
 
 ```
-alt_count    = reads carrying the annotated event (exact / in-band / truncation)
+alt_count    = reads carrying the annotated event (exact / truncation; 50+ bp deletions by their bases at the junction)
 partial_alt  = distinct-allele evidence at the same tract
 gbcms_diagnostic contains PARTIAL_DOMINANT when partial_alt > alt_count
 ```
