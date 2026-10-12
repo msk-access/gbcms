@@ -17,6 +17,19 @@ regenerating a section.
 
 ---
 
+## [LRN-20261012-002] rule-body | a new test file's name is checked before it is written
+- **Status:** resolved (rule promoted)
+- **Cause:** rule-body
+- **Summary:** I wrote new C39 placement tests to `tests/test_carrier_placement_contract.py`
+  through a Python heredoc (`open(p, "w")`), which bypasses the Write tool's
+  read-before-overwrite guard. The name was already the C37 (#245) contract; its five
+  tests vanished and the suite still passed (1445). Caught only because the count fell
+  short of the reviewer's 1453 plus the four new tests.
+- **Promotion target:** `.agents/rules/code-quality.md` — `DONE:` under Test Invariants:
+  a new test file starts with `git ls-files tests/<name>.py` empty, or is created with
+  the Write tool; a shell write once replaced a contract unseen.
+- **Related:** check the test count against the last known count after adding tests.
+
 ## [LRN-20261012-001] rule-trigger | count-changing ticket work skipped the every-data-type acceptance rule
 - **Status:** resolved (rule promoted)
 - **Cause:** rule-trigger

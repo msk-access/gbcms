@@ -105,6 +105,10 @@ assert counts.rd == counts.rd_fwd + counts.rd_rev  # strand consistency
 assert counts.ad == counts.ad_fwd + counts.ad_rev
 ```
 
+A new test file starts with a name check: `git ls-files tests/<name>.py` prints nothing,
+or create it with the Write tool (it refuses to overwrite a file it has not read). A
+shell write (`open(p, "w")`, `>`) once replaced an existing contract's tests unseen.
+
 ## Test Suite: 266 Python + 161 Rust Tests
 
 | File | What It Tests |
