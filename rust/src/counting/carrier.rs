@@ -57,8 +57,9 @@
 //!   whatever it shows there: one the REF fragments carry too (a germline SNP or
 //!   MNP), and an isolated one on the ALT fragments. A run of changes on the ALT
 //!   fragments alone is an indel or MNP beside the event, another allele. The ALT
-//!   fragments' own changes make their haplotype larger than the given allele; the
-//!   diagnostic names that allele as any observed allele is.
+//!   fragments' own isolated changes make their haplotype larger than the given
+//!   allele; the diagnostic names that allele as any observed allele is (beside a
+//!   run, the observed allele names what the reads' alignments carry).
 //! - **Outcomes.** A read decides only where it holds both the REF and the ALT
 //!   window. A read matching both (through masked bases) is neither. A read
 //!   holding no pair is depth only, like a pure-indel read ending inside its
@@ -954,15 +955,16 @@ impl<'a> CarrierGuard<'a> {
 /// from the reference are tallied per distance, once per fragment. A change on at
 /// least [`GUARD_MIN_READS`] ALT fragments and [`GUARD_MIN_SHARE`] of those reading
 /// that base, and on under [`GUARD_REF_SHARE`] of the REF fragments reading it, is
-/// the ALT reads' alone: with the given allele, every such change (runs included)
-/// makes the larger allele named in the diagnostic. A change beside the event is a
+/// the ALT reads' alone: with the given allele, these make the larger allele named
+/// in the diagnostic, unless one is in a run (the tallies cannot spell another
+/// allele: an MNP, or an indel shifting the bases past it). A change beside the event is a
 /// separate event, so a read carrying the given allele counts whatever it shows
 /// there: masked are the changes the REF fragments carry too (a germline SNP or MNP,
 /// background on both haplotypes, runs included) and each isolated change on the
 /// ALT fragments. A run of changes on the ALT fragments alone (a neighbouring
 /// distance recurring there, the bases past the window included) is an indel or MNP
-/// beside the event, another allele: not masked. None when nothing recurs, or the
-/// variant is not judged by this rule.
+/// beside the event, another allele: not masked. None when nothing is masked or
+/// named, or the variant is not judged by this rule.
 pub(crate) fn guard_for(
     read_cache: &[Record],
     v: &Variant,
@@ -1063,12 +1065,13 @@ pub(crate) fn guard_for(
             }
         }
     }
-    if masked.is_empty() && alt_only.iter().all(Vec::is_empty) {
-        return None;
-    }
     // The larger allele: the given one with every change the ALT reads alone carry,
     // each base as most of them show it; its carriers are the fewest showing any one.
-    let larger = if alt_only.iter().all(Vec::is_empty) {
+    // Beside a run, none: the tallies cannot spell another allele (an MNP, or an
+    // indel shifting the bases past it); the observed allele names it from the
+    // reads' own alignments.
+    let run = (0..2).any(|side| alt_only[side].iter().any(|&i| !isolated(side, i)));
+    let larger = if run || alt_only.iter().all(Vec::is_empty) {
         None
     } else {
         let far = |side: usize| alt_only[side].iter().max().copied();
@@ -1103,6 +1106,9 @@ pub(crate) fn guard_for(
             given_carriers: given,
         })
     };
+    if masked.is_empty() && larger.is_none() {
+        return None;
+    }
     trace!(
         "carrier guard at {}:{} {}>{}: {} recurring changes beside the event masked, {} on the ALT reads alone",
         v.chrom, v.pos + 1, v.ref_allele, v.alt_allele, masked.len(), alt_only.iter().map(Vec::len).sum::<usize>(),
@@ -1639,7 +1645,7 @@ mod tests {
             0,
         );
         // A run on the ALT reads alone: changes on two neighbouring bases (an indel
-        // or MNP beside the event), another allele, not masked; their own, so named.
+        // or MNP beside the event), another allele, neither masked nor named.
         let run = aligned(
             &with_c(&carrier_hap, &[hi + 3 - 22, hi + 4 - 22]),
             vec![Cigar::Match(30), Cigar::Ins(6), Cigar::Del(28), Cigar::Match(40)],
@@ -1647,11 +1653,18 @@ mod tests {
         );
         let plain = aligned(ctx.as_bytes(), vec![Cigar::Match(98)], 0);
         let reads = [fragments(&run, 4, "a"), fragments(&plain, 4, "r")].concat();
-        let g = guard_for(&reads, &v, &|_| true, 20).expect("a run on the ALT reads");
-        assert!(g.masked.is_empty(), "a run is not masked");
-        let l = g.larger.expect("the run names a larger allele");
-        assert_eq!((l.pos, l.ref_allele.as_str(), l.carriers, l.given_carriers), (30, &ctx[30..hi + 5], 4, 0));
-        assert_eq!(l.alt_allele, format!("TTCTCT{}CC", &ctx[58..hi + 3]));
+        assert!(guard_for(&reads, &v, &|_| true, 20).is_none(), "a run is not masked");
+        // With an isolated change further on, that change is masked, and no larger
+        // allele is named: it would leave out the run every ALT read carries.
+        let both = aligned(
+            &with_c(&carrier_hap, &[hi + 3 - 22, hi + 4 - 22, hi + 9 - 22]),
+            vec![Cigar::Match(30), Cigar::Ins(6), Cigar::Del(28), Cigar::Match(40)],
+            0,
+        );
+        let reads = [fragments(&both, 4, "a"), fragments(&plain, 4, "r")].concat();
+        let g = guard_for(&reads, &v, &|_| true, 20).expect("an isolated change");
+        assert_eq!(g.masked, vec![(hi + 9) as i64]);
+        assert!(g.larger.is_none());
         // The same run on the REF reads too is background (a germline MNP): masked,
         // and not the ALT reads' own.
         let ref_run = aligned(&with_c(&ctx, &[hi + 3, hi + 4]), vec![Cigar::Match(98)], 0);
