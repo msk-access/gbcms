@@ -3,9 +3,33 @@
 > Tactical state that must survive a closed laptop or a context summary.
 > Update the **Now** and **Next** sections as work progresses.
 
-_Last updated: 2026-10-08_
+_Last updated: 2026-10-12_
 
 ## Now
+6.7.0 cycle (tracker #196; plan merged in #257). Two stacked branches in flight:
+- **C39 / RJ-23** (`feature/c39-one-sided-windows`, PR #272 on hold; worktree
+  `.claude/worktrees/c39`): one pair of equal-length windows per complex event, run on
+  through bases the shorter allele's flank shares with the longer one; a read placed
+  from the other flank only as the allele its confident bases favour (each allele
+  placed from the same aligned anchor at its own length); germline runs masked; no
+  larger allele named beside a run. Head `accc556d`. Acceptance of `ec2c092c` on every
+  arm (panel, matched normals, ACCESS duplex/simplex, cohort runs, TEMPO WES, HG002):
+  panel delins within 10% of sign-out 100/136 (6.6.0 88/135); HG002 het delins in
+  0.35-0.65 180/236 (span 20+) and 122/149 (5-19); normals unchanged from the
+  previous build. A Fable re-review of `ec2c092c` is out.
+- **C40 / RJ-24** (`feature/c40-long-deletions`): 50+ bp deletions judged at the POS
+  breakpoint; merges C39; the junction judge now places from the shared right flank
+  on confident bases, the guard as C39's (`9576e373`). Also on it: mFSD sizes an ALT
+  fragment as its molecule (`dd50dfbb`). Acceptance on every arm and a Fable review
+  of `9576e373` are running.
+
+Then: C40 PR stacked on #272; C31 (#212, fragment end from the mate's unclipped 5'
+end); D12 re-scope (RNA rules, low-VAF cfDNA, K re-test, per-read confirmation) as a
+docs PR; production aligner versions/flags from the operator (IMPACT/ACCESS
+BWA+ABRA2, FORTE STAR). Local acceptance harness: `~/test/gbcms/harness/plan670/`
+(PHI; `accept_*.sh`, `diff_builds.py`, `across/`, `wes/`, `giab/`).
+
+### Previous: 6.6.0 release
 **6.6.0 is released** (2026-10-08): #252 merged to main (merge commit 67c45989, tree
 identical to the gated candidate 09612675), annotated tag `6.6.0`, main back-merged
 into develop, develop at `6.7.0-dev.0`. The release workflow publishes PyPI, GHCR, the
