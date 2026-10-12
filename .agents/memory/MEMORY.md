@@ -15,6 +15,7 @@ One line per memory. Full content lives in the linked file. Keep this index tigh
 - [Survey several tools](survey-several-tools.md) — community practice means GATK, samtools/bcftools, fgbio, VarDict, Strelka2, freebayes, bam-readcount, LoFreq, GetBaseCounts, the literature, domain tools (RNA), and tools of other applications that judge reads alike (SV/graph genotypers, realigners, split-read and RNA indel tools); say where handling isn't documented.
 - [Test across data types](test-across-data-types.md) — accept a count-changing rule on every data type (tissue tumour+normal, cfDNA, WES/WGS, RNA) and input type, with more than one truth source; GIAB alone is not acceptance; DNA and RNA may need different rules.
 - [Better than the standard](better-than-standard.md) — the survey is a floor, not a ceiling: where no tool sets a standard or a measured rule beats the field's, adopt it and say why.
+- [Model per task](model-per-task.md) — set each subagent's model by the task: Fable/Opus for deep reasoning (reviews, rule design, decisions), Sonnet for surveys and routine work, Haiku for mechanical scans; suggest a session switch when the phase changes.
 - [External review: measure first](external-review-measure-first.md) — map an outside review to behaviour, tickets, REJECTED.md and old probes, and measure its value, before filing tickets.
 - [mFSD is graded evidence](mfsd-graded-evidence.md) — fragment size gives increased confidence toward CH or toward somatic (or none), never a hard origin call; don't over-interpret.
 
