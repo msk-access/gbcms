@@ -17,6 +17,24 @@ regenerating a section.
 
 ---
 
+## [LRN-20261012-001] rule-trigger | count-changing ticket work skipped the every-data-type acceptance rule
+- **Status:** resolved (rule promoted)
+- **Cause:** rule-trigger
+- **Summary:** C40's choices (k, read-on, the placement candidate) were measured on GIAB
+  HG002 (one genome, BWA-MEM, germline hets, mostly tandem-repeat deletions) and on panel
+  sign-out (not truth), with the matched-normal arm skipped and no ACCESS, WES or RNA
+  run. The rule that acceptance covers every assay (LRN-20260923-001) lives in
+  add-feature step 6, which plan-driven ticket work never loads, so it stayed silent.
+  The operator also widened the tool survey to tools of other applications that judge
+  reads alike, and noted DNA and RNA may need different rules.
+- **Promotion target:** `.agents/rules/code-quality.md` (AFTER implementing each step) —
+  `DONE:` a count-changing step needs real-data acceptance on every data type it reaches
+  and more than one truth source; `.agents/skills/add-feature/SKILL.md` step 6 — `DONE:`
+  adds WES/WGS, RNA, normals as hom-REF controls, spike-ins, DNA/RNA judged separately;
+  memory `survey-several-tools` — `DONE:` SV/graph genotypers, realigners, split-read and
+  RNA indel tools.
+- **Related:** [[test-across-data-types]], [[survey-several-tools]], LRN-20260923-001.
+
 ## [LRN-20261009-001] rule-trigger | an external review is checked against tickets, REJECTED.md and measurements before tickets
 - **Status:** resolved (rule promoted)
 - **Cause:** rule-trigger

@@ -21,6 +21,10 @@ alwaysApply: true
 - [ ] Update monitoring — timing/counts for data operations, progress for long loops
 - [ ] Reproduce every claim before stating it (a review finding, an "unreachable" branch,
       behavior across inputs) with a run — synthetic BAM or CLI; otherwise say it is unverified
+- [ ] Count-changing step: real-data acceptance on every data type it reaches (DNA tissue
+      tumour + matched normal; cfDNA duplex/simplex via `gbcms merge`; WES/WGS without
+      realignment; RNA) and more than one truth source — one dataset (e.g. GIAB) is a data
+      point, not acceptance; DNA and RNA may need different rules (see add-feature step 6)
 
 **AFTER implementing, compare code against implementation plan:**
 - [ ] Re-read the relevant plan section(s)
