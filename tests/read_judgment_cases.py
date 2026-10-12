@@ -683,12 +683,7 @@ DECISIONS = {
 
 # Decided calls the engine does not give yet: the red-first cases of a rule being
 # built, strict xfails in test_read_judgment_spec.py until it lands.
-PENDING: set[str] = {
-    "delins 17>1 | REF read with the event's first base substituted",
-    "delins 28>6 | carriers with a run of changes from the window's last base on",
-    "delins 28>6 | REF read starting inside the event behind a low-quality clip",
-    "delins 28>6 | carrier written at the event's other copy as plain matches",
-}
+PENDING: set[str] = set()
 
 # (ref_count, alt_count, partial_alt) for the case's four reads.
 EXPECT = {

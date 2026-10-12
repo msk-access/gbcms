@@ -177,13 +177,14 @@ def test_per_transcript_counts_read_from_the_right_admit_alike(tmp_path):
     assert 0 <= tx_rd - tx_ad <= 2, (tx_rd, tx_ad)
 
 
-def test_a_carrier_whose_deletion_covers_the_reading_flank_is_read_from_the_other(tmp_path):
+def _flank_deleting_carriers(tmp_path, past_alt: int, ref_ends: int | None = None):
     """A 30-to-1 delins whose left flank `CA` recurs at the end of the REF allele: an
     aligner may delete the flank and the first 28 REF bases, align the carrier's `CA`
     to the REF's last two, and write the ALT `G` as a mismatch (as BWA did on an 82-to-1
-    panel delins). The reading flank is under the read's own deletion, so the read is
-    placed from the other flank at each allele's length, as a read whose clip holds
-    the flank is: its bases hold the whole ALT window, so it is ALT."""
+    panel delins). Six such carriers reading `past_alt` bases past the ALT, and six
+    REF reads (spanning the event, or ending `ref_ends` bases past its first base).
+    The ALT's continuation repeats the REF event's next bases for three, so the
+    alleles first differ seven bases from the flank's first."""
     n = 30
     c = list(_contig())
     c[A - 2 : A] = "CA"
@@ -194,12 +195,11 @@ def test_a_carrier_whose_deletion_covers_the_reading_flank_is_read_from_the_othe
     reads = []
     for i in range(6):
         s = A - 90 + i
-        seq = hap[s : A + 4]  # ends three bases past the ALT: CA G GTT
-        reads.append(make_read(f"alt{i}", seq, s, ((0, A - 2 - s), (2, n - 1), (0, 6))))
-    reads += [
-        make_read(f"ref{i}", contig[s : s + READ], s, ((0, READ),))
-        for i, s in enumerate(range(A - 60, A - 54))
-    ]
+        seq = hap[s : A + 1 + past_alt]
+        reads.append(make_read(f"alt{i}", seq, s, ((0, A - 2 - s), (2, n - 1), (0, 3 + past_alt))))
+    for i, s in enumerate(range(A - 60, A - 54)):
+        end = s + READ if ref_ends is None else A + 1 + ref_ends
+        reads.append(make_read(f"ref{i}", contig[s:end], s, ((0, end - s),)))
     for r in reads:
         _pair(r)
     fa, bam = write_contig(tmp_path, contig, reads, "c")
@@ -208,7 +208,27 @@ def test_a_carrier_whose_deletion_covers_the_reading_flank_is_read_from_the_othe
     )
     (got,) = count_checked(bam, [pv.variant])
     _invariants(got)
+    return got
+
+
+def test_a_carrier_whose_deletion_covers_the_reading_flank_is_read_from_the_other(tmp_path):
+    """The reading flank is under the carriers' own deletion, so they are placed from
+    the other flank at each allele's length, as a read whose clip holds the flank is:
+    reading past where the alleles differ, their bases hold the whole ALT window, so
+    they are ALT."""
+    got = _flank_deleting_carriers(tmp_path, past_alt=9)
     assert (got.rd, got.ad) == (6, 6)
+
+
+def test_reads_ending_where_the_alleles_still_agree_are_depth_only(tmp_path):
+    """Carriers ending three bases past the ALT (`CA G GTT`) end inside the bases the
+    ALT's continuation shares with the REF event's next ones: as far as their bases
+    go they are a REF molecule with a two-base substitution, so they cannot show the
+    delins. REF reads ending at the same place cannot show REF either: depth only for
+    both alike (RJ-23, amended 2026-10-12)."""
+    got = _flank_deleting_carriers(tmp_path, past_alt=3, ref_ends=3)
+    assert (got.rd, got.ad) == (0, 0)
+    assert got.dp == 12
 
 
 def test_an_event_ending_a_long_run_is_read_from_the_right_alike(tmp_path):
