@@ -1,6 +1,6 @@
 ---
 name: trace-output-wraps
-description: "gbcms --trace lines are wrapped by the Rich console handler; set COLUMNS=3000 before parsing \"read call\" lines."
+description: "gbcms --trace read-call lines: set COLUMNS=3000 (Rich wraps them); a read call is not a count (uncounted reads are logged too); the key is the prepared variant, so match rows by haplotype."
 metadata:
   node_type: memory
   type: reference
@@ -18,3 +18,13 @@ environment. `partial=` is a count (positions matching ALT), not a bool; `mate` 
 **How to apply:** any per-read adjudication harness that diffs two builds' trace
 calls ([[pysam-validation-oracle]], [[genotyper-not-caller]]) — set the env var and
 assert a non-zero number of parsed calls before trusting a diff.
+
+**Two more traps (2026-10-09, 6.7.0 plan measurements):**
+- **A read call is not a count.** Every classified read is logged, including reads the
+  engine then leaves out (a read that misses the variant position and no clip admits).
+  At long delins the trace showed REF 2,403 where the MAF wrote 1,356, and a claimed
+  "REF counted at both junctions" bias was only that. Take totals from the MAF; use
+  the trace for which reads, not how many.
+- **The key is the prepared variant** (VCF-anchored, left-aligned), not the input row:
+  matching rows by position missed left-aligned deletions (841 REF reads at 100+ bp
+  deletions looked untraced). Match a trace key to a row by the haplotype both give.
