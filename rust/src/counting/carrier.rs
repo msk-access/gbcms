@@ -46,16 +46,19 @@
 //!   the event's bases is neither allele.
 //! - **Placed from the other flank.** A read whose reading flank lies in its soft
 //!   clip, under its own deletion, or aligned at the event's other copy is placed
-//!   from the other flank as each allele would sit there, when its bases over the
-//!   window favour that placement over its own alignment by one base read at min
-//!   BQ; one placed through aligned bases counts only where its own allele fits.
+//!   from the other flank as the allele its bases favour would sit there: each
+//!   allele's window placed from that flank at its own length, its confident bases
+//!   (at or above min BQ, not N) must favour one by at least one base read at min BQ.
+//!   It counts where that allele fits, else carries another allele; one placed
+//!   through aligned bases counts only where the allele fits.
 //! - **A change beside the event.** A change that recurs at a fixed distance from
-//!   the event (on the fragments carrying the ALT core, the REF ones, or both) is a
-//!   separate event, as another indel outside the window is: when isolated it is
-//!   masked in both windows ([`guard_for`]), so a read carrying the given allele
-//!   counts whatever it shows there. One on the ALT fragments alone makes their
-//!   haplotype larger than the given allele; the diagnostic names that allele as any
-//!   observed allele is. A run of changes beside the event is another allele.
+//!   the event is a separate event, as another indel outside the window is, masked
+//!   in both windows ([`guard_for`]) so a read carrying the given allele counts
+//!   whatever it shows there: one the REF fragments carry too (a germline SNP or
+//!   MNP), and an isolated one on the ALT fragments. A run of changes on the ALT
+//!   fragments alone is an indel or MNP beside the event, another allele. The ALT
+//!   fragments' own changes make their haplotype larger than the given allele; the
+//!   diagnostic names that allele as any observed allele is.
 //! - **Outcomes.** A read decides only where it holds both the REF and the ALT
 //!   window. A read matching both (through masked bases) is neither. A read
 //!   holding no pair is depth only, like a pure-indel read ending inside its
@@ -352,11 +355,8 @@ pub(crate) fn classify(
 
     // The read's REF and ALT readings, when it holds the pair.
     let (rw, aw) = &win.pair;
-    let genome_base = |g: i64| reference_base(variant, g);
-    let placed = read_pair(record, &seq, quals, min_baseq, rw, aw, map, readable, &genome_base);
-    // Placed from the other flank through bases the aligner wrote at the event's
-    // other copy (no clip, no deletion of its own there).
-    let through_aligned = placed.as_ref().is_some_and(|(_, _, p)| *p == Placement::ThroughAligned);
+    let placed = read_pair(record, &seq, quals, min_baseq, rw, aw, map, readable);
+    let placement = placed.as_ref().map(|(_, _, p)| *p);
     let reading = placed.map(|(r, a, _)| (r, a));
     // (matches REF, matches ALT)
     let held = reading.as_ref().map(|(r, a)| (r.mismatches == 0, a.mismatches == 0));
@@ -374,7 +374,15 @@ pub(crate) fn classify(
     let qual_bases: Vec<u8> = read_spans.iter().flat_map(|&(lo, hi)| quals[lo..hi].iter().copied()).collect();
     let qual = median_qual(&qual_bases, min_baseq);
     let every = |want: (bool, bool)| held == Some(want);
-    let mut result = if every((false, true)) && evidence < one_base_evidence(min_baseq) {
+    let mut result = if let Some(Placement::Unfit { alt }) = placement {
+        // Placed as the allele its bases favour, which they do not fit: another
+        // allele, partial evidence when that is the ALT.
+        if alt {
+            ClassifyResult::neither_with_nearby(qual, ClassifyPhase::MaskedCompare)
+        } else {
+            ClassifyResult::neither(ClassifyPhase::MaskedCompare)
+        }
+    } else if every((false, true)) && evidence < one_base_evidence(min_baseq) {
         // Its clearly read bases fit the ALT, but weighed by quality its bases do not
         // favour ALT over REF by as much as one base read at the minimum quality: a
         // REF molecule read poorly around the event, with one error fitting the ALT.
@@ -428,7 +436,8 @@ pub(crate) fn classify(
     // A read placed from the other flank through aligned bases starts past the
     // variant position as aligned, while the same molecule of the other allele would
     // span it: it counts as that one would.
-    result.read_from_right = (result.is_ref || result.is_alt) && (rw.reads_from_right() || through_aligned);
+    result.read_from_right =
+        (result.is_ref || result.is_alt) && (rw.reads_from_right() || placement == Some(Placement::ThroughAligned));
     Some(result)
 }
 
@@ -823,10 +832,7 @@ fn windows(v: &Variant, layout: &Layout) -> Option<Windows> {
     // The shorter allele's flank may repeat the longer allele's next bases: both
     // windows run on through them to FLANK bases from where the alleles differ.
     let ext = if long { 0 } else { shared_past(&reference, &ev, (lo, hi, alt_hi), tail)? };
-    let (lo, hi, alt_hi) = if tail { (lo.checked_sub(ext)?, hi, alt_hi) } else { (lo, hi + ext, alt_hi + ext) };
-    if hi > reference.len() || alt_hi > ev.hap.len() {
-        return None;
-    }
+    let (lo, hi, alt_hi) = if tail { (lo - ext, hi, alt_hi) } else { (lo, hi + ext, alt_hi + ext) };
     let j = if !long { short + ext } else if tail { j_right } else { j_left };
     // A masked flank base (a change recurring beside the event) matches any read base.
     let (mut reference, mut hap) = (reference, ev.hap.clone());
@@ -864,7 +870,8 @@ fn windows(v: &Variant, layout: &Layout) -> Option<Windows> {
 /// they differ, so the windows run through the shared bases to [`FLANK`] bases from
 /// there, as a long deletion's run through its microhomology. Zero when the flank
 /// differs at once, or for an event that keeps the length (its alleles share every
-/// base past it). None when the shared bases run off the reference.
+/// base past it). None when the windows run off the reference (through the shared
+/// bases, or the flank past them).
 fn shared_past(reference: &[u8], ev: &Event, (lo, hi, alt_hi): (usize, usize, usize), tail: bool) -> Option<usize> {
     if ev.d == 0 {
         return Some(0);
@@ -888,7 +895,9 @@ fn shared_past(reference: &[u8], ev: &Event, (lo, hi, alt_hi): (usize, usize, us
         }
         first_diff += 1;
     }
-    Some((first_diff + FLANK).saturating_sub(short))
+    let ext = (first_diff + FLANK).saturating_sub(short);
+    let held = if tail { lo >= ext } else { hi + ext <= reference.len() && alt_hi + ext <= ev.hap.len() };
+    held.then_some(ext)
 }
 
 /// The neighbouring-change guard of one variant: the genome positions of the
@@ -937,14 +946,15 @@ impl<'a> CarrierGuard<'a> {
 /// from the reference are tallied per distance, once per fragment. A change on at
 /// least [`GUARD_MIN_READS`] ALT fragments and [`GUARD_MIN_SHARE`] of those reading
 /// that base, and on under [`GUARD_REF_SHARE`] of the REF fragments reading it, is
-/// the ALT reads' alone: with the given allele it makes the larger allele named in
-/// the diagnostic. Every isolated recurring change, the ALT reads' alone or the REF
-/// fragments' too (a germline SNP), is masked: a change beside the event is a
+/// the ALT reads' alone: with the given allele, every such change (runs included)
+/// makes the larger allele named in the diagnostic. A change beside the event is a
 /// separate event, so a read carrying the given allele counts whatever it shows
-/// there. A run of changes (a neighbouring distance recurring on the same allele's
-/// fragments, the bases past the window included) is an indel or MNP beside the
-/// event: another allele, neither masked nor named. None when nothing recurs, or
-/// the variant is not judged by this rule.
+/// there: masked are the changes the REF fragments carry too (a germline SNP or MNP,
+/// background on both haplotypes, runs included) and each isolated change on the
+/// ALT fragments. A run of changes on the ALT fragments alone (a neighbouring
+/// distance recurring there, the bases past the window included) is an indel or MNP
+/// beside the event, another allele: not masked. None when nothing recurs, or the
+/// variant is not judged by this rule.
 pub(crate) fn guard_for(
     read_cache: &[Record],
     v: &Variant,
@@ -1028,28 +1038,24 @@ pub(crate) fn guard_for(
         let (n, of) = (change[allele][side].get(i).copied().unwrap_or(0), cover[allele][side].get(i).copied().unwrap_or(0));
         n >= GUARD_MIN_READS && share(n, of) >= GUARD_MIN_SHARE
     };
-    // Isolated: neither neighbouring distance recurs on the same allele's fragments
-    // (the event itself is no neighbour). A run of changes is an indel or MNP beside
-    // the event, another allele: not masked, not named.
-    let isolated = |allele: usize, side: usize, i: usize| {
-        recurs(allele, side, i) && !(i > 0 && recurs(allele, side, i - 1)) && !recurs(allele, side, i + 1)
-    };
+    // Isolated on the ALT fragments: neither neighbouring distance recurs there (the
+    // event itself is no neighbour).
+    let isolated = |side: usize, i: usize| !(recurs(1, side, i + 1) || i > 0 && recurs(1, side, i - 1));
     // per side, the distances of the changes the ALT reads alone carry
     let (mut masked, mut alt_only) = (Vec::new(), [Vec::new(), Vec::new()]);
     for (side, reach) in [(0usize, reach_l), (1usize, reach_r)] {
         for i in 0..reach {
-            let (ref_n, ref_of) = (change[0][side][i], cover[0][side][i]);
-            let on_ref = share(ref_n, ref_of) >= GUARD_REF_SHARE;
+            let on_ref = share(change[0][side][i], cover[0][side][i]) >= GUARD_REF_SHARE;
             let off = if side == 0 { ev.lo - 1 - i } else { ev.hi + i };
-            if isolated(1, side, i) && !on_ref {
+            if recurs(1, side, i) && !on_ref {
                 alt_only[side].push(i);
             }
-            if isolated(1, side, i) || isolated(0, side, i) {
+            if recurs(0, side, i) || (recurs(1, side, i) && (on_ref || isolated(side, i))) {
                 masked.push(g(off));
             }
         }
     }
-    if masked.is_empty() {
+    if masked.is_empty() && alt_only.iter().all(Vec::is_empty) {
         return None;
     }
     // The larger allele: the given one with every change the ALT reads alone carry,
@@ -1159,26 +1165,31 @@ enum Placement {
     /// From the other flank through aligned bases: the aligner wrote the reading
     /// flank at the event's other copy.
     ThroughAligned,
+    /// From the other flank, the reading flank in the clip or under its own deletion,
+    /// as the allele its bases favour sits (the ALT when `alt`), which they do not
+    /// fit: another allele, closer to that one.
+    Unfit { alt: bool },
 }
 
 /// The REF and ALT windows read from the read, and how they were placed. A read
 /// that aligns the reading flank's end base (the left flank's first base, or the
 /// right flank's last) reads both windows from it: the windows share it, so the
 /// read is placed truly whatever its own gap. Otherwise it is placed from the other
-/// flank as each allele would sit there, at its own length, when its bases over the
-/// window favour that placement over its own alignment by one base read at
-/// `min_baseq` ([`placement_evidence`]: the placement is the allele's hypothesis,
-/// not the aligner's, and a masked clip fits any placement). With the flank in the read's soft clip (the aligner clipped
+/// flank's aligned end base as the allele its bases favour would sit there: each
+/// allele's window placed from that anchor at its own length, the read's confident
+/// bases (at or above `min_baseq`, not N) must mismatch one allele's by at least one
+/// base read at `min_baseq` more than the other's. Bases below min BQ weigh nothing,
+/// so a REF molecule behind a poor clip shows no placement, whatever its clip's
+/// bases happen to fit. With the flank in the read's soft clip (the aligner clipped
 /// the event and the flank) or under its own deletion (it used a microhomology at
-/// the event's far end), a placement where its allele fits counts, else the closer
-/// reading; with the flank aligned elsewhere (an aligner writes a carrier's flank
-/// over the event's other copy, as mismatches), only one where its own allele fits:
+/// the event's far end), the favoured allele counts where it fits, else the read
+/// carries another allele; with the flank aligned elsewhere (an aligner writes a
+/// carrier's flank over the event's other copy, as mismatches), only where it fits:
 /// a REF read there shows the event's bases, not the flank. A read that merely
 /// starts (or ends) inside the windows holds them from neither flank: depth only,
 /// for either allele alike. None when the read cannot be placed or does not hold
-/// both windows' held bases. Only the query bases `[first, after)` are read,
-/// windows built in spliced space are placed through `map`, and `genome_base`
-/// reads the reference.
+/// both windows' held bases. Only the query bases `[first, after)` are read, and
+/// windows built in spliced space are placed through `map`.
 #[allow(clippy::too_many_arguments)]
 fn read_pair(
     record: &Record,
@@ -1189,7 +1200,6 @@ fn read_pair(
     aw: &Window,
     map: &SpliceMap,
     readable: (usize, usize),
-    genome_base: &dyn Fn(i64) -> Option<u8>,
 ) -> Option<(Reading, Reading, Placement)> {
     let at_left = rw.left.and_then(|g| find_read_pos(record, map.to_genome(g))).map(|q| q as i64);
     let at_right = rw.right.and_then(|g| find_read_pos(record, map.to_genome(g - 1))).map(|q| q as i64 + 1);
@@ -1206,109 +1216,53 @@ fn read_pair(
         (true, _, Some(e)) => return from(e).map(|(r, a)| (r, a, Placement::Flank)),
         _ => {}
     }
-    // Placed from the other flank, as each allele would sit.
+    // Placed from the other flank: each allele's window starts there (right reading)
+    // or ends there (left reading), at its own length.
+    let anchor = if tail { at_left? } else { at_right? };
+    let start = |w: &Window| if tail { anchor } else { anchor - w.allele.len() as i64 };
+    let weight = |w: &Window| confident_weight(seq, quals, min_baseq, &w.allele, start(w), readable);
+    let evidence = weight(rw) - weight(aw);
+    let one = one_base_evidence(min_baseq);
+    let (w, alt) = if evidence >= one {
+        (aw, true)
+    } else if evidence <= -one {
+        (rw, false)
+    } else {
+        trace!("carrier: placed from the other flank, its confident bases favour neither allele ({:.2}) → depth only", evidence);
+        return None;
+    };
+    // The reading flank's end base where the favoured allele puts it.
+    let s = if tail { anchor + w.allele.len() as i64 } else { start(w) };
+    let (r, a) = from(s)?;
     let (first, after) = aligned_query_range(record)?;
     let flank_end = if tail { rw.right.map(|g| g - 1) } else { rw.left };
     let deleted = flank_end.is_some_and(|g| deleted_anchor_query(record, map.to_genome(g)).is_some());
-    // The read's bases over the placed window favour the placement over its own
-    // alignment by one base read at min BQ.
-    let shows_placement =
-        |w: &Window, s: i64| placement_evidence(record, seq, quals, &w.allele, s, genome_base) >= one_base_evidence(min_baseq);
-    let pairs: Vec<((Reading, Reading), bool, bool)> = [(rw, false), (aw, true)]
-        .iter()
-        .filter_map(|&(w, is_alt)| {
-            let n = w.allele.len() as i64;
-            let s = if tail { at_left.map(|s| s + n)? } else { at_right.map(|e| e - n)? };
-            // Held: the flank's end base lies in the clip on the reading side, or
-            // under the read's own deletion; else it is aligned elsewhere.
-            let held = deleted || if tail { s > after as i64 } else { s < first as i64 };
-            let p = from(s)?;
-            shows_placement(w, s).then_some((p, is_alt, held))
-        })
-        .collect();
-    let fits = |(r, a): &(Reading, Reading), is_alt: bool| if is_alt { a.mismatches == 0 } else { r.mismatches == 0 };
-    pairs
-        .iter()
-        .find(|(p, is_alt, _)| fits(p, *is_alt))
-        .or_else(|| pairs.iter().filter(|(_, _, held)| *held).min_by_key(|((r, a), _, _)| r.mismatches.min(a.mismatches)))
-        .map(|((r, a), _, held)| {
-            (r.clone(), a.clone(), if *held { Placement::OtherFlank } else { Placement::ThroughAligned })
-        })
-}
-
-/// The read's evidence (log10) for a placement of the window `allele` at query
-/// position `s` over its own alignment: the weight of every read base its alignment
-/// (or a clip's ungapped extension) puts on a different reference base, less the
-/// weight of every base the window mismatches, each by its quality. A masked window
-/// base, a base its alignment gives no position (an inserted one), and an N count
-/// nothing. A read the placement explains no better than its own alignment (a REF
-/// molecule behind a masked clip, whose bases fit any placement) shows no evidence.
-pub(crate) fn placement_evidence(
-    record: &Record,
-    seq: &[u8],
-    quals: &[u8],
-    allele: &[u8],
-    s: i64,
-    genome_base: &dyn Fn(i64) -> Option<u8>,
-) -> f64 {
-    let mut evidence = 0.0;
-    for (i, &h) in allele.iter().enumerate() {
-        let Ok(q) = usize::try_from(s + i as i64) else { continue };
-        let (Some(&b), Some(&bq)) = (seq.get(q), quals.get(q)) else { continue };
-        let b = b.to_ascii_uppercase();
-        if b == WILD {
-            continue;
-        }
-        if aligned_at(record, q).and_then(genome_base).is_some_and(|g| g != b) {
-            evidence += one_base_evidence(bq);
-        }
-        if h != WILD && h != b {
-            evidence -= one_base_evidence(bq);
-        }
-    }
-    evidence
-}
-
-/// The genome position the read's own alignment gives query position `q`: an
-/// aligned base's, or for a soft-clipped base the one an ungapped extension of the
-/// aligned bases beside it gives. None for an inserted base, or a read with no
-/// aligned base.
-pub(crate) fn aligned_at(record: &Record, q: usize) -> Option<i64> {
-    let (first, after) = aligned_query_range(record)?;
-    if q < first {
-        return Some(record.pos() - (first - q) as i64);
-    }
-    if q >= after {
-        return Some(record.cigar().end_pos() + (q - after) as i64);
-    }
-    let (mut rp, mut qp) = (record.pos(), first);
-    for op in record.cigar().iter() {
-        match op {
-            Cigar::Match(l) | Cigar::Equal(l) | Cigar::Diff(l) => {
-                let l = *l as usize;
-                if q < qp + l {
-                    return Some(rp + (q - qp) as i64);
-                }
-                (rp, qp) = (rp + l as i64, qp + l);
-            }
-            Cigar::Ins(l) if q < qp + *l as usize => return None,
-            Cigar::Ins(l) => qp += *l as usize,
-            Cigar::Del(l) | Cigar::RefSkip(l) => rp += *l as i64,
-            _ => {}
-        }
-    }
-    None
-}
-
-/// The prepared reference's base at genome position `g`, upper case (the event's
-/// widened reference, else the reference context), without copying it.
-fn reference_base(v: &Variant, g: i64) -> Option<u8> {
-    let (start, seq) = match (&v.event_ref, &v.ref_context) {
-        (Some((s, seq)), _) => (*s, seq.as_str()),
-        (None, Some(ctx)) => (v.ref_context_start, ctx.as_str()),
-        (None, None) => return None,
+    // Held: the flank's end base lies in the clip on the reading side, or under the
+    // read's own deletion; else it is aligned elsewhere.
+    let held = deleted || if tail { s > after as i64 } else { s < first as i64 };
+    let fits = if alt { a.mismatches == 0 } else { r.mismatches == 0 };
+    let placement = match (fits, held) {
+        (true, true) => Placement::OtherFlank,
+        (true, false) => Placement::ThroughAligned,
+        (false, true) => Placement::Unfit { alt },
+        (false, false) => return None,
     };
-    seq.as_bytes().get(usize::try_from(g - start).ok()?).map(u8::to_ascii_uppercase)
+    Some((r, a, placement))
+}
+
+/// The weight (log10) of the read's confident bases (at or above `min_baseq`, not
+/// N) that mismatch `allele` placed at query position `s`, each by its quality, over
+/// the readable bases `[first, after)`. A masked window base mismatches nothing.
+fn confident_weight(seq: &[u8], quals: &[u8], min_baseq: u8, allele: &[u8], s: i64, (first, after): (usize, usize)) -> f64 {
+    allele
+        .iter()
+        .enumerate()
+        .filter_map(|(i, &h)| {
+            let q = usize::try_from(s + i as i64).ok().filter(|&q| q >= first && q < after)?;
+            let (b, bq) = (seq.get(q)?.to_ascii_uppercase(), *quals.get(q)?);
+            (b != WILD && h != WILD && bq >= min_baseq && b != h).then(|| one_base_evidence(bq))
+        })
+        .sum()
 }
 
 /// One allele's window read with the window starting at query position `s` (which
@@ -1583,6 +1537,37 @@ mod tests {
         assert_eq!(reference_short(0, &ctx, &v), None);
     }
 
+    #[test]
+    fn a_reference_ending_inside_the_flank_past_the_shared_bases_is_short() {
+        // A 31-to-1 delins whose right flank repeats the deleted bases' first 26 and
+        // then differs at P: the windows run to FLANK bases past P, so a reference
+        // ending one base past P is short on the right, and one holding them is not.
+        let (a, del, run) = (30usize, 30usize, 26usize);
+        let mut x = 11u32;
+        let mut ctx: Vec<u8> = (0..a + 1 + del + run + 2)
+            .map(|_| {
+                x = x.wrapping_mul(1_103_515_245).wrapping_add(12_345);
+                b"CGT"[(x >> 16) as usize % 3]
+            })
+            .collect();
+        (ctx[a - 1], ctx[a]) = (b'G', b'C');
+        for u in 0..run {
+            ctx[a + 1 + del + u] = ctx[a + 1 + u];
+        }
+        let p = a + 1 + del + run;
+        if ctx[p] == ctx[p - del] {
+            ctx[p] = if ctx[p] == b'G' { b'T' } else { b'G' };
+        }
+        let ctx = String::from_utf8(ctx).unwrap();
+        let v = var(&ctx, a as i64, &ctx[a..a + 1 + del], "A");
+        let ev = event(0, ctx.as_bytes(), &v).unwrap();
+        assert_eq!((ev.lo, ev.hi), (a, a + 1 + del), "no repeat grows the event");
+        assert_eq!(reference_short(0, &ctx[..p + 1], &v), Some((false, true)));
+        assert!(windows(&var(&ctx[..p + 1], a as i64, &ctx[a..a + 1 + del], "A"), &Layout::default()).is_none());
+        assert_eq!(reference_short(0, &ctx[..p + 2], &v), None);
+        assert!(windows(&var(&ctx[..p + 2], a as i64, &ctx[a..a + 1 + del], "A"), &Layout::default()).is_some());
+    }
+
     /// A read of `seq` aligned at `pos` by `cigar`, at Q30.
     fn aligned(seq: &[u8], cigar: Vec<Cigar>, pos: i64) -> Record {
         let mut rec = Record::new();
@@ -1623,7 +1608,7 @@ mod tests {
     }
 
     #[test]
-    fn the_guard_masks_each_isolated_recurring_change_and_names_the_alt_reads_own() {
+    fn the_guard_masks_background_and_isolated_changes_and_names_the_alt_reads_own() {
         // 30 A/G bases, a 28-base delins to TTCTCT, 40 A/G bases. Four carriers show
         // a C three and six bases past the event (grown through the runs at its
         // edges); with `snp`, four REF reads show the C six bases past it too.
@@ -1650,8 +1635,8 @@ mod tests {
             vec![Cigar::Match(30), Cigar::Ins(6), Cigar::Del(28), Cigar::Match(40)],
             0,
         );
-        // A run: changes on two neighbouring bases (an indel or MNP beside the
-        // event), another allele, neither masked nor named.
+        // A run on the ALT reads alone: changes on two neighbouring bases (an indel
+        // or MNP beside the event), another allele, not masked; their own, so named.
         let run = aligned(
             &with_c(&carrier_hap, &[hi + 3 - 22, hi + 4 - 22]),
             vec![Cigar::Match(30), Cigar::Ins(6), Cigar::Del(28), Cigar::Match(40)],
@@ -1659,7 +1644,18 @@ mod tests {
         );
         let plain = aligned(ctx.as_bytes(), vec![Cigar::Match(98)], 0);
         let reads = [fragments(&run, 4, "a"), fragments(&plain, 4, "r")].concat();
-        assert!(guard_for(&reads, &v, &|_| true, 20).is_none(), "a run is not masked");
+        let g = guard_for(&reads, &v, &|_| true, 20).expect("a run on the ALT reads");
+        assert!(g.masked.is_empty(), "a run is not masked");
+        let l = g.larger.expect("the run names a larger allele");
+        assert_eq!((l.pos, l.ref_allele.as_str(), l.carriers, l.given_carriers), (30, &ctx[30..hi + 5], 4, 0));
+        assert_eq!(l.alt_allele, format!("TTCTCT{}CC", &ctx[58..hi + 3]));
+        // The same run on the REF reads too is background (a germline MNP): masked,
+        // and not the ALT reads' own.
+        let ref_run = aligned(&with_c(&ctx, &[hi + 3, hi + 4]), vec![Cigar::Match(98)], 0);
+        let reads = [fragments(&run, 4, "a"), fragments(&ref_run, 4, "r")].concat();
+        let g = guard_for(&reads, &v, &|_| true, 20).expect("a germline run");
+        assert_eq!(g.masked, vec![(hi + 3) as i64, (hi + 4) as i64]);
+        assert!(g.larger.is_none());
         for snp in [false, true] {
             let shared: &[usize] = if snp { &[hi + 6] } else { &[] };
             let ref_read = aligned(&with_c(&ctx, shared), vec![Cigar::Match(98)], 0);
