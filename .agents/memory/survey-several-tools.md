@@ -31,7 +31,11 @@ applications that judge reads the same way: SV genotypers (SVTyper, Paragraph,
 GraphTyper2, Delly genotyping, Manta, smoove, SVJedi), graph/realignment genotypers
 (vg, BayesTyper), realigners (ABRA2, GATK IndelRealigner), split-read callers (Pindel,
 ScanIndel), RNA indel and junction tools (transIndel, RNAIndel, STAR chimeric output,
-Arriba), and read simulators/spike-in tools (BAMSurgeon, wgsim/ART) for truth.
+Arriba), and read simulators/spike-in tools (BAMSurgeon, wgsim/ART) for truth. Same day
+they added GATK-SV, Octopus and RNA fusion callers (STAR-Fusion, FusionCatcher, JAFFA,
+CICERO), and noted most SV callers work above a size floor while small-variant callers
+cap indel length: survey each tool's working size range and its size-stratified
+accuracy, so a 50–300 bp gap is visible rather than assumed covered.
 
 **How to apply:** in every decision table's evidence column, list what each
 surveyed tool does (or "not documented"), with links; DNA and RNA practice are
