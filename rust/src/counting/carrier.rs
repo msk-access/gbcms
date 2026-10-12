@@ -1159,7 +1159,7 @@ fn repeat_end(r: &[u8], b: usize, max_unit: usize) -> usize {
 
 /// How a read's windows were placed.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-enum Placement {
+pub(crate) enum Placement {
     /// From the reading flank's end base, aligned.
     Flank,
     /// From the other flank, the reading flank in the read's clip or under its own
@@ -1256,7 +1256,7 @@ fn read_pair(
 /// The weight (log10) of the read's confident bases (at or above `min_baseq`, not
 /// N) that mismatch `allele` placed at query position `s`, each by its quality, over
 /// the readable bases `[first, after)`. A masked window base mismatches nothing.
-fn confident_weight(seq: &[u8], quals: &[u8], min_baseq: u8, allele: &[u8], s: i64, (first, after): (usize, usize)) -> f64 {
+pub(crate) fn confident_weight(seq: &[u8], quals: &[u8], min_baseq: u8, allele: &[u8], s: i64, (first, after): (usize, usize)) -> f64 {
     allele
         .iter()
         .enumerate()

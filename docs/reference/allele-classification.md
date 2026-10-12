@@ -369,13 +369,18 @@ way), so a CIGAR-only rule read VAF 0.000 at 287 of 300 heterozygous deletions.
   every deleted base it covers would expose it to errors the ALT reading never
   meets (measured: HG002 103 vs 100 of 166 deletions in band, the panel 40 vs 29
   of 60 within 10% of sign-out).
-- **Placement:** the read is read from its aligned first window base; one whose
-  soft clip, or own deletion, holds the left flank is placed from the other side at
-  each allele's length, when it reads that placement's flank bases at `--min-baseq`
-  or above (the placement is a hypothesis: a masked flank would fit any, and a REF
-  molecule starting inside the deleted span shows the same right flank as a
-  carrier). Hard-clipped bases are absent, so a hard-clipped record holds no window
-  on its own.
+- **Placement:** the read is read from its aligned first window base. One whose
+  left flank is not aligned there (in its soft clip, under its own deletion, or
+  written over the deleted bases' end as mismatches) is placed from the right flank,
+  which both alleles share, as the ALT's window sits there; REF's window ends inside
+  the deleted bases, which no ALT molecule holds. The placement is a hypothesis, so
+  the read's confident bases (at or above `--min-baseq`, not N) must favour the left
+  flank over the deleted bases REF has before the right flank by one base read at
+  `--min-baseq`: a REF molecule starting inside the deleted span behind a poor clip
+  shows the same right flank as a carrier, and nothing of the left flank. It is ALT
+  where it fits, else another allele; written over the deleted bases' end, only
+  where it fits. Hard-clipped bases are absent, so a hard-clipped record holds no
+  window on its own.
 - **Outcomes:** REF or ALT when the read fits exactly one window (bases below
   `--min-baseq`, and N, fit anything; ALT also needs one minimum-quality base's
   evidence); fitting neither, another allele (`partial_alt` when closer to ALT);
@@ -385,12 +390,14 @@ way), so a CIGAR-only rule read VAF 0.000 at 287 of 300 heterozygous deletions.
 - **Depth:** a decided read whose windows read soft-clipped bases inside its
   fragment counts toward depth in DNA, as for complex variants.
 - **A change recurring** at one window offset on an allele's reads (3+ fragments,
-  20% of that allele's reads, its neighbouring bases not recurring too, the base
-  either side of the windows included) is a separate event: masked at that offset
-  in both windows; on the ALT reads alone it names the larger allele in
-  `gbcms_diagnostic` (the deletion with the change). A run of changes is an indel
-  at the junction: another allele, not masked. Masks never take every offset where
-  REF and ALT differ: those stay read, and a read changed there is neither.
+  20% of that allele's reads) is a separate event, masked at that offset in both
+  windows: one the REF reads carry too (a germline SNP or MNP, a run included), and
+  one on the ALT reads with neither neighbouring base recurring there too (the base
+  either side of the windows included). A run of changes on the ALT reads alone is
+  an indel at the junction: another allele, not masked. The changes on the ALT
+  reads alone, runs included, name the larger allele in `gbcms_diagnostic` (the
+  deletion with the changes). Masks never take every offset where REF and ALT
+  differ: those stay read, and a read changed there is neither.
 - **RNA:** the same, after splice triage (a deletion written as a splice N stays
   excluded).
 

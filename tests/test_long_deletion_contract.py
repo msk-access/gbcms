@@ -29,6 +29,8 @@ CENSUS_LIMITS = {
     "right-clipped carriers with a recurring change in the flank",
     "carriers with a recurring change on the window's last base",
     "REF reads with a recurring change inside the window",
+    "REF reads with a run of changes in the flank",
+    "carriers and REF reads with a run of changes in the flank",
     "REF read with its own 20-bp deletion inside the deleted span",
 }
 SHAPES = [

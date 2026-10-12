@@ -46,9 +46,12 @@ A pure deletion of 50 bp or more (RJ-24) is judged at its POS breakpoint instead
 one window of equal length per allele, read from the left flank (4 clean flank
 bases, the microhomology, 4 bases of the allele's own continuation: the deleted
 bases for REF, the right flank for ALT), through soft-clipped bases inside the
-fragment. A read whose left flank is clipped, or deleted by its own alignment, is
-placed from the other side at each allele's length, when an unmasked flank base
-favours that placement over the read's own alignment; hard-clipped bases are absent.
+fragment. A read whose left flank is not aligned there (clipped, deleted by its own
+alignment, or aligned over the deleted bases' other copy) is placed from the right
+flank as the ALT's window sits there, when its unmasked bases favour the left flank
+over the deleted bases REF has before the right flank by one base read at the
+minimum quality; aligned over the other copy, only where it fits the ALT. Hard-clipped
+bases are absent.
 Nothing past the window is read. Such reads decided through a clip count toward
 depth, as in the engine. The census does not mask a change recurring in the windows
 across reads (the engine does): reads carrying one are neither here. Nor does it
@@ -74,6 +77,7 @@ with two limits:
 
 from __future__ import annotations
 
+import math
 from collections import Counter
 from dataclasses import dataclass, field
 from enum import Enum
@@ -148,6 +152,12 @@ class Junction:
         """Reference position of the allele's window's last base."""
         tail = self.mh + JUNCTION_K - 1
         return self.lo + tail if allele == "REF" else self.lo + self.length + tail
+
+    @property
+    def deleted_tail(self) -> str:
+        """The JUNCTION_K deleted bases before the right flank, where ALT has the left
+        flank: REF read back from ALT's window's last base."""
+        return self.contig[self.lo + self.length - JUNCTION_K : self.lo + self.length].upper()
 
 
 @dataclass
@@ -432,19 +442,11 @@ def _insert_unread(read, bases: str, spans) -> bool:
     return readable <= deleted
 
 
-def _implied_positions(read) -> dict[int, int]:
-    """Query offset -> the reference position the read's own alignment gives it: an
-    aligned base's, or for a soft-clipped base the ungapped extension of the aligned
-    bases beside it (inserted bases have none)."""
-    out = dict(read.get_aligned_pairs(matches_only=True))
-    if not out:
-        return out
-    lead, trail = _clips(read)
-    for q in range(lead):
-        out[q] = read.reference_start - (lead - q)
-    for q in range(trail, len(read.query_sequence)):
-        out[q] = read.reference_end + (q - trail)
-    return out
+def _one_base(q: int) -> float:
+    """The evidence (log10) one base read at quality `q` gives for the base it shows
+    over another: the engine's unit of placement evidence."""
+    e = min(max(10 ** (-min(q, 60) / 10), 1e-6), 0.75)
+    return math.log10((1 - e) / (e / 3))
 
 
 def _deleted_by_read(read, pos: int) -> bool:
@@ -482,37 +484,31 @@ def judge_junction(read, j: Junction, min_baseq: int = 20) -> tuple[Verdict, boo
     if first is not None:
         got = reading(first)
         return (_verdict(*got) if got else Verdict.NOT_ANCHORED), False
-    # The flank in the read's clip, or under its own deletion: placed from the other
-    # side as each allele would sit, when the read's bases favour that placement's flank
-    # over its own alignment (an unmasked flank base where the alignment, or the
-    # ungapped extension of its clip, puts another base); a placement where its own
-    # allele fits counts.
+    # The left flank not aligned where the windows start: placed from the right flank
+    # as the ALT's window sits there (REF's ends inside the deleted bases, which no ALT
+    # molecule holds), when its unmasked bases favour the left flank over the deleted
+    # bases REF has there by one base read at the minimum quality. With the flank in
+    # the clip or under the read's own deletion it is ALT where it fits, else another
+    # allele; aligned over the deleted bases' other copy, only where it fits.
+    q = pairs.get(j.last("ALT"))
+    if q is None or quals is None:
+        return Verdict.NOT_ANCHORED, False
+    start = q - n + 1
+    flank, tail = j.alt_w[:JUNCTION_K], j.deleted_tail
+    evidence = sum(
+        _one_base(quals[i]) * ((bases[i] != tail[k]) - (bases[i] != flank[k]))
+        for k, i in enumerate(range(start, start + JUNCTION_K))
+        if 0 <= i < len(bases) and bases[i] != "N"
+    )
+    got = reading(start)
+    if evidence < _one_base(min_baseq) or got is None:
+        return Verdict.NOT_ANCHORED, False
+    fits_alt, fits_ref = got
+    if fits_alt:
+        return _verdict(fits_alt, fits_ref), True
     lead, _ = _clips(read)
-    flank_deleted = _deleted_by_read(read, j.first)
-    implied = _implied_positions(read)
-    placed = []
-    for allele in ("ALT", "REF"):
-        q = pairs.get(j.last(allele))
-        if q is None:
-            continue
-        start = q - n + 1
-        if start < lead or flank_deleted:
-            got = reading(start)
-            shows_flank = any(
-                bases[start + i] == j.ref_w[i]
-                and implied.get(start + i) is not None
-                and 0 <= implied[start + i] < len(j.contig)
-                and j.contig[implied[start + i]].upper() != bases[start + i]
-                for i in range(JUNCTION_K)
-            )
-            if got and shows_flank:
-                placed.append((allele, got))
-    for allele, (fits_alt, fits_ref) in placed:
-        if (fits_alt if allele == "ALT" else fits_ref) and not (fits_alt and fits_ref):
-            return (Verdict.ALT if allele == "ALT" else Verdict.REF), True
-    if placed:
-        return _verdict(*placed[0][1]), True
-    return Verdict.NOT_ANCHORED, False
+    held = start < lead or _deleted_by_read(read, j.first)
+    return (Verdict.CONTRADICTS_BOTH, True) if held else (Verdict.NOT_ANCHORED, False)
 
 
 def judge(read, window: Window | Junction, min_baseq: int = 20) -> Verdict:

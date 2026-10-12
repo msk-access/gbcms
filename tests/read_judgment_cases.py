@@ -588,6 +588,22 @@ def _long_del_reads(n: int, mh: int, shape: str) -> list:
             carrier(i, A - 50 - i, LONG_READ - 50 - i, subs=(A - 2,))
         elif shape == "carriers with a run of changes in the flank":
             carrier(i, A - 50 - i, LONG_READ - 50 - i, subs=(A - 3, A - 2))
+        elif shape == "REF reads with a run of changes in the flank":
+            seq = list(contig[A - 50 - i : A - 50 - i + LONG_READ])
+            for g in (A - 3, A - 2):
+                seq[g - (A - 50 - i)] = _other(seq[g - (A - 50 - i)])
+            add(f"r{i}", "".join(seq), A - 50 - i, [(0, LONG_READ)])
+        elif shape == "carriers and REF reads with a run of changes in the flank":
+            carrier(i, A - 50 - i, LONG_READ - 50 - i, subs=(A - 3, A - 2))
+            seq = list(contig[A - 50 - i : A - 50 - i + LONG_READ])
+            for g in (A - 3, A - 2):
+                seq[g - (A - 50 - i)] = _other(seq[g - (A - 50 - i)])
+            add(f"r{i}", "".join(seq), A - 50 - i, [(0, LONG_READ)])
+        elif shape == "carrier aligned over the deleted bases' end, no clip":
+            # its bases before the junction written over the last deleted bases, as
+            # mismatches: an aligner placing it by its right part, without a clip
+            c = 6 + i
+            add(f"c{i}", hap[A - c : A - c + LONG_READ], A + n - c, [(0, LONG_READ)])
         elif shape == "carriers with a recurring change on the window's last base":
             carrier(i, A - 50 - i, LONG_READ - 50 - i, subs=(A + n + mh + 3,))
         elif shape == "carriers with a run of changes from the window's last base on":
@@ -625,8 +641,11 @@ _LONG_DEL_ALL = (
     "carriers with a recurring change in the flank",
     "right-clipped carriers with a recurring change in the flank",
     "carriers with a run of changes in the flank",
+    "REF reads with a run of changes in the flank",
+    "carriers and REF reads with a run of changes in the flank",
     "carriers with a recurring change on the window's last base",
     "carriers with a run of changes from the window's last base on",
+    "carrier aligned over the deleted bases' end, no clip",
 )
 LONG_DEL_SHAPES = {
     "del 60": _LONG_DEL_ALL,
@@ -1162,6 +1181,14 @@ EXPECT = {
     # inside the window or runs on past its edge
     "del 60 | carriers with a run of changes in the flank": (0, 0, 4),
     "del 60 | carriers with a run of changes from the window's last base on": (0, 0, 4),
+    # a run the REF reads carry too is background (a germline MNP), masked as a
+    # germline SNP is: both alleles count
+    "del 60 | REF reads with a run of changes in the flank": (4, 0, 0),
+    "del 60 | carriers and REF reads with a run of changes in the flank": (4, 4, 0),
+    # placed from the right flank, its bases before the junction show the left flank,
+    # not the deleted bases its alignment puts there: ALT, as a REF read from the
+    # same start is REF
+    "del 60 | carrier aligned over the deleted bases' end, no clip": (0, 4, 0),
     "del 60 mh3 | exact D carrier, long flanks": (0, 4, 0),
     "del 60 mh3 | exact D carrier, four bases past the microhomology": (0, 4, 0),
     "del 60 mh3 | exact D carrier, three bases past the microhomology": (0, 0, 0),
