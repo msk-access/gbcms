@@ -306,6 +306,17 @@ A fragment whose reads all start or end inside an indel's repeat tract carries n
 readable allele ([informative reads](allele-classification.md#informative-reads-for-indels)).
 It counts in fragment depth but in none of the four classes.
 
+### Fragment size
+
+A fragment's size is its molecule's length: TLEN (the reference span of the pair)
+less the deletions and splices, plus the insertions, its reads' CIGARs write, the
+smallest over its reads. An ALT fragment is the molecule carrying the ALT: when its
+span covers the variant but no read's CIGAR writes the allele's length change there (a
+carrier written as a soft clip, or judged by its bases), the change is applied too, so
+a deletion carrier is not sized longer by the deleted bases (since 6.7.0; before, a
+fragment of a deletion over about 830 bases fell outside the 1000-bp limit). A carrier
+aligned from past a deletion never spanned the deleted bases, and keeps its TLEN.
+
 ### MAF Columns (41 total)
 
 #### Raw Counts

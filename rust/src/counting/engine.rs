@@ -1812,7 +1812,7 @@ fn count_variant_from_cache(
         // discriminating position) rather than the previous heuristic
         // (base_qual==0 && !is_ref && !is_alt) which could mis-classify
         // true third-allele reads with qual=0 as N-class fragments.
-        let tlen = mfsd::calc_physical_insert_size(record);
+        let tlen = mfsd::allele_insert_size(record, variant, is_alt);
         let informative = !result.uninformative || ref_claimed_by_sibling;
         evidence.observe(is_ref, is_alt, base_qual, is_read1, is_forward, tlen, result.has_n_base, result.is_structural, record.mapq(), informative);
 
@@ -3002,7 +3002,6 @@ fn count_per_transcript(
             let (mol_hash, _) = molecule_key(record, umi_tag, amplicon_mode);
             let is_read1 = record.is_first_in_template();
             let is_forward = !record.is_reverse();
-            let tlen = mfsd::calc_physical_insert_size(record);
 
             // ── Multi-allelic guards (the main engine's read-level rules): an
             // ALT match won by a sibling is excluded from tx_ad and from
@@ -3022,6 +3021,7 @@ fn count_per_transcript(
 
             // Only the resolved call reads this evidence (`resolve`), so whether the
             // read was informative is not needed here.
+            let tlen = mfsd::allele_insert_size(record, variant, is_alt);
             let evidence = tx_fragments.entry(mol_hash).or_insert_with(FragmentEvidence::new);
             evidence.observe(is_ref, is_alt, result.qual, is_read1, is_forward, tlen, result.has_n_base, result.is_structural, record.mapq(), !result.uninformative);
 
