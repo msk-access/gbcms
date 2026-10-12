@@ -16,7 +16,7 @@ import glob
 import pytest
 import read_judgment_cases as rj
 from census import assert_matches, census
-from helpers import count_checked, read_maf_output, write_contig
+from helpers import count_checked, make_read, read_maf_output, write_contig
 from typer.testing import CliRunner
 
 from gbcms import _rs
@@ -128,3 +128,72 @@ def test_a_recurring_change_on_the_carriers_names_the_larger_allele(tmp_path, sh
     assert len(ref_al) - len(alt_al) == n
     larger = f"OBSERVED_ALLELE(1:{pos + 1}:{ref_al}>{alt_al}:4/0)"
     assert larger in row["gbcms_diagnostic"].split(";"), row["gbcms_diagnostic"]
+
+
+def test_a_germline_snp_at_the_anchor_keeps_clipped_carriers(tmp_path):
+    """Every read, REF and ALT, shows a germline SNP at the base before the deletion,
+    where the flank's other three bases equal the deleted bases before the right flank:
+    the guard masks the SNP, and a carrier clipped at the junction (placed from the
+    right flank) still shows the junction by that base against the deleted tail.
+    D-written and clipped carriers count alike."""
+    n, mh = rj.LONG_DEL["del 60"]
+    c = list(rj._long_contig(n, mh))
+    c[A - 4 : A - 1] = c[A + n - 4 : A + n - 1]
+    contig = "".join(c)
+    assert contig[A - 1] != contig[A + n - 1]  # still placed leftmost
+
+    def snp(seq, s):
+        return seq[: A - 1 - s] + "A" + seq[A - s :]  # the contig has no A
+
+    hap = contig[:A] + contig[A + n :]
+    reads = []
+    for i in range(4):
+        s = A - 50 - i
+        reads.append(
+            make_read(
+                f"d{i}", snp(hap[s : s + 120], s), s, ((0, A - s), (2, n), (0, 120 - (A - s)))
+            )
+        )
+        reads.append(make_read(f"r{i}", snp(contig[s : s + 120], s), s, ((0, 120),)))
+        k = 20 + i  # bases before the junction, in the clip
+        seq = snp(hap[A - k : A - k + 120], A - k)
+        reads.append(make_read(f"c{i}", seq, A + n, ((4, k), (0, 120 - k))))
+    for r in reads:
+        r.flag = 0x1 | 0x2 | 0x20 | 0x40
+        r.next_reference_id, r.next_reference_start, r.template_length = (
+            0,
+            r.reference_start + 250,
+            400,
+        )
+    fa, bam = write_contig(tmp_path, contig, reads, "c")
+    (pv,) = _rs.prepare_variants(
+        [_rs.Variant("1", A - 1, contig[A - 1 : A + n], contig[A - 1], "DEL")],
+        fa,
+        5,
+        False,
+        1,
+        True,
+    )
+    (got,) = count_checked(bam, [pv.variant])
+    assert (got.rd, got.ad) == (4, 8)
+
+
+@pytest.mark.parametrize("min_baseq", [0, 1])
+def test_an_n_clip_shows_no_flank_at_any_minimum_quality(tmp_path, min_baseq):
+    """REF reads starting inside the deleted span behind an N clip show nothing of the
+    left flank: at --min-baseq 0 or 1 one base's evidence weighs nothing, and a tie
+    places no read."""
+    n, mh = rj.LONG_DEL["del 60"]
+    contig = rj._long_contig(n, mh)
+    reads = rj._long_del_reads(n, mh, "REF read starting inside the deletion behind an N clip")
+    fa, bam = write_contig(tmp_path, contig, reads, "c")
+    (pv,) = _rs.prepare_variants(
+        [_rs.Variant("1", A - 1, contig[A - 1 : A + n], contig[A - 1], "DEL")],
+        fa,
+        5,
+        False,
+        1,
+        True,
+    )
+    (got,) = count_checked(bam, [pv.variant], min_baseq=min_baseq)
+    assert got.ad == 0

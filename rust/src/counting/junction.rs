@@ -188,13 +188,14 @@ pub(crate) fn classify(
             // The left flank not aligned where the windows start: placed from the
             // right flank as the ALT's window sits there, when the read's confident
             // bases favour the left flank over the deleted bases REF has there by one
-            // base read at --min-baseq. Masked offsets weigh nothing for either.
-            let ref_back: Vec<u8> = j.ref_back.iter().zip(&alt_w).map(|(&b, &a)| if a == WILD { WILD } else { b }).collect();
+            // base read at --min-baseq, and by more than nothing (at --min-baseq 0
+            // that base weighs nothing). A masked flank offset weighs nothing for
+            // ALT; the deleted bases it is weighed against were never masked.
             find_read_pos(record, j.last(true)).and_then(|q| {
                 let s = q as i64 - (n as i64 - 1);
-                let evidence = confident_weight(&seq, quals, min_baseq, &ref_back, s, readable)
+                let evidence = confident_weight(&seq, quals, min_baseq, &j.ref_back, s, readable)
                     - confident_weight(&seq, quals, min_baseq, &alt_w, s, readable);
-                if evidence < one_base_evidence(min_baseq) {
+                if evidence <= 0.0 || evidence < one_base_evidence(min_baseq) {
                     trace!("junction: placed from the right flank, its bases do not show the left flank ({:.2}) → depth only", evidence);
                     return None;
                 }
@@ -272,11 +273,14 @@ pub(crate) fn classify(
 /// changes are tallied per window offset, and on the base either side of the
 /// windows. A change recurs on at least [`GUARD_MIN_READS`] fragments and
 /// [`GUARD_MIN_SHARE`] of that allele's reads. Masked at its offset in both windows
-/// are the changes the REF reads carry (a germline SNP or MNP, background on both
-/// haplotypes, runs included) and each isolated change on the ALT reads (neither
-/// neighbouring base recurring there too; the bases outside the windows are read for
-/// this alone). A run of changes on the ALT reads alone is an indel at the junction:
-/// another allele, not masked. Masks never take every offset where REF and ALT
+/// are, in the flank and microhomology both alleles share, the changes the REF reads
+/// carry (a germline SNP or MNP, background on both haplotypes, runs included, on
+/// [`GUARD_MIN_READS`] REF reads or more); each isolated change of the ALT reads'
+/// own (no own change at either neighbouring base; the bases outside the windows are
+/// read for this alone); and past the junction each isolated change on the REF reads.
+/// A run of the ALT reads' own changes is an indel at the junction, and a run past it
+/// on reads fitting REF within a base another breakpoint: another allele, not
+/// masked. Masks never take every offset where REF and ALT
 /// differ: those stay read, and a read changed there is neither allele. On the ALT
 /// reads alone (under [`GUARD_REF_SHARE`] of REF's) isolated recurring changes also
 /// make the larger allele the diagnostic names (the deletion with the changes), and
@@ -352,9 +356,23 @@ pub(crate) fn guard_for(
     let share = |a: usize, e: usize| if cover[a][e] == 0 { 0.0 } else { change[a][e] as f64 / cover[a][e] as f64 };
     let recurs = |a: usize, e: usize| change[a][e] >= GUARD_MIN_READS && share(a, e) >= GUARD_MIN_SHARE;
     let on_ref = |e: usize| share(0, e) >= GUARD_REF_SHARE;
-    let isolated = |e: usize| !recurs(1, e - 1) && !recurs(1, e + 1);
-    let mut offsets: Vec<usize> =
-        (1..=n).filter(|&e| recurs(0, e) || (recurs(1, e) && (on_ref(e) || isolated(e)))).collect();
+    // Background, a change the REF reads carry too (a germline SNP or MNP), only
+    // where both windows read the same genome bases (the flank and the
+    // microhomology): recurring on the REF reads, or on the ALT reads and on as many
+    // REF reads as a recurring change needs (one REF read's error is no background).
+    // Past the junction the alleles differ: a run there on reads fitting REF within
+    // a base is another allele (another breakpoint), not background.
+    let background = |e: usize| {
+        e <= cont && (recurs(0, e) || (recurs(1, e) && change[0][e] >= GUARD_MIN_READS && on_ref(e)))
+    };
+    // The ALT reads' own changes, isolated when no own change sits beside them; past
+    // the junction a REF reads' change, when none recurs beside it on the REF reads.
+    let own = |e: usize| recurs(1, e) && !background(e);
+    let isolated = |e: usize| !own(e - 1) && !own(e + 1);
+    let ref_isolated = |e: usize| recurs(0, e) && !recurs(0, e - 1) && !recurs(0, e + 1);
+    let mut offsets: Vec<usize> = (1..=n)
+        .filter(|&e| background(e) || (own(e) && isolated(e)) || (e > cont && ref_isolated(e)))
+        .collect();
     let tells = |e: &usize| j.ref_w[e - 1] != j.alt_w[e - 1];
     if (1..=n).filter(tells).all(|e| offsets.contains(&e)) {
         // Masking them all would leave the windows identical: they stay read.
@@ -376,7 +394,7 @@ pub(crate) fn guard_for(
     // run, none: the tallies cannot spell another allele (an MNP, or an indel
     // shifting the bases past it); the observed allele names it from the reads'
     // alignments.
-    let run = alt_only.iter().any(|&e| !isolated(e));
+    let run = (1..=n).any(|e| own(e) && !isolated(e));
     let larger = alt_only.iter().max().filter(|_| !run).and_then(|&far| {
         let far = (far - 1).max(K);
         let alt: Vec<u8> = (0..=far)
@@ -567,6 +585,21 @@ mod tests {
         let last = 60 + o - K;
         assert!(guard(&[last]).is_some_and(|g| g.masked == vec![j.genome(false, o), j.genome(true, o)]));
         assert!(guard(&[last, last + 1]).is_none());
+    }
+
+    #[test]
+    fn a_run_past_the_junction_on_reads_fitting_ref_is_another_allele() {
+        // Reads fitting REF within a base, with bases changed from the windows' last
+        // one on (another breakpoint): past the junction, where the alleles differ,
+        // a run is another allele even on reads tallied as REF, not background. One
+        // REF change there alone is a separate event, masked.
+        let (ctx, v, j, _hap, _refs) = sixty();
+        let o = j.ref_w.len() - 1;
+        let last = (j.genome(false, o) - 40) as usize;
+        let refs = |at: &[usize]| reads(&changed(&ctx.as_bytes()[40..140], at), vec![Cigar::Match(100)], 40, 4, "r");
+        assert!(guard_for(&refs(&[last, last + 1]), &v, &|_| true, 20).is_none());
+        let g = guard_for(&refs(&[last]), &v, &|_| true, 20).expect("an isolated REF change");
+        assert_eq!(g.masked, vec![j.genome(false, o), j.genome(true, o)]);
     }
 
     #[test]

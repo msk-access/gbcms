@@ -487,7 +487,7 @@ def judge_junction(read, j: Junction, min_baseq: int = 20) -> tuple[Verdict, boo
     # The left flank not aligned where the windows start: placed from the right flank
     # as the ALT's window sits there (REF's ends inside the deleted bases, which no ALT
     # molecule holds), when its unmasked bases favour the left flank over the deleted
-    # bases REF has there by one base read at the minimum quality. With the flank in
+    # bases REF has there by one base read at the minimum quality, and by more than nothing. With the flank in
     # the clip or under the read's own deletion it is ALT where it fits, else another
     # allele; aligned over the deleted bases' other copy, only where it fits.
     q = pairs.get(j.last("ALT"))
@@ -501,7 +501,7 @@ def judge_junction(read, j: Junction, min_baseq: int = 20) -> tuple[Verdict, boo
         if 0 <= i < len(bases) and bases[i] != "N"
     )
     got = reading(start)
-    if evidence < _one_base(min_baseq) or got is None:
+    if evidence <= 0 or evidence < _one_base(min_baseq) or got is None:
         return Verdict.NOT_ANCHORED, False
     fits_alt, fits_ref = got
     if fits_alt:

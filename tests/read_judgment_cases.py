@@ -610,6 +610,11 @@ def _long_del_reads(n: int, mh: int, shape: str) -> list:
             carrier(i, A - 50 - i, LONG_READ - 50 - i, subs=(A + n + mh + 3, A + n + mh + 4))
         elif shape == "REF reads with a recurring change inside the window":
             ref_read(i, A - 50 - i, LONG_READ, sub=A + mh + RECUR_PAST)
+        elif shape == "REF reads with a run of changes from the window's last base on":
+            seq = list(contig[A - 50 - i : A - 50 - i + LONG_READ])
+            for g in (A + mh + 3, A + mh + 4):
+                seq[g - (A - 50 - i)] = _other(seq[g - (A - 50 - i)])
+            add(f"r{i}", "".join(seq), A - 50 - i, [(0, LONG_READ)])
         else:
             raise KeyError(shape)
     return reads
@@ -643,6 +648,7 @@ _LONG_DEL_ALL = (
     "carriers with a run of changes in the flank",
     "REF reads with a run of changes in the flank",
     "carriers and REF reads with a run of changes in the flank",
+    "REF reads with a run of changes from the window's last base on",
     "carriers with a recurring change on the window's last base",
     "carriers with a run of changes from the window's last base on",
     "carrier aligned over the deleted bases' end, no clip",
@@ -1185,6 +1191,10 @@ EXPECT = {
     # germline SNP is: both alleles count
     "del 60 | REF reads with a run of changes in the flank": (4, 0, 0),
     "del 60 | carriers and REF reads with a run of changes in the flank": (4, 4, 0),
+    # a run past the junction, where the alleles differ, is another allele even on
+    # reads that fit REF elsewhere (a germline run is background only in the bases
+    # both alleles share): neither
+    "del 60 | REF reads with a run of changes from the window's last base on": (0, 0, 0),
     # placed from the right flank, its bases before the junction show the left flank,
     # not the deleted bases its alignment puts there: ALT, as a REF read from the
     # same start is REF

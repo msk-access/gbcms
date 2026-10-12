@@ -376,7 +376,8 @@ way), so a CIGAR-only rule read VAF 0.000 at 287 of 300 heterozygous deletions.
   the deleted bases, which no ALT molecule holds. The placement is a hypothesis, so
   the read's confident bases (at or above `--min-baseq`, not N) must favour the left
   flank over the deleted bases REF has before the right flank by one base read at
-  `--min-baseq`: a REF molecule starting inside the deleted span behind a poor clip
+  `--min-baseq`, and by more than nothing (a guard-masked flank base weighs nothing
+  for ALT, the deleted base it is weighed against stays read): a REF molecule starting inside the deleted span behind a poor clip
   shows the same right flank as a carrier, and nothing of the left flank. It is ALT
   where it fits, else another allele; written over the deleted bases' end, only
   where it fits. Hard-clipped bases are absent, so a hard-clipped record holds no
@@ -391,9 +392,12 @@ way), so a CIGAR-only rule read VAF 0.000 at 287 of 300 heterozygous deletions.
   fragment counts toward depth in DNA, as for complex variants.
 - **A change recurring** at one window offset on an allele's reads (3+ fragments,
   20% of that allele's reads) is a separate event, masked at that offset in both
-  windows: one the REF reads carry too (a germline SNP or MNP, a run included), and
-  one on the ALT reads with neither neighbouring base recurring there too (the base
-  either side of the windows included). A run of changes on the ALT reads alone is
+  windows: in the flank and microhomology, which both alleles share, one the REF
+  reads carry too (a germline SNP or MNP, a run included, on 3 or more REF reads);
+  one of the ALT reads' own with no own change at either neighbouring base (the base
+  either side of the windows included); and past the junction, one on the REF reads
+  with none recurring beside it (a run there, on reads fitting REF within a base, is
+  another breakpoint: another allele). A run of changes on the ALT reads alone is
   an indel at the junction: another allele, not masked. The isolated changes on
   the ALT reads alone name the larger allele in `gbcms_diagnostic` (the deletion
   with the changes); beside a run none is named. Masks never take every offset where REF and ALT
