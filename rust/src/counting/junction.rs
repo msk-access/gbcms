@@ -16,10 +16,11 @@
 //! - **Placement.** A read is read from the query position of its aligned first
 //!   window base, so both windows start where the read's flank does. A read whose
 //!   soft clip holds the flank, or whose own deletion covers it, is placed from the
-//!   other side at each allele's length (RJ-13), when it reads that placement's
-//!   flank bases at `--min-baseq` or above (the placement is a hypothesis, so the
-//!   read's bases must show the flank); a placement counts where its own allele
-//!   fits, else the closer one does. Hard-clipped bases are absent: such a record
+//!   other side at each allele's length (RJ-13), when its bases favour that
+//!   placement's flank over its own alignment by one base read at `--min-baseq`
+//!   or above (the placement is a hypothesis, so the read's bases must show the
+//!   junction); a placement counts where its own allele fits, else the closer one
+//!   does. Hard-clipped bases are absent: such a record
 //!   holds no window on its own.
 //! - **Masked bases.** Bases below `--min-baseq` (and N) fit anything, the one
 //!   quality rule every backend shares; so do the window offsets the neighbouring
@@ -173,34 +174,54 @@ pub(crate) fn classify(
         let (bases, qs, span) = (&seq[s..s + n], &quals[s..s + n], (s, s + n));
         Some((score(bases, qs, min_baseq, &ref_w, span), score(bases, qs, min_baseq, &alt_w, span)))
     };
+    // The windows' reading, and whether it was placed from the other side.
     let reading = match find_read_pos(record, j.first()) {
-        Some(q) => read_from(q as i64),
+        Some(q) => read_from(q as i64).map(|p| (p, false)),
         None => {
-            // The flank in the read's clip, or under its own deletion: placed from
-            // the other side as each allele would sit there. The placement is the
-            // allele's hypothesis, not the aligner's, so the read must show the flank
-            // itself, every flank base read at --min-baseq or above: a masked flank
-            // fits any placement, and a REF molecule starting inside the deleted span
-            // shows the same right flank as a carrier.
+            // The flank not aligned where the windows start: placed from the other
+            // side as each allele would sit there. The placement is the allele's
+            // hypothesis, not the aligner's, so the read's bases must favour the
+            // placement's flank over its own alignment by one base read at
+            // --min-baseq or above: a flank base matching the flank where its
+            // alignment (or the ungapped extension of its clip) puts another base. A
+            // masked flank fits any placement, and a REF molecule starting inside the
+            // deleted span shows the deleted bases there, which differ from the flank
+            // at least next to the junction (the deletion is placed leftmost). With
+            // the flank in the read's clip, or under its own deletion, the placement
+            // where the read's own allele fits counts, else the closer one; with it
+            // aligned elsewhere (in a repeat an aligner writes a carrier's flank over
+            // the deleted bases' other copy), only one where its own allele fits.
             let (first, _) = aligned_query_range(record)?;
             let deleted = deleted_anchor_query(record, j.first()).is_some();
-            let flank_read = |s: usize| (s..s + K).all(|i| quals[i] >= min_baseq && seq[i] != WILD);
-            let placed: Vec<((Reading, Reading), bool)> = [false, true]
+            let (start, refseq) = v.event_ref.as_ref()?;
+            let genome_base =
+                |g: i64| usize::try_from(g - start).ok().and_then(|i| refseq.as_bytes().get(i)).map(u8::to_ascii_uppercase);
+            let shows_flank = |s: usize| {
+                (0..K).any(|i| {
+                    let (q, b) = (s + i, seq[s + i].to_ascii_uppercase());
+                    quals[q] >= min_baseq
+                        && b == j.ref_w[i]
+                        && aligned_at(record, q).and_then(genome_base).is_some_and(|g| g != b)
+                })
+            };
+            let placed: Vec<((Reading, Reading), bool, bool)> = [false, true]
                 .into_iter()
                 .filter_map(|alt| {
                     let s = find_read_pos(record, j.last(alt))? as i64 - (n as i64 - 1);
-                    let p = (s < first as i64 || deleted).then(|| read_from(s)).flatten()?;
-                    flank_read(s as usize).then_some((p, alt))
+                    let p = read_from(s)?;
+                    shows_flank(s as usize).then_some((p, alt, s < first as i64 || deleted))
                 })
                 .collect();
             placed
                 .iter()
-                .find(|((r, a), alt)| if *alt { a.mismatches == 0 } else { r.mismatches == 0 })
-                .or_else(|| placed.iter().min_by_key(|((r, a), _)| r.mismatches.min(a.mismatches)))
-                .map(|(p, _)| p.clone())
+                .find(|((r, a), alt, _)| if *alt { a.mismatches == 0 } else { r.mismatches == 0 })
+                .or_else(|| {
+                    placed.iter().filter(|(_, _, held)| *held).min_by_key(|((r, a), _, _)| r.mismatches.min(a.mismatches))
+                })
+                .map(|(p, _, _)| (p.clone(), true))
         }
     };
-    let Some((r, a)) = reading else {
+    let Some(((r, a), other_side)) = reading else {
         // The read does not hold the windows: depth only, no allele, no mFSD class.
         let mut out = ClassifyResult::neither(ClassifyPhase::MaskedCompare);
         out.uninformative = true;
@@ -237,9 +258,14 @@ pub(crate) fn classify(
     out.has_n_base = r.had_n || a.had_n;
     // A decided read whose windows read soft-clipped bases counts toward depth (in
     // DNA) when every base read lies inside its fragment: past it a clip is adapter.
+    let clipped = aligned_query_range(record).is_some_and(|(first, after)| lo < first || hi > after);
     out.clip_admissible = (out.is_ref || out.is_alt)
-        && aligned_query_range(record).is_some_and(|(first, after)| lo < first || hi > after)
+        && clipped
         && fragment_query_span(record).is_some_and(|(f0, f1)| lo >= f0 && hi <= f1);
+    // Decided from aligned bases placed from the other side: the read starts past
+    // the variant position as aligned, while the same molecule of the other allele
+    // would span it, so it counts as that one would (as RJ-23's right reading).
+    out.read_from_right = (out.is_ref || out.is_alt) && other_side && !clipped;
     Some(out)
 }
 
@@ -376,6 +402,37 @@ pub(crate) fn guard_for(
         v.chrom, v.pos + 1, v.ref_allele, v.alt_allele, offsets.len(), alt_only.len(), scanned,
     );
     Some(Guard::new(v, masked, larger, scanned))
+}
+
+/// The genome position the read's own alignment gives query position `q`: an
+/// aligned base's, or for a soft-clipped base the one an ungapped extension of the
+/// aligned bases beside it gives. None for an inserted base, or a read with no
+/// aligned base.
+fn aligned_at(record: &Record, q: usize) -> Option<i64> {
+    let (first, after) = aligned_query_range(record)?;
+    if q < first {
+        return Some(record.pos() - (first - q) as i64);
+    }
+    if q >= after {
+        return Some(record.cigar().end_pos() + (q - after) as i64);
+    }
+    let (mut rp, mut qp) = (record.pos(), first);
+    for op in record.cigar().iter() {
+        match op {
+            Cigar::Match(l) | Cigar::Equal(l) | Cigar::Diff(l) => {
+                let l = *l as usize;
+                if q < qp + l {
+                    return Some(rp + (q - qp) as i64);
+                }
+                (rp, qp) = (rp + l as i64, qp + l);
+            }
+            Cigar::Ins(l) if q < qp + *l as usize => return None,
+            Cigar::Ins(l) => qp += *l as usize,
+            Cigar::Del(l) | Cigar::RefSkip(l) => rp += *l as i64,
+            _ => {}
+        }
+    }
+    None
 }
 
 /// Whether the read's own alignment carries a deletion or an insertion of

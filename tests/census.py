@@ -47,8 +47,8 @@ one window of equal length per allele, read from the left flank (4 clean flank
 bases, the microhomology, 4 bases of the allele's own continuation: the deleted
 bases for REF, the right flank for ALT), through soft-clipped bases inside the
 fragment. A read whose left flank is clipped, or deleted by its own alignment, is
-placed from the other side at each allele's length, when it reads that placement's
-flank bases unmasked; hard-clipped bases are absent.
+placed from the other side at each allele's length, when an unmasked flank base
+favours that placement over the read's own alignment; hard-clipped bases are absent.
 Nothing past the window is read. Such reads decided through a clip count toward
 depth, as in the engine. The census does not mask a change recurring in the windows
 across reads (the engine does): reads carrying one are neither here. Nor does it
@@ -133,6 +133,7 @@ class Junction:
     mh: int
     ref_w: str
     alt_w: str
+    contig: str = field(repr=False, default="")
 
     @property
     def anchor(self) -> int:
@@ -210,7 +211,12 @@ def window_for(variant, contig: str) -> Window | Junction:
         flank = contig[lo - JUNCTION_K : lo]
         reach = mh + JUNCTION_K
         return Junction(
-            lo, n, mh, flank + contig[lo : lo + reach], flank + contig[lo + n : lo + n + reach]
+            lo,
+            n,
+            mh,
+            flank + contig[lo : lo + reach],
+            flank + contig[lo + n : lo + n + reach],
+            contig,
         )
     if is_pure_indel(ref, alt):
         lo, hi = tract(pos, ref, alt, contig)
@@ -426,6 +432,21 @@ def _insert_unread(read, bases: str, spans) -> bool:
     return readable <= deleted
 
 
+def _implied_positions(read) -> dict[int, int]:
+    """Query offset -> the reference position the read's own alignment gives it: an
+    aligned base's, or for a soft-clipped base the ungapped extension of the aligned
+    bases beside it (inserted bases have none)."""
+    out = dict(read.get_aligned_pairs(matches_only=True))
+    if not out:
+        return out
+    lead, trail = _clips(read)
+    for q in range(lead):
+        out[q] = read.reference_start - (lead - q)
+    for q in range(trail, len(read.query_sequence)):
+        out[q] = read.reference_end + (q - trail)
+    return out
+
+
 def _deleted_by_read(read, pos: int) -> bool:
     """Whether one of the read's own deletions covers reference position `pos`."""
     rp = read.reference_start
@@ -462,10 +483,13 @@ def judge_junction(read, j: Junction, min_baseq: int = 20) -> tuple[Verdict, boo
         got = reading(first)
         return (_verdict(*got) if got else Verdict.NOT_ANCHORED), False
     # The flank in the read's clip, or under its own deletion: placed from the other
-    # side as each allele would sit, when the read shows that placement's flank (every
-    # flank base unmasked); a placement where its own allele fits counts.
+    # side as each allele would sit, when the read's bases favour that placement's flank
+    # over its own alignment (an unmasked flank base where the alignment, or the
+    # ungapped extension of its clip, puts another base); a placement where its own
+    # allele fits counts.
     lead, _ = _clips(read)
     flank_deleted = _deleted_by_read(read, j.first)
+    implied = _implied_positions(read)
     placed = []
     for allele in ("ALT", "REF"):
         q = pairs.get(j.last(allele))
@@ -474,7 +498,14 @@ def judge_junction(read, j: Junction, min_baseq: int = 20) -> tuple[Verdict, boo
         start = q - n + 1
         if start < lead or flank_deleted:
             got = reading(start)
-            if got and "N" not in bases[start : start + JUNCTION_K]:
+            shows_flank = any(
+                bases[start + i] == j.ref_w[i]
+                and implied.get(start + i) is not None
+                and 0 <= implied[start + i] < len(j.contig)
+                and j.contig[implied[start + i]].upper() != bases[start + i]
+                for i in range(JUNCTION_K)
+            )
+            if got and shows_flank:
                 placed.append((allele, got))
     for allele, (fits_alt, fits_ref) in placed:
         if (fits_alt if allele == "ALT" else fits_ref) and not (fits_alt and fits_ref):

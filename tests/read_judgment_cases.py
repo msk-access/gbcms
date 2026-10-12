@@ -435,9 +435,15 @@ def _long_del_reads(n: int, mh: int, shape: str) -> list:
             if shape.endswith("a recurring change in the flank"):
                 seq = seq[: A - 2 - s] + _other(seq[A - 2 - s]) + seq[A - 1 - s :]
             add(f"c{i}", seq, s, [(0, A - s), (4, LONG_READ - (A - s))])
-        elif shape == "left-clipped carrier aligned from the right flank":
+        elif shape.startswith("left-clipped carrier"):
             c = 20 + i  # bases before the junction, in the clip
-            add(f"c{i}", hap[A - c : A - c + LONG_READ], A + n, [(4, c), (0, LONG_READ - c)])
+            quals = [30] * LONG_READ
+            if shape.endswith("two low-quality flank bases"):
+                quals[c - 4 : c - 2] = [2, 2]  # the base next to the junction stays read
+            elif shape.endswith("a low-quality flank"):
+                quals[c - 4 : c] = [2] * 4
+            seq = hap[A - c : A - c + LONG_READ]
+            add(f"c{i}", seq, A + n, [(4, c), (0, LONG_READ - c)], quals=quals)
         elif shape == "split carrier: a soft-clipped primary and a hard-clipped supplementary":
             s = A - 70 - i
             seq = hap[s : s + LONG_READ]
@@ -521,6 +527,8 @@ _LONG_DEL_ALL = (
     "exact D carrier, three bases past the microhomology",
     "right-clipped carrier, the junction in the clip",
     "left-clipped carrier aligned from the right flank",
+    "left-clipped carrier with two low-quality flank bases",
+    "left-clipped carrier with a low-quality flank",
     "split carrier: a soft-clipped primary and a hard-clipped supplementary",
     "hard-clipped primary aligned from the right flank",
     "REF read, long flanks",
@@ -1007,6 +1015,11 @@ EXPECT = {
     "del 60 | exact D carrier, three bases past the microhomology": (0, 0, 0),
     "del 60 | right-clipped carrier, the junction in the clip": (0, 4, 0),
     "del 60 | left-clipped carrier aligned from the right flank": (0, 4, 0),
+    # placed from the right, a read's flank must favour the junction over its own
+    # alignment by one read base: the base next to the junction suffices; a flank
+    # read too poorly to show it is no junction
+    "del 60 | left-clipped carrier with two low-quality flank bases": (0, 4, 0),
+    "del 60 | left-clipped carrier with a low-quality flank": (0, 0, 0),
     "del 60 | split carrier: a soft-clipped primary and a hard-clipped supplementary": (0, 4, 0),
     "del 60 | hard-clipped primary aligned from the right flank": (0, 0, 0),
     "del 60 | REF read, long flanks": (4, 0, 0),
