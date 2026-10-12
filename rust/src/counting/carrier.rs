@@ -956,14 +956,16 @@ impl<'a> CarrierGuard<'a> {
 /// least [`GUARD_MIN_READS`] ALT fragments and [`GUARD_MIN_SHARE`] of those reading
 /// that base, and on under [`GUARD_REF_SHARE`] of the REF fragments reading it, is
 /// the ALT reads' alone: with the given allele, these make the larger allele named
-/// in the diagnostic, unless one is in a run (the tallies cannot spell another
-/// allele: an MNP, or an indel shifting the bases past it). A change beside the event is a
-/// separate event, so a read carrying the given allele counts whatever it shows
-/// there: masked are the changes the REF fragments carry too (a germline SNP or MNP,
-/// background on both haplotypes, runs included) and each isolated change on the
-/// ALT fragments. A run of changes on the ALT fragments alone (a neighbouring
-/// distance recurring there, the bases past the window included) is an indel or MNP
-/// beside the event, another allele: not masked. None when nothing is masked or
+/// in the diagnostic, unless the ALT fragments' own changes include a run (the
+/// tallies cannot spell another allele: an MNP, or an indel shifting the bases past
+/// it). A change beside the event is a separate event, so a read carrying the given
+/// allele counts whatever it shows there: masked are the changes the REF fragments
+/// carry too (a germline SNP or MNP, background on both haplotypes, runs included:
+/// recurring on the REF fragments, or on the ALT fragments and on at least
+/// [`GUARD_MIN_READS`] and [`GUARD_REF_SHARE`] of the REF fragments) and each
+/// isolated change of the ALT fragments' own. A run of their own changes (a
+/// neighbouring distance recurring there, the bases past the window included) is an
+/// indel or MNP beside the event, another allele: not masked. None when nothing is masked or
 /// named, or the variant is not judged by this rule.
 pub(crate) fn guard_for(
     read_cache: &[Record],
@@ -1048,21 +1050,32 @@ pub(crate) fn guard_for(
         let (n, of) = (change[allele][side].get(i).copied().unwrap_or(0), cover[allele][side].get(i).copied().unwrap_or(0));
         n >= GUARD_MIN_READS && share(n, of) >= GUARD_MIN_SHARE
     };
-    // Isolated on the ALT fragments: neither neighbouring distance recurs there (the
-    // event itself is no neighbour).
-    let isolated = |side: usize, i: usize| !(recurs(1, side, i + 1) || i > 0 && recurs(1, side, i - 1));
-    // per side, the distances of the changes the ALT reads alone carry
-    let (mut masked, mut alt_only) = (Vec::new(), [Vec::new(), Vec::new()]);
+    let ref_changes = |side: usize, i: usize| change[0][side].get(i).copied().unwrap_or(0);
+    let on_ref =
+        |side: usize, i: usize| share(ref_changes(side, i), cover[0][side].get(i).copied().unwrap_or(0)) >= GUARD_REF_SHARE;
+    // Background, a change the REF fragments carry too (a germline SNP or MNP):
+    // recurring there, or on the ALT fragments and on as many REF fragments as a
+    // recurring change needs (one REF read's error is no background).
+    let background = |side: usize, i: usize| {
+        recurs(0, side, i) || (recurs(1, side, i) && ref_changes(side, i) >= GUARD_MIN_READS && on_ref(side, i))
+    };
+    // The ALT fragments' own changes; isolated when no own change sits at either
+    // neighbouring distance (the event itself is no neighbour).
+    let own = |side: usize, i: usize| recurs(1, side, i) && !background(side, i);
+    let isolated = |side: usize, i: usize| !(own(side, i + 1) || i > 0 && own(side, i - 1));
+    // per side, the distances of the changes the ALT reads alone carry; and whether
+    // their own changes include a run
+    let (mut masked, mut alt_only, mut run) = (Vec::new(), [Vec::new(), Vec::new()], false);
     for (side, reach) in [(0usize, reach_l), (1usize, reach_r)] {
         for i in 0..reach {
-            let on_ref = share(change[0][side][i], cover[0][side][i]) >= GUARD_REF_SHARE;
             let off = if side == 0 { ev.lo - 1 - i } else { ev.hi + i };
-            if recurs(1, side, i) && !on_ref {
+            if recurs(1, side, i) && !on_ref(side, i) {
                 alt_only[side].push(i);
             }
-            if recurs(0, side, i) || (recurs(1, side, i) && (on_ref || isolated(side, i))) {
+            if background(side, i) || (own(side, i) && isolated(side, i)) {
                 masked.push(g(off));
             }
+            run |= own(side, i) && !isolated(side, i);
         }
     }
     // The larger allele: the given one with every change the ALT reads alone carry,
@@ -1070,7 +1083,6 @@ pub(crate) fn guard_for(
     // Beside a run, none: the tallies cannot spell another allele (an MNP, or an
     // indel shifting the bases past it); the observed allele names it from the
     // reads' own alignments.
-    let run = (0..2).any(|side| alt_only[side].iter().any(|&i| !isolated(side, i)));
     let larger = if run || alt_only.iter().all(Vec::is_empty) {
         None
     } else {
@@ -1231,10 +1243,12 @@ fn read_pair(
     let start = |w: &Window| if tail { anchor } else { anchor - w.allele.len() as i64 };
     let weight = |w: &Window| confident_weight(seq, quals, min_baseq, &w.allele, start(w), readable);
     let evidence = weight(rw) - weight(aw);
+    // At least one base read at min BQ, and more than none (at --min-baseq 0 that
+    // base weighs nothing): a tie favours neither.
     let one = one_base_evidence(min_baseq);
-    let (w, alt) = if evidence >= one {
+    let (w, alt) = if evidence > 0.0 && evidence >= one {
         (aw, true)
-    } else if evidence <= -one {
+    } else if evidence < 0.0 && evidence <= -one {
         (rw, false)
     } else {
         trace!("carrier: placed from the other flank, its confident bases favour neither allele ({:.2}) → depth only", evidence);
@@ -1665,6 +1679,24 @@ mod tests {
         let g = guard_for(&reads, &v, &|_| true, 20).expect("an isolated change");
         assert_eq!(g.masked, vec![(hi + 9) as i64]);
         assert!(g.larger.is_none());
+        // One REF read's error at a base of the run is no background (the REF
+        // fragments must show it as often as a recurring change): still another
+        // allele, not masked.
+        let erred = aligned(&with_c(&ctx, &[hi + 3]), vec![Cigar::Match(98)], 0);
+        let reads = [fragments(&run, 4, "a"), fragments(&plain, 5, "r"), fragments(&erred, 1, "e")].concat();
+        assert!(guard_for(&reads, &v, &|_| true, 20).is_none(), "one REF read's error");
+        // A change of the ALT reads' own beside a germline SNP (on the REF reads too)
+        // is isolated among their own changes: both masked, the own one named.
+        let beside = aligned(
+            &with_c(&carrier_hap, &[hi + 3 - 22, hi + 4 - 22]),
+            vec![Cigar::Match(30), Cigar::Ins(6), Cigar::Del(28), Cigar::Match(40)],
+            0,
+        );
+        let germline = aligned(&with_c(&ctx, &[hi + 4]), vec![Cigar::Match(98)], 0);
+        let reads = [fragments(&beside, 4, "a"), fragments(&germline, 4, "r")].concat();
+        let g = guard_for(&reads, &v, &|_| true, 20).expect("an own change and a germline SNP");
+        assert_eq!(g.masked, vec![(hi + 3) as i64, (hi + 4) as i64]);
+        assert!(g.larger.is_some());
         // The same run on the REF reads too is background (a germline MNP): masked,
         // and not the ALT reads' own.
         let ref_run = aligned(&with_c(&ctx, &[hi + 3, hi + 4]), vec![Cigar::Match(98)], 0);
