@@ -18266,19 +18266,25 @@ count-affecting merge since the previous release, run on the changed rows only.<
    holding the changed rows and every row within 100 bp of a kept row's span, closed
    transitively (siblings classify together), and <code>ATTRIB/runs.tsv</code>. The mfsd and rna
    arms keep their full variant files: their Benjamini–Hochberg q-values are computed
-   across the run's rows.</li>
+   across the run's rows. Like <code>compare_panel.py</code>, every step reads the builds' time
+   records. It leaves out, and names, a run whose latest attempt failed in either
+   version: a crash partway through writing leaves a partial <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> that would otherwise read
+   as changed rows. No manual setting aside is needed.</li>
 <li><strong>Each build on them</strong>, into <code>ATTRIB/out</code>: the two versions first, then every
    checkpoint as <code>cp_&lt;sha&gt;</code> (<code>run_panel.sh TIER ATTRIB/runs.tsv cp_&lt;sha&gt; cp_&lt;sha&gt;/bin/gbcms … ATTRIB/out</code>).</li>
 <li><strong><code>attribute.py check</code></strong> confirms the reduction changed nothing: every reduced row
    equals the full run's, in both versions. <code>gbcms_status_reason</code> is exempt on context
    rows only (it names the co-annotation group, which the reduction may cut at its
-   edge), never on a changed row. It exits 1 when a row differs.</li>
+   edge), never on a changed row. It exits 1 when a row differs, or when a reduced run's
+   latest attempt failed (it names the run to re-submit).</li>
 <li><strong><code>attribute.py attribute TIER OUT 6.5.0 6.6.0 ATTRIB checkpoints.tsv</code></strong> traces each
    changed cell through the checkpoints: <code>attribution_cells.tsv</code> (each cell and the
    intervals where it changed; a row in one version only is traced as its presence,
    column <code>(row)</code>), <code>attribution_summary.tsv</code> (per checkpoint, arm and column),
    <code>unattributed.tsv</code> (cells whose trail misses a checkpoint's output or does not end at
-   the candidate's value). It exits 1 when any cell is unattributed.</li>
+   the candidate's value). A reduced run whose latest attempt failed counts as missing
+   output, whatever its <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> holds, and is named to re-submit. It exits 1 when any cell
+   is unattributed.</li>
 </ol>
 <h2 id="development-regression-panel-the-gate">The gate<a class="headerlink" href="#development-regression-panel-the-gate" title="Permanent link">¶</a></h2>
 <p>The candidate is tagged when:</p>
@@ -18312,6 +18318,15 @@ count-affecting merge since the previous release, run on the changed rows only.<
 <p>The format is based on <a href="https://keepachangelog.com/en/1.0.0/">Keep a Changelog</a>,
 and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semantic Versioning</a>.</p>
 <h2 id="development-changelog-unreleased">[Unreleased]<a class="headerlink" href="#development-changelog-unreleased" title="Permanent link">¶</a></h2>
+<h3 id="development-changelog-fixed-release-tooling">Fixed — release tooling<a class="headerlink" href="#development-changelog-fixed-release-tooling" title="Permanent link">¶</a></h3>
+<ul>
+<li><strong>Attribution leaves out runs whose latest attempt failed (#255).</strong> <code>attribute.py</code>
+  <code>prepare</code>, <code>check</code> and <code>attribute</code> read the builds' time records as
+  <code>compare_panel.py</code> does, and name each run they skip. A run that crashed partway
+  leaves a partial <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr>, which otherwise reads as changed rows. A reduced run whose
+  latest attempt failed fails <code>check</code>, and <code>attribute</code> treats its output as missing,
+  whatever it holds. The 6.6.0 gate needed those MAFs set aside by hand.</li>
+</ul>
 <h2 id="development-changelog-660-2026-10-07-every-read-judged-by-its-own-bases">[6.6.0] - 2026-10-07 — every read judged by its own bases<a class="headerlink" href="#development-changelog-660-2026-10-07-every-read-judged-by-its-own-bases" title="Permanent link">¶</a></h2>
 <h3 id="development-changelog-changed-release-infrastructure-136-137-152">Changed — release infrastructure (#136, #137, #152)<a class="headerlink" href="#development-changelog-changed-release-infrastructure-136-137-152" title="Permanent link">¶</a></h3>
 <ul>

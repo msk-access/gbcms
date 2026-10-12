@@ -31,7 +31,7 @@
             body[data-md-color-scheme="slate"] .gslide-title { color: var(--md-default-fg-color); }
             body[data-md-color-scheme="slate"] .gslide-desc { color: var(--md-default-fg-color); }
         </style><meta name="panzoom-theme" content="material">
-<meta name="panzoom-data" content='{"selectors": [".d2", ".mermaid"], "initial_zoom_level": 1.0}'> </head>
+<meta name="panzoom-data" content='{"selectors": [".mermaid", ".d2"], "initial_zoom_level": 1.0}'> </head>
 <body data-md-color-accent="custom" data-md-color-primary="custom" data-md-color-scheme="default" dir="ltr">
 <input autocomplete="off" class="md-toggle" data-md-toggle="drawer" id="__drawer" type="checkbox">
 <input autocomplete="off" class="md-toggle" data-md-toggle="search" id="__search" type="checkbox">
@@ -780,6 +780,15 @@
 <p>The format is based on <a href="https://keepachangelog.com/en/1.0.0/">Keep a Changelog</a>,
 and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semantic Versioning</a>.</p>
 <h2 id="unreleased">[Unreleased]<a class="headerlink" href="#unreleased" title="Permanent link">¶</a></h2>
+<h3 id="fixed-release-tooling">Fixed — release tooling<a class="headerlink" href="#fixed-release-tooling" title="Permanent link">¶</a></h3>
+<ul>
+<li><strong>Attribution leaves out runs whose latest attempt failed (#255).</strong> <code>attribute.py</code>
+<code>prepare</code>, <code>check</code> and <code>attribute</code> read the builds' time records as
+  <code>compare_panel.py</code> does, and name each run they skip. A run that crashed partway
+  leaves a partial <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr>, which otherwise reads as changed rows. A reduced run whose
+  latest attempt failed fails <code>check</code>, and <code>attribute</code> treats its output as missing,
+  whatever it holds. The 6.6.0 gate needed those MAFs set aside by hand.</li>
+</ul>
 <h2 id="660-2026-10-07-every-read-judged-by-its-own-bases">[6.6.0] - 2026-10-07 — every read judged by its own bases<a class="headerlink" href="#660-2026-10-07-every-read-judged-by-its-own-bases" title="Permanent link">¶</a></h2>
 <h3 id="changed-release-infrastructure-136-137-152">Changed — release infrastructure (#136, #137, #152)<a class="headerlink" href="#changed-release-infrastructure-136-137-152" title="Permanent link">¶</a></h3>
 <ul>

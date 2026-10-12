@@ -79,7 +79,7 @@
             body[data-md-color-scheme="slate"] .gslide-title { color: var(--md-default-fg-color); }
             body[data-md-color-scheme="slate"] .gslide-desc { color: var(--md-default-fg-color); }
         </style><meta name="panzoom-theme" content="material">
-<meta name="panzoom-data" content='{"selectors": [".d2", ".mermaid"], "initial_zoom_level": 1.0}'> </head>
+<meta name="panzoom-data" content='{"selectors": [".mermaid", ".d2"], "initial_zoom_level": 1.0}'> </head>
   
   
     
@@ -2211,19 +2211,25 @@ count-affecting merge since the previous release, run on the changed rows only.<
    holding the changed rows and every row within 100 bp of a kept row's span, closed
    transitively (siblings classify together), and <code>ATTRIB/runs.tsv</code>. The mfsd and rna
    arms keep their full variant files: their Benjamini–Hochberg q-values are computed
-   across the run's rows.</li>
+   across the run's rows. Like <code>compare_panel.py</code>, every step reads the builds' time
+   records. It leaves out, and names, a run whose latest attempt failed in either
+   version: a crash partway through writing leaves a partial <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> that would otherwise read
+   as changed rows. No manual setting aside is needed.</li>
 <li><strong>Each build on them</strong>, into <code>ATTRIB/out</code>: the two versions first, then every
    checkpoint as <code>cp_&lt;sha&gt;</code> (<code>run_panel.sh TIER ATTRIB/runs.tsv cp_&lt;sha&gt; cp_&lt;sha&gt;/bin/gbcms … ATTRIB/out</code>).</li>
 <li><strong><code>attribute.py check</code></strong> confirms the reduction changed nothing: every reduced row
    equals the full run's, in both versions. <code>gbcms_status_reason</code> is exempt on context
    rows only (it names the co-annotation group, which the reduction may cut at its
-   edge), never on a changed row. It exits 1 when a row differs.</li>
+   edge), never on a changed row. It exits 1 when a row differs, or when a reduced run's
+   latest attempt failed (it names the run to re-submit).</li>
 <li><strong><code>attribute.py attribute TIER OUT 6.5.0 6.6.0 ATTRIB checkpoints.tsv</code></strong> traces each
    changed cell through the checkpoints: <code>attribution_cells.tsv</code> (each cell and the
    intervals where it changed; a row in one version only is traced as its presence,
    column <code>(row)</code>), <code>attribution_summary.tsv</code> (per checkpoint, arm and column),
    <code>unattributed.tsv</code> (cells whose trail misses a checkpoint's output or does not end at
-   the candidate's value). It exits 1 when any cell is unattributed.</li>
+   the candidate's value). A reduced run whose latest attempt failed counts as missing
+   output, whatever its <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> holds, and is named to re-submit. It exits 1 when any cell
+   is unattributed.</li>
 </ol>
 <h2 id="the-gate">The gate<a class="headerlink" href="#the-gate" title="Permanent link">¶</a></h2>
 <p>The candidate is tagged when:</p>
@@ -2263,7 +2269,7 @@ count-affecting merge since the previous release, run on the changed rows only.<
     <span class="md-icon" title="Last update">
       <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M21 13.1c-.1 0-.3.1-.4.2l-1 1 2.1 2.1 1-1c.2-.2.2-.6 0-.8l-1.3-1.3c-.1-.1-.2-.2-.4-.2m-1.9 1.8-6.1 6V23h2.1l6.1-6.1zM12.5 7v5.2l4 2.4-1 1L11 13V7zM11 21.9c-5.1-.5-9-4.8-9-9.9C2 6.5 6.5 2 12 2c5.3 0 9.6 4.1 10 9.3-.3-.1-.6-.2-1-.2s-.7.1-1 .2C19.6 7.2 16.2 4 12 4c-4.4 0-8 3.6-8 8 0 4.1 3.1 7.5 7.1 7.9l-.1.2z"></path></svg>
     </span>
-    <span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-timeago" title="October 7, 2026 21:30:59 UTC"><span class="timeago" datetime="2026-10-07T21:30:59+00:00" locale="en"></span></span><span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-iso_date" title="October 7, 2026 21:30:59 UTC">2026-10-07</span>
+    <span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-timeago" title="October 9, 2026 03:49:56 UTC"><span class="timeago" datetime="2026-10-09T03:49:56+00:00" locale="en"></span></span><span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-iso_date" title="October 9, 2026 03:49:56 UTC">2026-10-09</span>
   </span>
 
     
