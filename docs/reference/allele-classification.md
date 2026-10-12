@@ -394,9 +394,9 @@ way), so a CIGAR-only rule read VAF 0.000 at 287 of 300 heterozygous deletions.
   windows: one the REF reads carry too (a germline SNP or MNP, a run included), and
   one on the ALT reads with neither neighbouring base recurring there too (the base
   either side of the windows included). A run of changes on the ALT reads alone is
-  an indel at the junction: another allele, not masked. The changes on the ALT
-  reads alone, runs included, name the larger allele in `gbcms_diagnostic` (the
-  deletion with the changes). Masks never take every offset where REF and ALT
+  an indel at the junction: another allele, not masked. The isolated changes on
+  the ALT reads alone name the larger allele in `gbcms_diagnostic` (the deletion
+  with the changes); beside a run none is named. Masks never take every offset where REF and ALT
   differ: those stay read, and a read changed there is neither.
 - **RNA:** the same, after splice triage (a deletion written as a splice N stays
   excluded).

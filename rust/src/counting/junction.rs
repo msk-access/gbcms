@@ -278,9 +278,10 @@ pub(crate) fn classify(
 /// this alone). A run of changes on the ALT reads alone is an indel at the junction:
 /// another allele, not masked. Masks never take every offset where REF and ALT
 /// differ: those stay read, and a read changed there is neither allele. On the ALT
-/// reads alone (under [`GUARD_REF_SHARE`] of REF's) recurring changes, runs
-/// included, also make the larger allele the diagnostic names: the deletion with the
-/// changes. None when nothing recurs, or the variant is not judged here.
+/// reads alone (under [`GUARD_REF_SHARE`] of REF's) isolated recurring changes also
+/// make the larger allele the diagnostic names (the deletion with the changes), and
+/// beside a run none is named. None when nothing is masked or named, or the variant
+/// is not judged here.
 pub(crate) fn guard_for(
     read_cache: &[Record],
     v: &Variant,
@@ -360,9 +361,6 @@ pub(crate) fn guard_for(
         offsets.retain(|e| !tells(e));
     }
     let alt_only: Vec<usize> = (1..=n).filter(|&e| recurs(1, e) && !on_ref(e)).collect();
-    if offsets.is_empty() && alt_only.is_empty() {
-        return None;
-    }
     let mut masked = Vec::new();
     for &e in &offsets {
         for p in [j.genome(false, e - 1), j.genome(true, e - 1)] {
@@ -374,8 +372,12 @@ pub(crate) fn guard_for(
     // The larger allele: the ALT haplotype from the windows' first base through its
     // farthest change, and at least through the junction (a change in the flank is
     // carried with the deletion), each changed base as most ALT reads show it,
-    // against the genome over the same span (the deleted bases included).
-    let larger = alt_only.iter().max().and_then(|&far| {
+    // against the genome over the same span (the deleted bases included). Beside a
+    // run, none: the tallies cannot spell another allele (an MNP, or an indel
+    // shifting the bases past it); the observed allele names it from the reads'
+    // alignments.
+    let run = alt_only.iter().any(|&e| !isolated(e));
+    let larger = alt_only.iter().max().filter(|_| !run).and_then(|&far| {
         let far = (far - 1).max(K);
         let alt: Vec<u8> = (0..=far)
             .map(|o| match alt_only.contains(&(o + 1)) {
@@ -396,6 +398,9 @@ pub(crate) fn guard_for(
             given_carriers: given,
         })
     });
+    if masked.is_empty() && larger.is_none() {
+        return None;
+    }
     trace!(
         "junction guard at {}:{} {}>{}: {} window offsets masked, {} on the ALT reads alone ({} fragments read)",
         v.chrom, v.pos + 1, v.ref_allele, v.alt_allele, offsets.len(), alt_only.len(), scanned,
