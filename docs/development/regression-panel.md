@@ -131,19 +131,25 @@ count-affecting merge since the previous release, run on the changed rows only.
    holding the changed rows and every row within 100 bp of a kept row's span, closed
    transitively (siblings classify together), and `ATTRIB/runs.tsv`. The mfsd and rna
    arms keep their full variant files: their Benjamini–Hochberg q-values are computed
-   across the run's rows.
+   across the run's rows. Like `compare_panel.py`, every step reads the builds' time
+   records. It leaves out, and names, a run whose latest attempt failed in either
+   version: a crash partway through writing leaves a partial MAF that would otherwise read
+   as changed rows. No manual setting aside is needed.
 4. **Each build on them**, into `ATTRIB/out`: the two versions first, then every
    checkpoint as `cp_<sha>` (`run_panel.sh TIER ATTRIB/runs.tsv cp_<sha> cp_<sha>/bin/gbcms … ATTRIB/out`).
 5. **`attribute.py check`** confirms the reduction changed nothing: every reduced row
    equals the full run's, in both versions. `gbcms_status_reason` is exempt on context
    rows only (it names the co-annotation group, which the reduction may cut at its
-   edge), never on a changed row. It exits 1 when a row differs.
+   edge), never on a changed row. It exits 1 when a row differs, or when a reduced run's
+   latest attempt failed (it names the run to re-submit).
 6. **`attribute.py attribute TIER OUT 6.5.0 6.6.0 ATTRIB checkpoints.tsv`** traces each
    changed cell through the checkpoints: `attribution_cells.tsv` (each cell and the
    intervals where it changed; a row in one version only is traced as its presence,
    column `(row)`), `attribution_summary.tsv` (per checkpoint, arm and column),
    `unattributed.tsv` (cells whose trail misses a checkpoint's output or does not end at
-   the candidate's value). It exits 1 when any cell is unattributed.
+   the candidate's value). A reduced run whose latest attempt failed counts as missing
+   output, whatever its MAF holds, and is named to re-submit. It exits 1 when any cell
+   is unattributed.
 
 ## The gate
 
