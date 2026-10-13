@@ -79,6 +79,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   AD = RD for shrinking, growing, long, both-long and run-ending shapes, in DNA and
   in RNA read from the right.
 
+### Removed
+
+- **`gbcms build-gtf-cache`, `gbcms rna --gtf-cache-dir` and the Nextflow `--gtf_cache`
+  (#269).** They were deprecated in 6.6.0, when they did nothing and warned; the GTF
+  loads in a few seconds without a cache.
+  - The command and the option are now usage errors.
+  - The Nextflow parameter is gone, and the pipeline no longer warns about it.
+  - Pipelines that still call `build-gtf-cache` must drop that step before moving to
+    6.7.0.
+
+### Fixed — release tooling
+
+- **Attribution leaves out runs whose latest attempt failed (#255).** `attribute.py`
+  `prepare`, `check` and `attribute` read the builds' time records as
+  `compare_panel.py` does, and name each run they skip. A run that crashed partway
+  leaves a partial MAF, which otherwise reads as changed rows. A reduced run whose
+  latest attempt failed fails `check`, and `attribute` treats its output as missing,
+  whatever it holds. The 6.6.0 gate needed those MAFs set aside by hand.
+
 ## [6.6.0] - 2026-10-07 — every read judged by its own bases
 
 ### Changed — release infrastructure (#136, #137, #152)

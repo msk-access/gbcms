@@ -44,10 +44,6 @@ workflow {
     if (!(params.mode in ['dna', 'rna'])) {
         error "Invalid mode '${params.mode}'. Must be 'dna' or 'rna'. Use --mode dna|rna"
     }
-    // Deprecated in 6.6.0, removed in 6.7.0: there is no GTF index cache to build.
-    if (params.gtf_cache != null) {
-        log.warn "--gtf_cache is deprecated and ignored: the GTF index cache is gone (each task loads the GTF in a few seconds). It will be removed in 6.7.0."
-    }
 
     log.info """
     ============================================================
