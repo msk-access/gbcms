@@ -23,6 +23,10 @@
       unattributed. Writes ATTRIB/attribution_cells.tsv, attribution_summary.tsv and
       unattributed.tsv; exits 1 when any cell is unattributed.
 The MAF arms are attributed (the vcf arm's counts are the dna arm's, written as VCF).
+Every step reads the time records as compare_panel.py does: a run whose latest attempt
+failed (it may have left a partial MAF) is left out of every step when it failed in BASE
+or NEW, and is named; a reduced run whose latest attempt failed is not evidence (check
+fails, attribute treats its output as missing) and is named to re-submit.
 """
 
 import collections
@@ -30,6 +34,9 @@ import csv
 import glob
 import os
 import sys
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from compare_panel import failed_runs  # noqa: E402  (a sibling script, not a package)
 
 KEY = ("Chromosome", "Start_Position", "End_Position", "Reference_Allele", "Tumor_Seq_Allele2")
 FULL_ARMS = {"mfsd", "rna"}  # outputs hold BH q-values across the run's rows
@@ -84,11 +91,22 @@ def near(a, b, pad):
     return a[0] == b[0] and max(b[1] - a[2], a[1] - b[2], 0) <= pad
 
 
+def failed_in(root, builds, what):
+    """Runs whose latest attempt failed in any of the builds under ROOT, named on stdout
+    (WHAT says what is done with them): {build: set of run ids}."""
+    failed = {b: set(failed_runs(root, b)) for b in builds}
+    for b, rids in failed.items():
+        if rids:
+            print(f"{what} ({b}, latest attempt failed): {', '.join(sorted(rids))}")
+    return failed
+
+
 def prepare(tier, out, base, new, attrib, pad):
     os.makedirs(os.path.join(attrib, "mafs"), exist_ok=True)
     keep_runs, n_rows, n_changed, changed_rows = [], 0, 0, []
+    failed = failed_in(out, (base, new), "skipped")
     for r in runs_of(os.path.join(tier, "runs.tsv")):
-        if r["arm"] == "vcf":
+        if r["arm"] == "vcf" or any(r["run_id"] in f for f in failed.values()):
             continue
         fb, fn = out_maf(out, base, r["run_id"]), out_maf(out, new, r["run_id"])
         if not fb or not fn:
@@ -137,10 +155,17 @@ def prepare(tier, out, base, new, attrib, pad):
 
 def check(tier, out, base, new, attrib):
     bad = collections.Counter()
+    failed = failed_in(out, (base, new), "skipped")
+    reduced_failed = failed_in(os.path.join(attrib, "out"), (base, new), "reduced run to re-submit")
     for r in runs_of(os.path.join(attrib, "runs.tsv")):
+        if any(r["run_id"] in f for f in failed.values()):
+            continue
         fb, fn = out_maf(out, base, r["run_id"]), out_maf(out, new, r["run_id"])
         ch = changed_keys(by_key(maf(fb)), by_key(maf(fn))) if fb and fn else set()
         for build in (base, new):
+            if r["run_id"] in reduced_failed[build]:
+                bad[f"{build}: a reduced run's latest attempt failed"] += 1
+                continue
             full = out_maf(out, build, r["run_id"])
             red = out_maf(os.path.join(attrib, "out"), build, r["run_id"])
             if not full or not red:
@@ -168,13 +193,18 @@ def attribute(tier, out, base, new, attrib, cps_path):
     label = {f"cp_{c['sha']}": f"{c['label']} [{c['interval_merges']}]" for c in cps}
     aroot = os.path.join(attrib, "out")
     cells_out, summary, unattr = [], collections.Counter(), []
+    failed = failed_in(out, (base, new), "skipped")
+    # a failed reduced run's output is missing evidence, whatever it holds
+    reduced_failed = failed_in(aroot, builds, "reduced run to re-submit")
     for r in runs_of(os.path.join(attrib, "runs.tsv")):
+        if any(r["run_id"] in f for f in failed.values()):
+            continue
         fb, fn = out_maf(out, base, r["run_id"]), out_maf(out, new, r["run_id"])
         rb, rn = by_key(maf(fb)), by_key(maf(fn))
         trail = {}
         for b in builds:
             p = out_maf(aroot, b, r["run_id"])
-            trail[b] = by_key(maf(p)) if p else None
+            trail[b] = by_key(maf(p)) if p and r["run_id"] not in reduced_failed[b] else None
         for k in sorted(changed_keys(rb, rn)):
             x, y = rb.get(k), rn.get(k)
             if x is None or y is None:  # a row in one version only: trace its presence

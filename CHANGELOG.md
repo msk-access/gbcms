@@ -119,6 +119,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   REF at the breakpoint, as the bases-only oracle does (40/60 within 10% of
   sign-out). On HG002 that oracle reads median VAF 0.514 (105/169 in the band).
 
+### Removed
+
+- **`gbcms build-gtf-cache`, `gbcms rna --gtf-cache-dir` and the Nextflow `--gtf_cache`
+  (#269).** They were deprecated in 6.6.0, when they did nothing and warned; the GTF
+  loads in a few seconds without a cache.
+  - The command and the option are now usage errors.
+  - The Nextflow parameter is gone, and the pipeline no longer warns about it.
+  - Pipelines that still call `build-gtf-cache` must drop that step before moving to
+    6.7.0.
+
 ### Fixed — mFSD sizes an ALT fragment as the molecule carrying the ALT
 
 - A fragment's size is TLEN less the deletions (plus the insertions) its reads'
@@ -127,6 +137,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   instead of 167 for 60 bp), and a fragment of a deletion over about 830 bp fell out
   of mFSD. When an ALT fragment covers the variant without a read writing its length
   change, the change is applied. `tests/test_mfsd_allele_size.py`.
+
+### Fixed — release tooling
+
+- **Attribution leaves out runs whose latest attempt failed (#255).** `attribute.py`
+  `prepare`, `check` and `attribute` read the builds' time records as
+  `compare_panel.py` does, and name each run they skip. A run that crashed partway
+  leaves a partial MAF, which otherwise reads as changed rows. A reduced run whose
+  latest attempt failed fails `check`, and `attribute` treats its output as missing,
+  whatever it holds. The 6.6.0 gate needed those MAFs set aside by hand.
 
 ## [6.6.0] - 2026-10-07 — every read judged by its own bases
 

@@ -118,7 +118,6 @@ nextflow run nextflow/main.nf \
 | `--enforce_strandedness` | Filter reads to the transcript's sense strand (requires `--gtf` for `gene_strand`). `--strandedness unstranded` disables it. | `true` |
 | `--library_type` | `capture` (default) or `amplicon`. Amplicon treats R1/R2 as independent observations (no fragment consensus) and disables strandedness. | `capture` |
 | `--gtf` | GTF (plain or `.gtf.gz`) for exon-boundary / per-transcript / ASJD annotation and `gene_strand` back-fill | `''` (disabled) |
-| `--gtf_cache` | Deprecated in 6.6.0 and ignored (warns when set); removed in 6.7.0. Each task loads the GTF in a few seconds. | `null` |
 
 ### Feature Columns & Merge
 | Parameter | Description | Default |

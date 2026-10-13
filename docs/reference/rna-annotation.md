@@ -32,8 +32,8 @@ With `--gtf`, GTF mode appends **17 columns** total: `exon_boundary_dist` (1),
     The GTF is loaded per run, plain or gzip/BGZF-compressed. Measured on a whole
     genome: 2.0 s for Ensembl 111 (2.4 s from `.gtf.gz`), 4.0 s for GENCODE v50
     basic and 6.5 s for GENCODE v50 comprehensive; fewer variant chromosomes load
-    less. There is no cache to build (`--gtf-cache-dir` and `build-gtf-cache` are
-    deprecated in 6.6.0 and do nothing).
+    less. There is no cache to build: `--gtf-cache-dir` and `build-gtf-cache` were
+    deprecated in 6.6.0 and removed in 6.7.0.
 
 ---
 

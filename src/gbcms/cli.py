@@ -642,14 +642,6 @@ def rna(
             "variants are loaded."
         ),
     ),
-    gtf_cache_dir: Path | None = typer.Option(
-        None,
-        "--gtf-cache-dir",
-        help=(
-            "Deprecated in 6.6.0 and ignored; removed in 6.7.0. The GTF index cache "
-            "is gone: the GTF loads in a few seconds without one."
-        ),
-    ),
     # Library type flag
     library_type: str = typer.Option(
         "capture",
@@ -921,7 +913,6 @@ def rna(
             strandedness=strandedness,
             rna_editing_db=rna_editing_db,
             gtf=gtf,
-            gtf_cache_dir=gtf_cache_dir,
             library_type=library_type,
             rescue_mnp=rescue_mnp,
             rescue_mnp_threshold=rescue_mnp_threshold,
@@ -937,48 +928,6 @@ def rna(
     # Exit non-zero if any sample failed (or none were processed). Outside the
     # try so typer.Exit isn't caught by `except Exception` above.
     _exit_on_sample_failure(result)
-
-
-@app.command("build-gtf-cache")
-def build_gtf_cache(
-    gtf: Path = typer.Option(
-        ...,
-        "--gtf",
-        "-g",
-        exists=True,
-        help="Path to the GTF annotation file (Ensembl/GENCODE).",
-    ),
-    variants: Path = typer.Option(
-        ...,
-        "--variants",
-        "-v",
-        exists=True,
-        help="Variant file (VCF/MAF) for the cohort.",
-    ),
-    gtf_cache_dir: Path = typer.Option(
-        ...,
-        "--gtf-cache-dir",
-        help="Directory the cache was written into (no longer written).",
-    ),
-    verbose: bool = typer.Option(False, "--verbose", "-V", help="Enable verbose debug logging"),
-):
-    """
-    Deprecated in 6.6.0: does nothing; removed in 6.7.0.
-
-    It pre-built a GTF index cache for a cohort. The GTF now loads in a few
-    seconds (plain or .gtf.gz), so there is no cache to build. The command still
-    checks its options, so a pipeline that calls it keeps working until it is
-    removed.
-    """
-    setup_logging(verbose=verbose, trace=False)
-
-    _variant_format(variants)
-
-    logger.warning(
-        "build-gtf-cache is deprecated and does nothing: the GTF index cache is gone "
-        "(the GTF loads in a few seconds without one). Drop this step and "
-        "--gtf-cache-dir; both will be removed in 6.7.0."
-    )
 
 
 @app.command()

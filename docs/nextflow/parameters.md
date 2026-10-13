@@ -80,13 +80,9 @@ These parameters are only used when `--mode rna` is specified.
 !!! tip "RNA mode defaults"
     RNA mode uses different PairHMM gap penalties by default (`gap_open=5e-3`, `gap_extend=0.25`) to tolerate RT-induced stutter at homopolymers. These can be overridden via the alignment backend parameters below.
 
-## GTF Index Caching (RNA) — deprecated
+## GTF loading (RNA)
 
-The GTF index cache is gone in 6.6.0: each `GBCMS_RNA` task loads the GTF (plain or `.gtf.gz`) in a few seconds (2 s for a whole Ensembl GTF), so the `GBCMS_BUILD_GTF_CACHE` step was removed.
-
-| Parameter | Default | Description |
-|:----------|:--------|:------------|
-| `--gtf_cache` | `null` | Deprecated in 6.6.0 and ignored; the pipeline warns when it is set. Removed in 6.7.0. |
+Each `GBCMS_RNA` task loads the GTF (plain or `.gtf.gz`) in a few seconds (2 s for a whole Ensembl GTF). There is no index cache: `--gtf_cache` and the `GBCMS_BUILD_GTF_CACHE` step were deprecated in 6.6.0 and removed in 6.7.0.
 
 !!! tip "Cohorts on shared storage: pass the `.gtf.gz`"
     Every task reads the GTF. The Ensembl GRCh38 GTF is 1.46 GB plain and 61 MB
