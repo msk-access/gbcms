@@ -38,8 +38,9 @@ operator's go):
   - **New C40 defect:** a co-annotated sibling SNV inside a long deletion's span
     withdraws REF reads (RJ-5) though the junction windows read 4 bases past the
     junction: 2,667 REF reads at 10/60 panel rows (one row VAF 0.17 -> 0.30).
-    Prototype `src_pd8` (siblings claim only inside the REF window): panel long
-    deletions within 10% of the reads 41 -> 45/60, nothing else changes, tests pass.
+    Fixed in C40 (5aaf76a4, review fix 639f21a2: siblings claim only from the anchor
+    through REF's window): panel long deletions within 10% of sign-out 41 -> 45/60
+    (of the reads' VAF 46 -> 50/60; 6.6.0 50 and 53).
   - The junction-window germline question (adaptive window `src_pj4`, guard reading
     on `src_pj5`) gains nothing on any arm.
   - ACCESS: ABRA2's post-collapse pass can introduce events; validate indel rules

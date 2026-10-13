@@ -103,6 +103,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   junction an isolated change on the REF reads. A run of changes is another allele,
   and the diagnostic names the deletion with an isolated ALT-only change as the
   larger allele.
+- **Siblings.** A co-annotated sibling claims a REF read (RJ-5) only from the anchor
+  through REF's window's last deleted base. Over the whole deleted span, as for other
+  variants, it withdrew REF reads the windows never read there and no ALT molecule
+  can carry: 2,667 REF reads at 10 of the panel's 60 rows (one row's VAF 0.17 against
+  the reads' 0.17 became 0.30); now 378 at 2 rows, where the sibling sits inside
+  REF's window. The flank bases before the anchor, which both windows read, stay
+  outside the guard.
 - **Retired:** the 3-base length band for deletions of 50 bp or more and its Phase 3
   route; a deletion of another length is another allele at any size.
 - **Measured** against 6.6.0:
@@ -111,13 +118,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   |:--|:--|:--|
   | TEMPO WES, BWA only (150 rows): AD; within 10% of sign-out | 4; 0/132 | 6,028; 40/143 |
   | HG002 het deletions (280 rows): median VAF; within 0.35–0.65 | 0.000 at 287 of 300 | 0.500; 132/188 |
-  | Panel, ABRA2-realigned (60 rows): median VAF; within 10% of sign-out | 0.192; 50/60 | 0.199; 41/60 |
+  | Panel, ABRA2-realigned (60 rows): median VAF; within 10% of sign-out | 0.192; 50/60 | 0.188; 45/60 |
   | Matched normals, somatic rows (IMPACT 60, ACCESS 2): ALT reads | 0; 0 | 0; 1 |
 
   On the panel ABRA2 writes carriers as D ops, which 6.6.0 and the sign-out both
   count from the CIGAR, with REF read anywhere over the deleted span; 6.7.0 reads
   REF at the breakpoint, as the bases-only oracle does (40/60 within 10% of
-  sign-out). On HG002 that oracle reads median VAF 0.514 (105/169 in the band).
+  sign-out); against the reads' own VAF 6.7.0 agrees on 50/60 (6.6.0 53/60). On HG002 that oracle reads median VAF 0.514 (105/169 in the band).
 
 ### Removed
 

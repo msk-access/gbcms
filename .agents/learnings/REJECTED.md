@@ -10,6 +10,31 @@ Newest at the top.
 
 ---
 
+## [REJ-20261013-002] Keep the CIGAR checks for pure indels; let bases overrule disagreeing or clipped reads (C43 hybrid)
+- **Target:** pure-indel read judgment (`check_insertion`, `check_deletion`)
+- **Proposed:** keep the CIGAR verdict, and hand a read to the exact-carrier rule only
+  when the CIGAR path does not call it ALT and it shows 2+ confident changes around the
+  event or a soft clip there. It kept every decided spec case.
+- **Reason vetoed:** a partial fix (operator, 2026-10-13, chose every indel by its bases,
+  C43 #276). HG002: insertions 10+ bp 287/603 in band (bases rule 332), insertions 1-9
+  bp 518/669 (534), REF still 1.37x and 1.22x the REF reads: the REF credited to reads
+  ending 1-4 bases past a tract is untouched, and a duplicated copy aligned onto the
+  next copy often shows one mismatch, under the trigger. Two rules per read.
+- **Date:** 2026-10-13
+
+## [REJ-20261013-001] Grow a long deletion's continuation until four bases tell the alleles apart; let the guard read on to tell a germline run from another breakpoint
+- **Target:** the C40 junction judge and its guard (RJ-24)
+- **Proposed:** for a germline change on one of the few bases telling the alleles
+  apart: the continuation grows from 4 until 4 of its bases differ between REF and ALT
+  (at most 16), and the guard assigns a read to REF when it fits REF's deleted bases 20
+  bases past the windows, masking a run there as the REF haplotype's own.
+- **Reason vetoed:** no gain on any arm (a re-test of REJ-20261009-002's diff rule with
+  the guard added): HG002 131 -> 129/195 in 0.35-0.65, panel 160 -> 159/196 within 10%
+  of the reads, WES and normals unchanged; one panel row gained 58 REF reads. The panel
+  shortfall it aimed at was mostly the sibling guard reading the whole deleted span
+  (fixed in C40, 5aaf76a4). Prototype builds `plan670/src_pj4`, `src_pj5`.
+- **Date:** 2026-10-13
+
 ## [REJ-20261009-003] Read-on for the longer allele at 50+ bp deletions (C40 option A, RJ-9 style)
 - **Target:** the C40 junction judge for 50+ bp pure deletions (RJ-24)
 - **Proposed:** as decided in the 6.7.0 plan: REF at the POS breakpoint must also be
