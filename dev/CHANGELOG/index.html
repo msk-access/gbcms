@@ -767,10 +767,28 @@
 </a>
 </li>
 <li class="md-nav__item">
+<a class="md-nav__link" href="#changed-deletions-of-50-bp-or-more-judged-at-the-pos-breakpoint-254">
+<span class="md-ellipsis">
+      
+        Changed — deletions of 50 bp or more judged at the POS breakpoint (#254)
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
 <a class="md-nav__link" href="#removed">
 <span class="md-ellipsis">
       
         Removed
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#fixed-mfsd-sizes-an-alt-fragment-as-the-molecule-carrying-the-alt">
+<span class="md-ellipsis">
+      
+        Fixed — mFSD sizes an ALT fragment as the molecule carrying the ALT
       
     </span>
 </a>
@@ -2877,6 +2895,76 @@ and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semant
   partial. <code>tests/test_carrier_window_balance.py</code> checks that equal molecules give
   <abbr title="Alternate Depth - Reads supporting the alternate allele">AD</abbr> = <abbr title="Reference Depth - Reads supporting the reference allele">RD</abbr> for shrinking, growing, long, both-long and run-ending shapes, in DNA and
   in RNA read from the right.</p>
+<h3 id="changed-deletions-of-50-bp-or-more-judged-at-the-pos-breakpoint-254">Changed — deletions of 50 bp or more judged at the POS breakpoint (#254)<a class="headerlink" href="#changed-deletions-of-50-bp-or-more-judged-at-the-pos-breakpoint-254" title="Permanent link">¶</a></h3>
+<ul>
+<li><strong>The rule (RJ-24).</strong> A prepared pure deletion of 50 bp or more is REF or ALT by
+  its own bases at the POS breakpoint, however the aligner wrote it (a D op, a soft
+  clip, a split read). Both alleles are read from the left flank over one window of
+  equal length: 4 flank bases, the microhomology, then 4 bases of the allele's own
+  continuation (REF: the deleted bases; ALT: the right flank). Nothing past the
+  window is read, for either allele. Short-read aligners without a realigner write
+  most such carriers as clips: on HG002 (<abbr title="Burrows-Wheeler Aligner - Standard short-read DNA aligner (mem/aln)">BWA</abbr>-MEM) a <abbr title="Compact Idiosyncratic Gapped Alignment Report - BAM alignment operation string">CIGAR</abbr>-only rule read <abbr title="Variant Allele Frequency - Fraction of reads supporting the variant allele">VAF</abbr> 0.000 at
+  287 of 300 het deletions.</li>
+<li><strong>Placement.</strong> A read whose left flank is not aligned where the windows start (in
+  its clip, under its own deletion, or written over the deleted bases' end) is
+  placed from the right flank, which both alleles share, as the ALT's window sits
+  there; its bases at or above <code>--min-baseq</code> must favour the left flank over the
+  deleted bases REF has before the right flank by one such base. A REF molecule
+  starting inside the deleted span behind a poor or N clip is depth only. A decided
+  read admitted through its clip, or placed from the right, counts toward depth in
+  DNA.</li>
+<li><strong>Beside the junction.</strong> A change recurring at one window offset is masked as a
+  separate event (as RJ-23): in the flank and microhomology, a germline <abbr title="Single Nucleotide Polymorphism - Single base substitution">SNP</abbr> or <abbr title="Multi-Nucleotide Polymorphism - Multiple adjacent base substitutions">MNP</abbr>
+  the REF reads carry too; an isolated change of the ALT reads' own; past the
+  junction an isolated change on the REF reads. A run of changes is another allele,
+  and the diagnostic names the deletion with an isolated ALT-only change as the
+  larger allele.</li>
+<li><strong>Siblings.</strong> A co-annotated sibling claims a REF read (RJ-5) only from the anchor
+  through REF's window's last deleted base. Over the whole deleted span, as for other
+  variants, it withdrew REF reads the windows never read there and no ALT molecule
+  can carry: 2,667 REF reads at 10 of the panel's 60 rows (one row's <abbr title="Variant Allele Frequency - Fraction of reads supporting the variant allele">VAF</abbr> 0.17 against
+  the reads' 0.17 became 0.30); now 378 at 2 rows, where the sibling sits inside
+  REF's window. The flank bases before the anchor, which both windows read, stay
+  outside the guard.</li>
+<li><strong>Retired:</strong> the 3-base length band for deletions of 50 bp or more and its Phase 3
+  route; a deletion of another length is another allele at any size.</li>
+<li><strong>Measured</strong> against 6.6.0:</li>
+</ul>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;"></th>
+<th style="text-align: left;">6.6.0</th>
+<th style="text-align: left;">6.7.0</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;">TEMPO WES, <abbr title="Burrows-Wheeler Aligner - Standard short-read DNA aligner (mem/aln)">BWA</abbr> only (150 rows): <abbr title="Alternate Depth - Reads supporting the alternate allele">AD</abbr>; within 10% of sign-out</td>
+<td style="text-align: left;">4; 0/132</td>
+<td style="text-align: left;">6,028; 40/143</td>
+</tr>
+<tr>
+<td style="text-align: left;">HG002 het deletions (280 rows): median <abbr title="Variant Allele Frequency - Fraction of reads supporting the variant allele">VAF</abbr>; within 0.35–0.65</td>
+<td style="text-align: left;">0.000 at 287 of 300</td>
+<td style="text-align: left;">0.500; 132/188</td>
+</tr>
+<tr>
+<td style="text-align: left;">Panel, ABRA2-realigned (60 rows): median <abbr title="Variant Allele Frequency - Fraction of reads supporting the variant allele">VAF</abbr>; within 10% of sign-out</td>
+<td style="text-align: left;">0.192; 50/60</td>
+<td style="text-align: left;">0.188; 45/60</td>
+</tr>
+<tr>
+<td style="text-align: left;">Matched normals, somatic rows (IMPACT 60, ACCESS 2): ALT reads</td>
+<td style="text-align: left;">0; 0</td>
+<td style="text-align: left;">0; 1</td>
+</tr>
+</tbody>
+</table>
+<p>On the panel ABRA2 writes carriers as D ops, which 6.6.0 and the sign-out both
+  count from the <abbr title="Compact Idiosyncratic Gapped Alignment Report - BAM alignment operation string">CIGAR</abbr>, with REF read anywhere over the deleted span; 6.7.0 reads
+  REF at the breakpoint, as the bases-only oracle does (40/60 within 10% of
+  sign-out); against the reads' own <abbr title="Variant Allele Frequency - Fraction of reads supporting the variant allele">VAF</abbr> 6.7.0 agrees on 50/60 (6.6.0 53/60). On HG002 that oracle reads median <abbr title="Variant Allele Frequency - Fraction of reads supporting the variant allele">VAF</abbr> 0.514 (105/169 in the band).</p>
 <h3 id="removed">Removed<a class="headerlink" href="#removed" title="Permanent link">¶</a></h3>
 <ul>
 <li><strong><code>gbcms build-gtf-cache</code>, <code>gbcms rna --gtf-cache-dir</code> and the Nextflow <code>--gtf_cache</code>
@@ -2886,6 +2974,15 @@ and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semant
 <li>The Nextflow parameter is gone, and the pipeline no longer warns about it.</li>
 <li>Pipelines that still call <code>build-gtf-cache</code> must drop that step before moving to
     6.7.0.</li>
+</ul>
+<h3 id="fixed-mfsd-sizes-an-alt-fragment-as-the-molecule-carrying-the-alt">Fixed — <abbr title="Mutant Fragment Size Distribution - Insert-size analysis for REF vs ALT fragments">mFSD</abbr> sizes an ALT fragment as the molecule carrying the ALT<a class="headerlink" href="#fixed-mfsd-sizes-an-alt-fragment-as-the-molecule-carrying-the-alt" title="Permanent link">¶</a></h3>
+<ul>
+<li>A fragment's size is TLEN less the deletions (plus the insertions) its reads'
+  CIGARs write. A deletion carrier written as a clip, or judged by its bases, has no
+  D op, so its fragment read longer than the molecule by the deleted bases (227
+  instead of 167 for 60 bp), and a fragment of a deletion over about 830 bp fell out
+  of <abbr title="Mutant Fragment Size Distribution - Insert-size analysis for REF vs ALT fragments">mFSD</abbr>. When an ALT fragment covers the variant without a read writing its length
+  change, the change is applied. <code>tests/test_mfsd_allele_size.py</code>.</li>
 </ul>
 <h3 id="fixed-release-tooling">Fixed — release tooling<a class="headerlink" href="#fixed-release-tooling" title="Permanent link">¶</a></h3>
 <ul>

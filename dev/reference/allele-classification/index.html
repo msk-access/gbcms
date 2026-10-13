@@ -630,20 +630,29 @@
 <nav aria-label="Deletion" class="md-nav">
 <ul class="md-nav__list">
 <li class="md-nav__item">
-<a class="md-nav__link" href="#algorithm_2">
+<a class="md-nav__link" href="#deletions-of-50-bp-or-more">
 <span class="md-ellipsis">
       
-        Algorithm
+        Deletions of 50 bp or more
       
     </span>
 </a>
-<nav aria-label="Algorithm" class="md-nav">
-<ul class="md-nav__list">
+</li>
 <li class="md-nav__item">
-<a class="md-nav__link" href="#part-a-cigar-based-strict-band-detection">
+<a class="md-nav__link" href="#algorithm-cigar-checks">
 <span class="md-ellipsis">
       
-        Part A — CIGAR-Based Strict + Band Detection
+        Algorithm (CIGAR checks)
+      
+    </span>
+</a>
+<nav aria-label="Algorithm (CIGAR checks)" class="md-nav">
+<ul class="md-nav__list">
+<li class="md-nav__item">
+<a class="md-nav__link" href="#part-a-cigar-based-strict-detection_1">
+<span class="md-ellipsis">
+      
+        Part A — CIGAR-Based Strict Detection
       
     </span>
 </a>
@@ -710,10 +719,10 @@
 </a>
 </li>
 <li class="md-nav__item">
-<a class="md-nav__link" href="#why-the-50bp-gate">
+<a class="md-nav__link" href="#deletions-of-50-bp-or-more_1">
 <span class="md-ellipsis">
       
-        Why the 50bp gate
+        Deletions of 50 bp or more
       
     </span>
 </a>
@@ -750,7 +759,7 @@
 <nav aria-label="MNP (Multi-Nucleotide Polymorphism)" class="md-nav">
 <ul class="md-nav__list">
 <li class="md-nav__item">
-<a class="md-nav__link" href="#algorithm_3">
+<a class="md-nav__link" href="#algorithm_2">
 <span class="md-ellipsis">
       
         Algorithm
@@ -1340,20 +1349,29 @@
 <nav aria-label="Deletion" class="md-nav">
 <ul class="md-nav__list">
 <li class="md-nav__item">
-<a class="md-nav__link" href="#algorithm_2">
+<a class="md-nav__link" href="#deletions-of-50-bp-or-more">
 <span class="md-ellipsis">
       
-        Algorithm
+        Deletions of 50 bp or more
       
     </span>
 </a>
-<nav aria-label="Algorithm" class="md-nav">
-<ul class="md-nav__list">
+</li>
 <li class="md-nav__item">
-<a class="md-nav__link" href="#part-a-cigar-based-strict-band-detection">
+<a class="md-nav__link" href="#algorithm-cigar-checks">
 <span class="md-ellipsis">
       
-        Part A — CIGAR-Based Strict + Band Detection
+        Algorithm (CIGAR checks)
+      
+    </span>
+</a>
+<nav aria-label="Algorithm (CIGAR checks)" class="md-nav">
+<ul class="md-nav__list">
+<li class="md-nav__item">
+<a class="md-nav__link" href="#part-a-cigar-based-strict-detection_1">
+<span class="md-ellipsis">
+      
+        Part A — CIGAR-Based Strict Detection
       
     </span>
 </a>
@@ -1420,10 +1438,10 @@
 </a>
 </li>
 <li class="md-nav__item">
-<a class="md-nav__link" href="#why-the-50bp-gate">
+<a class="md-nav__link" href="#deletions-of-50-bp-or-more_1">
 <span class="md-ellipsis">
       
-        Why the 50bp gate
+        Deletions of 50 bp or more
       
     </span>
 </a>
@@ -1460,7 +1478,7 @@
 <nav aria-label="MNP (Multi-Nucleotide Polymorphism)" class="md-nav">
 <ul class="md-nav__list">
 <li class="md-nav__item">
-<a class="md-nav__link" href="#algorithm_3">
+<a class="md-nav__link" href="#algorithm_2">
 <span class="md-ellipsis">
       
         Algorithm
@@ -1780,7 +1798,7 @@ Use mouse to pan and zoom
 <li><strong>Complex Ins+SNV</strong> (<code>alt[0] ≠ ref[0]</code>) → the exact-carrier rule — e.g., <code>C→TA</code>, <code>A→CCC</code>. Before 6.6.0 these went to <code>check_insertion</code>, which compares only the inserted bases, so reads that keep the anchor counted ALT (on WES, 156 of 463 ALT reads at 10 such loci; #121)</li>
 </ul>
 <p>This distinction is critical: the pure-indel <abbr title="Compact Idiosyncratic Gapped Alignment Report - BAM alignment operation string">CIGAR</abbr> safeguards cannot correctly classify reads that simultaneously carry the anchor substitution. The exact-carrier rule reads the substituted anchor as part of the allele.</p>
-<p><code>check_deletion</code> falls back to Phase 3 only for an in-band large deletion (≥50bp, another length within 3bp) whose deleted bases differ (see <a href="#windowed-scan-safeguards-1">Deletion — Windowed Safeguards</a>); a same-length deletion of another haplotype is a distinct allele.</p>
+<p>A pure deletion of 50 bp or more is judged by its bases at the POS breakpoint (<a href="#deletions-of-50-bp-or-more">the junction judge</a>, RJ-24), however the aligner wrote it. <code>check_deletion</code> reaches Phase 3 only for a read that spans the anchor with no aligned base on it and no deletion over it (in practice, its anchor inside a splice N); a same-length deletion of another haplotype is a distinct allele.</p>
 </div>
 <hr>
 <h2 id="snp-single-nucleotide-polymorphism"><abbr title="Single Nucleotide Polymorphism - Single base substitution">SNP</abbr> (Single Nucleotide Polymorphism)<a class="headerlink" href="#snp-single-nucleotide-polymorphism" title="Permanent link">¶</a></h2>
@@ -2203,45 +2221,86 @@ past the read's end are not required here, as at the variant's own position.</p>
 </ul>
 <p><code>check_deletion</code>'s <abbr title="Compact Idiosyncratic Gapped Alignment Report - BAM alignment operation string">CIGAR</abbr> safeguards compare anchor bases assuming the anchor is preserved. For these variants, the anchor changes — feeding them to <code>check_deletion</code> would incorrectly classify all DEL reads as REF (alt=0).</p>
 </div>
-<h3 id="algorithm_2">Algorithm<a class="headerlink" href="#algorithm_2" title="Permanent link">¶</a></h3>
-<p>Same single-walk strategy as insertion, with four additional features:</p>
+<h3 id="deletions-of-50-bp-or-more">Deletions of 50 bp or more<a class="headerlink" href="#deletions-of-50-bp-or-more" title="Permanent link">¶</a></h3>
+<p>A prepared pure deletion of 50 bp or more is judged by <strong>its bases at the POS
+breakpoint</strong>, however the aligner wrote it: a D op, a soft clip, or a split read
+(RJ-24, since 6.7.0). Short-read aligners without realignment write most of these
+carriers as clips (on HG002, <abbr title="Burrows-Wheeler Aligner - Standard short-read DNA aligner (mem/aln)">BWA</abbr>-MEM wrote 1,958 of the junction carriers that
+way), so a <abbr title="Compact Idiosyncratic Gapped Alignment Report - BAM alignment operation string">CIGAR</abbr>-only rule read <abbr title="Variant Allele Frequency - Fraction of reads supporting the variant allele">VAF</abbr> 0.000 at 287 of 300 heterozygous deletions.</p>
+<ul>
+<li><strong>One window per allele, of equal length, read from the left flank:</strong> 4 clean
+  flank bases ending at the anchor, the microhomology (the bases the deletion can
+  slide right through, shared by both alleles), then 4 clean bases of the allele's
+  own continuation: the deleted bases for REF, the right flank for ALT. A REF and
+  an ALT molecule hold their windows from the same read starts.</li>
+<li><strong>Nothing past the window is read</strong>, for either allele: checking REF through
+  every deleted base it covers would expose it to errors the ALT reading never
+  meets (measured: HG002 103 vs 100 of 166 deletions in band, the panel 40 vs 29
+  of 60 within 10% of sign-out).</li>
+<li><strong>Placement:</strong> the read is read from its aligned first window base. One whose
+  left flank is not aligned there (in its soft clip, under its own deletion, or
+  written over the deleted bases' end as mismatches) is placed from the right flank,
+  which both alleles share, as the ALT's window sits there; REF's window ends inside
+  the deleted bases, which no ALT molecule holds. The placement is a hypothesis, so
+  the read's confident bases (at or above <code>--min-baseq</code>, not N) must favour the left
+  flank over the deleted bases REF has before the right flank by one base read at
+  <code>--min-baseq</code>, and by more than nothing (a guard-masked flank base weighs nothing
+  for ALT, the deleted base it is weighed against stays read): a REF molecule starting inside the deleted span behind a poor clip
+  shows the same right flank as a carrier, and nothing of the left flank. It is ALT
+  where it fits, else another allele; written over the deleted bases' end, only
+  where it fits. Hard-clipped bases are absent, so a hard-clipped record holds no
+  window on its own.</li>
+<li><strong>Outcomes:</strong> REF or ALT when the read fits exactly one window (bases below
+  <code>--min-baseq</code>, and N, fit anything; ALT also needs one minimum-quality base's
+  evidence); fitting neither, another allele (<code>partial_alt</code> when closer to ALT);
+  not holding the windows, or crossing a splice inside them, depth only. A read
+  fitting REF whose own alignment deletes or inserts 5+ bases inside the deleted
+  span is another allele (C26).</li>
+<li><strong>Depth:</strong> a decided read whose windows read soft-clipped bases inside its
+  fragment counts toward depth in DNA, as for complex variants.</li>
+<li><strong>A change recurring</strong> at one window offset on an allele's reads (3+ fragments,
+  20% of that allele's reads) is a separate event, masked at that offset in both
+  windows: in the flank and microhomology, which both alleles share, one the REF
+  reads carry too (a germline <abbr title="Single Nucleotide Polymorphism - Single base substitution">SNP</abbr> or <abbr title="Multi-Nucleotide Polymorphism - Multiple adjacent base substitutions">MNP</abbr>, a run included, on 3 or more REF reads);
+  one of the ALT reads' own with no own change at either neighbouring base (the base
+  either side of the windows included); and past the junction, one on the REF reads
+  with none recurring beside it (a run there, on reads fitting REF within a base, is
+  another breakpoint: another allele). A run of changes on the ALT reads alone is
+  an indel at the junction: another allele, not masked. The isolated changes on
+  the ALT reads alone name the larger allele in <code>gbcms_diagnostic</code> (the deletion
+  with the changes); beside a run none is named. Masks never take every offset where REF and ALT
+  differ: those stay read, and a read changed there is neither.</li>
+<li><strong>RNA:</strong> the same, after splice triage (a deletion written as a splice N stays
+  excluded).</li>
+</ul>
+<p>The length band that used to credit a deletion of another length within 3 bases
+(and split <code>D+M+D</code> representations) is retired: it credited no real read on the
+panel or HG002. A deletion the prepared reference cannot hold the windows of, or an
+unprepared one, keeps the <abbr title="Compact Idiosyncratic Gapped Alignment Report - BAM alignment operation string">CIGAR</abbr> checks below.</p>
+<h3 id="algorithm-cigar-checks">Algorithm (<abbr title="Compact Idiosyncratic Gapped Alignment Report - BAM alignment operation string">CIGAR</abbr> checks)<a class="headerlink" href="#algorithm-cigar-checks" title="Permanent link">¶</a></h3>
+<p>Same single-walk strategy as insertion, with three additional features:</p>
 <ol>
 <li>
-<p><strong>Placement-aware large-deletion band</strong> — For large deletions (≥50bp), a wrong-length D at
-   the anchor still counts as the annotated event when the read deletes essentially the whole
-   expected span: at most 3 expected-span bases retained, and at most 3 bases deleted/inserted
-   outside the span (within the scan region, and at least the discrimination window). This accepts single-op breakpoint wobble AND
-   split representations (<code>D(60)+2M+D(40)</code> for a ~100bp deletion) in pure <abbr title="Compact Idiosyncratic Gapped Alignment Report - BAM alignment operation string">CIGAR</abbr> space, while
-   rejecting net-matching but <em>displaced</em> deletions whose M ops across the span prove the event
-   is absent. The 50bp threshold is an <strong>artifact-size prior</strong>: slippage/stutter/alignment
-   artifacts are small, so an observed ≥50bp D op is essentially always a real deletion in that
-   molecule — the band only decides <em>which</em> event it belongs to. (Validated pure large
-   deletions, 12–539bp, all align as a single exact-length D at the anchor, so the ≤3bp slop is
-   insurance, not an observed need.)</p>
-</li>
-<li>
-<p><strong>Wrong-length rule</strong> — A wrong-length D at the anchor that fails the band is a <strong>distinct
-   allele</strong> in the same tract → neither + <code>partial_alt</code>, never Phase 3. See
+<p><strong>Wrong-length rule</strong> — A wrong-length D at the anchor is a <strong>distinct allele</strong> in the
+   same tract → neither + <code>partial_alt</code>, never Phase 3. See
    <a href="#wrong-length-pure-indels-partial_alt">Wrong-Length Pure Indels</a>.</p>
 </li>
 <li>
 <p><strong>A windowed deletion that fails S3</strong> — an exact-length deletion elsewhere is ALT when the
    read's bases spell the ALT despite where its gap sits (compensating mismatches); otherwise,
-   at 5bp or more, another allele (<code>has_distinct_allele_nearby</code>). Only an <strong>in-band</strong> deletion
-   (≥50bp, another length) whose deleted bases differ flags <code>has_in_band_mismatch</code> for
-   Phase-3 arbitration. Short deletions (&lt;5bp) that fail S3 remain <abbr title="Compact Idiosyncratic Gapped Alignment Report - BAM alignment operation string">CIGAR</abbr>-definitive REF — they
-   are almost certainly unrelated spurious deletions. See
+   at 5bp or more, another allele (<code>has_distinct_allele_nearby</code>). Short deletions (&lt;5bp)
+   that fail S3 remain <abbr title="Compact Idiosyncratic Gapped Alignment Report - BAM alignment operation string">CIGAR</abbr>-definitive REF — they are almost certainly unrelated spurious
+   deletions. See
    <a href="../complex-indels/#case-3-tp53-12bp-left-alignment-shifted-deletion">Case 3 in the Complex Indels guide</a>.</p>
 </li>
 <li>
-<p><strong>Haplotype fallback</strong> — When no <abbr title="Compact Idiosyncratic Gapped Alignment Report - BAM alignment operation string">CIGAR</abbr> match is found and the read doesn't cover the anchor
-   with a Match op (e.g., a soft-clip at the anchor), falls back to Phase 3 for
-   haplotype-based comparison — but only when the read actually spans the anchor position.
-   Reads mapping entirely inside a large deleted span carry no information about the variant
-   and are classified neither.</p>
+<p><strong>Haplotype fallback</strong> — A read that spans the anchor with no aligned base on it and no
+   deletion over it (in practice, its anchor inside a splice N) goes to Phase 3 for
+   haplotype-based comparison. Reads mapping entirely inside a large deleted span carry no
+   information about the variant and are classified neither.</p>
 </li>
 </ol>
-<h4 id="part-a-cigar-based-strict-band-detection">Part A — <abbr title="Compact Idiosyncratic Gapped Alignment Report - BAM alignment operation string">CIGAR</abbr>-Based Strict + Band Detection<a class="headerlink" href="#part-a-cigar-based-strict-band-detection" title="Permanent link">¶</a></h4>
+<h4 id="part-a-cigar-based-strict-detection_1">Part A — <abbr title="Compact Idiosyncratic Gapped Alignment Report - BAM alignment operation string">CIGAR</abbr>-Based Strict Detection<a class="headerlink" href="#part-a-cigar-based-strict-detection_1" title="Permanent link">¶</a></h4>
 <div class="panzoom-box" data-key="none" id="panzoom0" oncontextmenu="return false;">
 <nav class="panzoom-nav">
 <button class="panzoom-info panzoom-button">
@@ -2272,9 +2331,7 @@ past the read's end are not required here, as at the variant's own position.</p>
     NextDel --&gt;|No| RefCov
     NextDel --&gt;|Yes| LenMatch{"Length matches exactly?"}
     LenMatch --&gt;|Yes| StrictAlt(["🔴 ALT — strict"]):::alt
-    LenMatch --&gt;|No| Band{"≥50bp AND read deletes\nthe expected span?\n(≤3 retained, ≤3 outside)"}
-    Band --&gt;|Yes| BandAlt(["🔴 ALT — in-band\n(wobble / split representation)"]):::alt
-    Band --&gt;|No| WLPartial(["⚪ Neither + partial\n(distinct allele)"]):::partial
+    LenMatch --&gt;|No| WLPartial(["⚪ Neither + partial\n(distinct allele)"]):::partial
     RefCov --&gt; WinCheck
 
     classDef start fill:#9b59b6,color:#fff,stroke:#7d3c98,stroke-width:2px;
@@ -2311,7 +2368,7 @@ Use mouse to pan and zoom
     WinIn(["→ from CIGAR walk"]):::entry --&gt; CheckWin{"Del within window?\n(±max(5, repeat_span+2),\nor a placement in the shift region)"}
     CheckWin --&gt;|No| Continue["Continue walk"]
     CheckWin --&gt;|Yes| S1{"S1: Length check"}
-    S1 --&gt;|"Exact match, or\n≥50bp with |Δlen| ≤ 3"| S3{"S3: Same haplotype?\n(in-band: bases over the overlap)"}
+    S1 --&gt;|"Exact match"| S3{"S3: Same haplotype?"}
     S1 --&gt;|"Wrong length, ≥5bp"| FlagWL["Flag has_distinct_allele_nearby"]:::partialflag
     S1 --&gt;|"Wrong length, &lt;5bp"| Continue
     S3 --&gt;|Yes| Only{"The read's only change\nacross the window?"}
@@ -2320,10 +2377,8 @@ Use mouse to pan and zoom
     S3 --&gt;|No| DSpells{"Exact length and the read's\nbases spell the ALT?"}
     DSpells --&gt;|Yes| S2
     DSpells --&gt;|"No, exact length ≥ 5"| FlagWL
-    DSpells --&gt;|"No, in-band ≥ 50bp"| FlagIB["Flag has_in_band_mismatch\n(Phase 3)"]:::fallback
     DSpells --&gt;|"No, &lt; 5bp"| Continue
     S2 --&gt; Continue
-    FlagIB --&gt; Continue
     FlagWL --&gt; Continue
     Continue --&gt; MoreOps{"More ops?"}
     MoreOps --&gt;|Yes| CheckWin
@@ -2331,7 +2386,6 @@ Use mouse to pan and zoom
 
     classDef entry fill:#3498db,color:#fff,stroke:#2471a3,stroke-width:2px;
     classDef next fill:#3498db,color:#fff,stroke:#2471a3,stroke-width:2px;
-    classDef fallback fill:#f39c12,color:#fff,stroke:#d68910,stroke-width:2px;
     classDef partialflag fill:#8e44ad,color:#fff,stroke:#6c3483,stroke-width:2px;
 </code></pre>
 <div class="panzoom-info-box panzoom-info-box-bottom panzoom-hidden">
@@ -2363,12 +2417,10 @@ Use mouse to pan and zoom
     EvalIn(["→ from windowed scan"]):::entry --&gt; Win{"Windowed match found?"}
     Win --&gt;|Yes| WinAlt(["🔴 ALT — windowed"]):::alt
     Win --&gt;|No| Spans{"Ref coverage at anchor?"}
-    Spans --&gt;|No| AnchorSpan{"Read spans anchor?\n(e.g. soft-clip at anchor)"}
+    Spans --&gt;|No| AnchorSpan{"Read spans anchor?\n(its anchor in a splice N)"}
     AnchorSpan --&gt;|Yes| CPX(["🔄 Phase 3"]):::fallback
     AnchorSpan --&gt;|No| Neither(["⧯ Neither\n(no variant information)"]):::neither
-    Spans --&gt;|Yes| IBCheck{"has_in_band_mismatch?"}
-    IBCheck --&gt;|Yes| CPXP(["🔄 Phase-3 arbitration\n(partial propagated on non-ALT)"]):::fallback
-    IBCheck --&gt;|No| WLCheck{"has_distinct_allele_nearby?"}
+    Spans --&gt;|Yes| WLCheck{"has_distinct_allele_nearby?"}
     WLCheck --&gt;|"Yes, the read changes\nthe discrimination window"| WLPartial(["⚪ Neither + partial\n(another allele, RJ-7)"]):::partial
     WLCheck --&gt;|"Yes, outside the window"| RefSep(["✅ REF\n(a separate event, RJ-8)"]):::ref
     WLCheck --&gt;|No| Ref(["✅ REF"]):::ref
@@ -2397,7 +2449,7 @@ Use mouse to pan and zoom
 <tbody>
 <tr>
 <td style="text-align: left;"><strong>S1</strong></td>
-<td style="text-align: left;">Deleted length matches expected <code>ref_len − 1</code> exactly, or is within the ≥50bp ±3bp band</td>
+<td style="text-align: left;">Deleted length matches expected <code>ref_len − 1</code> exactly</td>
 <td style="text-align: left;">Wrong-length deletions never match; ≥5bp ones flag <code>has_distinct_allele_nearby</code> (distinct-allele candidates), &lt;5bp ones are alignment noise (<abbr title="Compact Idiosyncratic Gapped Alignment Report - BAM alignment operation string">CIGAR</abbr>-definitive)</td>
 </tr>
 <tr>
@@ -2407,19 +2459,19 @@ Use mouse to pan and zoom
 </tr>
 <tr>
 <td style="text-align: left;"><strong>S3</strong></td>
-<td style="text-align: left;">An exact-length deletion gives the variant's haplotype: the reference between the two placements repeats with period <code>len</code> (the same bases in a homopolymer, a rotation such as <code>AC</code> for <code>CA</code> in an STR), and it is the read's only change across the discrimination window (otherwise a distinct allele). An in-band (≥50bp) length compares the deleted bases over the overlapping span</td>
+<td style="text-align: left;">An exact-length deletion gives the variant's haplotype: the reference between the two placements repeats with period <code>len</code> (the same bases in a homopolymer, a rotation such as <code>AC</code> for <code>CA</code> in an STR), and it is the read's only change across the discrimination window (otherwise a distinct allele)</td>
 <td style="text-align: left;">Verifies the shifted Del is the same event. Before 6.6.0 S3 compared the deleted bases themselves, so a rotated STR placement under 5bp counted REF (#189)</td>
 </tr>
 <tr>
 <td style="text-align: left;"><strong>del_len ≥ 5 guard</strong></td>
-<td style="text-align: left;">A same-length Del that fails S3 counts ALT when the read's bases across the window spell the ALT (the aligner misplaced the gap with compensating mismatches); otherwise, at ≥5bp, it is a distinct allele (<code>has_distinct_allele_nearby</code>). An in-band (≥50bp) one whose bases differ flags <code>has_in_band_mismatch</code></td>
+<td style="text-align: left;">A same-length Del that fails S3 counts ALT when the read's bases across the window spell the ALT (the aligner misplaced the gap with compensating mismatches); otherwise, at ≥5bp, it is a distinct allele (<code>has_distinct_allele_nearby</code>)</td>
 <td style="text-align: left;">Short (1–4bp) Dels failing S3 are almost certainly spurious noise — <abbr title="Compact Idiosyncratic Gapped Alignment Report - BAM alignment operation string">CIGAR</abbr> remains definitive. A same-length one ≥5bp gives another haplotype: Phase 3 called such reads ALT (44–94% of synthetic cases; on the RC set every one it reached was another allele by its bases), so it is partial evidence instead (#191)</td>
 </tr>
 </tbody>
 </table>
 <div class="admonition note">
-<p class="admonition-title">has_in_band_mismatch Phase 3 Fallback</p>
-<p>Only an in-band large deletion (≥50bp, another length within 3bp) whose deleted bases differ over the overlap flags <code>has_in_band_mismatch</code> and goes to Phase-3 haplotype arbitration (<abbr title="Wavefront Alignment - Edit-distance alignment algorithm used as Phase 3 fast-path triage (wfa2lib-rs); resolves ~70-80% of reads before PairHMM escalation">WFA</abbr>+<abbr title="Pair Hidden Markov Model - Probabilistic alignment using base quality scores">PairHMM</abbr> under the default backend), propagating <code>partial_alt</code> evidence when Phase 3 does not confirm ALT. A same-length deletion that gives another haplotype is judged by the read's bases: ALT when they spell the ALT across the window (the aligner wrote the gap elsewhere with compensating mismatches), otherwise, at ≥5bp, a distinct allele, not Phase 3 (before 6.6.0 Phase 3 often called it ALT; #191). A deletion the aligner wrote elsewhere in the event's shift region (left-alignment moves the caller's anchor left of the reads' <code>D</code>) gives the same haplotype and passes S3 directly.</p>
+<p class="admonition-title">No Phase 3 for a deletion written elsewhere</p>
+<p>A same-length deletion that gives another haplotype is judged by the read's bases: ALT when they spell the ALT across the window (the aligner wrote the gap elsewhere with compensating mismatches), otherwise, at ≥5bp, a distinct allele, not Phase 3 (before 6.6.0 Phase 3 often called it ALT; #191). A deletion the aligner wrote elsewhere in the event's shift region (left-alignment moves the caller's anchor left of the reads' <code>D</code>) gives the same haplotype and passes S3 directly.</p>
 <p>Example: <strong>TP53 <code>GACCGTGCAAGT→-</code> (12bp)</strong> — left-alignment moves the anchor 3bp left of the actual <code>D(12)</code> position in reads. That placement gives the same haplotype, so S3 (same haplotype) accepts it; before 6.6.0 S3 compared the deleted bases, failed, and Phase 3 classified these reads as ALT.</p>
 <p>Short deletions (1–4bp) failing S3 use <abbr title="Compact Idiosyncratic Gapped Alignment Report - BAM alignment operation string">CIGAR</abbr>-definitive REF: a 1bp Del that gives another haplotype is almost certainly an unrelated noise deletion, not a left-alignment artifact.</p>
 </div>
@@ -2473,10 +2525,6 @@ as the annotated event inflated <abbr title="Variant Allele Frequency - Fraction
 <td style="text-align: left;"><strong>ALT</strong> (structural)</td>
 </tr>
 <tr>
-<td style="text-align: left;">≥50bp deletion within the placement-aware band (≤3 span bases retained, ≤3 changed outside — covers breakpoint wobble and split <code>D+M+D</code> representations)</td>
-<td style="text-align: left;"><strong>ALT</strong> (structural)</td>
-</tr>
-<tr>
 <td style="text-align: left;">Insertion that is a truncation of the expected insert (≥4bp, ≥90% identity, both sequences non-low-complexity, at least one base readable)</td>
 <td style="text-align: left;"><strong>ALT</strong> (structural)</td>
 </tr>
@@ -2515,12 +2563,12 @@ its haplotype window is length-blind inside repeat tracts, and alignment scoring
 wrong-sequence insert to ALT because it still beats the gapped REF alignment. Delins/complex
 variants are unaffected — they route to <code>check_complex</code>, whose Phase-3 realignment correctly
 resolves split and mismatch-absorbed representations of one event.</p>
-<h3 id="why-the-50bp-gate">Why the 50bp gate<a class="headerlink" href="#why-the-50bp-gate" title="Permanent link">¶</a></h3>
-<p>The gate is an <strong>artifact-size prior</strong>, not an event-rarity claim: slippage, stutter, and
-alignment artifacts produce small spurious indel ops, while a read essentially never acquires a
-≥50bp deletion by artifact. Above the gate, an observed big D op is trusted as a <em>real</em> deletion
-in that molecule and the band decides whether it is the annotated event; below it, wrong-length
-ops are artifacts or genuine distinct slippage alleles, so no length tolerance is extended.</p>
+<h3 id="deletions-of-50-bp-or-more_1">Deletions of 50 bp or more<a class="headerlink" href="#deletions-of-50-bp-or-more_1" title="Permanent link">¶</a></h3>
+<p>A deletion of another length is another allele at any size. From 50 bp a prepared
+deletion is judged by its bases at the POS breakpoint
+(<a href="#deletions-of-50-bp-or-more">RJ-24</a>); the 3-base length band that used to credit
+another length there, on the premise that a large D op is never an artifact, is
+retired: it credited no real read on the panel or HG002.</p>
 <h3 id="reading-the-output">Reading the output<a class="headerlink" href="#reading-the-output" title="Permanent link">¶</a></h3>
 <p>At an affected locus, <code>alt_count</code> reflects only exact-support reads, and the distinct-allele
 evidence appears in <code>partial_alt</code>/<code>any_alt</code>. When partial evidence dominates
@@ -2572,7 +2620,7 @@ Handling</a>.</p>
 </tr>
 </tbody>
 </table>
-<h3 id="algorithm_3">Algorithm<a class="headerlink" href="#algorithm_3" title="Permanent link">¶</a></h3>
+<h3 id="algorithm_2">Algorithm<a class="headerlink" href="#algorithm_2" title="Permanent link">¶</a></h3>
 <p>The <abbr title="Multi-Nucleotide Polymorphism - Multiple adjacent base substitutions">MNP</abbr> checker uses <strong>masked per-position evaluation</strong> — each discriminating position is independently assessed, and only unmasked positions vote for the final classification.</p>
 <div class="panzoom-box" data-key="none" id="panzoom0" oncontextmenu="return false;">
 <nav class="panzoom-nav">
@@ -3315,8 +3363,8 @@ inspected as one right after an aligned block is; a deleted anchor followed by
 an insertion is judged by the read's bases (a re-inserted anchor with the insert
 is the ALT). A same-length insertion of other bases beside another indel in the
 window is another allele, not Phase 3's to arbitrate. At 50bp or more the
-large-deletion band judges the read, counting every change across the
-discrimination window. Splices there remain the RNA rules' business.</p>
+junction judge reads the read's bases at the POS breakpoint (RJ-24). Splices there
+remain the RNA rules' business.</p>
 <hr>
 <h2 id="multi-allelic-behavior">Multi-Allelic Behavior<a class="headerlink" href="#multi-allelic-behavior" title="Permanent link">¶</a></h2>
 <p>When multiple variants have overlapping REF spans at the same locus, reads carrying one variant's ALT allele could be incorrectly counted as REF for another variant. The engine addresses this with a two-phase approach:</p>
@@ -3414,7 +3462,7 @@ constants and do not use it).</p>
 <span class="md-icon" title="Last update">
 <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M21 13.1c-.1 0-.3.1-.4.2l-1 1 2.1 2.1 1-1c.2-.2.2-.6 0-.8l-1.3-1.3c-.1-.1-.2-.2-.4-.2m-1.9 1.8-6.1 6V23h2.1l6.1-6.1zM12.5 7v5.2l4 2.4-1 1L11 13V7zM11 21.9c-5.1-.5-9-4.8-9-9.9C2 6.5 6.5 2 12 2c5.3 0 9.6 4.1 10 9.3-.3-.1-.6-.2-1-.2s-.7.1-1 .2C19.6 7.2 16.2 4 12 4c-4.4 0-8 3.6-8 8 0 4.1 3.1 7.5 7.1 7.9l-.1.2z"></path></svg>
 </span>
-<span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-timeago" title="October 12, 2026 23:40:12 UTC"><span class="timeago" datetime="2026-10-12T23:40:12+00:00" locale="en"></span></span><span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-iso_date" title="October 12, 2026 23:40:12 UTC">2026-10-12</span>
+<span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-timeago" title="October 12, 2026 23:48:22 UTC"><span class="timeago" datetime="2026-10-12T23:48:22+00:00" locale="en"></span></span><span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-iso_date" title="October 12, 2026 23:48:22 UTC">2026-10-12</span>
 </span>
 <span class="md-source-file__fact">
 <span class="md-icon" title="Created">
