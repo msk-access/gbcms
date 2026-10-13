@@ -3184,10 +3184,6 @@ provides these dependencies.</p>
 <td style="text-align: left;"><a href="#cli-convert"><strong>convert</strong></a></td>
 <td style="text-align: left;"><abbr title="Variant Call Format - Standard variant call file format">VCF</abbr> ↔ <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> conversion as vcf2maf / maf2vcf write it (no counting)</td>
 </tr>
-<tr>
-<td style="text-align: left;"><strong>build-gtf-cache</strong></td>
-<td style="text-align: left;">Deprecated in 6.6.0: does nothing and warns; removed in 6.7.0. The GTF loads in a few seconds, so there is no cache to build.</td>
-</tr>
 </tbody>
 </table>
 <h2 id="cli-quick-example">Quick Example<a class="headerlink" href="#cli-quick-example" title="Permanent link">¶</a></h2>
@@ -3961,11 +3957,6 @@ transparently.  See <a href="#cli-dna-required-arguments">CRAM Support</a> for d
 <td style="text-align: left;"><code>--gtf</code></td>
 <td style="text-align: left;"><em>(none)</em></td>
 <td style="text-align: left;">Path to Ensembl/GENCODE GTF annotation file, plain or gzip/BGZF (<code>.gtf</code> or <code>.gtf.gz</code>). Enables exon boundary distance, per-transcript counting, and aberrant splice junction detection. Also back-fills each variant's <code>gene_strand</code> — required for <code>--enforce_strandedness</code> and ASJD strand-discordance to do anything.</td>
-</tr>
-<tr>
-<td style="text-align: left;"><code>--gtf-cache-dir</code></td>
-<td style="text-align: left;"><em>(none)</em></td>
-<td style="text-align: left;">Deprecated in 6.6.0 and ignored (warns); removed in 6.7.0. The GTF loads in a few seconds, so there is no cache.</td>
 </tr>
 </tbody>
 </table>
@@ -5753,24 +5744,8 @@ skip the merge step and output the single <abbr title="Mutation Annotation Forma
 <p class="admonition-title">RNA mode defaults</p>
 <p>RNA mode uses different <abbr title="Pair Hidden Markov Model - Probabilistic alignment using base quality scores">PairHMM</abbr> gap penalties by default (<code>gap_open=5e-3</code>, <code>gap_extend=0.25</code>) to tolerate <abbr title="Reverse Transcriptase - Enzyme converting RNA to cDNA">RT</abbr>-induced stutter at homopolymers. These can be overridden via the alignment backend parameters below.</p>
 </div>
-<h2 id="nextflow-parameters-gtf-index-caching-rna-deprecated">GTF Index Caching (RNA) — deprecated<a class="headerlink" href="#nextflow-parameters-gtf-index-caching-rna-deprecated" title="Permanent link">¶</a></h2>
-<p>The GTF index cache is gone in 6.6.0: each <code>GBCMS_RNA</code> task loads the GTF (plain or <code>.gtf.gz</code>) in a few seconds (2 s for a whole Ensembl GTF), so the <code>GBCMS_BUILD_GTF_CACHE</code> step was removed.</p>
-<table>
-<thead>
-<tr>
-<th style="text-align: left;">Parameter</th>
-<th style="text-align: left;">Default</th>
-<th style="text-align: left;">Description</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td style="text-align: left;"><code>--gtf_cache</code></td>
-<td style="text-align: left;"><code>null</code></td>
-<td style="text-align: left;">Deprecated in 6.6.0 and ignored; the pipeline warns when it is set. Removed in 6.7.0.</td>
-</tr>
-</tbody>
-</table>
+<h2 id="nextflow-parameters-gtf-loading-rna">GTF loading (RNA)<a class="headerlink" href="#nextflow-parameters-gtf-loading-rna" title="Permanent link">¶</a></h2>
+<p>Each <code>GBCMS_RNA</code> task loads the GTF (plain or <code>.gtf.gz</code>) in a few seconds (2 s for a whole Ensembl GTF). There is no index cache: <code>--gtf_cache</code> and the <code>GBCMS_BUILD_GTF_CACHE</code> step were deprecated in 6.6.0 and removed in 6.7.0.</p>
 <div class="admonition tip">
 <p class="admonition-title">Cohorts on shared storage: pass the <code>.gtf.gz</code></p>
 <p>Every task reads the GTF. The Ensembl GRCh38 GTF is 1.46 GB plain and 61 MB
@@ -10827,7 +10802,7 @@ per-type classification):</p>
   the exon arms into a junction-chimeric sequence in which the missing
   intron reads as deletion evidence).</li>
 <li>A complex variant's exact-carrier windows for a read spliced in their
-  flank or padding are built over the reference spliced at the read's own
+  flank are built over the reference spliced at the read's own
   junctions (RJ-19, C32 #213): the read's bases past a splice are the next
   exon's, so both alleles' haplotypes continue there (the far exon read from
   the <abbr title="FASTA format - Reference genome sequence file">FASTA</abbr>), and repeat growth and flank are measured on that spliced
@@ -11108,8 +11083,8 @@ variants left without a strand (the first ten, then a count).</p>
 <p>The GTF is loaded per run, plain or gzip/BGZF-compressed. Measured on a whole
 genome: 2.0 s for Ensembl 111 (2.4 s from <code>.gtf.gz</code>), 4.0 s for GENCODE v50
 basic and 6.5 s for GENCODE v50 comprehensive; fewer variant chromosomes load
-less. There is no cache to build (<code>--gtf-cache-dir</code> and <code>build-gtf-cache</code> are
-deprecated in 6.6.0 and do nothing).</p>
+less. There is no cache to build: <code>--gtf-cache-dir</code> and <code>build-gtf-cache</code> were
+deprecated in 6.6.0 and removed in 6.7.0.</p>
 </div>
 <hr>
 <h2 id="reference-rna-annotation-gtf-requirements">GTF Requirements<a class="headerlink" href="#reference-rna-annotation-gtf-requirements" title="Permanent link">¶</a></h2>
@@ -12542,10 +12517,11 @@ confidence about positions the quality mask rejected.</p>
 <h3 id="reference-allele-classification-the-exact-carrier-rule">The exact-carrier rule<a class="headerlink" href="#reference-allele-classification-the-exact-carrier-rule" title="Permanent link">¶</a></h3>
 <p>A read is REF or ALT for a complex variant only when <strong>its own bases carry that allele across the whole event</strong>. Nothing is inferred: gbcms counts the allele it is given.</p>
 <ul>
-<li><strong>The window</strong> is the event plus two reference bases of flank on each side.</li>
+<li><strong>The windows.</strong> Each allele's window is its event plus two reference bases of flank on each side.</li>
 <li>The event is every base where REF and ALT can differ over all equivalent placements: the union of the minimal difference trimmed from the left first and from the right first, grown through any tandem repeat touching either end on either allele (unit 1–6 bases, or the length change). An aligner may place an indel anywhere in such a repeat, including a run the ALT's own bases continue: for <code>TA&gt;ACC</code> after <code>AAA</code>, the inserted A can sit anywhere in the run. So a delins in or beside a repeat is judged over its whole ambiguity.</li>
-<li>The shorter allele's window is padded with reference flank until both are the same length. That way neither allele is favoured by where reads start.</li>
+<li><strong>One pair of equal-length windows at one flank</strong> (RJ-23, since 6.7.0). Both alleles are read inward from the same flank: the shorter allele's whole window, and as many of the longer allele's bases. A read holding them is read on through the rest of the longer allele's window as far as it reaches, and a later base that contradicts an allele rules that allele out (one A more than the ALT's run is not the ALT). Windows of equal length at one flank give a REF and an ALT molecule the same number of read starts that can judge them, so neither allele is favoured by where reads start. The flank is the POS (left) flank; an RNA variant whose left flank an exon edge cuts reads from the right, and a read judged there counts although it starts past POS (inside the longer allele), as the other allele's molecule starting at the same place would: otherwise the POS gate would drop only the longer allele's reads. Before 6.7.0 the shorter window was padded with flank to the longer one's length, which cost reads (a third of them on long delins), and long events were read at both junctions, which let the longer allele count at either end. The windows run on past the event through any bases the shorter allele's flank shares with the longer allele's next bases, and on through two bases from where they first differ, as a long deletion's run through its microhomology: a read carrying only a substitution of the event's bases then shows the longer allele's bases where the shorter allele's differ, and is neither allele.</li>
 <li><strong>The window is read where it sits.</strong> It is read from the read position aligned to the window's first reference base, and back from the one aligned to its last; the closer reading counts. The flank bases are outside the event, so they align the same way on either allele. Inside the event the read's bases are taken as one stretch, so where the aligner put an indel or a soft clip does not matter, and an indel it placed past one flank leaves the other in place. A copy of the window elsewhere in the read is never a match.</li>
+<li><strong>Placed from the other flank.</strong> A read whose reading flank lies in its soft clip, under its own deletion, or aligned at the event's other copy (an aligner placing a carrier by its far part, its flank over the event's last bases as mismatches) is placed from the other flank as the allele its bases favour would sit there. Each allele's window is placed from that flank at its own length, and the read's confident bases (at or above <code>--min-baseq</code>, not N) must mismatch one allele by at least one base read at <code>--min-baseq</code> more than the other; bases below it weigh nothing, so a REF molecule behind a poor clip, whose clip happens to fit the ALT, shows no placement and is depth only. The read counts for that allele where it fits; otherwise it carries another allele (<code>partial_alt</code> when the favoured allele is the ALT). One placed through aligned bases counts only where its allele fits, and counts although it starts past POS, as the other allele's molecule starting there would.</li>
 <li><strong>Masked bases.</strong> Bases below <code>--min-baseq</code> (and N) match anything. This is the only tolerance, and it is the same quality rule every backend applies. <code>n_count</code> counts a read only when an N sits among the compared bases.</li>
 <li><strong>Outcome.</strong> A read decides only when it holds both the REF and the ALT window.</li>
 </ul>
@@ -12578,18 +12554,19 @@ confidence about positions the quality mask rejected.</p>
 <td style="text-align: left;">neither</td>
 </tr>
 <tr>
-<td style="text-align: left;">cannot hold both windows (it ends in or next to the event)</td>
+<td style="text-align: left;">cannot hold the pair (it ends before the shorter allele's window's length)</td>
 <td style="text-align: left;">depth only: no allele, no <code>partial_alt</code>, no <abbr title="Mutant Fragment Size Distribution - Insert-size analysis for REF vs ALT fragments">mFSD</abbr> class</td>
 </tr>
 </tbody>
 </table>
-<p>A read one confident base off the given ALT carries a different allele. A read that ends inside the event cannot show either, like a pure-indel read ending inside its tract.
-- <strong>Long events.</strong> When the windows exceed 50 bases, no read can hold them whole. Both alleles are then judged by equal-length junction windows at each end, read inward from the flank: through one base past the first base where the alleles differ, and through the shorter allele when it fits in 50 bases, so a short ALT is read base by base. The left junction reads it from the left flank; the right one from just before its first difference, so repeat growth on the left does not favour the longer allele's reads. A read must match the same allele at every junction it holds; a mismatch at one rules it out.
+<p>A read one confident base off the given ALT carries a different allele. A read that ends before holding the pair cannot show either, like a pure-indel read ending inside its tract; a read that holds it and ends inside the longer allele is judged by the bases it has.
+- <strong>Long events.</strong> When both alleles' windows exceed 50 bases, no read can hold the shorter one whole. The pair then ends one base past the first base where the alleles differ, read from the flank nearer it (an event ending a long run is out of a read's reach from the other), and is read on as above. Read from the right flank, a read the rule decides counts although it starts past POS, as for an RNA exon edge below.
+- <strong>A change beside the event.</strong> A change that recurs within 25 bases of the event, at a fixed distance, on the fragments carrying either allele's core (at least 3 fragments, overlapping mates once, and 20% of those reading the base) is a separate event, as another indel outside the window is (RJ-8), masked in both windows so a read carrying the given allele counts whatever it shows there: a change the REF fragments carry too (a germline <abbr title="Single Nucleotide Polymorphism - Single base substitution">SNP</abbr> or <abbr title="Multi-Nucleotide Polymorphism - Multiple adjacent base substitutions">MNP</abbr>, background on both haplotypes, a run included; on 3 or more REF fragments, as one REF read's error is no background), and an isolated change of the ALT fragments' own (no own change at either neighbouring base, the base past the window included). A run of changes on the ALT fragments alone is an indel or <abbr title="Multi-Nucleotide Polymorphism - Multiple adjacent base substitutions">MNP</abbr> beside the event: another allele, not masked. The isolated changes on the ALT fragments alone (under 5% of the REF fragments) make their haplotype larger than the given allele (beside a run none is named: the per-base tallies cannot spell an indel; the observed allele names what the reads' alignments carry), a phased neighbour or an event the input under-describes; the counts stay the given allele's, and <code>gbcms_diagnostic</code> names the larger allele under the rule every observed allele follows (<code>OBSERVED_ALLELE</code> or <code>COEXISTING_ALLELE</code>: more carriers than the given allele, 5% of the reads read, not already an input row).
 - <strong><abbr title="Multi-Nucleotide Polymorphism - Multiple adjacent base substitutions">MNP</abbr> reads with an indel.</strong> An <abbr title="Multi-Nucleotide Polymorphism - Multiple adjacent base substitutions">MNP</abbr> read with an insertion or deletion in the block or right beside it, or a clip in it, is judged by this rule; an aligner may write a block shifted by one base as an insertion before it and a deletion after. Its ALT calls with every window base read count toward <code>mnp_confirmed_alt</code>. Other <abbr title="Multi-Nucleotide Polymorphism - Multiple adjacent base substitutions">MNP</abbr> reads, including those with an indel further off (a germline one nearby), are compared base by base.
 - <strong>Carriers in soft-clipped bases (DNA).</strong> A read the rule decides from its own bases, with a window that reads its soft-clipped bases, counts even when its aligned span stops short of the variant position, provided every base read lies inside a well-defined fragment (past the fragment end a clip is adapter). Undecided clipped reads stay out of depth. See <a href="#reference-counting-metrics">counting metrics</a>.
-- <strong>Spliced reads (RNA).</strong> A read spliced in a window's flank or padding is judged on windows built over the reference spliced at its own junctions (the far exon read from the <abbr title="FASTA format - Reference genome sequence file">FASTA</abbr>): its next bases come from the next exon, so both alleles continue there, and growth and flank are measured on the spliced sequence. A junction starting inside the bases where the alleles differ and running past them (or ending inside them) splices the haplotypes at the event's edge; any other splice through those bases leaves the read depth only. An RNA read's soft clip that reaches an exon edge or junction end is not read (it may hold the next exon's bases); other clips are.
+- <strong>Spliced reads (RNA).</strong> A read spliced in a window's flank is judged on windows built over the reference spliced at its own junctions (the far exon read from the <abbr title="FASTA format - Reference genome sequence file">FASTA</abbr>): its next bases come from the next exon, so both alleles continue there, and growth and flank are measured on the spliced sequence. A junction starting inside the bases where the alleles differ and running past them (or ending inside them) splices the haplotypes at the event's edge; any other splice through those bases leaves the read depth only. An RNA read's soft clip that reaches an exon edge or junction end is not read (it may hold the next exon's bases); other clips are.
 - <strong>Same on both backends.</strong> The rule uses no alignment scoring, so <code>pairhmm</code> and <code>sw</code> give identical counts for complex variants.
-- <strong>When the rule cannot run.</strong> <code>prepare_variants</code> fetches reference until it holds the event, grown through any repeat, with its flank and padding (up to 16,384 bases each side, clamped at a contig end: the window holds the bases that exist). A variant without that reference (one built without <code>prepare_variants</code>, or an event whose two flank bases would pass a contig end) keeps the previous classifier below. Every variant of a normal run is prepared. A record stored without its bases (SEQ <code>*</code>) is not read.</p>
+- <strong>When the rule cannot run.</strong> <code>prepare_variants</code> fetches reference until it holds the event, grown through any repeat, with its flank and the neighbouring-change reach of 25 bases (up to 16,384 bases each side, clamped at a contig end: the window holds the bases that exist). A variant without that reference (one built without <code>prepare_variants</code>, or an event whose two flank bases would pass a contig end) keeps the previous classifier below. Every variant of a normal run is prepared. A record stored without its bases (SEQ <code>*</code>) is not read.</p>
 <div class="admonition info">
 <p class="admonition-title">Why not a tolerant score</p>
 <p>Local alignment, likelihoods and an edit-distance margin all credit near-matches to the given allele. On real complex variants, those scores credited reads carrying other alleles, and reads that end inside the event. VarDict's rescue and Mutect2's <code>--alleles</code> mode do the same. gbcms reports the given allele's exact support and names a different allele the reads carry in <code>gbcms_diagnostic</code> (<code>OBSERVED_ALLELE</code> / <code>COEXISTING_ALLELE</code>).</p>
@@ -13380,7 +13357,7 @@ it shows in review instead of slipping in with an unrelated fix.</p>
 </tr>
 <tr>
 <td style="text-align: left;">RJ-19</td>
-<td style="text-align: left;">A spliced read is judged against the haplotypes spliced at its own junctions: the exact-carrier windows (event, growth, flank, padding) are built over the reference spliced where the read splices, the far exon's bases read from the reference, so bases a length change pushes past the junction show against the next exon, and the read must hold the spliced flank as any read holds its flank. Every junction the windows reach is followed (a short exon between two is read through). A junction starting inside the bases where the alleles differ and running past them (or ending inside them) splices the haplotypes at the event's edge, so the bases decide however the aligner wrote the gap; such a read is also REF spliced where it splices (an alternative donor or acceptor, or a splice site the event straddles), so it counts ALT only when its bases favour ALT over that reading too, by one <code>--min-baseq</code> base's evidence, and is otherwise depth only. Any other splice through those bases leaves the read depth only.</td>
+<td style="text-align: left;">A spliced read is judged against the haplotypes spliced at its own junctions: the exact-carrier windows (event, growth, flank) are built over the reference spliced where the read splices, the far exon's bases read from the reference, so bases a length change pushes past the junction show against the next exon, and the read must hold the spliced flank as any read holds its flank. Every junction the windows reach is followed (a short exon between two is read through). A junction starting inside the bases where the alleles differ and running past them (or ending inside them) splices the haplotypes at the event's edge, so the bases decide however the aligner wrote the gap; such a read is also REF spliced where it splices (an alternative donor or acceptor, or a splice site the event straddles), so it counts ALT only when its bases favour ALT over that reading too, by one <code>--min-baseq</code> base's evidence, and is otherwise depth only. Any other splice through those bases leaves the read depth only.</td>
 <td style="text-align: left;">C32 #213, operator 2026-10-04</td>
 </tr>
 <tr>
@@ -13397,6 +13374,11 @@ it shows in review instead of slipping in with an unrelated fix.</p>
 <td style="text-align: left;">RJ-22</td>
 <td style="text-align: left;">A readable insert of the variant's length is never a separate event while one of its fewest-mismatch placements sits inside the discrimination window, every junction it can reach scored by the read's readable mismatches there (through the read's contiguous aligned bases, up to 64 junctions each way), not only the junctions a slide reaches base by base: readable mismatches beside the insert (the anchor read as another base, say) block that slide, but are resolved once the insert passes the base that does not fit, so a placement inside the window can be as good as the written one. Such a read carries another allele (neither, with partial evidence), never REF; and never ALT, though that placement may show the ALT's bases, since a per-read rule cannot tell one molecule's error from a recurring other allele. The strict path keeps its junction ALT when a slide could absorb a flank substitution into another insert: the read is the given ALT plus one substitution, as a REF read with a substitution in the window stays REF. An insert with no readable base is unchanged (RJ-20), and the same haplotype written inside a run still slides to the junction as RJ-21 judges it (not seen in the measured data). Amends RJ-8 and RJ-21. The census trusts the aligned flank, so it reads such a carrier as REF; and it needs the window to be one allele exactly, so it reads a junction ALT with a substitution in the window as neither (its first limit).</td>
 <td style="text-align: left;">C37 #245, operator 2026-10-07</td>
+</tr>
+<tr>
+<td style="text-align: left;">RJ-23</td>
+<td style="text-align: left;">Every complex event is read by one pair of equal-length junction windows at one flank, the same for both alleles: the shorter allele's whole window (its event, grown through repeats, with two flank bases each side) against as many of the longer allele's bases, read inward from that flank, then on through the rest of the longer allele as far as the read reaches (RJ-9). Windows of equal length at one anchor give a REF and an ALT molecule the same number of read starts that can judge them, so the <abbr title="Variant Allele Frequency - Fraction of reads supporting the variant allele">VAF</abbr> is unbiased without padding the shorter window (which cost a third of the reads); reading junctions from either flank instead would let the longer allele count at both ends. Past 50 bases nothing changes in practice: only reads over the variant's first base (or admitted by a clip) are counted, so the far junction never decided a call. The flank is the POS flank; an RNA variant whose POS flank is cut by an exon edge reads from the other one, and when both alleles pass 50 bases the windows run from the flank nearer the first difference (an event ending a long run is out of reach from the other); a read judged from the right counts though it starts past POS, as the other allele's molecule starting there would. A change that recurs at a fixed distance beside the event is a separate event, as another indel outside the window is (RJ-8): it is masked in both windows, so a read carrying the given allele counts ALT; one on the ALT reads alone (a haplotype larger than the given allele: a phased neighbour, or an event the input under-describes) is named in <code>gbcms_diagnostic</code>, never withheld. Amended 2026-10-12: the windows run past the event through any bases the shorter allele's flank shares with the longer allele's next bases, and on through two bases from where they first differ (as a long deletion's run through its microhomology), so a read carrying only a substitution of the event's bases is neither allele; a read whose flank is clipped, under its own deletion, or aligned at the event's other copy (as mismatches over the event's far bases) is placed from the other flank as the allele its bases favour: with each allele's window placed from that flank at its own length, its confident bases (at or above the minimum quality, not N) must mismatch one allele by at least one base read at the minimum quality more than the other, so a REF molecule behind a poor clip shows no placement; it counts where that allele fits, else carries another allele (partial evidence when the ALT's), and one placed through aligned bases counts only where its allele fits, though it starts past POS. A recurring change the REF fragments carry too (a germline <abbr title="Single Nucleotide Polymorphism - Single base substitution">SNP</abbr> or <abbr title="Multi-Nucleotide Polymorphism - Multiple adjacent base substitutions">MNP</abbr>, on 3 or more of them: one REF read's error is no background) is background, masked run or not; on the ALT fragments alone an isolated change is masked and named in the larger allele, and a run of changes (the base past the window included) is another allele, beside which no larger allele is named (the tallies cannot spell it: an <abbr title="Multi-Nucleotide Polymorphism - Multiple adjacent base substitutions">MNP</abbr>, or an indel shifting the bases past it; the observed allele names it from the reads' alignments). Amends RJ-4, RJ-9 and RJ-19 (no padding).</td>
+<td style="text-align: left;">C39 #253, operator 2026-10-08, 2026-10-09, 2026-10-12</td>
 </tr>
 </tbody>
 </table>
@@ -13538,6 +13520,63 @@ spanning-deletion allele or another candidate where one exists, is its own
 haplotype in freebayes, a separate allele in VarDict and depth only in
 GetBaseCounts; a closer-haplotype credit, as Phase 3 gave, appears only in the
 likelihood tools without such a bucket.</p>
+<p>Evidence behind RJ-23 (2026-10-08), measured for the 6.7.0 plan on the 6.6.0 gate
+panel's 137 delins rows (IMPACT, every read judged by its own bases beside the engine's
+call) and on 400 HG002 germline het delins (GIAB v5.0q, truth <abbr title="Variant Allele Frequency - Fraction of reads supporting the variant allele">VAF</abbr> 0.5; WGS 35x, bwa-mem,
+no realignment):
+- The padded windows cost reads, not bias: on long delins (span 20+) one-sided windows
+  judge about 46% more ALT and 41% more REF reads at the same <abbr title="Variant Allele Frequency - Fraction of reads supporting the variant allele">VAF</abbr>, and the gate's
+  sign-out agreement there goes 0/14 → 9/14. On HG002 (span 20+) one-sided windows read
+  0.470–0.481 (6.6.0 0.464) with 25% more ALT reads.
+- The alternatives are biased as read-start counts predict: whole alleles without
+  padding favour the shorter allele (panel <abbr title="Variant Allele Frequency - Fraction of reads supporting the variant allele">VAF</abbr> ×1.22); junctions read from either
+  flank favour the longer one (×0.87). On the four long delins (windows past 50
+  bases) the written counts match the one-sided reading (REF 1,356 against 1,351):
+  the reads that hold only the far junction are classified but never counted.
+- Recurrent neighbours: in 47 of the 137 rows the ALT reads share a confident change
+  3–25 bases from the event that REF reads lack: the reads carry a larger allele.
+  Withholding those reads (as first decided) was measured and reversed on
+  2026-10-09: on HG002 it fired at 5 of 400 het delins, each larger allele ending on
+  a phased truth SNV in cis, and took their <abbr title="Variant Allele Frequency - Fraction of reads supporting the variant allele">VAF</abbr> from 0.42 (5/5 within 0.35–0.65) to
+  0.09 (0/5); on the panel it cut <abbr title="Alternate Depth - Reads supporting the alternate allele">AD</abbr> at the 49 rows with a recurrent neighbour by 54%
+  (sign-out agreement 25 → 13 of 49). A germline neighbour in cis sits on every ALT read and no REF read, so
+  reads cannot tell it from an under-described event; the counts stay the given
+  allele's and the diagnostic names the larger one.
+- Reading from the right needs the POS gate lifted for the reads it judges: a REF
+  read starting inside the REF event holds the right windows as the ALT read
+  starting at the same place does, but only the ALT read was admitted (by its clip),
+  so long shapes read <abbr title="Alternate Depth - Reads supporting the alternate allele">AD</abbr> 94–97 against <abbr title="Reference Depth - Reads supporting the reference allele">RD</abbr> 29–51 from equal molecules.</p>
+<p>The 2026-10-12 amendments, measured on every arm (the gate panel, matched normals of
+every panel tumour, ACCESS duplex and simplex with their normals, TEMPO WES, HG002) and
+on synthetic shapes:
+- A one-base shorter allele whose flank repeats the longer allele's next bases left
+  a window that ended before the alleles differ: in one matched normal a germline
+  substitution at a delins's first base counted 235 ALT reads (6.6.0, padded: 0). Of
+  the 2,399 reads the windows turned ALT on the panel against 6.6.0, 1,134 fit the ALT
+  throughout and 385 were REF with one substitution, 329 of them at that one row.
+- Placement from the other flank needs the flank shown: a REF molecule starting
+  inside the event behind a low-quality or N clip fitted ALT through its masked
+  flank. Carriers an aligner writes at the event's other copy (no clip) were left
+  depth only while REF molecules from the same starts were judged; every surveyed
+  genotyper re-scores a read's bases whatever its <abbr title="Compact Idiosyncratic Gapped Alignment Report - BAM alignment operation string">CIGAR</abbr> (Delly, Manta, Paragraph,
+  GraphTyper2, GATK, Strelka2, bcftools, ABRA2).
+- The placement is judged on confident bases, each allele placed from the same
+  anchor at its own length. A first gate weighed the read's bases against its own
+  alignment, at every quality: synthetic REF molecules behind a Q12 clip (a NovaSeq
+  quality bin), aligned plainly from inside the event, counted ALT (51 of 200), and
+  carriers of a long event read from the right lost the ALT when clipped at the
+  window's last base (the gate scored the bases past the window).
+- A run of changes beside the event on the ALT fragments alone is another allele
+  (count the given allele); an isolated recurring change stays a separate event,
+  masked and named, as decided on 2026-10-09. A run the REF fragments carry too is
+  background, as a germline <abbr title="Single Nucleotide Polymorphism - Single base substitution">SNP</abbr> is: treated as another allele, a germline <abbr title="Multi-Nucleotide Polymorphism - Multiple adjacent base substitutions">MNP</abbr> in the
+  flank left both alleles uncountable (synthetic: <abbr title="Reference Depth - Reads supporting the reference allele">RD</abbr> 6, <abbr title="Alternate Depth - Reads supporting the alternate allele">AD</abbr> 6 to 0, 0). Beside a run
+  the guard names no larger allele: named from the isolated changes alone, it left
+  out the run every ALT read carries.
+- No surveyed tool pads windows. GATK, Strelka2 (five bases each side of one
+  breakpoint) and Octopus count a read once its discriminating bases are read;
+  Paragraph genotypes each breakpoint apart; GangSTR, ExpansionHunter and
+  Varlociraptor model spanning bias instead of equalising windows.</p>
 <p>Evidence behind RJ-22 (2026-10-07): every read call at insertion rows traced on
 develop, each read judged by its local haplotype, on RC (ABRA2-realigned), FORTE
 (<abbr title="Spliced Transcripts Alignment to a Reference - RNA-seq aligner">STAR</abbr>) and the WES loci (<abbr title="Burrows-Wheeler Aligner - Standard short-read DNA aligner (mem/aln)">BWA</abbr> only, the control with no realigner).
@@ -13609,6 +13648,11 @@ and at anchor-changing events before an A run.</p>
 <td style="text-align: left;">Complex, long events</td>
 <td style="text-align: left;">the same read haplotypes before a 60-A run</td>
 <td style="text-align: left;">decided (RJ-9)</td>
+</tr>
+<tr>
+<td style="text-align: left;">Complex, one-sided windows</td>
+<td style="text-align: left;">a 28-to-6 delins: exact carriers and REF reads with a few flank bases on one side (eight on the right, where the event grows through a repeat; four on the left); a 60-to-2 delins: REF reads starting inside the event, exact carriers; carriers ending before a change that recurs on ALT reads only; carriers with a recurring change on the window's last base, and with a run of changes from it on; a REF read starting inside the event behind a low-quality clip; a carrier written at the event's other copy as plain matches; a 17-to-1 delins whose ALT flank repeats the deleted bases' next two: exact carriers, REF reads, and a REF read with the event's first base substituted</td>
+<td style="text-align: left;">decided (RJ-23)</td>
 </tr>
 <tr>
 <td style="text-align: left;">The ALT across ops</td>
@@ -13754,7 +13798,7 @@ Use mouse to pan and zoom
 </div>
 <div class="admonition info">
 <p class="admonition-title">Carriers in soft-clipped bases (complex variants, DNA)</p>
-<p>Aligners soft-clip an ALT read whose allele sits near its end, while the REF reads beside it align in full; counting only aligned overlap would drop those carriers and read <abbr title="Variant Allele Frequency - Fraction of reads supporting the variant allele">VAF</abbr> low. For variants the <a href="#reference-allele-classification-the-exact-carrier-rule">exact-carrier rule</a> judges (delins, Del+SNV, and <abbr title="Multi-Nucleotide Polymorphism - Multiple adjacent base substitutions">MNP</abbr> reads with an indel or a clip at the block), a read whose aligned span stops short of POS is counted — in <abbr title="Total Depth - All mapped reads overlapping the variant position">DP</abbr>, REF/ALT and fragments — when the rule <strong>decides</strong> it from its own bases with an aligned window anchor, and a window it was decided on reads its soft-clipped bases. An unclipped read that misses POS (one starting inside a long deletion) stays out: no ALT read can start there. Every base read must lie inside a well-defined fragment (paired, mate mapped on the same contig in the opposite orientation, TLEN set): past the fragment end a clip is adapter. A clipped read the rule cannot decide stays out, so <abbr title="Total Depth - All mapped reads overlapping the variant position">DP</abbr> gains only informative reads. DNA only: an RNA read's clip may hold the next exon's bases. Admitted reads appear in the <code>--trace</code> log (<code>admitted ... by its soft-clipped bases</code>) and as a per-variant debug count.</p>
+<p>Aligners soft-clip an ALT read whose allele sits near its end, while the REF reads beside it align in full; counting only aligned overlap would drop those carriers and read <abbr title="Variant Allele Frequency - Fraction of reads supporting the variant allele">VAF</abbr> low. For variants the <a href="#reference-allele-classification-the-exact-carrier-rule">exact-carrier rule</a> judges (delins, Del+SNV, and <abbr title="Multi-Nucleotide Polymorphism - Multiple adjacent base substitutions">MNP</abbr> reads with an indel or a clip at the block), a read whose aligned span stops short of POS is counted — in <abbr title="Total Depth - All mapped reads overlapping the variant position">DP</abbr>, REF/ALT and fragments — when the rule <strong>decides</strong> it from its own bases with an aligned window anchor, and a window it was decided on reads its soft-clipped bases. An unclipped read that misses POS (one starting inside a long deletion) stays out: no ALT read can start there. Every base read must lie inside a well-defined fragment (paired, mate mapped on the same contig in the opposite orientation, TLEN set): past the fragment end a clip is adapter. A clipped read the rule cannot decide stays out, so <abbr title="Total Depth - All mapped reads overlapping the variant position">DP</abbr> gains only informative reads. DNA only: an RNA read's clip may hold the next exon's bases. Where an RNA exon edge cuts the variant's left flank, the windows are read from the right one, and a read the rule decides there counts in either mode, in the main and the per-transcript counts alike, although it starts past POS: a REF and an ALT molecule hold those windows from the same starts. Admitted reads appear in the <code>--trace</code> log (<code>admitted ... by its soft-clipped bases</code>, or <code>by windows read from the right flank</code>) and as a per-variant debug count.</p>
 </div>
 <div class="admonition info">
 <p class="admonition-title">Splice-Skip Exclusion (RNA)</p>
@@ -15540,8 +15584,8 @@ are safe; simply do not turn it on for such data.</p>
 <p class="admonition-title">Cases 1 and 2 are now judged by the exact-carrier rule</p>
 <p>Del+SNV and delins variants no longer go through <code>check_complex</code>'s haplotype scoring or its
 M-block REF fallback. A read is REF or ALT only when its own bases carry that allele across
-the whole event, read at the event's own position; a large delins is judged at its two
-junctions. See <a href="#reference-allele-classification-the-exact-carrier-rule">the exact-carrier rule</a>.
+the whole event, read at the event's own position; a large delins is judged by one pair of
+equal-length windows read from its POS flank. See <a href="#reference-allele-classification-the-exact-carrier-rule">the exact-carrier rule</a>.
 The case studies below record why the routing exists and what the earlier fixes found.</p>
 </div>
 <hr>
@@ -16033,9 +16077,9 @@ caveat in gbcms's output.</p>
 </tr>
 <tr>
 <td style="text-align: left;">Reads ending inside the event; low depth</td>
-<td style="text-align: left;">Depth only</td>
+<td style="text-align: left;">Depth only until a read holds the shorter allele's window</td>
 <td style="text-align: left;">Decided (done)</td>
-<td style="text-align: left;">—</td>
+<td style="text-align: left;">C39 #253</td>
 </tr>
 <tr>
 <td style="text-align: left;">Purity, clonality, contamination, CH</td>
@@ -16259,9 +16303,11 @@ caveat in gbcms's output.</p>
   opposite-strand overlaps) are not gated yet (R4 #185).</p>
 <h2 id="reference-bam-evidence-caveats-5-not-the-bam-but-easy-to-misread-from-counts">5. Not the <abbr title="Binary Alignment Map - Compressed sequence alignment file format">BAM</abbr>, but easy to misread from counts<a class="headerlink" href="#reference-bam-evidence-caveats-5-not-the-bam-but-easy-to-misread-from-counts" title="Permanent link">¶</a></h2>
 <ul>
-<li><strong>Reads ending inside the event, and low depth:</strong> such reads count toward depth
-  only, since they cannot show either allele. At low depth, informative reads are
-  few, so compare <code>alt_count + ref_count</code> with depth.</li>
+<li><strong>Reads ending inside the event, and low depth:</strong> a read that ends before
+  holding the shorter allele's window (its event with two flank bases) counts
+  toward depth only, since it cannot show either allele; one that holds it and
+  ends inside the longer allele is judged by the bases it has (RJ-23). At low
+  depth, informative reads are few, so compare <code>alt_count + ref_count</code> with depth.</li>
 <li><strong>Purity, clonality, contamination, clonal haematopoiesis, germline vs
   somatic:</strong> counts are evidence, not calls. A matched normal and, for <abbr title="Cell-free DNA - Circulating DNA fragments in blood plasma">cfDNA</abbr>,
   <a href="#reference-mfsd-report"><abbr title="Mutant Fragment Size Distribution - Insert-size analysis for REF vs ALT fragments">mFSD</abbr></a> help interpret them.</li>
@@ -18318,6 +18364,131 @@ count-affecting merge since the previous release, run on the changed rows only.<
 <p>The format is based on <a href="https://keepachangelog.com/en/1.0.0/">Keep a Changelog</a>,
 and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semantic Versioning</a>.</p>
 <h2 id="development-changelog-unreleased">[Unreleased]<a class="headerlink" href="#development-changelog-unreleased" title="Permanent link">¶</a></h2>
+<h3 id="development-changelog-changed-complex-events-read-by-one-pair-of-equal-length-windows-253">Changed — complex events read by one pair of equal-length windows (#253)<a class="headerlink" href="#development-changelog-changed-complex-events-read-by-one-pair-of-equal-length-windows-253" title="Permanent link">¶</a></h3>
+<ul>
+<li><strong>The rule (RJ-23).</strong> A complex event (delins, an anchor-changing indel, an <abbr title="Multi-Nucleotide Polymorphism - Multiple adjacent base substitutions">MNP</abbr>
+  read with an indel at the block) is read by one pair of windows of equal length,
+  inward from the POS flank: the shorter allele's whole window (its event, grown
+  through repeats, with two flank bases each side) against as many of the longer
+  allele's bases, then on through the rest of the longer allele as far as the read
+  reaches. A REF and an ALT molecule get the same number of read starts that can
+  judge them. Before, the shorter window was padded with flank to the longer one's
+  length, which cost reads, and events past 50 bases were read at both junctions,
+  which let the longer allele count at either end. When both alleles pass 50 bases
+  the windows run from the flank nearer the first difference (an event ending a
+  long run is out of a read's reach from the other); an RNA variant whose POS flank
+  an exon edge cuts reads from the other flank. A read judged from the right counts
+  although it starts past POS, as the other allele's molecule starting there would.</li>
+<li><strong>A change beside the event is a separate event.</strong> A change recurring within 25
+  bases of the event (overlapping mates count once) is masked in both windows, as
+  RJ-8 treats another indel outside the window, so a read carrying the given
+  allele counts ALT. One on the ALT reads alone (a phased neighbour, or an event
+  the input under-describes) is named in <code>gbcms_diagnostic</code> under the
+  <code>OBSERVED_ALLELE</code>/<code>COEXISTING_ALLELE</code> rule. Withholding those reads was measured
+  and not adopted: on HG002 it took 5 het delins with a phased SNV in cis from <abbr title="Variant Allele Frequency - Fraction of reads supporting the variant allele">VAF</abbr>
+  0.42 to 0.09.</li>
+<li><strong>Placement.</strong> Windows anchor on the aligned base of the reading flank. A read
+  whose clip or own deletion holds that flank (an aligner using a microhomology at
+  the event's far end), or whose aligner wrote it over the event's other copy, is
+  placed from the other flank as the allele its confident bases favour: each
+  allele's window placed from the same aligned anchor at its own length, its bases
+  at or above <code>--min-baseq</code> (not N) must favour one by at least one such base. A
+  REF molecule behind a poor clip (a NovaSeq Q12 bin) shows no placement, where it
+  could fit the ALT through its masked bases; a placement whose allele does not fit
+  is another allele (partial when the ALT's).</li>
+<li><strong>Windows run past bases the alleles share.</strong> When the shorter allele's flank
+  repeats the longer allele's next bases, both windows run through them to two
+  bases from where the alleles differ: a REF read carrying only a substitution of
+  the event's first base is neither allele. Unpadded windows that stopped before
+  the alleles differ credited such reads: 235 ALT at a 17-to-1 delins in one
+  matched normal (6.6.0, padded: 0).</li>
+<li><strong>Germline changes beside the event are background.</strong> A change recurring on the
+  REF fragments too (on 3 or more of them), a run included (a germline <abbr title="Multi-Nucleotide Polymorphism - Multiple adjacent base substitutions">MNP</abbr>), is
+  masked like a germline <abbr title="Single Nucleotide Polymorphism - Single base substitution">SNP</abbr>; a run on the ALT fragments alone is another allele,
+  and no larger allele is named beside it (per-base tallies cannot spell an
+  indel; the observed allele names it from the reads' alignments).</li>
+<li><strong>Measured</strong> against 6.6.0 on every data type: the 6.6.0 gate panel's delins
+  rows (IMPACT, ABRA2-realigned) and their matched normals, ACCESS duplex and
+  simplex with their normals, TEMPO WES (<abbr title="Burrows-Wheeler Aligner - Standard short-read DNA aligner (mem/aln)">BWA</abbr> only), and HG002 germline het delins
+  (GIAB v5.0q, truth 0.5; WGS 35x, <abbr title="Burrows-Wheeler Aligner - Standard short-read DNA aligner (mem/aln)">BWA</abbr>-MEM):</li>
+</ul>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;"></th>
+<th style="text-align: left;">6.6.0</th>
+<th style="text-align: left;">6.7.0</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;">Panel, all delins (161 rows): within 10% of sign-out</td>
+<td style="text-align: left;">88/135</td>
+<td style="text-align: left;">100/136</td>
+</tr>
+<tr>
+<td style="text-align: left;">Panel, span 20+ (14 rows): <abbr title="Alternate Depth - Reads supporting the alternate allele">AD</abbr> / <abbr title="Reference Depth - Reads supporting the reference allele">RD</abbr>; within 10% of sign-out</td>
+<td style="text-align: left;">1,203 / 4,117; 0/14</td>
+<td style="text-align: left;">1,648 / 5,433; 8/14</td>
+</tr>
+<tr>
+<td style="text-align: left;">Panel, span under 20 (70 rows)</td>
+<td style="text-align: left;">9,557 / 24,053; 52/70</td>
+<td style="text-align: left;">9,827 / 25,124; 60/70</td>
+</tr>
+<tr>
+<td style="text-align: left;">Panel, recurrent neighbour (49 rows)</td>
+<td style="text-align: left;">2,398 / 14,609; 19/49</td>
+<td style="text-align: left;">3,624 / 15,590; 27/49</td>
+</tr>
+<tr>
+<td style="text-align: left;">ACCESS duplex / simplex (8 rows each): within 10% of sign-out</td>
+<td style="text-align: left;">4/6; 4/6</td>
+<td style="text-align: left;">4/6; 4/6</td>
+</tr>
+<tr>
+<td style="text-align: left;">TEMPO WES (54 rows): within 10% of sign-out</td>
+<td style="text-align: left;">12/50</td>
+<td style="text-align: left;">16/52</td>
+</tr>
+<tr>
+<td style="text-align: left;">HG002, span 20+: median <abbr title="Variant Allele Frequency - Fraction of reads supporting the variant allele">VAF</abbr>; within 0.35–0.65</td>
+<td style="text-align: left;">0.464; 166/237</td>
+<td style="text-align: left;">0.477; 180/236</td>
+</tr>
+<tr>
+<td style="text-align: left;">HG002, span 5–19</td>
+<td style="text-align: left;">0.500; 124/149</td>
+<td style="text-align: left;">0.500; 122/149</td>
+</tr>
+<tr>
+<td style="text-align: left;">Matched normals, somatic delins rows (IMPACT 105, ACCESS 14): rows with ALT</td>
+<td style="text-align: left;">6; 0</td>
+<td style="text-align: left;">8; 0</td>
+</tr>
+</tbody>
+</table>
+<p>The two normal rows gaining ALT gain one soft-clipped read each whose bases fit
+  the ALT through the window padding had cut: one of 641 judged reads, and one of
+  5 at a row whose other reads carry a germline substitution of the event's first
+  base (neither allele). Pure indels and SNVs are unchanged (195 germline het
+  indels: 2 count changes; 139 on WES: 2).
+- <strong>Spec.</strong> Reads ending inside a long insertion that hold the REF window's length
+  are judged (ALT where their bases contradict REF), a carrier ending on the base
+  after its run is ALT, and a read one base from each allele is neither, not
+  partial. <code>tests/test_carrier_window_balance.py</code> checks that equal molecules give
+  <abbr title="Alternate Depth - Reads supporting the alternate allele">AD</abbr> = <abbr title="Reference Depth - Reads supporting the reference allele">RD</abbr> for shrinking, growing, long, both-long and run-ending shapes, in DNA and
+  in RNA read from the right.</p>
+<h3 id="development-changelog-removed">Removed<a class="headerlink" href="#development-changelog-removed" title="Permanent link">¶</a></h3>
+<ul>
+<li><strong><code>gbcms build-gtf-cache</code>, <code>gbcms rna --gtf-cache-dir</code> and the Nextflow <code>--gtf_cache</code>
+  (#269).</strong> They were deprecated in 6.6.0, when they did nothing and warned; the GTF
+  loads in a few seconds without a cache.</li>
+<li>The command and the option are now usage errors.</li>
+<li>The Nextflow parameter is gone, and the pipeline no longer warns about it.</li>
+<li>Pipelines that still call <code>build-gtf-cache</code> must drop that step before moving to
+    6.7.0.</li>
+</ul>
 <h3 id="development-changelog-fixed-release-tooling">Fixed — release tooling<a class="headerlink" href="#development-changelog-fixed-release-tooling" title="Permanent link">¶</a></h3>
 <ul>
 <li><strong>Attribution leaves out runs whose latest attempt failed (#255).</strong> <code>attribute.py</code>
@@ -21376,7 +21547,7 @@ This major release changes several output behaviours:
 <li><strong>Rust</strong>: pyo3 0.27.1, rust-htslib 0.51.0, statrs 0.18.0</li>
 <li><strong>Python Packages</strong>: pysam ≥0.21.0, typer ≥0.9.0, rich ≥13.0.0, pydantic ≥2.0.0</li>
 </ul>
-<h3 id="development-changelog-removed">🗑️ Removed<a class="headerlink" href="#development-changelog-removed" title="Permanent link">¶</a></h3>
+<h3 id="development-changelog-removed_1">🗑️ Removed<a class="headerlink" href="#development-changelog-removed_1" title="Permanent link">¶</a></h3>
 <ul>
 <li><strong>Legacy Python Counting</strong>: Pure Python implementation removed in favor of Rust</li>
 <li><strong>Old <abbr title="Command Line Interface - Terminal-based program interface">CLI</abbr></strong>: Deprecated <code>python -m gbcms.cli</code> entry point</li>
@@ -21766,9 +21937,9 @@ not a <abbr title="Binary Alignment Map - Compressed sequence alignment file for
 <summary><code>ref_count = 0</code> for a large deletion</summary>
 <p>A pure large deletion counts a clean read spanning its anchor as REF (<code>check_deletion</code>).
 A large delins (a deletion with a replacement) is judged by the
-<a href="#reference-allele-classification-the-exact-carrier-rule">exact-carrier rule</a>: no read
-holds a ~100bp window whole, so each end is judged by a junction window, and a REF read
-counts when it carries the reference across either junction.</p>
+<a href="#reference-allele-classification-the-exact-carrier-rule">exact-carrier rule</a>: one pair
+of equal-length windows read from the POS flank, so a REF read counts when it carries the
+reference from that flank as far as the ALT read must carry the ALT.</p>
 <p>If <code>ref = 0</code>, check:
 - The variant was normalized correctly (<code>gbcms_status</code> is <code>PASS</code>)
 - The <abbr title="Binary Alignment Map - Compressed sequence alignment file format">BAM</abbr> slice has coverage at the event's ends (<code>samtools depth -a sample.bam -r chr22:30038094-30038095</code>)

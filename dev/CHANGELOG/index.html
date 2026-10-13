@@ -758,6 +758,24 @@
 <nav aria-label="[Unreleased]" class="md-nav">
 <ul class="md-nav__list">
 <li class="md-nav__item">
+<a class="md-nav__link" href="#changed-complex-events-read-by-one-pair-of-equal-length-windows-253">
+<span class="md-ellipsis">
+      
+        Changed — complex events read by one pair of equal-length windows (#253)
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#removed">
+<span class="md-ellipsis">
+      
+        Removed
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
 <a class="md-nav__link" href="#fixed-release-tooling">
 <span class="md-ellipsis">
       
@@ -2636,7 +2654,7 @@
 </nav>
 </li>
 <li class="md-nav__item">
-<a class="md-nav__link" href="#removed">
+<a class="md-nav__link" href="#removed_1">
 <span class="md-ellipsis">
       
         🗑️ Removed
@@ -2744,6 +2762,131 @@
 <p>The format is based on <a href="https://keepachangelog.com/en/1.0.0/">Keep a Changelog</a>,
 and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semantic Versioning</a>.</p>
 <h2 id="unreleased">[Unreleased]<a class="headerlink" href="#unreleased" title="Permanent link">¶</a></h2>
+<h3 id="changed-complex-events-read-by-one-pair-of-equal-length-windows-253">Changed — complex events read by one pair of equal-length windows (#253)<a class="headerlink" href="#changed-complex-events-read-by-one-pair-of-equal-length-windows-253" title="Permanent link">¶</a></h3>
+<ul>
+<li><strong>The rule (RJ-23).</strong> A complex event (delins, an anchor-changing indel, an <abbr title="Multi-Nucleotide Polymorphism - Multiple adjacent base substitutions">MNP</abbr>
+  read with an indel at the block) is read by one pair of windows of equal length,
+  inward from the POS flank: the shorter allele's whole window (its event, grown
+  through repeats, with two flank bases each side) against as many of the longer
+  allele's bases, then on through the rest of the longer allele as far as the read
+  reaches. A REF and an ALT molecule get the same number of read starts that can
+  judge them. Before, the shorter window was padded with flank to the longer one's
+  length, which cost reads, and events past 50 bases were read at both junctions,
+  which let the longer allele count at either end. When both alleles pass 50 bases
+  the windows run from the flank nearer the first difference (an event ending a
+  long run is out of a read's reach from the other); an RNA variant whose POS flank
+  an exon edge cuts reads from the other flank. A read judged from the right counts
+  although it starts past POS, as the other allele's molecule starting there would.</li>
+<li><strong>A change beside the event is a separate event.</strong> A change recurring within 25
+  bases of the event (overlapping mates count once) is masked in both windows, as
+  RJ-8 treats another indel outside the window, so a read carrying the given
+  allele counts ALT. One on the ALT reads alone (a phased neighbour, or an event
+  the input under-describes) is named in <code>gbcms_diagnostic</code> under the
+  <code>OBSERVED_ALLELE</code>/<code>COEXISTING_ALLELE</code> rule. Withholding those reads was measured
+  and not adopted: on HG002 it took 5 het delins with a phased SNV in cis from <abbr title="Variant Allele Frequency - Fraction of reads supporting the variant allele">VAF</abbr>
+  0.42 to 0.09.</li>
+<li><strong>Placement.</strong> Windows anchor on the aligned base of the reading flank. A read
+  whose clip or own deletion holds that flank (an aligner using a microhomology at
+  the event's far end), or whose aligner wrote it over the event's other copy, is
+  placed from the other flank as the allele its confident bases favour: each
+  allele's window placed from the same aligned anchor at its own length, its bases
+  at or above <code>--min-baseq</code> (not N) must favour one by at least one such base. A
+  REF molecule behind a poor clip (a NovaSeq Q12 bin) shows no placement, where it
+  could fit the ALT through its masked bases; a placement whose allele does not fit
+  is another allele (partial when the ALT's).</li>
+<li><strong>Windows run past bases the alleles share.</strong> When the shorter allele's flank
+  repeats the longer allele's next bases, both windows run through them to two
+  bases from where the alleles differ: a REF read carrying only a substitution of
+  the event's first base is neither allele. Unpadded windows that stopped before
+  the alleles differ credited such reads: 235 ALT at a 17-to-1 delins in one
+  matched normal (6.6.0, padded: 0).</li>
+<li><strong>Germline changes beside the event are background.</strong> A change recurring on the
+  REF fragments too (on 3 or more of them), a run included (a germline <abbr title="Multi-Nucleotide Polymorphism - Multiple adjacent base substitutions">MNP</abbr>), is
+  masked like a germline <abbr title="Single Nucleotide Polymorphism - Single base substitution">SNP</abbr>; a run on the ALT fragments alone is another allele,
+  and no larger allele is named beside it (per-base tallies cannot spell an
+  indel; the observed allele names it from the reads' alignments).</li>
+<li><strong>Measured</strong> against 6.6.0 on every data type: the 6.6.0 gate panel's delins
+  rows (IMPACT, ABRA2-realigned) and their matched normals, ACCESS duplex and
+  simplex with their normals, TEMPO WES (<abbr title="Burrows-Wheeler Aligner - Standard short-read DNA aligner (mem/aln)">BWA</abbr> only), and HG002 germline het delins
+  (GIAB v5.0q, truth 0.5; WGS 35x, <abbr title="Burrows-Wheeler Aligner - Standard short-read DNA aligner (mem/aln)">BWA</abbr>-MEM):</li>
+</ul>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;"></th>
+<th style="text-align: left;">6.6.0</th>
+<th style="text-align: left;">6.7.0</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;">Panel, all delins (161 rows): within 10% of sign-out</td>
+<td style="text-align: left;">88/135</td>
+<td style="text-align: left;">100/136</td>
+</tr>
+<tr>
+<td style="text-align: left;">Panel, span 20+ (14 rows): <abbr title="Alternate Depth - Reads supporting the alternate allele">AD</abbr> / <abbr title="Reference Depth - Reads supporting the reference allele">RD</abbr>; within 10% of sign-out</td>
+<td style="text-align: left;">1,203 / 4,117; 0/14</td>
+<td style="text-align: left;">1,648 / 5,433; 8/14</td>
+</tr>
+<tr>
+<td style="text-align: left;">Panel, span under 20 (70 rows)</td>
+<td style="text-align: left;">9,557 / 24,053; 52/70</td>
+<td style="text-align: left;">9,827 / 25,124; 60/70</td>
+</tr>
+<tr>
+<td style="text-align: left;">Panel, recurrent neighbour (49 rows)</td>
+<td style="text-align: left;">2,398 / 14,609; 19/49</td>
+<td style="text-align: left;">3,624 / 15,590; 27/49</td>
+</tr>
+<tr>
+<td style="text-align: left;">ACCESS duplex / simplex (8 rows each): within 10% of sign-out</td>
+<td style="text-align: left;">4/6; 4/6</td>
+<td style="text-align: left;">4/6; 4/6</td>
+</tr>
+<tr>
+<td style="text-align: left;">TEMPO WES (54 rows): within 10% of sign-out</td>
+<td style="text-align: left;">12/50</td>
+<td style="text-align: left;">16/52</td>
+</tr>
+<tr>
+<td style="text-align: left;">HG002, span 20+: median <abbr title="Variant Allele Frequency - Fraction of reads supporting the variant allele">VAF</abbr>; within 0.35–0.65</td>
+<td style="text-align: left;">0.464; 166/237</td>
+<td style="text-align: left;">0.477; 180/236</td>
+</tr>
+<tr>
+<td style="text-align: left;">HG002, span 5–19</td>
+<td style="text-align: left;">0.500; 124/149</td>
+<td style="text-align: left;">0.500; 122/149</td>
+</tr>
+<tr>
+<td style="text-align: left;">Matched normals, somatic delins rows (IMPACT 105, ACCESS 14): rows with ALT</td>
+<td style="text-align: left;">6; 0</td>
+<td style="text-align: left;">8; 0</td>
+</tr>
+</tbody>
+</table>
+<p>The two normal rows gaining ALT gain one soft-clipped read each whose bases fit
+  the ALT through the window padding had cut: one of 641 judged reads, and one of
+  5 at a row whose other reads carry a germline substitution of the event's first
+  base (neither allele). Pure indels and SNVs are unchanged (195 germline het
+  indels: 2 count changes; 139 on WES: 2).
+- <strong>Spec.</strong> Reads ending inside a long insertion that hold the REF window's length
+  are judged (ALT where their bases contradict REF), a carrier ending on the base
+  after its run is ALT, and a read one base from each allele is neither, not
+  partial. <code>tests/test_carrier_window_balance.py</code> checks that equal molecules give
+  <abbr title="Alternate Depth - Reads supporting the alternate allele">AD</abbr> = <abbr title="Reference Depth - Reads supporting the reference allele">RD</abbr> for shrinking, growing, long, both-long and run-ending shapes, in DNA and
+  in RNA read from the right.</p>
+<h3 id="removed">Removed<a class="headerlink" href="#removed" title="Permanent link">¶</a></h3>
+<ul>
+<li><strong><code>gbcms build-gtf-cache</code>, <code>gbcms rna --gtf-cache-dir</code> and the Nextflow <code>--gtf_cache</code>
+  (#269).</strong> They were deprecated in 6.6.0, when they did nothing and warned; the GTF
+  loads in a few seconds without a cache.</li>
+<li>The command and the option are now usage errors.</li>
+<li>The Nextflow parameter is gone, and the pipeline no longer warns about it.</li>
+<li>Pipelines that still call <code>build-gtf-cache</code> must drop that step before moving to
+    6.7.0.</li>
+</ul>
 <h3 id="fixed-release-tooling">Fixed — release tooling<a class="headerlink" href="#fixed-release-tooling" title="Permanent link">¶</a></h3>
 <ul>
 <li><strong>Attribution leaves out runs whose latest attempt failed (#255).</strong> <code>attribute.py</code>
@@ -5802,7 +5945,7 @@ This major release changes several output behaviours:
 <li><strong>Rust</strong>: pyo3 0.27.1, rust-htslib 0.51.0, statrs 0.18.0</li>
 <li><strong>Python Packages</strong>: pysam ≥0.21.0, typer ≥0.9.0, rich ≥13.0.0, pydantic ≥2.0.0</li>
 </ul>
-<h3 id="removed">🗑️ Removed<a class="headerlink" href="#removed" title="Permanent link">¶</a></h3>
+<h3 id="removed_1">🗑️ Removed<a class="headerlink" href="#removed_1" title="Permanent link">¶</a></h3>
 <ul>
 <li><strong>Legacy Python Counting</strong>: Pure Python implementation removed in favor of Rust</li>
 <li><strong>Old <abbr title="Command Line Interface - Terminal-based program interface">CLI</abbr></strong>: Deprecated <code>python -m gbcms.cli</code> entry point</li>

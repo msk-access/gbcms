@@ -2497,9 +2497,9 @@ caveat in gbcms's output.</p>
 </tr>
 <tr>
 <td style="text-align: left;">Reads ending inside the event; low depth</td>
-<td style="text-align: left;">Depth only</td>
+<td style="text-align: left;">Depth only until a read holds the shorter allele's window</td>
 <td style="text-align: left;">Decided (done)</td>
-<td style="text-align: left;">—</td>
+<td style="text-align: left;">C39 #253</td>
 </tr>
 <tr>
 <td style="text-align: left;">Purity, clonality, contamination, CH</td>
@@ -2723,9 +2723,11 @@ caveat in gbcms's output.</p>
   opposite-strand overlaps) are not gated yet (R4 #185).</p>
 <h2 id="5-not-the-bam-but-easy-to-misread-from-counts">5. Not the <abbr title="Binary Alignment Map - Compressed sequence alignment file format">BAM</abbr>, but easy to misread from counts<a class="headerlink" href="#5-not-the-bam-but-easy-to-misread-from-counts" title="Permanent link">¶</a></h2>
 <ul>
-<li><strong>Reads ending inside the event, and low depth:</strong> such reads count toward depth
-  only, since they cannot show either allele. At low depth, informative reads are
-  few, so compare <code>alt_count + ref_count</code> with depth.</li>
+<li><strong>Reads ending inside the event, and low depth:</strong> a read that ends before
+  holding the shorter allele's window (its event with two flank bases) counts
+  toward depth only, since it cannot show either allele; one that holds it and
+  ends inside the longer allele is judged by the bases it has (RJ-23). At low
+  depth, informative reads are few, so compare <code>alt_count + ref_count</code> with depth.</li>
 <li><strong>Purity, clonality, contamination, clonal haematopoiesis, germline vs
   somatic:</strong> counts are evidence, not calls. A matched normal and, for <abbr title="Cell-free DNA - Circulating DNA fragments in blood plasma">cfDNA</abbr>,
   <a href="../mfsd-report/"><abbr title="Mutant Fragment Size Distribution - Insert-size analysis for REF vs ALT fragments">mFSD</abbr></a> help interpret them.</li>
@@ -2755,7 +2757,7 @@ caveat in gbcms's output.</p>
     <span class="md-icon" title="Last update">
       <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M21 13.1c-.1 0-.3.1-.4.2l-1 1 2.1 2.1 1-1c.2-.2.2-.6 0-.8l-1.3-1.3c-.1-.1-.2-.2-.4-.2m-1.9 1.8-6.1 6V23h2.1l6.1-6.1zM12.5 7v5.2l4 2.4-1 1L11 13V7zM11 21.9c-5.1-.5-9-4.8-9-9.9C2 6.5 6.5 2 12 2c5.3 0 9.6 4.1 10 9.3-.3-.1-.6-.2-1-.2s-.7.1-1 .2C19.6 7.2 16.2 4 12 4c-4.4 0-8 3.6-8 8 0 4.1 3.1 7.5 7.1 7.9l-.1.2z"></path></svg>
     </span>
-    <span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-timeago" title="October 5, 2026 16:09:31 UTC"><span class="timeago" datetime="2026-10-05T16:09:31+00:00" locale="en"></span></span><span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-iso_date" title="October 5, 2026 16:09:31 UTC">2026-10-05</span>
+    <span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-timeago" title="October 9, 2026 13:32:39 UTC"><span class="timeago" datetime="2026-10-09T13:32:39+00:00" locale="en"></span></span><span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-iso_date" title="October 9, 2026 13:32:39 UTC">2026-10-09</span>
   </span>
 
     
