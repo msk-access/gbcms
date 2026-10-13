@@ -199,26 +199,38 @@ def test_an_n_clip_shows_no_flank_at_any_minimum_quality(tmp_path, min_baseq):
     assert got.ad == 0
 
 
-@pytest.mark.parametrize("offset, rd", [(20, 4), (1, 0)])
-def test_a_sibling_in_the_deleted_span_claims_ref_reads_only_inside_the_windows(
-    tmp_path, offset, rd
-):
-    """Every REF read carries a co-annotated SNV at deleted base `offset`; no carrier
-    holds those bases. Past the REF window (four deleted bases) the junction windows
-    read nothing there, for either allele, so the REF reads count REF; inside it the
-    SNV's carriers are its molecules there (RJ-5), and leave the deletion's REF."""
+@pytest.mark.parametrize(
+    "offset, both, rd",
+    [
+        (20, False, 4),  # deep in the deleted span
+        (4, False, 4),  # the first deleted base past REF's window
+        (3, False, 0),  # REF's window's last base
+        (-3, True, 4),  # the left flank both windows read, on both alleles
+    ],
+)
+def test_a_sibling_claims_ref_reads_only_where_ref_is_read(tmp_path, offset, both, rd):
+    """Every REF read (and, in the flank, every carrier) carries a co-annotated SNV at
+    `offset` from the first deleted base. Inside REF's window, past the shared flank,
+    the SNV's carriers are its molecules there (RJ-5) and leave the deletion's REF.
+    Further into the deleted bases the windows read nothing, for either allele, and
+    no carrier holds them; in the flank both alleles read it: there the REF reads
+    count REF, as the carriers count ALT."""
     n, mh = rj.LONG_DEL["del 60"]
     contig = rj._long_contig(n, mh)
     hap = contig[:A] + contig[A + n :]
     g = A + offset  # the SNV, 0-based; the contig has no A
+
+    def snv(seq, s, at):
+        return seq[: at - s] + "A" + seq[at - s + 1 :]
+
     reads = []
     for i in range(4):
         s = A - 50 - i
-        reads.append(
-            make_read(f"d{i}", hap[s : s + 100], s, ((0, A - s), (2, n), (0, 100 - (A - s))))
-        )
-        seq = contig[s : s + 100]
-        reads.append(make_read(f"r{i}", seq[: g - s] + "A" + seq[g - s + 1 :], s, ((0, 100),)))
+        carrier = hap[s : s + 100]
+        if both:
+            carrier = snv(carrier, s, g)
+        reads.append(make_read(f"d{i}", carrier, s, ((0, A - s), (2, n), (0, 100 - (A - s)))))
+        reads.append(make_read(f"r{i}", snv(contig[s : s + 100], s, g), s, ((0, 100),)))
     for r in reads:
         r.flag = 0x1 | 0x2 | 0x20 | 0x40
         r.next_reference_id, r.next_reference_start, r.template_length = (
@@ -227,18 +239,21 @@ def test_a_sibling_in_the_deleted_span_claims_ref_reads_only_inside_the_windows(
             400,
         )
     fa, bam = write_contig(tmp_path, contig, reads, "c")
-    vcf = tmp_path / "v.vcf"
-    vcf.write_text(
-        f"##fileformat=VCFv4.2\n##contig=<ID=1,length={len(contig)}>\n"
-        "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\n"
-        f"1\t{A}\t.\t{contig[A - 1 : A + n]}\t{contig[A - 1]}\t.\t.\t.\n"
-        f"1\t{g + 1}\t.\t{contig[g]}\tA\t.\t.\t.\n"
+    deletion, sibling = (
+        pv.variant
+        for pv in _rs.prepare_variants(
+            [
+                _rs.Variant("1", A - 1, contig[A - 1 : A + n], contig[A - 1], "DEL"),
+                _rs.Variant("1", g, contig[g], "A", "SNP"),
+            ],
+            fa,
+            5,
+            False,
+            1,
+            True,
+        )
     )
-    out = tmp_path / "out"
-    res = CliRunner().invoke(
-        app, ["dna", "-v", str(vcf), "-b", f"S:{bam}", "-f", fa, "-o", str(out), "--format", "maf"]
-    )
-    assert res.exit_code == 0, res.output
-    rows = read_maf_output(glob.glob(str(out / "*.maf"))[0])
-    (row,) = [r for r in rows if len(r["Reference_Allele"]) == n]
-    assert (int(row["ref_count"]), int(row["alt_count"])) == (rd, 4)
+    got, _ = count_checked(bam, [deletion, sibling], sibling_variants=[[sibling], [deletion]])
+    assert got.dp >= got.rd + got.ad and got.dpf >= got.rdf + got.adf
+    assert got.rd == got.rd_fwd + got.rd_rev and got.ad == got.ad_fwd + got.ad_rev
+    assert (got.rd, got.ad) == (rd, 4)

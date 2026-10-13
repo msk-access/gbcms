@@ -1665,8 +1665,8 @@ fn count_variant_from_cache(
         );
         let is_alt = result.is_alt && !claimed_by_sibling;
         // ── MULTI-ALLELIC REF GUARD: a REF read that is ALT for a sibling
-        // whose change lies inside this row's discrimination window is the
-        // sibling's molecule. Excluded here, beside the AD guard, so RD and
+        // whose change lies where this row's REF is read (`ref_guard_siblings`)
+        // is the sibling's molecule. Excluded here, beside the AD guard, so RD and
         // RDF drop the same molecules; recorded as partial_alt/any_alt below.
         let ref_claimed_by_sibling = sibling_claims_ref(
             record, variant, &result, &ref_guard_siblings, effective_quals, min_baseq,
@@ -2115,12 +2115,14 @@ fn mask_low_qual(seq: &mut [u8], quals: &[u8], min_baseq: u8) {
     }
 }
 
-/// The co-annotated siblings whose change lies where `variant`'s REF is read: a long
-/// deletion's REF window (its junction windows read nothing past it, for either
-/// allele, and no ALT molecule holds the deleted bases, so a sibling further in would
-/// take REF reads alone), else the discrimination window.
+/// The co-annotated siblings whose change lies where `variant`'s REF is read: its
+/// discrimination window, and for a long deletion only the part REF's junction window
+/// reads. Past that window nothing is read, for either allele, and no ALT molecule
+/// holds the deleted bases, so a sibling further in would take REF reads alone; the
+/// flank bases before the anchor both windows read, so a sibling there would too.
 fn ref_guard_siblings<'a>(variant: &Variant, siblings: &'a [Variant]) -> Vec<&'a Variant> {
-    let span = junction::ref_window_span(variant).unwrap_or_else(|| window::discrimination_window(variant));
+    let (lo, hi) = window::discrimination_window(variant);
+    let span = junction::ref_window_span(variant).map_or((lo, hi), |(a, b)| (a.max(lo), b.min(hi)));
     window::siblings_in_span(span, siblings)
 }
 
@@ -3015,8 +3017,9 @@ fn count_per_transcript(
             // ── Multi-allelic guards (the main engine's read-level rules): an
             // ALT match won by a sibling is excluded from tx_ad and from
             // ALT fragment evidence; a REF-classified read that is ALT for a
-            // sibling whose change lies inside this variant's discrimination
-            // window is excluded from tx_rd and from REF fragment evidence.
+            // sibling whose change lies where this variant's REF is read
+            // (`ref_guard_siblings`) is excluded from tx_rd and from REF
+            // fragment evidence.
             // Both still count tx_dp.
             let claimed_by_sibling = sibling_claims_alt(
                 record, variant, &result, sibling_variants, effective_quals, min_baseq,
