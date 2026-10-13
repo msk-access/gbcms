@@ -3,7 +3,7 @@
 > Tactical state that must survive a closed laptop or a context summary.
 > Update the **Now** and **Next** sections as work progresses.
 
-_Last updated: 2026-10-12_
+_Last updated: 2026-10-13_
 
 ## Now
 6.7.0 cycle (tracker #196; plan merged in #257). Two stacked branches, both reviewed
@@ -25,6 +25,25 @@ operator's go):
 - Open operator questions: ALT by length alone when a complex carrier's whole ALT
   core is below min BQ (RJ-20 analogue); a run in cis with no REF reads (hom-ALT /
   LOH) reads partial; a germline indel in the junction flank zeroes both alleles.
+- 2026-10-13 audit (local harness `plan670/tools`, report artifact; aggregates only),
+  decisions walked through with the operator, awaiting calls:
+  - **Pure indels are judged by their CIGAR.** HG002 arms (`giab/pri_ins`, `pri_sins`,
+    `pri_sdel`): carriers the aligner writes without the op are counted REF, and REF
+    is credited to reads 1-4 bases past a tract where a carrier cannot be. Insertions
+    10+ bp: median VAF 0.13, 110/603 in band (GATK HC 343); short insertions 0.43,
+    short deletions 0.455. Prototypes (`src_pi10`, `src_pa1`, `src_ph1`, patches
+    beside them): every indel by the exact-carrier rule gives 0.500 on short indels
+    and 332/603 on long insertions, but changes 22 decided spec cases (4 substantive);
+    the hybrid keeps every case but fixes only part. Reopens C41's insertion finding.
+  - **New C40 defect:** a co-annotated sibling SNV inside a long deletion's span
+    withdraws REF reads (RJ-5) though the junction windows read 4 bases past the
+    junction: 2,667 REF reads at 10/60 panel rows (one row VAF 0.17 -> 0.30).
+    Prototype `src_pd8` (siblings claim only inside the REF window): panel long
+    deletions within 10% of the reads 41 -> 45/60, nothing else changes, tests pass.
+  - The junction-window germline question (adaptive window `src_pj4`, guard reading
+    on `src_pj5`) gains nothing on any arm.
+  - ACCESS: ABRA2's post-collapse pass can introduce events; validate indel rules
+    against the standard BAMs (operator will slice on HPC).
 
 Then: C40 PR stacked on #272; C31 (#212, fragment end from the mate's unclipped 5'
 end); D12 re-scope (RNA rules, low-VAF cfDNA, K re-test, per-read confirmation) as a
