@@ -6,22 +6,25 @@
 _Last updated: 2026-10-12_
 
 ## Now
-6.7.0 cycle (tracker #196; plan merged in #257). Two stacked branches in flight:
-- **C39 / RJ-23** (`feature/c39-one-sided-windows`, PR #272 on hold; worktree
-  `.claude/worktrees/c39`): one pair of equal-length windows per complex event, run on
-  through bases the shorter allele's flank shares with the longer one; a read placed
-  from the other flank only as the allele its confident bases favour (each allele
-  placed from the same aligned anchor at its own length); germline runs masked; no
-  larger allele named beside a run. Head `accc556d`. Acceptance of `ec2c092c` on every
-  arm (panel, matched normals, ACCESS duplex/simplex, cohort runs, TEMPO WES, HG002):
-  panel delins within 10% of sign-out 100/136 (6.6.0 88/135); HG002 het delins in
-  0.35-0.65 180/236 (span 20+) and 122/149 (5-19); normals unchanged from the
-  previous build. A Fable re-review of `ec2c092c` is out.
-- **C40 / RJ-24** (`feature/c40-long-deletions`): 50+ bp deletions judged at the POS
-  breakpoint; merges C39; the junction judge now places from the shared right flank
-  on confident bases, the guard as C39's (`9576e373`). Also on it: mFSD sizes an ALT
-  fragment as its molecule (`dd50dfbb`). Acceptance on every arm and a Fable review
-  of `9576e373` are running.
+6.7.0 cycle (tracker #196; plan merged in #257). Two stacked branches, both reviewed
+(Fable) and accepted on every arm (panel + matched normals, ACCESS duplex/simplex +
+normals, cohort runs, TEMPO WES, HG002); neither pushed since review (awaiting the
+operator's go):
+- **C39 / RJ-23** (`feature/c39-one-sided-windows`, PR #272, pushed head 07ed9d2b;
+  local head `9b412839`; worktree `.claude/worktrees/c39`): equal-length windows run
+  through bases the alleles share; other-flank placement as the allele the read's
+  confident bases favour; germline changes (on 3+ REF fragments, runs included)
+  masked; no larger allele named beside a run. Panel delins within 10% of sign-out
+  100/136 (6.6.0 88/135); HG002 het delins in 0.35-0.65 180/236 and 122/149.
+- **C40 / RJ-24** (`feature/c40-long-deletions`, local head `269e68ef`, merges C39):
+  50+ bp deletions at the POS breakpoint; placement from the shared right flank on
+  confident bases; guard background only in the shared flank and microhomology.
+  WES 0/132 -> 40/143 within 10% of sign-out; HG002 median VAF 0.500, 132/188 in
+  band; panel 41/60 (bases-only oracle 40/60; 6.6.0 50/60 counts the CIGAR like
+  sign-out); normals clean. Also mFSD sizes an ALT fragment as its molecule.
+- Open operator questions: ALT by length alone when a complex carrier's whole ALT
+  core is below min BQ (RJ-20 analogue); a run in cis with no REF reads (hom-ALT /
+  LOH) reads partial; a germline indel in the junction flank zeroes both alleles.
 
 Then: C40 PR stacked on #272; C31 (#212, fragment end from the mate's unclipped 5'
 end); D12 re-scope (RNA rules, low-VAF cfDNA, K re-test, per-read confirmation) as a
