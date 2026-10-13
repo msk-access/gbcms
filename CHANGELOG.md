@@ -79,6 +79,55 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   AD = RD for shrinking, growing, long, both-long and run-ending shapes, in DNA and
   in RNA read from the right.
 
+### Changed — deletions of 50 bp or more judged at the POS breakpoint (#254)
+
+- **The rule (RJ-24).** A prepared pure deletion of 50 bp or more is REF or ALT by
+  its own bases at the POS breakpoint, however the aligner wrote it (a D op, a soft
+  clip, a split read). Both alleles are read from the left flank over one window of
+  equal length: 4 flank bases, the microhomology, then 4 bases of the allele's own
+  continuation (REF: the deleted bases; ALT: the right flank). Nothing past the
+  window is read, for either allele. Short-read aligners without a realigner write
+  most such carriers as clips: on HG002 (BWA-MEM) a CIGAR-only rule read VAF 0.000 at
+  287 of 300 het deletions.
+- **Placement.** A read whose left flank is not aligned where the windows start (in
+  its clip, under its own deletion, or written over the deleted bases' end) is
+  placed from the right flank, which both alleles share, as the ALT's window sits
+  there; its bases at or above `--min-baseq` must favour the left flank over the
+  deleted bases REF has before the right flank by one such base. A REF molecule
+  starting inside the deleted span behind a poor or N clip is depth only. A decided
+  read admitted through its clip, or placed from the right, counts toward depth in
+  DNA.
+- **Beside the junction.** A change recurring at one window offset is masked as a
+  separate event (as RJ-23): in the flank and microhomology, a germline SNP or MNP
+  the REF reads carry too; an isolated change of the ALT reads' own; past the
+  junction an isolated change on the REF reads. A run of changes is another allele,
+  and the diagnostic names the deletion with an isolated ALT-only change as the
+  larger allele.
+- **Retired:** the 3-base length band for deletions of 50 bp or more and its Phase 3
+  route; a deletion of another length is another allele at any size.
+- **Measured** against 6.6.0:
+
+  | | 6.6.0 | 6.7.0 |
+  |:--|:--|:--|
+  | TEMPO WES, BWA only (150 rows): AD; within 10% of sign-out | 4; 0/132 | 6,028; 40/143 |
+  | HG002 het deletions (280 rows): median VAF; within 0.35–0.65 | 0.000 at 287 of 300 | 0.500; 132/188 |
+  | Panel, ABRA2-realigned (60 rows): median VAF; within 10% of sign-out | 0.192; 50/60 | 0.199; 41/60 |
+  | Matched normals, somatic rows (IMPACT 60, ACCESS 2): ALT reads | 0; 0 | 0; 1 |
+
+  On the panel ABRA2 writes carriers as D ops, which 6.6.0 and the sign-out both
+  count from the CIGAR, with REF read anywhere over the deleted span; 6.7.0 reads
+  REF at the breakpoint, as the bases-only oracle does (40/60 within 10% of
+  sign-out). On HG002 that oracle reads median VAF 0.514 (105/169 in the band).
+
+### Fixed — mFSD sizes an ALT fragment as the molecule carrying the ALT
+
+- A fragment's size is TLEN less the deletions (plus the insertions) its reads'
+  CIGARs write. A deletion carrier written as a clip, or judged by its bases, has no
+  D op, so its fragment read longer than the molecule by the deleted bases (227
+  instead of 167 for 60 bp), and a fragment of a deletion over about 830 bp fell out
+  of mFSD. When an ALT fragment covers the variant without a read writing its length
+  change, the change is applied. `tests/test_mfsd_allele_size.py`.
+
 ## [6.6.0] - 2026-10-07 — every read judged by its own bases
 
 ### Changed — release infrastructure (#136, #137, #152)
