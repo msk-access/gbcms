@@ -10,6 +10,73 @@ Newest at the top.
 
 ---
 
+## [REJ-20261013-002] Keep the CIGAR checks for pure indels; let bases overrule disagreeing or clipped reads (C43 hybrid)
+- **Target:** pure-indel read judgment (`check_insertion`, `check_deletion`)
+- **Proposed:** keep the CIGAR verdict, and hand a read to the exact-carrier rule only
+  when the CIGAR path does not call it ALT and it shows 2+ confident changes around the
+  event or a soft clip there. It kept every decided spec case.
+- **Reason vetoed:** a partial fix (operator, 2026-10-13, chose every indel by its bases,
+  C43 #276). HG002: insertions 10+ bp 287/603 in band (bases rule 332), insertions 1-9
+  bp 518/669 (534), REF still 1.37x and 1.22x the REF reads: the REF credited to reads
+  ending 1-4 bases past a tract is untouched, and a duplicated copy aligned onto the
+  next copy often shows one mismatch, under the trigger. Two rules per read.
+- **Date:** 2026-10-13
+
+## [REJ-20261013-001] Grow a long deletion's continuation until four bases tell the alleles apart; let the guard read on to tell a germline run from another breakpoint
+- **Target:** the C40 junction judge and its guard (RJ-24)
+- **Proposed:** for a germline change on one of the few bases telling the alleles
+  apart: the continuation grows from 4 until 4 of its bases differ between REF and ALT
+  (at most 16), and the guard assigns a read to REF when it fits REF's deleted bases 20
+  bases past the windows, masking a run there as the REF haplotype's own.
+- **Reason vetoed:** no gain on any arm (a re-test of REJ-20261009-002's diff rule with
+  the guard added): HG002 131 -> 129/195 in 0.35-0.65, panel 160 -> 159/196 within 10%
+  of the reads, WES and normals unchanged; one panel row gained 58 REF reads. The panel
+  shortfall it aimed at was mostly the sibling guard reading the whole deleted span
+  (fixed in C40, 5aaf76a4). Prototype builds `plan670/src_pj4`, `src_pj5`.
+- **Date:** 2026-10-13
+
+## [REJ-20261009-003] Read-on for the longer allele at 50+ bp deletions (C40 option A, RJ-9 style)
+- **Target:** the C40 junction judge for 50+ bp pure deletions (RJ-24)
+- **Proposed:** as decided in the 6.7.0 plan: REF at the POS breakpoint must also be
+  clean through every deleted base the read covers past the equal window.
+- **Reason vetoed:** it checks REF over 50-300 bases and ALT over about 4, so ordinary
+  errors cost REF only. Measured (bases-only oracle, k = 4): HG002 50+ bp het
+  deletions in 0.35-0.65 100/166 with read-on vs 103/166 without (mean |VAF-0.5| 0.168
+  vs 0.159, median 0.538 vs 0.515); IMPACT within 10% of sign-out 29/60 vs 40/60 (RD
+  +14% without). Adopted instead: both alleles judged on the equal window only
+  (option B). Equal exposure (both alleles checked over everything they cover, R2)
+  was middling: HG002 104/166, panel 34/60, and it hurt delins 5-19 (99 vs 105/147).
+  Delins (RJ-9) show the same direction; that is a measured follow-up, not vetoed.
+- **Date:** 2026-10-09
+
+## [REJ-20261009-002] A dynamic k at 50+ bp deletions from a reference signature
+- **Target:** the C40 junction judge (k, the clean bases past the microhomology)
+- **Proposed:** raise k where the sequence signals it: until the REF and ALT
+  continuations differ at m positions (diff2/3/4), until the junction has no other
+  placement near the breakpoint (uniq), or both; floored at 4 so it only rises.
+- **Reason vetoed:** no gain against truth. HG002 50+ bp het deletions, the same 191
+  rows: fixed k = 4 in 0.35-0.65 131 (mean |VAF-0.5| 0.132); diff3 127 (0.138); uniq
+  129 (0.137); diff3+uniq 126 (0.141). Panel: 30-31/60 for every rule. A larger k only
+  costs reads. The error a dynamic k aimed at was read-on's one-sided exposure
+  (REJ-20261009-003), not k; tolerant read-on under a low-complexity signature (R3)
+  did not help either (HG002 low-complexity rows 12/28, as without it).
+- **Date:** 2026-10-09
+
+## [REJ-20261009-001] k = 10 for both alleles where the discriminating bases are low complexity (C40 guard)
+- **Target:** the C40 junction judge
+- **Proposed:** in the 6.7.0 plan's option C: a low-complexity far flank (the engine's
+  test: the longest tandem repeat covers >= 80% of the stretch) raises k from 4 to 10
+  for both alleles.
+- **Reason vetoed:** worse against truth. On the 39 HG002 deletions it applies to, k =
+  10 put 12/31 rows in 0.35-0.65 vs 15/32 at k = 4 (overall 144/230 vs 147/231); it
+  never applies on the IMPACT panel. Those deletions read high (median 0.61-0.64) at
+  any k: 27% of their REF reads show a confident mismatch in the repetitive deleted
+  bases (9% elsewhere) and truth has no variant there, so the cause is error
+  exposure in repeats (C41 #264), not chance matches.
+- **Date:** 2026-10-09
+
+---
+
 ## [REJ-20261007-002] Credit ALT from placements scored by readable mismatches (C37 option C′)
 - **Target:** insertion read judgment — `insert_placements` / the windowed scan
   (`rust/src/counting/variant_checks.rs`), RJ-21.

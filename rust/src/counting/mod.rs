@@ -29,6 +29,7 @@ mod variant_checks;
 pub(crate) mod window;
 mod observed;
 pub(crate) mod carrier;
+pub(crate) mod junction;
 mod utils;
 pub(crate) mod mfsd;
 pub(crate) mod rna;

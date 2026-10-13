@@ -65,6 +65,7 @@ use super::rna;
 use super::window::{self, AlleleKind};
 use super::observed;
 use super::carrier;
+use super::junction;
 use crate::shared::baq::apply_heuristic_baq;
 
 
@@ -772,10 +773,10 @@ fn count_bam_binned_core(
             info!(
                 "{}: depth reads by deciding rule over {} variant(s): withdrawn as uninformative \
                  {} REF, {} ALT ({} unjudged); ALT kept by its bases {}; exact-carrier rule {} \
-                 judged, {} fell back; sibling guards {} REF excluded, {} ALT claimed; clip \
-                 admissions {}; SW fallback {}",
+                 judged, {} fell back; junction judge {}; sibling guards {} REF excluded, {} ALT \
+                 claimed; clip admissions {}; SW fallback {}",
                 bam_label, all_counts.len(), t.ref_withdrawn, t.alt_withdrawn, t.alt_unjudged,
-                t.alt_by_bases, t.carrier_judged, t.carrier_fallback, t.sibling_ref_excluded,
+                t.alt_by_bases, t.carrier_judged, t.carrier_fallback, t.junction_judged, t.sibling_ref_excluded,
                 t.sibling_alt_claimed, t.clip_admitted, sw,
             );
 
@@ -1212,7 +1213,11 @@ fn count_bin_shared(
         let guard_of = |v| {
             carrier::CarrierGuard::new(move || {
                 let counted = |r: &Record| counted_read(r, v, mode, enforce_strandedness, strandedness, min_mapq);
-                carrier::guard_for(cache, v, &counted, min_baseq)
+                if junction::judges(v) {
+                    junction::guard_for(cache, v, &counted, min_baseq)
+                } else {
+                    carrier::guard_for(cache, v, &counted, min_baseq)
+                }
             })
         };
         let guard = guard_of(variant);
@@ -1529,9 +1534,9 @@ fn count_variant_from_cache(
     // Create SW aligners ONCE per variant (indelpost pattern), scored by `sw_score`.
     let mut alt_aligner = Aligner::new(SW_GAP_OPEN, SW_GAP_EXTEND, &sw_score);
     let mut ref_aligner = Aligner::new(SW_GAP_OPEN, SW_GAP_EXTEND, &sw_score);
-    // Siblings whose change lies inside this row's discrimination window:
-    // the only ones whose carriers the REF guard excludes.
-    let ref_guard_siblings = window::siblings_in_window(variant, sibling_variants);
+    // Siblings whose change lies where this row's REF is read: the only ones whose
+    // carriers the REF guard excludes.
+    let ref_guard_siblings = ref_guard_siblings(variant, sibling_variants);
 
     // Per-phase classification counters
     let mut phase_counts = [0u32; 5];
@@ -1543,8 +1548,8 @@ fn count_variant_from_cache(
     // ── ref_context is ALWAYS genomic: consensus introns are never spliced out.
     // Splicing it without a coordinate map would shrink the context while
     // ref_context_start stays genomic, so every `pos - ref_context_start`
-    // indexer right of a snipped intron — the deleted-bases check, the
-    // large-deletion band's context guard, haplotype offsets — would read the
+    // indexer right of a snipped intron — the deleted-bases checks, haplotype
+    // offsets — would read the
     // wrong bases, and pre-mRNA / intron-retention reads, whose bases genuinely
     // include intron sequence, would be scored against a haplotype missing
     // those bases. Junction-spanning reads never reach Phase 3 scoring anyway:
@@ -1660,8 +1665,8 @@ fn count_variant_from_cache(
         );
         let is_alt = result.is_alt && !claimed_by_sibling;
         // ── MULTI-ALLELIC REF GUARD: a REF read that is ALT for a sibling
-        // whose change lies inside this row's discrimination window is the
-        // sibling's molecule. Excluded here, beside the AD guard, so RD and
+        // whose change lies where this row's REF is read (`ref_guard_siblings`)
+        // is the sibling's molecule. Excluded here, beside the AD guard, so RD and
         // RDF drop the same molecules; recorded as partial_alt/any_alt below.
         let ref_claimed_by_sibling = sibling_claims_ref(
             record, variant, &result, &ref_guard_siblings, effective_quals, min_baseq,
@@ -1775,6 +1780,7 @@ fn count_variant_from_cache(
             d.alt_unjudged += u64::from(result.alt_unjudged);
             d.alt_by_bases += u64::from(result.alt_by_bases);
             d.carrier_judged += u64::from(result.carrier_judged);
+            d.junction_judged += u64::from(result.junction_judged);
             d.carrier_fallback += u64::from(result.carrier_fallback);
             d.sibling_ref_excluded += u64::from(result.is_ref && ref_claimed_by_sibling);
             d.sibling_alt_claimed += u64::from(result.is_alt && claimed_by_sibling);
@@ -1806,7 +1812,7 @@ fn count_variant_from_cache(
         // discriminating position) rather than the previous heuristic
         // (base_qual==0 && !is_ref && !is_alt) which could mis-classify
         // true third-allele reads with qual=0 as N-class fragments.
-        let tlen = mfsd::calc_physical_insert_size(record);
+        let tlen = mfsd::allele_insert_size(record, variant, is_alt);
         let informative = !result.uninformative || ref_claimed_by_sibling;
         evidence.observe(is_ref, is_alt, base_qual, is_read1, is_forward, tlen, result.has_n_base, result.is_structural, record.mapq(), informative);
 
@@ -2052,13 +2058,13 @@ fn count_variant_from_cache(
     debug!(
         "Phase stats {}:{} {}>{}: P0={} P1={} P2={} P2.5={} P3={} splice_skip_excluded={} \
          sw_fallback={} clip_candidates={} | withdrawn ref={} alt={} (unjudged {}) \
-         alt_by_bases={} carrier judged={} fallback={} sibling ref_excluded={} alt_claimed={} \
-         clip_admitted={} ({} backend, {} reads overlapping the window)",
+         alt_by_bases={} carrier judged={} fallback={} junction judged={} sibling ref_excluded={} \
+         alt_claimed={} clip_admitted={} ({} backend, {} reads overlapping the window)",
         variant.chrom, variant.pos + 1, variant.ref_allele, variant.alt_allele,
         phase_counts[0], phase_counts[1], phase_counts[2], phase_counts[3], phase_counts[4],
         counts.splice_skip_excluded, counts.sw_fallback_reads, counts.clip_candidates,
         d.ref_withdrawn, d.alt_withdrawn, d.alt_unjudged, d.alt_by_bases, d.carrier_judged,
-        d.carrier_fallback, d.sibling_ref_excluded, d.sibling_alt_claimed, d.clip_admitted,
+        d.carrier_fallback, d.junction_judged, d.sibling_ref_excluded, d.sibling_alt_claimed, d.clip_admitted,
         match backend {
             AlignmentBackend::SmithWaterman => "SW",
             AlignmentBackend::PairHMM { .. } => "HMM",
@@ -2109,10 +2115,21 @@ fn mask_low_qual(seq: &mut [u8], quals: &[u8], min_baseq: u8) {
     }
 }
 
+/// The co-annotated siblings whose change lies where `variant`'s REF is read: its
+/// discrimination window, and for a long deletion only the part REF's junction window
+/// reads. Past that window nothing is read, for either allele, and no ALT molecule
+/// holds the deleted bases, so a sibling further in would take REF reads alone; the
+/// flank bases before the anchor both windows read, so a sibling there would too.
+fn ref_guard_siblings<'a>(variant: &Variant, siblings: &'a [Variant]) -> Vec<&'a Variant> {
+    let (lo, hi) = window::discrimination_window(variant);
+    let span = junction::ref_window_span(variant).map_or((lo, hi), |(a, b)| (a.max(lo), b.min(hi)));
+    window::siblings_in_span(span, siblings)
+}
+
 /// Whether a read classified REF for `variant` (or whose REF call was
 /// withdrawn as uninformative) is ALT for a co-annotated sibling whose change
-/// lies inside `variant`'s discrimination window
-/// (`window_siblings`, from `window::siblings_in_window`). Such a read
+/// lies where `variant`'s REF is read (`window_siblings`, from
+/// `ref_guard_siblings`). Such a read
 /// carries a different allele where this row's REF is read, so it is not REF
 /// testimony here. A carrier of a sibling elsewhere in the group shows the
 /// reference across every base that could tell this row's alleles apart, and
@@ -2671,6 +2688,27 @@ fn check_allele_with_qual<F: Fn(u8, u8) -> i32>(
         // Pure insertion: CIGAR-based fast paths, then backend-aware Phase 3 fallback
         let result = check_insertion(record, variant, siblings, quals, min_baseq, alt_aligner, ref_aligner, backend);
         ref_needs_the_window(record, variant, alt_needs_the_window(record, variant, quals, min_baseq, result))
+    } else if kind == AlleleKind::Deletion && junction::judges(variant) {
+        // A deletion of 50+ bp: judged by its bases at the POS breakpoint, however
+        // the aligner wrote it (RJ-24); the CIGAR checks only when the prepared
+        // reference cannot hold its windows.
+        if let Some(mut result) = junction::classify(record, variant, quals, min_baseq, rules) {
+            result.junction_judged = true;
+            trace!(
+                "{}:{} {}>{} read={}: junction judge: ref={} alt={} nearby={} uninformative={} \
+                 clip_admissible={}",
+                variant.chrom, variant.pos + 1, variant.ref_allele, variant.alt_allele, read_name(record),
+                result.is_ref, result.is_alt, result.has_nearby_evidence, result.uninformative,
+                result.clip_admissible,
+            );
+            return result;
+        }
+        trace!(
+            "{}:{} {}>{} read={}: the prepared reference cannot hold the junction windows → CIGAR checks",
+            variant.chrom, variant.pos + 1, variant.ref_allele, variant.alt_allele, read_name(record),
+        );
+        let result = check_deletion(record, variant, siblings, quals, min_baseq, alt_aligner, ref_aligner, backend);
+        ref_needs_the_window(record, variant, alt_needs_the_window(record, variant, quals, min_baseq, result))
     } else if kind == AlleleKind::Deletion {
         // Pure deletion: CIGAR-based fast paths, then backend-aware Phase 3 fallback
         let result = check_deletion(record, variant, siblings, quals, min_baseq, alt_aligner, ref_aligner, backend);
@@ -2795,6 +2833,8 @@ fn deciding_rule(r: &ClassifyResult) -> &'static str {
         "carrier_fallback"
     } else if r.carrier_judged {
         "exact_carrier"
+    } else if r.junction_judged {
+        "junction"
     } else if r.sw_fallback {
         "sw_fallback"
     } else {
@@ -2862,7 +2902,7 @@ fn count_per_transcript(
     rules: &carrier::ReadRules,
 ) -> (String, String) {
     let baq_spare = if use_baq { baq_own_span(variant) } else { None };
-    let ref_guard_siblings = window::siblings_in_window(variant, sibling_variants);
+    let ref_guard_siblings = ref_guard_siblings(variant, sibling_variants);
     // Step 1: Find overlapping transcripts
     let chrom = crate::shared::contig::normalize_contig(&variant.chrom);
     let transcript_ids = annotation.overlapping_transcripts(&chrom, variant.pos);
@@ -2973,13 +3013,13 @@ fn count_per_transcript(
             let (mol_hash, _) = molecule_key(record, umi_tag, amplicon_mode);
             let is_read1 = record.is_first_in_template();
             let is_forward = !record.is_reverse();
-            let tlen = mfsd::calc_physical_insert_size(record);
 
             // ── Multi-allelic guards (the main engine's read-level rules): an
             // ALT match won by a sibling is excluded from tx_ad and from
             // ALT fragment evidence; a REF-classified read that is ALT for a
-            // sibling whose change lies inside this variant's discrimination
-            // window is excluded from tx_rd and from REF fragment evidence.
+            // sibling whose change lies where this variant's REF is read
+            // (`ref_guard_siblings`) is excluded from tx_rd and from REF
+            // fragment evidence.
             // Both still count tx_dp.
             let claimed_by_sibling = sibling_claims_alt(
                 record, variant, &result, sibling_variants, effective_quals, min_baseq,
@@ -2993,6 +3033,7 @@ fn count_per_transcript(
 
             // Only the resolved call reads this evidence (`resolve`), so whether the
             // read was informative is not needed here.
+            let tlen = mfsd::allele_insert_size(record, variant, is_alt);
             let evidence = tx_fragments.entry(mol_hash).or_insert_with(FragmentEvidence::new);
             evidence.observe(is_ref, is_alt, result.qual, is_read1, is_forward, tlen, result.has_n_base, result.is_structural, record.mapq(), !result.uninformative);
 
@@ -4914,9 +4955,8 @@ mod tests {
     // These tests verify the wrong-length INDEL handling added to fix
     // PAX5-class discordances (originally Phase-3 fallbacks; now the
     // wrong-length rule resolves lone ops directly as neither + partial
-    // evidence, with Phase 3 kept for shifted same-length candidates and in-band
-    // large deletions whose bases differ). Each test documents which code path in
-    // check_insertion/check_deletion it exercises.
+    // evidence, with Phase 3 kept for shifted same-length candidates). Each test
+    // documents which code path in check_insertion/check_deletion it exercises.
 
     // Aligner construction is inlined in each test below because:
     // 1. Rust's impl Trait creates distinct opaque types per call site

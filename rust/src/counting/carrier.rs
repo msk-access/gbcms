@@ -149,7 +149,7 @@ type SplicedWindows = (Windows, SpliceMap);
 /// Query positions `[first, after)` the rule may read: the whole read in DNA; in
 /// RNA, a soft clip is left out when its reach crosses an exon edge or junction
 /// end in `edges` (or the aligned bases end within [`EDGE_SLACK`] of one).
-fn readable_range(record: &Record, rules: &ReadRules) -> Option<(usize, usize)> {
+pub(crate) fn readable_range(record: &Record, rules: &ReadRules) -> Option<(usize, usize)> {
     let len = record.seq_len();
     let Some(edges) = rules.clip_edges.map(ClipEdges::get) else {
         return Some((0, len));
@@ -177,14 +177,14 @@ const GUARD_REACH: usize = 25;
 const ROOM: usize = FLANK + GUARD_REACH;
 /// Fragments, and share of the fragments reading that base, a neighbouring change
 /// must recur on before it is taken as part of the reads' haplotype.
-const GUARD_MIN_READS: u32 = 3;
-const GUARD_MIN_SHARE: f64 = 0.2;
+pub(crate) const GUARD_MIN_READS: u32 = 3;
+pub(crate) const GUARD_MIN_SHARE: f64 = 0.2;
 /// Share of the REF reads on which a change is no longer the ALT's alone.
-const GUARD_REF_SHARE: f64 = 0.05;
+pub(crate) const GUARD_REF_SHARE: f64 = 0.05;
 /// Longest tandem-repeat unit the event is grown through (besides the length change).
 const MAX_UNIT: usize = 6;
 /// Masked base: matches any haplotype base.
-const WILD: u8 = b'N';
+pub(crate) const WILD: u8 = b'N';
 
 /// One allele's window, its event (grown through repeats) with the flank on each
 /// side. A read must hold `hold` of its bases from the reading flank, the same
@@ -274,14 +274,14 @@ impl Windows {
 /// A window read from the read: mismatching bases, masked bases (below min BQ,
 /// or N; they match anything), whether an N sat among them, and the query span.
 #[derive(Clone)]
-struct Reading {
-    mismatches: usize,
-    masked: usize,
-    had_n: bool,
-    span: (usize, usize),
+pub(crate) struct Reading {
+    pub(crate) mismatches: usize,
+    pub(crate) masked: usize,
+    pub(crate) had_n: bool,
+    pub(crate) span: (usize, usize),
     /// The read's evidence against this allele (log10): the weight of every
     /// base that mismatches it, by its quality, masked bases included.
-    mismatch_weight: f64,
+    pub(crate) mismatch_weight: f64,
 }
 
 /// Classify a read at a complex variant by the exact-carrier rule, or None when
@@ -628,7 +628,7 @@ fn splice_segments((start, end): (i64, i64), junctions: &[(i64, i64)], (ev_lo, e
 
 /// Query positions [first, after) of the read's aligned bases: its soft clips lie
 /// before `first` and from `after` on. None for a read with no aligned base.
-fn aligned_query_range(record: &Record) -> Option<(usize, usize)> {
+pub(crate) fn aligned_query_range(record: &Record) -> Option<(usize, usize)> {
     let (lead, tail) = soft_clips(record);
     let (lead, tail) = (lead as usize, tail as usize);
     let len = record.seq_len();
@@ -918,8 +918,16 @@ pub(crate) struct Guard {
     pub scanned: u32,
 }
 
+impl Guard {
+    /// The guard found for `v`.
+    pub(crate) fn new(v: &Variant, masked: Vec<i64>, larger: Option<ObservedAllele>, scanned: u32) -> Self {
+        Self { key: (v.pos, v.ref_allele.clone(), v.alt_allele.clone()), masked, larger, scanned }
+    }
+}
+
 /// A variant's [`Guard`], found from its reads on first use: only the exact-carrier
-/// rule reads it, so an SNV or a pure indel never pays for it.
+/// rule and the junction judge read it, so an SNV or a short pure indel never pays
+/// for it.
 pub(crate) struct CarrierGuard<'a> {
     found: std::cell::OnceCell<Option<Guard>>,
     find: Box<dyn Fn() -> Option<Guard> + 'a>,
@@ -1117,12 +1125,7 @@ pub(crate) fn guard_for(
         "carrier guard at {}:{} {}>{}: {} recurring changes beside the event masked, {} on the ALT reads alone",
         v.chrom, v.pos + 1, v.ref_allele, v.alt_allele, masked.len(), alt_only.iter().map(Vec::len).sum::<usize>(),
     );
-    Some(Guard {
-        key: (v.pos, v.ref_allele.clone(), v.alt_allele.clone()),
-        masked,
-        larger,
-        scanned,
-    })
+    Some(Guard::new(v, masked, larger, scanned))
 }
 
 /// The minimal differing interval of `a` (REF offsets) against `b`, trimming the
@@ -1174,7 +1177,7 @@ fn repeat_end(r: &[u8], b: usize, max_unit: usize) -> usize {
 
 /// How a read's windows were placed.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-enum Placement {
+pub(crate) enum Placement {
     /// From the reading flank's end base, aligned.
     Flank,
     /// From the other flank, the reading flank in the read's clip or under its own
@@ -1273,7 +1276,7 @@ fn read_pair(
 /// The weight (log10) of the read's confident bases (at or above `min_baseq`, not
 /// N) that mismatch `allele` placed at query position `s`, each by its quality, over
 /// the readable bases `[first, after)`. A masked window base mismatches nothing.
-fn confident_weight(seq: &[u8], quals: &[u8], min_baseq: u8, allele: &[u8], s: i64, (first, after): (usize, usize)) -> f64 {
+pub(crate) fn confident_weight(seq: &[u8], quals: &[u8], min_baseq: u8, allele: &[u8], s: i64, (first, after): (usize, usize)) -> f64 {
     allele
         .iter()
         .enumerate()
@@ -1325,7 +1328,7 @@ fn error_probability(q: u8) -> f64 {
 
 /// The evidence one base read at quality `q` gives for the allele it matches over
 /// one it does not (log10): the least an ALT call must show.
-fn one_base_evidence(q: u8) -> f64 {
+pub(crate) fn one_base_evidence(q: u8) -> f64 {
     let e = error_probability(q);
     ((1.0 - e) / (e / 3.0)).log10()
 }
@@ -1333,7 +1336,7 @@ fn one_base_evidence(q: u8) -> f64 {
 
 /// Mismatches of read bases against haplotype bases position by position, masked
 /// bases (below `min_baseq`, or N) matching anything.
-fn score(bases: &[u8], quals: &[u8], min_baseq: u8, hap: &[u8], span: (usize, usize)) -> Reading {
+pub(crate) fn score(bases: &[u8], quals: &[u8], min_baseq: u8, hap: &[u8], span: (usize, usize)) -> Reading {
     let (mut mismatches, mut masked, mut had_n, mut mismatch_weight) = (0, 0, false, 0.0);
     for ((&b, &q), &h) in bases.iter().zip(quals).zip(hap) {
         let b = b.to_ascii_uppercase();

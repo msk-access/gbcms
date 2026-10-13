@@ -42,6 +42,22 @@ bases:
   rule reads the CIGAR, as the engine does: in a run, the aligner writes a masked
   base as the insertion.
 
+A pure deletion of 50 bp or more (RJ-24) is judged at its POS breakpoint instead:
+one window of equal length per allele, read from the left flank (4 clean flank
+bases, the microhomology, 4 bases of the allele's own continuation: the deleted
+bases for REF, the right flank for ALT), through soft-clipped bases inside the
+fragment. A read whose left flank is not aligned there (clipped, deleted by its own
+alignment, or aligned over the deleted bases' other copy) is placed from the right
+flank as the ALT's window sits there, when its unmasked bases favour the left flank
+over the deleted bases REF has before the right flank by one base read at the
+minimum quality; aligned over the other copy, only where it fits the ALT. Hard-clipped
+bases are absent.
+Nothing past the window is read. Such reads decided through a clip count toward
+depth, as in the engine. The census does not mask a change recurring in the windows
+across reads (the engine does): reads carrying one are neither here. Nor does it
+read the CIGAR: a read fitting REF whose own alignment deletes or inserts 5+ bases
+inside the deleted span is another allele in the engine (C26), REF here.
+
 Engine REF/ALT counts must equal the census REF/ALT counts. Every other verdict is
 neither, whether partial or uninformative. The census is exact for clean bases,
 with two limits:
@@ -61,6 +77,7 @@ with two limits:
 
 from __future__ import annotations
 
+import math
 from collections import Counter
 from dataclasses import dataclass, field
 from enum import Enum
@@ -70,6 +87,12 @@ import pysam
 SKIP_FLAGS = (
     0x4 | 0x100 | 0x200 | 0x400 | 0x800
 )  # unmapped, secondary, QC-fail, duplicate, supplementary
+
+
+# RJ-24: pure deletions this long are judged at the POS breakpoint, with this many
+# clean bases each side of the junction past the microhomology.
+LONG_DELETION = 50
+JUNCTION_K = 4
 
 
 class Verdict(Enum):
@@ -101,9 +124,45 @@ class Window:
     alt_left: str
 
 
+@dataclass(frozen=True)
+class Junction:
+    """A pure deletion of LONG_DELETION or more (RJ-24): the deleted bases `[lo, lo +
+    length)` at their leftmost placement, the microhomology (how far the deletion can
+    slide right), and each allele's window read from the left flank: JUNCTION_K flank
+    bases ending at the anchor `lo - 1`, the microhomology, JUNCTION_K bases of the
+    allele's continuation."""
+
+    lo: int
+    length: int
+    mh: int
+    ref_w: str
+    alt_w: str
+    contig: str = field(repr=False, default="")
+
+    @property
+    def anchor(self) -> int:
+        return self.lo - 1
+
+    @property
+    def first(self) -> int:
+        """Reference position of the windows' first base."""
+        return self.lo - JUNCTION_K
+
+    def last(self, allele: str) -> int:
+        """Reference position of the allele's window's last base."""
+        tail = self.mh + JUNCTION_K - 1
+        return self.lo + tail if allele == "REF" else self.lo + self.length + tail
+
+    @property
+    def deleted_tail(self) -> str:
+        """The JUNCTION_K deleted bases before the right flank, where ALT has the left
+        flank: REF read back from ALT's window's last base."""
+        return self.contig[self.lo + self.length - JUNCTION_K : self.lo + self.length].upper()
+
+
 @dataclass
 class Census:
-    window: Window
+    window: Window | Junction
     verdicts: dict[tuple[str, int], Verdict] = field(default_factory=dict)
 
     @property
@@ -148,12 +207,27 @@ def tract(pos: int, ref: str, alt: str, contig: str) -> tuple[int, int]:
     return lo, hi + n
 
 
-def window_for(variant, contig: str) -> Window:
+def window_for(variant, contig: str) -> Window | Junction:
     """The census window for a `Variant` on `contig` (the reference sequence its
     positions index). A pure indel's anchors are the two flank bases of its tract,
-    which both alleles share; the tract is the census's own slide."""
+    which both alleles share; the tract is the census's own slide. A pure deletion of
+    LONG_DELETION or more gets its junction windows (RJ-24)."""
     pos, ref, alt = variant.pos, variant.ref_allele.upper(), variant.alt_allele.upper()
     contig = contig.upper()
+    if is_pure_indel(ref, alt) and len(ref) - len(alt) >= LONG_DELETION:
+        lo, hi = tract(pos, ref, alt, contig)
+        n = len(ref) - len(alt)
+        mh = hi - lo - n
+        flank = contig[lo - JUNCTION_K : lo]
+        reach = mh + JUNCTION_K
+        return Junction(
+            lo,
+            n,
+            mh,
+            flank + contig[lo : lo + reach],
+            flank + contig[lo + n : lo + n + reach],
+            contig,
+        )
     if is_pure_indel(ref, alt):
         lo, hi = tract(pos, ref, alt, contig)
         left, right = lo - 1, hi
@@ -368,7 +442,78 @@ def _insert_unread(read, bases: str, spans) -> bool:
     return readable <= deleted
 
 
-def judge(read, window: Window, min_baseq: int = 20) -> Verdict:
+def _one_base(q: int) -> float:
+    """The evidence (log10) one base read at quality `q` gives for the base it shows
+    over another: the engine's unit of placement evidence."""
+    e = min(max(10 ** (-min(q, 60) / 10), 1e-6), 0.75)
+    return math.log10((1 - e) / (e / 3))
+
+
+def _deleted_by_read(read, pos: int) -> bool:
+    """Whether one of the read's own deletions covers reference position `pos`."""
+    rp = read.reference_start
+    for op, n in read.cigartuples:
+        if op == 2 and rp <= pos < rp + n:
+            return True
+        if op in (0, 2, 3, 7, 8):
+            rp += n
+    return False
+
+
+def judge_junction(read, j: Junction, min_baseq: int = 20) -> tuple[Verdict, bool]:
+    """RJ-24: the read's bases over the junction windows, and whether it was placed
+    through its clip or its own deletion (rather than an aligned flank). Soft-clipped
+    bases inside the fragment are read; nothing past the window is."""
+    seq = read.query_sequence
+    if not seq:
+        return Verdict.NOT_ANCHORED, False
+    quals = read.query_qualities
+    bases = "".join(
+        "N" if quals is not None and quals[i] < min_baseq else b for i, b in enumerate(seq.upper())
+    )
+    frag_lo, frag_hi, pairs = _molecule(read)
+    n = len(j.ref_w)
+
+    def reading(start: int) -> tuple[bool, bool] | None:
+        if start < frag_lo or start + n > frag_hi:
+            return None
+        stretch = bases[start : start + n]
+        return _fits(stretch, j.alt_w), _fits(stretch, j.ref_w)
+
+    first = pairs.get(j.first)
+    if first is not None:
+        got = reading(first)
+        return (_verdict(*got) if got else Verdict.NOT_ANCHORED), False
+    # The left flank not aligned where the windows start: placed from the right flank
+    # as the ALT's window sits there (REF's ends inside the deleted bases, which no ALT
+    # molecule holds), when its unmasked bases favour the left flank over the deleted
+    # bases REF has there by one base read at the minimum quality, and by more than nothing. With the flank in
+    # the clip or under the read's own deletion it is ALT where it fits, else another
+    # allele; aligned over the deleted bases' other copy, only where it fits.
+    q = pairs.get(j.last("ALT"))
+    if q is None or quals is None:
+        return Verdict.NOT_ANCHORED, False
+    start = q - n + 1
+    flank, tail = j.alt_w[:JUNCTION_K], j.deleted_tail
+    evidence = sum(
+        _one_base(quals[i]) * ((bases[i] != tail[k]) - (bases[i] != flank[k]))
+        for k, i in enumerate(range(start, start + JUNCTION_K))
+        if 0 <= i < len(bases) and bases[i] != "N"
+    )
+    got = reading(start)
+    if evidence <= 0 or evidence < _one_base(min_baseq) or got is None:
+        return Verdict.NOT_ANCHORED, False
+    fits_alt, fits_ref = got
+    if fits_alt:
+        return _verdict(fits_alt, fits_ref), True
+    lead, _ = _clips(read)
+    held = start < lead or _deleted_by_read(read, j.first)
+    return (Verdict.CONTRADICTS_BOTH, True) if held else (Verdict.NOT_ANCHORED, False)
+
+
+def judge(read, window: Window | Junction, min_baseq: int = 20) -> Verdict:
+    if isinstance(window, Junction):
+        return judge_junction(read, window, min_baseq)[0]
     seq = read.query_sequence
     if not seq:
         return Verdict.NOT_ANCHORED
@@ -464,6 +609,9 @@ def census(
     (name, mate)."""
     window = window_for(variant, contig)
     result = Census(window)
+    if isinstance(window, Junction):
+        _census_junction(bam_path, variant.chrom, window, result, min_mapq, min_baseq, skip_flags)
+        return result
     with pysam.AlignmentFile(bam_path) as fh:
         for read in fh.fetch(variant.chrom, variant.pos, variant.pos + 1):
             if read.flag & skip_flags or read.mapping_quality < min_mapq or not read.query_sequence:
@@ -474,6 +622,20 @@ def census(
             mate = 2 if read.is_read2 else 1
             result.verdicts[(read.query_name, mate)] = judge(read, window, min_baseq)
     return result
+
+
+def _census_junction(bam_path, chrom, j: Junction, result, min_mapq, min_baseq, skip_flags):
+    """RJ-24 reads: those over the anchor, and those decided through a clip that holds
+    the left flank (DNA), as the engine admits them."""
+    with pysam.AlignmentFile(bam_path) as fh:
+        for read in fh.fetch(chrom, j.first, j.last("ALT") + 1):
+            if read.flag & skip_flags or read.mapping_quality < min_mapq or not read.query_sequence:
+                continue
+            _, _, pairs = _molecule(read)
+            over = bool(pairs) and min(pairs) <= j.anchor <= max(pairs)
+            verdict, via_clip = judge_junction(read, j, min_baseq)
+            if over or (via_clip and verdict in (Verdict.REF, Verdict.ALT)):
+                result.verdicts[(read.query_name, 2 if read.is_read2 else 1)] = verdict
 
 
 def assert_matches(counts, result: Census, what: str = "", depth: bool = True) -> None:

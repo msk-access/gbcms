@@ -31,7 +31,10 @@ description: Procedure for adding a feature to gbcms following its Git Flow and 
 6. **Run QA** (see the qa-check skill).
 
    **Real-data acceptance** for count-changing work: run every assay the change reaches
-   (IMPACT tumour with its matched normal; ACCESS duplex + simplex through `gbcms merge`),
+   (IMPACT tumour with its matched normal; ACCESS duplex + simplex through `gbcms merge`;
+   WES/WGS aligned without realignment; RNA), with more than one truth source (GIAB is one
+   genome, one aligner, germline hets only: add normals as hom-REF controls and spike-ins
+   where no truth exists), and judge DNA and RNA separately where their reads differ,
    one BAM at a time, and score against the reads — reads' own bases are the evidence (not the aligner's placement, not sign-out): gbcms genotypes, it does not call.
    Build base and candidate in isolation (`git archive <sha>` + own venv, `BUILT_FROM`
    recorded); once the PR merges, delete those builds and gzip raw `--trace` logs

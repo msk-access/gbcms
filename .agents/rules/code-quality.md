@@ -21,6 +21,10 @@ alwaysApply: true
 - [ ] Update monitoring — timing/counts for data operations, progress for long loops
 - [ ] Reproduce every claim before stating it (a review finding, an "unreachable" branch,
       behavior across inputs) with a run — synthetic BAM or CLI; otherwise say it is unverified
+- [ ] Count-changing step: real-data acceptance on every data type it reaches (DNA tissue
+      tumour + matched normal; cfDNA duplex/simplex via `gbcms merge`; WES/WGS without
+      realignment; RNA) and more than one truth source — one dataset (e.g. GIAB) is a data
+      point, not acceptance; DNA and RNA may need different rules (see add-feature step 6)
 
 **AFTER implementing, compare code against implementation plan:**
 - [ ] Re-read the relevant plan section(s)
@@ -100,6 +104,10 @@ assert counts.dpf >= counts.rdf + counts.adf   # DPF includes discarded fragment
 assert counts.rd == counts.rd_fwd + counts.rd_rev  # strand consistency
 assert counts.ad == counts.ad_fwd + counts.ad_rev
 ```
+
+A new test file starts with a name check: `git ls-files tests/<name>.py` prints nothing,
+or create it with the Write tool (it refuses to overwrite a file it has not read). A
+shell write (`open(p, "w")`, `>`) once replaced an existing contract's tests unseen.
 
 ## Test Suite: 266 Python + 161 Rust Tests
 

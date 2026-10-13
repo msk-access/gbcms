@@ -3,9 +3,56 @@
 > Tactical state that must survive a closed laptop or a context summary.
 > Update the **Now** and **Next** sections as work progresses.
 
-_Last updated: 2026-10-08_
+_Last updated: 2026-10-13_
 
 ## Now
+6.7.0 cycle (tracker #196; plan merged in #257). Two stacked branches, both reviewed
+(Fable) and accepted on every arm (panel + matched normals, ACCESS duplex/simplex +
+normals, cohort runs, TEMPO WES, HG002); neither pushed since review (awaiting the
+operator's go):
+- **C39 / RJ-23** (`feature/c39-one-sided-windows`, PR #272, pushed head 07ed9d2b;
+  local head `9b412839`; worktree `.claude/worktrees/c39`): equal-length windows run
+  through bases the alleles share; other-flank placement as the allele the read's
+  confident bases favour; germline changes (on 3+ REF fragments, runs included)
+  masked; no larger allele named beside a run. Panel delins within 10% of sign-out
+  100/136 (6.6.0 88/135); HG002 het delins in 0.35-0.65 180/236 and 122/149.
+- **C40 / RJ-24** (`feature/c40-long-deletions`, local head `269e68ef`, merges C39):
+  50+ bp deletions at the POS breakpoint; placement from the shared right flank on
+  confident bases; guard background only in the shared flank and microhomology.
+  WES 0/132 -> 40/143 within 10% of sign-out; HG002 median VAF 0.500, 132/188 in
+  band; panel 41/60 (bases-only oracle 40/60; 6.6.0 50/60 counts the CIGAR like
+  sign-out); normals clean. Also mFSD sizes an ALT fragment as its molecule.
+- Open operator questions: ALT by length alone when a complex carrier's whole ALT
+  core is below min BQ (RJ-20 analogue); a run in cis with no REF reads (hom-ALT /
+  LOH) reads partial; a germline indel in the junction flank zeroes both alleles.
+- 2026-10-13 audit (local harness `plan670/tools`, report artifact; aggregates only),
+  decisions walked through with the operator, awaiting calls:
+  - **Pure indels are judged by their CIGAR.** HG002 arms (`giab/pri_ins`, `pri_sins`,
+    `pri_sdel`): carriers the aligner writes without the op are counted REF, and REF
+    is credited to reads 1-4 bases past a tract where a carrier cannot be. Insertions
+    10+ bp: median VAF 0.13, 110/603 in band (GATK HC 343); short insertions 0.43,
+    short deletions 0.455. Prototypes (`src_pi10`, `src_pa1`, `src_ph1`, patches
+    beside them): every indel by the exact-carrier rule gives 0.500 on short indels
+    and 332/603 on long insertions, but changes 22 decided spec cases (4 substantive);
+    the hybrid keeps every case but fixes only part. Reopens C41's insertion finding.
+  - **New C40 defect:** a co-annotated sibling SNV inside a long deletion's span
+    withdraws REF reads (RJ-5) though the junction windows read 4 bases past the
+    junction: 2,667 REF reads at 10/60 panel rows (one row VAF 0.17 -> 0.30).
+    Fixed in C40 (5aaf76a4, review fix 639f21a2: siblings claim only from the anchor
+    through REF's window): panel long deletions within 10% of sign-out 41 -> 45/60
+    (of the reads' VAF 46 -> 50/60; 6.6.0 50 and 53).
+  - The junction-window germline question (adaptive window `src_pj4`, guard reading
+    on `src_pj5`) gains nothing on any arm.
+  - ACCESS: ABRA2's post-collapse pass can introduce events; validate indel rules
+    against the standard BAMs (operator will slice on HPC).
+
+Then: C40 PR stacked on #272; C31 (#212, fragment end from the mate's unclipped 5'
+end); D12 re-scope (RNA rules, low-VAF cfDNA, K re-test, per-read confirmation) as a
+docs PR; production aligner versions/flags from the operator (IMPACT/ACCESS
+BWA+ABRA2, FORTE STAR). Local acceptance harness: `~/test/gbcms/harness/plan670/`
+(PHI; `accept_*.sh`, `diff_builds.py`, `across/`, `wes/`, `giab/`).
+
+### Previous: 6.6.0 release
 **6.6.0 is released** (2026-10-08): #252 merged to main (merge commit 67c45989, tree
 identical to the gated candidate 09612675), annotated tag `6.6.0`, main back-merged
 into develop, develop at `6.7.0-dev.0`. The release workflow publishes PyPI, GHCR, the

@@ -17,6 +17,37 @@ regenerating a section.
 
 ---
 
+## [LRN-20261012-002] rule-body | a new test file's name is checked before it is written
+- **Status:** resolved (rule promoted)
+- **Cause:** rule-body
+- **Summary:** I wrote new C39 placement tests to `tests/test_carrier_placement_contract.py`
+  through a Python heredoc (`open(p, "w")`), which bypasses the Write tool's
+  read-before-overwrite guard. The name was already the C37 (#245) contract; its five
+  tests vanished and the suite still passed (1445). Caught only because the count fell
+  short of the reviewer's 1453 plus the four new tests.
+- **Promotion target:** `.agents/rules/code-quality.md` — `DONE:` under Test Invariants:
+  a new test file starts with `git ls-files tests/<name>.py` empty, or is created with
+  the Write tool; a shell write once replaced a contract unseen.
+- **Related:** check the test count against the last known count after adding tests.
+
+## [LRN-20261012-001] rule-trigger | count-changing ticket work skipped the every-data-type acceptance rule
+- **Status:** resolved (rule promoted)
+- **Cause:** rule-trigger
+- **Summary:** C40's choices (k, read-on, the placement candidate) were measured on GIAB
+  HG002 (one genome, BWA-MEM, germline hets, mostly tandem-repeat deletions) and on panel
+  sign-out (not truth), with the matched-normal arm skipped and no ACCESS, WES or RNA
+  run. The rule that acceptance covers every assay (LRN-20260923-001) lives in
+  add-feature step 6, which plan-driven ticket work never loads, so it stayed silent.
+  The operator also widened the tool survey to tools of other applications that judge
+  reads alike, and noted DNA and RNA may need different rules.
+- **Promotion target:** `.agents/rules/code-quality.md` (AFTER implementing each step) —
+  `DONE:` a count-changing step needs real-data acceptance on every data type it reaches
+  and more than one truth source; `.agents/skills/add-feature/SKILL.md` step 6 — `DONE:`
+  adds WES/WGS, RNA, normals as hom-REF controls, spike-ins, DNA/RNA judged separately;
+  memory `survey-several-tools` — `DONE:` SV/graph genotypers, realigners, split-read and
+  RNA indel tools.
+- **Related:** [[test-across-data-types]], [[survey-several-tools]], LRN-20260923-001.
+
 ## [LRN-20261009-001] rule-trigger | an external review is checked against tickets, REJECTED.md and measurements before tickets
 - **Status:** resolved (rule promoted)
 - **Cause:** rule-trigger

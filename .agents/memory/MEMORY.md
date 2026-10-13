@@ -12,8 +12,10 @@ One line per memory. Full content lives in the linked file. Keep this index tigh
 - [Use GitHub sub-issues](github-sub-issues.md) — group related work as parent + sub-issues (cycle tracker, umbrella items), not combined issues or checklists.
 - [Holistic effects map](holistic-effects-map.md) — before any fix/decision, map every place it lands (both counting paths, per-transcript/ASJD/mFSD/observations, rescue/clusters/merge, writers/flags, docs/tests/Nextflow).
 - [Test changes need operator notice](test-changes-need-operator-notice.md) — never edit a failing test's expectation without first telling the operator what it asserts, why it's wrong, and the evidence; wait.
-- [Survey several tools](survey-several-tools.md) — community practice means GATK, samtools/bcftools, fgbio, VarDict, Strelka2, freebayes, bam-readcount, LoFreq, GetBaseCounts, plus the literature and domain tools (RNA: SplitNCigarReads, STAR, ASE counters, RNA callers); say where handling isn't documented.
+- [Survey several tools](survey-several-tools.md) — community practice means GATK, samtools/bcftools, fgbio, VarDict, Strelka2, freebayes, bam-readcount, LoFreq, GetBaseCounts, the literature, domain tools (RNA), and tools of other applications that judge reads alike (SV/graph genotypers, realigners, split-read and RNA indel tools); say where handling isn't documented.
+- [Test across data types](test-across-data-types.md) — accept a count-changing rule on every data type (tissue tumour+normal, cfDNA, WES/WGS, RNA) and input type, with more than one truth source; GIAB alone is not acceptance; DNA and RNA may need different rules.
 - [Better than the standard](better-than-standard.md) — the survey is a floor, not a ceiling: where no tool sets a standard or a measured rule beats the field's, adopt it and say why.
+- [Model per task](model-per-task.md) — set each subagent's model by the task: Fable/Opus for deep reasoning (reviews, rule design, decisions), Sonnet for surveys and routine work, Haiku for mechanical scans; suggest a session switch when the phase changes.
 - [External review: measure first](external-review-measure-first.md) — map an outside review to behaviour, tickets, REJECTED.md and old probes, and measure its value, before filing tickets.
 - [mFSD is graded evidence](mfsd-graded-evidence.md) — fragment size gives increased confidence toward CH or toward somatic (or none), never a hard origin call; don't over-interpret.
 - [Decisions with worked examples](decisions-worked-examples.md) — count-rule decisions come with a real row drawn out, the community standard, the RNA effect and a truth check.
@@ -32,6 +34,7 @@ One line per memory. Full content lives in the linked file. Keep this index tigh
 - [RNA MAPQ default is 1](rna-mapq-default.md) — keeps STAR's 2–4-locus reads (pseudogene-tied junction reads); unique-only cost PIK3CA E545K ALT; decided 2026-10-03.
 - [MAPQ-0 loci (PMS2)](mapq0-loci-pms2.md) — pseudogene genes run at --min-mapq 0; keep MAPQ-0 alignments countable; validate read-admission changes at --min-mapq 0 too.
 - [ABRA2 junction placement](abra2-junction-placement.md) — IMPACT/ACCESS are ABRA2-realigned (junction inserts carry assembly evidence); WES (BWA only) is the placement control.
+- [ABRA2 after collapsing](abra2-collapse-artifacts.md) — ACCESS runs ABRA2 twice (standard, then post-collapse); the second pass can introduce events: check the standard BAM; CIGAR-trusting rules count them, bases-judging rules don't.
 
 ## Tooling / build
 - [pyproject is the dep source of truth](deps-pyproject-source-of-truth.md) — floors measured (CI floors leg), dev tools in PEP 735 groups, only the image installs a lock (hash-pinned + pip check); declare every directly-imported package.
@@ -50,6 +53,7 @@ One line per memory. Full content lives in the linked file. Keep this index tigh
 - [Census mirrors read inputs](census-mirrors-read-inputs.md) — the census shares read-input rules (fragment end, filters), so validate those against an oracle it doesn't share (the bases themselves, the mate's alignment, ITD rows first).
 - [VAF uses informative reads](vaf-informative-reads.md) — `vaf` = AD/(RD+AD); per-sample total_count (DP) includes unjudgeable reads; never advise AD/DP (repeat indels: reads ending inside the tract).
 - [pysam validation oracle](pysam-validation-oracle.md) — use fetch()+get_reference_positions (not pileup) to cross-check gbcms counts; RD/AD match exact, DP includes neither.
+- [Other tools on the slices](other-tools-harness.md) — the 10-tool comparison harness (plan670/tools): one container at a time, IMPACT/ACCESS slices have no proper-pair flag (bcftools -A), Delly/Mutect2/Paragraph quirks, decomposed delins.
 - [vcf2maf oracle](vcf2maf-oracle.md) — VCF↔MAF representation is defined as vcf2maf/maf2vcf output; how to run them locally and their quirks (dies on N, empty ALT for REF==ALT).
 - [GIAB truth arm](giab-truth-arm.md) — HG002 v5.0q hets on the DeepVariant 35x WGS BAM; fetch region slices with many parallel connections; run untraced.
 

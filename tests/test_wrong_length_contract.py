@@ -5,16 +5,16 @@ the variant anchor is evidence of a *different allele* (or a truncated
 representation, for complex insertion sequences) — never a definitive REF or
 full ALT call:
 
-  - pure DEL, single wrong-length D op outside the >=50bp band
-      -> neither + partial_alt
+  - pure DEL, a wrong-length D op (any length; the >=50bp length band is
+    retired, RJ-24) -> neither + partial_alt
   - pure INS, wrong length, observed insert NOT a high-identity substring of a
     non-low-complexity expected insert -> neither + partial_alt
   - pure INS truncation of a complex expected insert -> ALT (same event)
-  - >=50bp band is placement-aware: reads deleting essentially the whole
-    expected span (<=3 retained, <=3 changed outside) -> structural ALT,
-    covering split representations (regime-2 protection); net-matching but
-    DISPLACED deletions (M ops across the expected span) are rejected ->
-    partial, and shifted same-length candidates keep Phase-3 arbitration
+  - a deletion written as two ops with bases kept between, or net-matching but
+    DISPLACED deletions (M ops across the expected span) -> partial: another
+    allele by its bases. These deletions are unprepared here, so the CIGAR
+    checks judge them; a prepared 50+ bp deletion is judged by its bases at the
+    POS breakpoint (RJ-24, tests/test_long_deletion_contract.py)
   - windowed (not-at-anchor) wrong-length ops: repeat tract -> neither +
     partial_alt; unique context -> REF at anchor + partial_alt (noise is
     surfaced, never silently absorbed)
@@ -210,16 +210,15 @@ def test_del_large_40_vs_100(tmp_path):
     assert (c.rd, c.ad, c.partial_alt) == (8, 0, 6)
 
 
-def test_del_large_split_representation_stays_alt(tmp_path):
-    """Regime-2 protection: an aligner may emit one large deletion as two D
-    ops separated by a few matched bases. D(60)+2M+D(40) against an annotated
-    102bp deletion removes 100 of the 102 expected-span bases (2 retained,
-    0 outside) — within the placement-aware band, so these reads must keep
-    counting as ALT, not be demoted by the wrong-length rule."""
+def test_del_large_split_representation_is_another_allele(tmp_path):
+    """D(60)+2M+D(40) against an annotated 102bp deletion keeps 2 of the 102
+    expected-span bases: by its bases another allele, not the ALT (partial
+    evidence). The 3-base length band that called it the same event is retired:
+    no real read needed it (RJ-24)."""
     ref = _mk_ref(n=800)
     bam = _bam(tmp_path, ref, _ref_reads(ref, 300) + _split_del_reads(ref, 300, 60, 2, 40))
     c = _count(bam, _del_variant(ref, 300, 102))
-    assert c.ad == 6
+    assert (c.ad, c.partial_alt) == (0, 6)
 
 
 def test_del_large_net_matching_but_displaced_not_alt(tmp_path):

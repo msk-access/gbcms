@@ -590,10 +590,9 @@ pub(crate) fn alt_read_is_informative(record: &Record, v: &Variant, quals: &[u8]
     })
 }
 
-/// The siblings whose change lies inside `variant`'s discrimination window:
-/// the only ones whose carriers are not REF testimony for `variant`.
-pub(crate) fn siblings_in_window<'a>(variant: &Variant, siblings: &'a [Variant]) -> Vec<&'a Variant> {
-    let (w_lo, w_hi) = discrimination_window(variant);
+/// The siblings whose change lies inside the genomic span `[w_lo, w_hi)`: where a
+/// row's REF is read, so their carriers are not REF testimony for it.
+pub(crate) fn siblings_in_span((w_lo, w_hi): (i64, i64), siblings: &[Variant]) -> Vec<&Variant> {
     siblings
         .iter()
         .filter(|s| {
@@ -796,7 +795,7 @@ mod tests {
         let outside = var(ctx, 16, "CT", "C");
         let left_of_window = var(ctx, 1, "G", "T");
         let sibs = vec![inside, twin, outside, left_of_window];
-        let got: Vec<i64> = siblings_in_window(&a, &sibs).iter().map(|s| s.pos).collect();
+        let got: Vec<i64> = siblings_in_span(discrimination_window(&a), &sibs).iter().map(|s| s.pos).collect();
         assert_eq!(got, vec![5, 2]);
     }
 }

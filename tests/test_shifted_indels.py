@@ -276,8 +276,8 @@ class TestDeletionWindowed:
         the windowed CIGAR match. The read covers the anchor with a Match op and
         no deletion at the expected position → REF (CIGAR definitive).
 
-        Deletions of 5bp or more that fail S3 are judged by the read's bases (or,
-        in-band at 50bp or more, by Phase 3); short deletions (1-4bp) failing S3 are
+        Deletions of 5bp or more that fail S3 are judged by the read's bases (50bp
+        or more at the POS breakpoint, RJ-24); short deletions (1-4bp) failing S3 are
         almost certainly spurious noise, so CIGAR remains definitive for them. A 1bp S3-rejected windowed
         Del does NOT trigger Phase 3; found_ref_coverage=True → REF.
         """

@@ -20,7 +20,7 @@ pub struct Variant {
     /// Read by the Phase-3 haplotypes, the pangenome matrix and the sibling guard;
     /// the exact-carrier rule and the windowed indel checks fall back to it without
     /// an `event_ref` (the windowed checks also where `event_ref` does not hold the
-    /// bases; the in-band large-deletion check reads its deleted bases from it).
+    /// bases).
     #[pyo3(get, set)]
     pub ref_context: Option<String>,
     /// Genomic start position (0-based) of the ref_context string.
@@ -122,6 +122,8 @@ pub struct DecisionTally {
     pub carrier_judged: u64,
     /// Reads it could not judge, left to the previous classifier (warned).
     pub carrier_fallback: u64,
+    /// Reads the junction judge decided or left as depth (deletions of 50+ bp).
+    pub junction_judged: u64,
     /// REF reads excluded as a sibling's ALT (the multi-allelic REF guard).
     pub sibling_ref_excluded: u64,
     /// ALT reads claimed by a sibling (the AD-claiming guard).
@@ -139,6 +141,7 @@ impl DecisionTally {
         self.alt_by_bases += o.alt_by_bases;
         self.carrier_judged += o.carrier_judged;
         self.carrier_fallback += o.carrier_fallback;
+        self.junction_judged += o.junction_judged;
         self.sibling_ref_excluded += o.sibling_ref_excluded;
         self.sibling_alt_claimed += o.sibling_alt_claimed;
         self.clip_admitted += o.clip_admitted;

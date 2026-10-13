@@ -27,3 +27,8 @@ the recurring failure mode. See [[engine-output-aware]].
 before saying how a change moves it: `vaf` is alt / (REF + ALT) in the writers,
 and merge's alt / total uses a merged total that is REF + ALT (not the
 per-sample depth) — a group 3 claim read from one formula's surface was wrong.
+A rule ported from one judge to another (the exact-carrier guard's germline-run
+masking into the junction guard, 2026-10-12) is re-derived on the target's own
+inputs: what it tallies (shared flank only, or offsets where the alleles differ)
+and how loosely it assigns reads to an allele. Ported as-is it masked another
+breakpoint's run as background (47 WES reads turned REF).
