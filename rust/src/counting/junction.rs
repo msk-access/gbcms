@@ -147,6 +147,14 @@ pub(crate) fn junction(v: &Variant) -> Option<Junction> {
     Some(Junction { lo: start + lo as i64, len, mh, ref_w, alt_w, ref_back })
 }
 
+/// The genome span REF's window reads, [its first base, its last + 1): the flank, the
+/// microhomology and K deleted bases. Nothing past it is read, for either allele.
+/// None when the junction judge does not judge `v`.
+pub(crate) fn ref_window_span(v: &Variant) -> Option<(i64, i64)> {
+    let j = junction(v)?;
+    Some((j.first(), j.last(false) + 1))
+}
+
 /// A read's call at a long deletion (RJ-24), or None when the junction judge does
 /// not judge the variant (the caller then uses the CIGAR checks).
 pub(crate) fn classify(

@@ -197,3 +197,48 @@ def test_an_n_clip_shows_no_flank_at_any_minimum_quality(tmp_path, min_baseq):
     )
     (got,) = count_checked(bam, [pv.variant], min_baseq=min_baseq)
     assert got.ad == 0
+
+
+@pytest.mark.parametrize("offset, rd", [(20, 4), (1, 0)])
+def test_a_sibling_in_the_deleted_span_claims_ref_reads_only_inside_the_windows(
+    tmp_path, offset, rd
+):
+    """Every REF read carries a co-annotated SNV at deleted base `offset`; no carrier
+    holds those bases. Past the REF window (four deleted bases) the junction windows
+    read nothing there, for either allele, so the REF reads count REF; inside it the
+    SNV's carriers are its molecules there (RJ-5), and leave the deletion's REF."""
+    n, mh = rj.LONG_DEL["del 60"]
+    contig = rj._long_contig(n, mh)
+    hap = contig[:A] + contig[A + n :]
+    g = A + offset  # the SNV, 0-based; the contig has no A
+    reads = []
+    for i in range(4):
+        s = A - 50 - i
+        reads.append(
+            make_read(f"d{i}", hap[s : s + 100], s, ((0, A - s), (2, n), (0, 100 - (A - s))))
+        )
+        seq = contig[s : s + 100]
+        reads.append(make_read(f"r{i}", seq[: g - s] + "A" + seq[g - s + 1 :], s, ((0, 100),)))
+    for r in reads:
+        r.flag = 0x1 | 0x2 | 0x20 | 0x40
+        r.next_reference_id, r.next_reference_start, r.template_length = (
+            0,
+            r.reference_start + 250,
+            400,
+        )
+    fa, bam = write_contig(tmp_path, contig, reads, "c")
+    vcf = tmp_path / "v.vcf"
+    vcf.write_text(
+        f"##fileformat=VCFv4.2\n##contig=<ID=1,length={len(contig)}>\n"
+        "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\n"
+        f"1\t{A}\t.\t{contig[A - 1 : A + n]}\t{contig[A - 1]}\t.\t.\t.\n"
+        f"1\t{g + 1}\t.\t{contig[g]}\tA\t.\t.\t.\n"
+    )
+    out = tmp_path / "out"
+    res = CliRunner().invoke(
+        app, ["dna", "-v", str(vcf), "-b", f"S:{bam}", "-f", fa, "-o", str(out), "--format", "maf"]
+    )
+    assert res.exit_code == 0, res.output
+    rows = read_maf_output(glob.glob(str(out / "*.maf"))[0])
+    (row,) = [r for r in rows if len(r["Reference_Allele"]) == n]
+    assert (int(row["ref_count"]), int(row["alt_count"])) == (rd, 4)

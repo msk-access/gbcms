@@ -1534,9 +1534,9 @@ fn count_variant_from_cache(
     // Create SW aligners ONCE per variant (indelpost pattern), scored by `sw_score`.
     let mut alt_aligner = Aligner::new(SW_GAP_OPEN, SW_GAP_EXTEND, &sw_score);
     let mut ref_aligner = Aligner::new(SW_GAP_OPEN, SW_GAP_EXTEND, &sw_score);
-    // Siblings whose change lies inside this row's discrimination window:
-    // the only ones whose carriers the REF guard excludes.
-    let ref_guard_siblings = window::siblings_in_window(variant, sibling_variants);
+    // Siblings whose change lies where this row's REF is read: the only ones whose
+    // carriers the REF guard excludes.
+    let ref_guard_siblings = ref_guard_siblings(variant, sibling_variants);
 
     // Per-phase classification counters
     let mut phase_counts = [0u32; 5];
@@ -2115,10 +2115,19 @@ fn mask_low_qual(seq: &mut [u8], quals: &[u8], min_baseq: u8) {
     }
 }
 
+/// The co-annotated siblings whose change lies where `variant`'s REF is read: a long
+/// deletion's REF window (its junction windows read nothing past it, for either
+/// allele, and no ALT molecule holds the deleted bases, so a sibling further in would
+/// take REF reads alone), else the discrimination window.
+fn ref_guard_siblings<'a>(variant: &Variant, siblings: &'a [Variant]) -> Vec<&'a Variant> {
+    let span = junction::ref_window_span(variant).unwrap_or_else(|| window::discrimination_window(variant));
+    window::siblings_in_span(span, siblings)
+}
+
 /// Whether a read classified REF for `variant` (or whose REF call was
 /// withdrawn as uninformative) is ALT for a co-annotated sibling whose change
-/// lies inside `variant`'s discrimination window
-/// (`window_siblings`, from `window::siblings_in_window`). Such a read
+/// lies where `variant`'s REF is read (`window_siblings`, from
+/// `ref_guard_siblings`). Such a read
 /// carries a different allele where this row's REF is read, so it is not REF
 /// testimony here. A carrier of a sibling elsewhere in the group shows the
 /// reference across every base that could tell this row's alleles apart, and
@@ -2891,7 +2900,7 @@ fn count_per_transcript(
     rules: &carrier::ReadRules,
 ) -> (String, String) {
     let baq_spare = if use_baq { baq_own_span(variant) } else { None };
-    let ref_guard_siblings = window::siblings_in_window(variant, sibling_variants);
+    let ref_guard_siblings = ref_guard_siblings(variant, sibling_variants);
     // Step 1: Find overlapping transcripts
     let chrom = crate::shared::contig::normalize_contig(&variant.chrom);
     let transcript_ids = annotation.overlapping_transcripts(&chrom, variant.pos);
