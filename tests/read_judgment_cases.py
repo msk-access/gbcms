@@ -59,6 +59,20 @@ COMPLEX = {
     "CA>T run60": (60, "CA", "T"),
 }
 
+# Delins in unique sequence, read by one-sided junction windows (RJ-23): one whose
+# windows are whole (28 reference bases replaced by 6) and a long one (60 by 2).
+DELINS = {
+    "delins 28>6": (28, "ATATGA"),
+    "delins 60>2": (60, "AT"),
+    "delins 17>1": (17, "A"),
+}
+# Delins whose contig is shaped: "delins 17>1" deletes 17 bases for one, and the ALT's
+# right flank repeats the deleted bases' next two (the alleles agree for two bases
+# past the one-base ALT before they differ).
+SHARED_PAST_EVENT = 2
+# How far past the event a recurring change sits on the ALT reads of the guard case.
+RECUR_AT = 7
+
 
 # What a read contributes, at an SNV (C>A at A + 1) and an unprepared Del+SNV
 # (GCT>A at A, which the previous complex classifier judges): read-through bases
@@ -319,6 +333,144 @@ def _complex_reads(run: int, ref_allele: str, alt_allele: str):
     return haps, ends
 
 
+def _grows(r: str, b: int, unit: int, left: bool) -> bool:
+    """Whether a tandem repeat (unit 1..`unit`, at least one whole unit) runs from
+    `b` leftward (`left`) or rightward: carrier.rs's repeat growth, so a shaped case
+    can avoid it."""
+    for k in range(1, unit + 1):
+        i, n = b, 0
+        if left:
+            while i >= 1 and i - 1 + k < len(r) and r[i - 1] == r[i - 1 + k]:
+                i, n = i - 1, n + 1
+        else:
+            while i < len(r) and i >= k and r[i] == r[i - k]:
+                i, n = i + 1, n + 1
+        if n >= k:
+            return True
+    return False
+
+
+def _delins_contig(variant: str) -> str:
+    """The delins case's contig: random C/G/T; for "delins 17>1", the first seed
+    where the ALT's right flank repeats the deleted bases after the first for
+    SHARED_PAST_EVENT bases, then differs, and no repeat grows the event on either
+    allele (the windows stay the short allele's own)."""
+    if variant != "delins 17>1":
+        return _contig("")
+    n, alt = DELINS[variant]
+    for seed in range(189, 1189):
+        seq = list(_contig("", seed))
+        for k in range(1, SHARED_PAST_EVENT + 1):
+            seq[A + k] = seq[A + n + k - 1]
+        k = SHARED_PAST_EVENT + 1
+        if seq[A + k] == seq[A + n + k - 1]:
+            continue
+        ref = "".join(seq)
+        hap = ref[:A] + alt + ref[A + n :]
+        unit = max(6, n - len(alt))
+        if not (
+            _grows(ref, A, unit, True)
+            or _grows(hap, A, unit, True)
+            or _grows(ref, A + n, unit, False)
+            or _grows(hap, A + len(alt), unit, False)
+        ):
+            return ref
+    raise RuntimeError("no seed shapes the delins 17>1 contig")
+
+
+def _delins_reads(n: int, alt: str, shape: str, contig: str = ""):
+    """Reads of a delins shape: (start, query length, events), the delins replacing
+    reference [A, A + n) by `alt`, starts and ends varying per read so no window
+    length is special; or ("raw", position, bases, cigar, qualities) for a read the
+    builder cannot write (a low-quality clip, bases aligned where the aligner put a
+    carrier at the event's other copy)."""
+    carrier = [(A, "I", alt), (A, "D", n)]
+    m = len(alt)
+    hap = contig[:A] + alt + contig[A + n :]
+    out = []
+    for i in range(N_READS):
+        far = 60 + 3 * i
+        if shape == "exact carrier, eight flank bases right":
+            # eight: the 28-to-6 event grows three bases right through a TCG repeat
+            out.append((A - far, far + m + 8, carrier))
+        elif shape == "exact carrier, four flank bases left":
+            out.append((A - 4, 4 + m + far, carrier))
+        elif shape == "exact carrier, long flanks":
+            out.append((A - far, far + m + 60, carrier))
+        elif shape == "REF read, four flank bases left":
+            out.append((A - 4, 4 + n + far, []))
+        elif shape == "REF read, four flank bases right":
+            out.append((A - far, far + n + 4, []))
+        elif shape == "REF read starting inside the event":
+            out.append((A + n // 2, n - n // 2 + far, []))
+        elif shape == "carriers ending before a change that recurs on ALT reads only":
+            # four carriers end four bases past the event (inside its right flank, as
+            # it grows three bases through a TCG repeat: depth only); four more read
+            # on past a change seven bases out, which every one of them shows
+            out.append((A - far, far + m + 4, carrier))
+            sub = (A + n + RECUR_AT - 1, "X", "A")
+            out.append((A - far, far + m + 40, carrier + [sub]))
+        elif shape == "REF read with the event's first base substituted":
+            # the ALT's own base where REF's first is, then REF's bases on: a
+            # substitution, not the delins (its next bases are not the ALT's flank)
+            out.append((A - far, far + n + 40, [(A, "X", alt)]))
+        elif shape == "carriers with a recurring change on the window's last base":
+            # the 28-to-6 event grows three bases right, so its window's last base is
+            # the right flank's fifth: masked (an isolated change), the carriers count
+            out.append((A - far, far + m + 40, carrier + [(A + n + 4, "X", "A")]))
+        elif shape == "carriers with a run of changes from the window's last base on":
+            # the window's last base and the next: a run (another allele), not masked
+            out.append(
+                (A - far, far + m + 40, carrier + [(A + n + 4, "X", "A"), (A + n + 5, "X", "A")])
+            )
+        elif shape == "REF read starting inside the event behind a low-quality clip":
+            # twelve REF bases before the event's end, soft-clipped at Q2, the rest
+            # aligned from its first right-flank base: no flank is read
+            seq = contig[A + n - 12 : A + n - 12 + 100]
+            quals = [2] * 12 + [30] * 88
+            out.append(("raw", A + n, seq, ((4, 12), (0, 88)), quals))
+        elif shape == "carrier written at the event's other copy as plain matches":
+            # an aligner placing a carrier by its right part: its flank and ALT bases
+            # aligned over the REF event's last bases as mismatches, no gap
+            k = 8 + i  # flank bases before the event, in the read
+            seq = hap[A - k : A - k + 100]
+            out.append(("raw", A - k + (n - m), seq, ((0, 100),), [30] * 100))
+        else:
+            raise KeyError(shape)
+    return out
+
+
+DELINS_SHAPES = {
+    "delins 28>6": (
+        "exact carrier, eight flank bases right",
+        "exact carrier, four flank bases left",
+        "exact carrier, long flanks",
+        "REF read, four flank bases left",
+        "REF read, four flank bases right",
+        "REF read starting inside the event",
+        "carriers ending before a change that recurs on ALT reads only",
+    ),
+    "delins 60>2": (
+        "exact carrier, eight flank bases right",
+        "exact carrier, long flanks",
+        "REF read, four flank bases left",
+        "REF read starting inside the event",
+    ),
+    "delins 17>1": (
+        "exact carrier, long flanks",
+        "REF read, four flank bases right",
+        "REF read with the event's first base substituted",
+    ),
+}
+# RJ-23 amendments (2026-10-12), on the 28-to-6 delins.
+DELINS_SHAPES["delins 28>6"] += (
+    "carriers with a recurring change on the window's last base",
+    "carriers with a run of changes from the window's last base on",
+    "REF read starting inside the event behind a low-quality clip",
+    "carrier written at the event's other copy as plain matches",
+)
+
+
 def cases() -> list[Case]:
     out: list[Case] = []
     for v, (motif, ref, alt) in PURE.items():
@@ -331,6 +483,9 @@ def cases() -> list[Case]:
             for e in ends:
                 group = "C25 long events" if run > 40 else "C1 exact carriers"
                 out.append(Case(f"{v} | {h}, {e}", group, v, f"{h}, {e}"))
+    for v, shapes in DELINS_SHAPES.items():
+        for shape in shapes:
+            out.append(Case(f"{v} | {shape}", "C39 one-sided windows", v, shape))
     out.append(
         Case(
             "u-8 | sibling SNV inside the span", "C2 siblings", "u-8", "sibling SNV inside the span"
@@ -470,6 +625,26 @@ def run(case: Case, workdir: Path) -> tuple[tuple[int, int, int], str]:
         _, bam = write_contig(d, contig, reads, "c")
         (c,) = _rs.count_bam_binned(bam, [v], [None], **ARGS)
         return (c.rd, c.ad, c.partial_alt), ""
+    if case.variant in DELINS:
+        n, alt = DELINS[case.variant]
+        contig = _delins_contig(case.variant)
+        reads = []
+        for i, read in enumerate(_delins_reads(n, alt, case.shape, contig)):
+            if read[0] == "raw":
+                _, s, seq, cig, quals = read
+                r = make_read(f"r{i}", seq, s, cig, flag=0x1 | 0x2 | 0x20 | 0x40, quals=quals)
+                r.next_reference_id, r.next_reference_start, r.template_length = 0, s + 150, 300
+                reads.append(r)
+                continue
+            s, length, events = read
+            seq, cig = _build(contig, s, length, events)
+            reads.append(make_read(f"r{i}", seq, s, cig))
+        fa, bam = write_contig(d, contig, reads, "c")
+        (pv,) = _rs.prepare_variants(
+            [_rs.Variant("1", A, contig[A : A + n], alt, "X")], fa, 5, False, 1, True
+        )
+        (c,) = _rs.count_bam_binned(bam, [pv.variant], [None], **ARGS)
+        return (c.rd, c.ad, c.partial_alt), ""
     run_len, r, a = COMPLEX[case.variant]
     contig = _complex_contig(run_len)
     haps, ends = _complex_reads(run_len, r, a)
@@ -499,11 +674,16 @@ DECISIONS = {
     "C27 the ALT across ops": "decided: the ALT across several ops counts ALT, by its bases (C27 #201)",
     "C28 anchor deleted": "decided: a read deleting the anchor is judged by its bases (C28 #202)",
     "C25 long events": "decided: junction windows read on through the read (C25 #199)",
+    "C39 one-sided windows": "decided: one pair of equal-length junction windows at one flank (C39 #253)",
     "read inputs": "decided: a read contributes its molecule's bases, with qualities (C17 #176, C19 #182; C29 #207 a fix)",
     "C35 unreadable inserts": "decided: an insertion's ALT needs one of the read's own inserted bases read (C35 #240)",
     "C36 inserts of other bases": "decided: a same-length insert of other bases is judged by its bases, never Phase 3 (C36 #243)",
     "C37 inserts behind a substitution": "decided: the junction ALT stays; a carrier behind a substitution is another allele, not REF (C37 #245)",
 }
+
+# Decided calls the engine does not give yet: the red-first cases of a rule being
+# built, strict xfails in test_read_judgment_spec.py until it lands.
+PENDING: set[str] = set()
 
 # (ref_count, alt_count, partial_alt) for the case's four reads.
 EXPECT = {
@@ -608,12 +788,14 @@ EXPECT = {
     "C>TA run10 | substitution only, ends past the run": (0, 0, 0),
     "C>TA run10 | anchor kept, one A more, ends inside the run": (0, 0, 0),
     "C>TA run10 | anchor kept, one A more, ends on the base after the run": (0, 0, 0),
-    "C>TA run10 | anchor kept, one A more, ends past the run": (0, 0, 4),
+    # one base from each allele (an A more than REF, C for ALT's T): neither (RJ-23)
+    "C>TA run10 | anchor kept, one A more, ends past the run": (0, 0, 0),
     "C>TA run10 | anchor kept, one A fewer, ends inside the run": (0, 0, 0),
     "C>TA run10 | anchor kept, one A fewer, ends on the base after the run": (0, 0, 0),
     "C>TA run10 | anchor kept, one A fewer, ends past the run": (0, 0, 0),
     "C>TA run10 | exact carrier, ends inside the run": (0, 0, 0),
-    "C>TA run10 | exact carrier, ends on the base after the run": (0, 0, 0),
+    # holds the REF window's 15 bases: the T, all eleven A's and the G after (RJ-23)
+    "C>TA run10 | exact carrier, ends on the base after the run": (0, 4, 0),
     "C>TA run10 | exact carrier, ends past the run": (0, 4, 0),
     "C>TA run60 | REF, ends inside the run": (4, 0, 0),
     "C>TA run60 | REF, ends on the base after the run": (4, 0, 0),
@@ -623,7 +805,7 @@ EXPECT = {
     "C>TA run60 | substitution only, ends past the run": (0, 0, 0),
     "C>TA run60 | anchor kept, one A more, ends inside the run": (4, 0, 0),
     "C>TA run60 | anchor kept, one A more, ends on the base after the run": (0, 0, 0),
-    "C>TA run60 | anchor kept, one A more, ends past the run": (0, 0, 4),
+    "C>TA run60 | anchor kept, one A more, ends past the run": (0, 0, 0),
     "C>TA run60 | anchor kept, one A fewer, ends inside the run": (4, 0, 0),
     "C>TA run60 | anchor kept, one A fewer, ends on the base after the run": (0, 0, 0),
     "C>TA run60 | anchor kept, one A fewer, ends past the run": (0, 0, 0),
@@ -645,6 +827,34 @@ EXPECT = {
     "CA>T run60 | exact carrier, ends inside the run": (0, 4, 0),
     "CA>T run60 | exact carrier, ends on the base after the run": (0, 4, 0),
     "CA>T run60 | exact carrier, ends past the run": (0, 4, 0),
+    # C39 #253: one-sided, equal-length junction windows (RJ-23).
+    "delins 28>6 | exact carrier, eight flank bases right": (0, 4, 0),
+    "delins 28>6 | exact carrier, four flank bases left": (0, 4, 0),
+    "delins 28>6 | exact carrier, long flanks": (0, 4, 0),
+    "delins 28>6 | REF read, four flank bases left": (4, 0, 0),
+    "delins 28>6 | REF read, four flank bases right": (4, 0, 0),
+    "delins 28>6 | REF read starting inside the event": (0, 0, 0),
+    # the change is a separate event, masked: the carriers past it count ALT (RJ-23)
+    "delins 28>6 | carriers ending before a change that recurs on ALT reads only": (0, 4, 0),
+    "delins 60>2 | exact carrier, eight flank bases right": (0, 4, 0),
+    "delins 60>2 | exact carrier, long flanks": (0, 4, 0),
+    "delins 60>2 | REF read, four flank bases left": (4, 0, 0),
+    "delins 60>2 | REF read starting inside the event": (0, 0, 0),
+    # RJ-23 amendments (2026-10-12)
+    "delins 17>1 | exact carrier, long flanks": (0, 4, 0),
+    "delins 17>1 | REF read, four flank bases right": (4, 0, 0),
+    # the windows run past the bases the alleles share after the event: a read with
+    # the event's first base substituted, then REF's bases, is neither allele
+    "delins 17>1 | REF read with the event's first base substituted": (0, 0, 0),
+    # an isolated recurring change is a separate event, masked; a run of changes
+    # (the base past the window included) is another allele, closer to ALT
+    "delins 28>6 | carriers with a recurring change on the window's last base": (0, 4, 0),
+    "delins 28>6 | carriers with a run of changes from the window's last base on": (0, 0, 4),
+    # placed from the other flank, a read's flank must favour that placement over its
+    # own alignment by one read base; a carrier the aligner wrote at the event's
+    # other copy is placed and counts though it starts past POS
+    "delins 28>6 | REF read starting inside the event behind a low-quality clip": (0, 0, 0),
+    "delins 28>6 | carrier written at the event's other copy as plain matches": (0, 4, 0),
     "u-8 | sibling SNV inside the span": (0, 0, 4),
     "u-8 | sibling SNV outside the window": (4, 0, 0),
     "read inputs | absent base qualities (QUAL '*'), showing the ALT": (0, 0, 0),

@@ -72,12 +72,8 @@ pub(crate) fn observed_allele(
         return None;
     }
 
-    let upper = |s: &str| -> Vec<u8> { s.bytes().map(|b| b.to_ascii_uppercase()).collect() };
     let given = canonical(variant.pos, upper(&variant.ref_allele), upper(&variant.alt_allele), &base)?;
-    let known: Vec<Allele> = siblings
-        .iter()
-        .filter_map(|s| canonical(s.pos, upper(&s.ref_allele), upper(&s.alt_allele), &base))
-        .collect();
+    let known = known_alleles(siblings, &base);
 
     let mut seen: HashMap<Allele, u32> = HashMap::new();
     let mut scanned: u32 = 0;
@@ -170,7 +166,7 @@ pub(crate) fn observed_allele(
         .iter()
         .filter(|(a, _)| **a != given && !known.contains(*a))
         .max_by(|a, b| a.1.cmp(b.1).then_with(|| b.0.cmp(a.0)))?;
-    if n < MIN_CARRIERS || n <= given_n || (n as f64) < MIN_FRACTION * scanned as f64 {
+    if !named(n, given_n, scanned) {
         return None;
     }
     Some(ObservedAllele {
@@ -182,12 +178,49 @@ pub(crate) fn observed_allele(
     })
 }
 
+/// The larger allele the exact-carrier guard found the ALT reads carry (the given
+/// allele with a neighbouring change), named under the rule an allele the scan
+/// finds is: enough exact carriers (`n`), more than carry the given allele, a
+/// share of the `scanned` reads, and not a co-annotated sibling's ALT (already an
+/// input row). None without prep's `event_ref`.
+pub(crate) fn larger_allele(
+    larger: &ObservedAllele,
+    scanned: u32,
+    variant: &Variant,
+    siblings: &[Variant],
+) -> Option<ObservedAllele> {
+    let (ev_start, ev_seq) = variant.event_ref.as_ref()?;
+    let refseq = upper(ev_seq);
+    let base = |g: i64| usize::try_from(g - ev_start).ok().and_then(|o| refseq.get(o).copied());
+    let allele: Allele = (larger.pos, upper(&larger.ref_allele), upper(&larger.alt_allele));
+    let fits = named(larger.carriers, larger.given_carriers, scanned) && !known_alleles(siblings, &base).contains(&allele);
+    fits.then(|| larger.clone())
+}
+
+/// Whether an allele `n` reads carry exactly is named, against `given_n` reads
+/// carrying the given allele, out of `scanned` reads read.
+fn named(n: u32, given_n: u32, scanned: u32) -> bool {
+    n >= MIN_CARRIERS && n > given_n && n as f64 >= MIN_FRACTION * scanned as f64
+}
+
+/// The co-annotated siblings' alleles in canonical form.
+fn known_alleles(siblings: &[Variant], base: &dyn Fn(i64) -> Option<u8>) -> Vec<Allele> {
+    siblings
+        .iter()
+        .filter_map(|s| canonical(s.pos, upper(&s.ref_allele), upper(&s.alt_allele), base))
+        .collect()
+}
+
+fn upper(s: &str) -> Vec<u8> {
+    s.bytes().map(|b| b.to_ascii_uppercase()).collect()
+}
+
 /// Canonical (left-aligned, minimal VCF) form of `REF>ALT` at 0-based `pos`,
 /// or None when the alleles are equal (no change) or left-alignment runs off
 /// the known reference. The standard algorithm: while the last bases agree,
 /// drop them; when an allele empties, extend both one reference base left;
 /// then drop shared leading bases, keeping one.
-fn canonical(pos: i64, r: Vec<u8>, a: Vec<u8>, base: &dyn Fn(i64) -> Option<u8>) -> Option<Allele> {
+pub(crate) fn canonical(pos: i64, r: Vec<u8>, a: Vec<u8>, base: &dyn Fn(i64) -> Option<u8>) -> Option<Allele> {
     if r == a {
         return None;
     }

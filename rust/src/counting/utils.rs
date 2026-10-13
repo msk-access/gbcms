@@ -133,6 +133,12 @@ pub struct ClassifyResult {
     /// defined. Such a read counts although its aligned span stops short of the
     /// variant position; the engine admits it in DNA only.
     pub clip_admissible: bool,
+    /// The exact-carrier rule decided this read (REF or ALT) from windows read
+    /// from the right flank (an RNA exon edge cuts the left one). Both alleles'
+    /// molecules hold those windows from the same starts, one starting inside the
+    /// longer allele included, so the engine counts such a read although it does
+    /// not overlap the variant position, in either mode.
+    pub read_from_right: bool,
     /// Whether the PairHMM backend's pangenomic haplotype matrix could not
     /// evaluate this read (reference context missing, or not containing the
     /// variant), so it was scored by the Smith-Waterman fallback — or, where SW
@@ -197,6 +203,7 @@ impl ClassifyResult {
             covers_locus: true,
             mnp_confirmed: false,
             clip_admissible: false,
+            read_from_right: false,
             sw_fallback: false,
             uninformative: false,
             alt_unjudged: false,
