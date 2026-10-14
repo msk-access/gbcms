@@ -13,7 +13,6 @@ Each locus is checked against the read census told the true allele set.
 
 import random
 
-import pytest
 from census import assert_matches, census
 from helpers import count_checked, make_read, write_contig
 
@@ -43,12 +42,6 @@ def _low(read, at, q=5):
         quals[i] = q
     read.query_qualities = quals
     return read
-
-
-# The rule is being built: the tests it turns, strict xfails until it lands.
-BUILDING = pytest.mark.xfail(
-    strict=True, reason="decided (RJ-25, RJ-23 2026-10-14); the rule is being built"
-)
 
 
 def _invariants(c):
@@ -101,7 +94,6 @@ def _delins_locus(tmp_path, others_on, co_annotated=False):
     return contig, bam, vs, counts
 
 
-@BUILDING
 def test_a_carrier_that_cannot_tell_the_alt_from_another_allele_is_not_alt(tmp_path):
     """Six fragments spell another allele one inserted base apart: the six carriers
     reading that base below min BQ fit both, so they are not the ALT's."""
@@ -168,7 +160,6 @@ def _mnp_locus(tmp_path, somatic, germline):
     return contig, bam, v, c
 
 
-@BUILDING
 def test_a_read_showing_only_the_germline_base_of_a_merged_mnp_is_not_alt(tmp_path):
     """GC>AT written for a somatic G>A beside a germline C>T: a read whose A is below
     min BQ shows only the T, which the germline allele GT (on 24 fragments) shows too.
@@ -179,7 +170,6 @@ def test_a_read_showing_only_the_germline_base_of_a_merged_mnp_is_not_alt(tmp_pa
     assert_matches(c, census(bam, contig, v, others=[(P, "GC", "GT")]))
 
 
-@BUILDING
 def test_beside_a_germline_allele_the_absent_given_allele_counts_no_alt(tmp_path):
     """No AT molecule: the germline reads with their G below min BQ are no ALT."""
     contig, bam, v, c = _mnp_locus(tmp_path, somatic=False, germline=True)
@@ -206,7 +196,6 @@ def _g_run_contig():
     return "".join(contig)
 
 
-@BUILDING
 def test_a_germline_snp_in_the_run_leaves_ref_reads_ref(tmp_path):
     """GG>A at the run's fourth G, a germline G>C at its second on half the REF reads
     (the other haplotype): those REF reads hold the given REF allele and count REF."""
@@ -271,7 +260,6 @@ def _ca_locus(tmp_path, ref_snp, alt_snp):
     return contig, bam, v, c
 
 
-@BUILDING
 def test_a_germline_snp_in_the_repeat_on_both_haplotypes_keeps_every_call(tmp_path):
     """The SNP on half the REF reads and half the carriers: background, masked in both
     windows (shifted by the insertion's two bases on the ALT's), so every read keeps
@@ -292,7 +280,6 @@ def test_a_change_in_the_repeat_on_the_carriers_alone_is_another_allele(tmp_path
     assert (c.rd, c.ad, c.partial_alt) == (20, 10, 10)
 
 
-@BUILDING
 def test_a_change_both_haplotypes_carry_is_neither_another_allele_nor_a_mismatch(tmp_path):
     """A 33-base tandem duplication with its anchor substituted (x>A + the next 33
     bases), the event grown through both copies, and a change in the copy's REF bases

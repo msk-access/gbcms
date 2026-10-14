@@ -1066,12 +1066,7 @@ DECISIONS = {
 
 # Decided calls the engine does not give yet: the red-first cases of a rule being
 # built, strict xfails in test_read_judgment_spec.py until it lands.
-PENDING: set[str] = {
-    "delins 28>6, another allele | carriers with the telling base below min BQ, the other allele on four fragments",
-    "MNP GC>AT, germline GT | reads showing only the germline base, the germline allele on four fragments",
-    "G>TCA in a CA run, germline SNP | REF reads with the SNP, beside REF reads without it",
-    "G>TCA in a CA run, germline SNP | carriers with the SNP, beside REF reads with it",
-}
+PENDING: set[str] = set()
 
 # (ref_count, alt_count, partial_alt) for the case's four reads.
 EXPECT = {

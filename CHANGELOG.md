@@ -7,6 +7,42 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed — reads judged beside the other alleles at their locus (#277)
+
+- **The rule (RJ-25).** A read that fits the ALT counts ALT only when, for every
+  other allele of the ALT's length at the locus, it reads a base telling the two
+  apart (the ALT's base, at or above `--min-baseq`); otherwise it is that allele or
+  the ALT, neither with partial evidence. The other alleles are the co-annotated
+  siblings that spell one and those the reads spell in full on 3 or more fragments,
+  found by the reads' bases placed from the event's left flank, not by where the
+  aligner wrote the gap. An allele whose every difference from the ALT is a change
+  from the reference that the REF molecules carry too is a separate event, not
+  another allele; an allele lacking part of the event (the germline haplotype beside
+  a somatic change written as one MNP) is one. Where the reads show no other allele
+  nothing changes. Complex events (the exact-carrier rule) and the MNP check's
+  partly read reads alike; the opt-in homopolymer twin reads the same siblings.
+- **Why.** Develop credited a read that showed only the length of a complex event,
+  or only the germline base of a merged MNP, as the ALT, even beside another allele
+  that shows the same: on a synthetic arm, 165 such reads under stress masks, 15
+  where the given allele is absent at natural quality, a third of AD for a somatic
+  MNP at 10% on a germline het. The rule credits none and loses no carrier where no
+  other allele exists; demoting every such read (the first cut) lost carriers there
+  and at the normals. Panel: 10 rows change (AD -43), each beside another allele the
+  reads show; normals, ACCESS, WES and HG002 unchanged. As GATK and Octopus treat a
+  read that cannot tell two haplotypes apart.
+- **A change inside the grown event (RJ-23, amended).** A REF read holding the given
+  REF allele with a germline SNP in the repeat the event was grown through was
+  neither, silently (RD down by a third to a half at 2 panel rows, a matched normal
+  and a WES row). Such a change, carried by the REF molecules, is now background,
+  masked in both windows where it sits on each allele, so REF reads and carriers
+  carrying it keep their call. One on the ALT molecules alone stays unmasked.
+- **Read census.** Told the locus's other alleles, it judges a read fitting the ALT
+  and another allele as neither (`FITS_OTHER`).
+- **Tests.** Two `--rescue-mnp` tests' unrescued counts move from (REF 20, ALT 1,
+  partial 9) to (20, 0, 10), with the operator's OK: their masked stray reads only
+  the base it shares with the first-change allele nine fragments spell. A new test
+  keeps a stray ALT read beside the rescue.
+
 ### Changed — complex events read by one pair of equal-length windows (#253)
 
 - **The rule (RJ-23).** A complex event (delins, an anchor-changing indel, an MNP

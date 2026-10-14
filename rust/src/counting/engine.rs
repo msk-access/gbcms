@@ -1205,10 +1205,12 @@ fn count_bin_shared(
         let edges = carrier::ClipEdges::new(|| clip_edges(variant, &read_cache, annotation));
         let spliced = carrier::SplicedCache::default();
         // A change recurring beside a complex event is masked in the exact-carrier
-        // windows, and one the ALT reads alone carry names their larger allele; found
-        // from the reads the counts read, on first use, for the main and
-        // per-transcript counts alike. The decomposed form is another allele: it
-        // finds its own.
+        // windows, and one the ALT reads alone carry names their larger allele; the
+        // other alleles of the ALT's length at the locus (the co-annotated siblings and
+        // those the reads spell) are what a read must tell the ALT from. Found from the
+        // reads the counts read, on first use, for the main and per-transcript counts
+        // alike. The decomposed form is another allele: it finds its own, beside the
+        // same siblings.
         let cache = &read_cache;
         let guard_of = |v| {
             carrier::CarrierGuard::new(move || {
@@ -1216,7 +1218,7 @@ fn count_bin_shared(
                 if junction::judges(v) {
                     junction::guard_for(cache, v, &counted, min_baseq)
                 } else {
-                    carrier::guard_for(cache, v, &counted, min_baseq)
+                    carrier::guard_for(cache, v, &counted, min_baseq, siblings)
                 }
             })
         };
@@ -2642,6 +2644,17 @@ fn check_allele_with_qual<F: Fn(u8, u8) -> i32>(
                 let mut r = ClassifyResult::is_ref(q, ClassifyPhase::MaskedCompare);
                 r.has_n_base = had_n;
                 r
+            }
+            MnpResult::Alt(q, _, false)
+                if rules
+                    .guard
+                    .and_then(|g| g.get(variant))
+                    .is_some_and(|g| !carrier::tells_others_aligned(record, quals, min_baseq, variant, g)) =>
+            {
+                // A read leaving a differing base unread counts only if it tells the
+                // ALT from every other allele of its length at the locus (RJ-25).
+                trace!("MNP: a differing base unread, and no base read tells the ALT from another allele of its length → neither, partial");
+                ClassifyResult::neither_with_nearby(q, ClassifyPhase::MaskedCompare)
             }
             MnpResult::Alt(q, had_n, confirmed) => {
                 let mut r = ClassifyResult::is_alt(q, ClassifyPhase::MaskedCompare);
