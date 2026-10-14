@@ -877,3 +877,61 @@ def test_an_mnp_carrier_with_a_neighbour_counts_however_it_is_aligned(tmp_path, 
     (c,) = count_checked(bam, [v])
     _invariants(c)
     assert c.ad == 10
+
+
+# ── fourth review (2026-10-14) ────────────────────────────────────────────
+
+
+def _shifted(s, n):
+    """An MNP read written as its first base inserted, two matched, the next deleted."""
+    return ((0, P - s), (1, 1), (0, 2), (2, 1), (0, n - (P - s) - 3))
+
+
+@pytest.mark.parametrize("run_len", [22, 26])
+def test_background_past_a_long_run_beside_an_mnp_is_masked(tmp_path, run_len):
+    """AA>CT at the start of an A run the event grows through, a germline G>C on the base
+    past the run (the windows' flank) on half of every read, a third of the reads written
+    as a shifted block: the scan beside the event starts past the run, so the background
+    is masked and every read keeps its call."""
+    contig = list(_contig(seed=55))
+    contig[P - 2 : P + 5 + run_len] = "CG" + "A" * (2 + run_len) + "GTC"
+    contig = "".join(contig)
+    hi = P + 2 + run_len
+    reads = []
+    for i in range(40):
+        s = P - 40 + (i % 30)
+        seq = list(contig[s : s + READ])
+        if i % 2:
+            seq[hi - s] = "C"
+        if i >= 30:
+            seq[P - s : P - s + 2] = "CT"
+        cig = _shifted(s, READ) if (20 <= i < 30 or i >= 34) else ((0, READ),)
+        reads.append(make_read(f"{'alt' if i >= 30 else 'ref'}{i}", "".join(seq), s, cig))
+    fa, bam = write_contig(tmp_path, contig, reads)
+    (v,) = _prepared(fa, [(P, "AA", "CT")])
+    (c,) = count_checked(bam, [v])
+    _invariants(c)
+    assert (c.rd, c.ad) == (30, 10)
+
+
+def test_a_neighbour_on_carriers_written_as_a_shifted_block_is_masked(tmp_path):
+    """CC>TT beside a third C; 6 carriers with a phased change two bases before the block,
+    2 aligned plainly and 4 as a shifted block: the scan beside the event reads them all,
+    so the neighbour is masked and all 6 count ALT."""
+    contig = _uv_contig()
+    reads = [
+        make_read(f"ref{i}", contig[P - 50 + i : P + 50 + i], P - 50 + i, ((0, READ),))
+        for i in range(20)
+    ]
+    for i in range(6):
+        s = P - 60 + i
+        seq = list(contig[s : s + READ])
+        seq[P - s : P - s + 2] = "TT"
+        seq[P - 2 - s] = "C"
+        cig = ((0, READ),) if i < 2 else _shifted(s, READ)
+        reads.append(make_read(f"alt{i}", "".join(seq), s, cig))
+    fa, bam = write_contig(tmp_path, contig, reads)
+    (v,) = _prepared(fa, [(P, "CC", "TT")])
+    (c,) = count_checked(bam, [v])
+    _invariants(c)
+    assert c.ad == 6
