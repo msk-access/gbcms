@@ -234,8 +234,10 @@ struct Windows {
     /// spliced along the read's junctions.
     event: (i64, i64),
     /// Each other allele of the ALT's length at the locus (RJ-25), as the ALT's window
-    /// over the same span: its own bases where it differs, the masks kept.
+    /// over the same span: its own bases where it differs, the masks kept; and each of
+    /// REF's length, as REF's window.
     others: Vec<Vec<u8>>,
+    ref_others: Vec<Vec<u8>>,
 }
 
 impl Windows {
@@ -269,9 +271,10 @@ impl Windows {
         let hold = r.hold.saturating_sub(if r.tail { dr } else { dl }).min(r.allele.len()).min(a.allele.len());
         r.hold = hold;
         a.hold = hold;
-        // the other alleles share the ALT's span: cut as it is
+        // the other alleles share their allele's span: cut as it is
         let others = self.others.iter().map(|w| w[adl..w.len() - adr].to_vec()).collect();
-        Windows { pair: (r, a), event: self.event, others }
+        let ref_others = self.ref_others.iter().map(|w| w[dl..w.len() - dr].to_vec()).collect();
+        Windows { pair: (r, a), event: self.event, others, ref_others }
     }
 
     /// The reference span the windows cover.
@@ -413,6 +416,13 @@ pub(crate) fn classify(
         ClassifyResult::neither_with_nearby(qual, ClassifyPhase::MaskedCompare)
     } else if every((false, true)) {
         ClassifyResult::is_alt(qual, ClassifyPhase::MaskedCompare)
+    } else if every((true, false))
+        && !reading.as_ref().is_some_and(|(r, _)| tells_others(&seq, quals, min_baseq, rw, &win.ref_others, r.start, readable))
+    {
+        // REF alike (RJ-25): another allele of REF's length is at the locus and the read
+        // reads no base telling the two apart: that allele or REF, no evidence for ALT.
+        trace!("carrier: fits REF but reads no base telling it from another allele of its length → neither");
+        ClassifyResult::neither(ClassifyPhase::MaskedCompare)
     } else if every((true, false)) {
         ClassifyResult::is_ref(qual, ClassifyPhase::MaskedCompare)
     } else if held.is_some() && mm_alt < mm_ref {
@@ -464,62 +474,66 @@ pub(crate) fn classify(
     Some(result)
 }
 
-/// Whether the read, with the ALT's window starting at query position `start`, reads
-/// for every other allele's window a base telling the ALT from it: a position where
-/// the two differ (neither masked), read inside `[first, after)` as the ALT's base at
-/// or above `min_baseq`. True with no other allele.
+/// Whether the read, with an allele's window `w` starting at query position `start`,
+/// reads for every other allele's window a base telling that allele from it: a
+/// position where the two differ (neither masked), read inside `[first, after)` as the
+/// allele's base at or above `min_baseq`. True with no other allele.
 fn tells_others(
     seq: &[u8],
     quals: &[u8],
     min_baseq: u8,
-    aw: &Window,
+    w: &Window,
     others: &[Vec<u8>],
     start: i64,
     (first, after): (usize, usize),
 ) -> bool {
-    let reads_alt = |i: usize| {
+    let reads_own = |i: usize| {
         let q = start + i as i64;
         q >= first as i64
             && q < after as i64
-            && seq.get(q as usize).is_some_and(|&b| b.to_ascii_uppercase() == aw.allele[i])
+            && seq.get(q as usize).is_some_and(|&b| b.to_ascii_uppercase() == w.allele[i])
             && quals.get(q as usize).is_some_and(|&b| b >= min_baseq)
     };
     others.iter().all(|other| {
-        other.iter().zip(&aw.allele).enumerate().any(|(i, (&o, &a))| o != a && o != WILD && a != WILD && reads_alt(i))
+        other.iter().zip(&w.allele).enumerate().any(|(i, (&o, &a))| o != a && o != WILD && a != WILD && reads_own(i))
     })
 }
 
-/// Whether a read, as aligned, reads for every other allele of `guard` a base that
-/// tells the ALT of `v` from it: a position where their haplotypes differ and the
-/// guard masks nothing, read as the ALT's base at or above `min_baseq` (RJ-25). The
-/// MNP check's rule for every read it calls ALT (it compares only the bases where REF
-/// and ALT differ, so a read spelling another allele where the ALT keeps the
-/// reference's base would pass it); the block is aligned without an indel, so the
-/// haplotypes and the read share coordinates. True with no other allele it can place.
-pub(crate) fn tells_others_aligned(record: &Record, quals: &[u8], min_baseq: u8, v: &Variant, guard: &Guard) -> bool {
-    if guard.others.is_empty() {
+/// Whether a read, as aligned, reads for every other allele of `guard` beside REF or
+/// the ALT of `v` (`side`) a base that tells that allele from it: a position where
+/// their haplotypes differ and the guard masks nothing, read as the allele's base at or
+/// above `min_baseq` (RJ-25). The MNP check's rule for every read it calls REF or ALT
+/// (it compares only the bases where REF and ALT differ, so a read spelling another
+/// allele where the ALT keeps the reference's base would pass it); the block is
+/// aligned without an indel, so the haplotypes and the read share coordinates. True
+/// with no other allele it can place.
+pub(crate) fn tells_others_aligned(record: &Record, quals: &[u8], min_baseq: u8, v: &Variant, guard: &Guard, side: Side) -> bool {
+    let others = if side == Side::Ref { &guard.ref_others } else { &guard.others };
+    if others.is_empty() {
         return true;
     }
     let Some((start, reference)) = prepared_reference(v) else { return true };
-    let alt = usize::try_from(v.pos - start)
-        .ok()
-        .and_then(|p| haplotype(&reference, p, &upper(&v.ref_allele), &upper(&v.alt_allele)));
-    let Some(alt) = alt else { return true };
+    let own = if side == Side::Ref {
+        Some(reference.clone())
+    } else {
+        usize::try_from(v.pos - start).ok().and_then(|p| haplotype(&reference, p, &upper(&v.ref_allele), &upper(&v.alt_allele)))
+    };
+    let Some(own) = own else { return true };
     let seq = record.seq().as_bytes();
-    let reads_alt = |i: usize| {
+    let reads_own = |i: usize| {
         find_read_pos(record, start + i as i64).is_some_and(|q| {
-            seq.get(q).is_some_and(|&b| b.to_ascii_uppercase() == alt[i]) && quals.get(q).is_some_and(|&b| b >= min_baseq)
+            seq.get(q).is_some_and(|&b| b.to_ascii_uppercase() == own[i]) && quals.get(q).is_some_and(|&b| b >= min_baseq)
         })
     };
-    guard.others.iter().all(|o| {
-        let Some(h) = o.on(start, &reference).filter(|h| h.len() == alt.len()) else {
+    others.iter().all(|o| {
+        let Some(h) = o.on(start, &reference).filter(|h| h.len() == own.len()) else {
             trace!("carrier: another allele at {}:{} does not sit on the reference → not read", v.chrom, o.pos + 1);
             return true;
         };
         let (a, b) = o.span();
         let lo = usize::try_from(a.min(v.pos) - start).unwrap_or(0);
-        let hi = usize::try_from(b.max(v.pos + v.ref_allele.len() as i64) - start).unwrap_or(0).min(alt.len());
-        (lo..hi).any(|i| h[i] != alt[i] && !guard.masked.contains(&(start + i as i64)) && reads_alt(i))
+        let hi = usize::try_from(b.max(v.pos + v.ref_allele.len() as i64) - start).unwrap_or(0).min(own.len());
+        (lo..hi).any(|i| h[i] != own[i] && !guard.masked.contains(&(start + i as i64)) && reads_own(i))
     })
 }
 
@@ -645,16 +659,18 @@ fn spliced_windows(
         // other alleles are genome ones too: each kept where its whole span is where
         // it sits in the genome (no junction of the read crosses it)
         let same = |p: i64| map.to_spliced(p) == Some(p);
-        let others = layout
-            .others
-            .iter()
-            .filter(|o| {
-                let (a, b) = o.span();
-                same(a) && same(b - 1)
-            })
-            .cloned()
-            .collect();
-        let spliced_layout = Layout { masked, others, ..layout.clone() };
+        let in_place = |alleles: &[OtherAllele]| -> Vec<OtherAllele> {
+            alleles
+                .iter()
+                .filter(|o| {
+                    let (a, b) = o.span();
+                    same(a) && same(b - 1)
+                })
+                .cloned()
+                .collect()
+        };
+        let spliced_layout =
+            Layout { masked, others: in_place(&layout.others), ref_others: in_place(&layout.ref_others), ..layout.clone() };
         Some(Rc::new((windows(&on_spliced, &spliced_layout)?, map)))
     })();
     if let (Some(c), Some(k)) = (cache, key) {
@@ -912,6 +928,7 @@ struct Layout {
     from_right: bool,
     masked: Vec<i64>,
     others: Vec<OtherAllele>,
+    ref_others: Vec<OtherAllele>,
 }
 
 impl Layout {
@@ -922,7 +939,12 @@ impl Layout {
         let mut layout = rules
             .guard
             .and_then(|g| g.get(v))
-            .map_or_else(Layout::default, |g| Layout { from_right: false, masked: g.masked.clone(), others: g.others.clone() });
+            .map_or_else(Layout::default, |g| Layout {
+                from_right: false,
+                masked: g.masked.clone(),
+                others: g.others.clone(),
+                ref_others: g.ref_others.clone(),
+            });
         if let (Some(edges), Some((lo, hi))) = (rules.clip_edges.map(ClipEdges::get), grown_event(v)) {
             let cuts = |a: i64, b: i64| edges.iter().any(|&e| e > a && e <= b);
             let flank = FLANK as i64;
@@ -968,6 +990,8 @@ fn windows(v: &Variant, layout: &Layout) -> Option<Windows> {
     // or of another length, is not read here).
     let other_haps: Vec<Vec<u8>> =
         layout.others.iter().filter_map(|o| o.on(start, &reference)).filter(|h| h.len() == ev.hap.len()).collect();
+    let ref_other_haps: Vec<Vec<u8>> =
+        layout.ref_others.iter().filter_map(|o| o.on(start, &reference)).filter(|h| h.len() == reference.len()).collect();
     // A masked base (a change recurring beside the event, or one the REF molecules
     // carry inside the repeat it was grown through) matches any read base. Left of
     // the given allele the alleles share coordinates; right of it the ALT's are
@@ -984,10 +1008,10 @@ fn windows(v: &Variant, layout: &Layout) -> Option<Windows> {
         }
     }
     let (ref_win, alt_win) = (&reference[lo..hi], &hap[lo..alt_hi]);
-    let others = other_haps
-        .iter()
-        .map(|h| h[lo..alt_hi].iter().zip(alt_win).map(|(&o, &a)| if a == WILD { WILD } else { o }).collect())
-        .collect();
+    let kept = |haps: &[Vec<u8>], win: &[u8], (a, b): (usize, usize)| -> Vec<Vec<u8>> {
+        haps.iter().map(|h| h[a..b].iter().zip(win).map(|(&o, &w)| if w == WILD { WILD } else { o }).collect()).collect()
+    };
+    let (others, ref_others) = (kept(&other_haps, alt_win, (lo, alt_hi)), kept(&ref_other_haps, ref_win, (lo, hi)));
     // Both windows are anchored at the window's ends: the left flank's first base
     // and one past the right flank's last, shared by the two alleles.
     let window = |allele: &[u8]| Window {
@@ -1000,7 +1024,7 @@ fn windows(v: &Variant, layout: &Layout) -> Option<Windows> {
         after: hi - c_hi,
     };
     let pair = (window(ref_win), window(alt_win));
-    Some(Windows { pair, event: (g(c_lo), g(c_hi)), others })
+    Some(Windows { pair, event: (g(c_lo), g(c_hi)), others, ref_others })
 }
 
 /// Bases both windows must run on past the shorter allele's window (`lo`, `hi`,
@@ -1055,14 +1079,22 @@ pub(crate) struct Guard {
     /// Fragments read: those showing one allele's core exactly between the flank
     /// bases.
     pub scanned: u32,
-    /// The other alleles of the ALT's length at the locus (RJ-25).
+    /// The other alleles of the ALT's length at the locus (RJ-25), and of REF's.
     pub others: Vec<OtherAllele>,
+    pub ref_others: Vec<OtherAllele>,
 }
 
 impl Guard {
     /// The guard found for `v`.
     pub(crate) fn new(v: &Variant, masked: Vec<i64>, larger: Option<ObservedAllele>, scanned: u32) -> Self {
-        Self { key: (v.pos, v.ref_allele.clone(), v.alt_allele.clone()), masked, larger, scanned, others: Vec::new() }
+        Self {
+            key: (v.pos, v.ref_allele.clone(), v.alt_allele.clone()),
+            masked,
+            larger,
+            scanned,
+            others: Vec::new(),
+            ref_others: Vec::new(),
+        }
     }
 }
 
@@ -1094,10 +1126,10 @@ impl<'a> CarrierGuard<'a> {
 /// the spellings of another allele of the ALT's length, and the bases of the REF and
 /// the ALT molecules over the event and [`FLANK`] bases each side.
 struct Placed<'a> {
-    /// Spellings of the ALT haplotype's `[lo, alt_hi)` (the event with FLANK bases
-    /// each side) that differ from the ALT inside the event, every base read, by the
-    /// fragments showing each.
-    spellings: HashMap<Vec<u8>, std::collections::HashSet<&'a [u8]>>,
+    /// Per allele's window (REF's `[lo, hi)` 0, the ALT's `[lo, alt_hi)` 1: the event
+    /// with FLANK bases each side), the spellings that differ from that allele inside
+    /// the event, every base read, by the fragments showing each.
+    spellings: [HashMap<Vec<u8>, std::collections::HashSet<&'a [u8]>>; 2],
     /// Per reference offset in `[lo, hi)`: REF molecules reading each base (A C G T),
     /// and reading the base at all; the same for ALT molecules per haplotype offset in
     /// `[lo, alt_hi)`.
@@ -1105,10 +1137,11 @@ struct Placed<'a> {
     ref_cover: Vec<u32>,
     alt_bases: Vec<[u32; 4]>,
     alt_cover: Vec<u32>,
-    /// Every spelling of `[lo, alt_hi)` read in full, by the fragments showing each:
-    /// a spelling must recur above the errors of the allele it is nearest, counted
-    /// from these once the masks are known.
-    full: HashMap<Vec<u8>, std::collections::HashSet<&'a [u8]>>,
+    /// Per allele's window, every spelling read in full, by the fragments showing
+    /// each: a spelling must recur above the errors of the allele it is nearest, and a
+    /// co-annotated sibling be spelled at all, counted from these once the masks are
+    /// known.
+    full: [HashMap<Vec<u8>, std::collections::HashSet<&'a [u8]>>; 2],
 }
 
 /// The [`Placed`] tallies of the variant's own reads in `read_cache` (those
@@ -1140,12 +1173,12 @@ fn placed_reads<'a>(
         return None;
     }
     let mut placed = Placed {
-        spellings: HashMap::new(),
+        spellings: [HashMap::new(), HashMap::new()],
         ref_bases: vec![[0; 4]; hi - lo],
         ref_cover: vec![0; hi - lo],
         alt_bases: vec![[0; 4]; alt_hi - lo],
         alt_cover: vec![0; alt_hi - lo],
-        full: HashMap::new(),
+        full: [HashMap::new(), HashMap::new()],
     };
     let (mut ref_frags, mut alt_frags) = (std::collections::HashSet::new(), std::collections::HashSet::new());
     for record in read_cache {
@@ -1196,30 +1229,32 @@ fn placed_reads<'a>(
         if molecule(&ev.hap, alt_hi, reference) && alt_frags.insert(qname) {
             tally(&mut placed.alt_bases, &mut placed.alt_cover, alt_hi - lo, &read);
         }
-        // Another allele of the ALT's length: every base of the window is read; for an
-        // event changing the length, past it the read fits the ALT placed this way at
-        // all but PLACED_CHANGES bases at most, and no worse than REF placed the same
-        // way (an event keeping the length places both alike); and the bases differ
-        // from the ALT's inside the event (beside it too, maybe: the ALT's own trims may
-        // leave a base the other allele changes in the flank) and are not REF's own.
-        let n = alt_hi - lo;
-        let bases: Option<Vec<u8>> = (0..n).map(|i| read(i).filter(|&(b, ok)| ok && b != WILD).map(|(b, _)| b)).collect();
-        let Some(bases) = bases else { continue };
-        placed.full.entry(bases.clone()).or_default().insert(qname);
-        let refs = reference.get(lo..lo + n);
-        let past_fits = ev.d == 0 || {
-            let past = alt_hi..alt_hi + PLACED_REACH;
-            let misfits = |h: &[u8]| {
-                past.clone().filter(|&i| read(i - lo).is_some_and(|(b, ok)| ok && b != WILD && h.get(i) != Some(&b))).count()
+        // Another allele of either allele's length (REF's 0, the ALT's 1): every base of
+        // that allele's window is read; for an event changing the length, past it the
+        // read fits that allele placed this way at all but PLACED_CHANGES bases at most,
+        // and no worse than the other allele placed the same way (an event keeping the
+        // length places both alike); and the bases differ from that allele's inside the
+        // event (beside it too, maybe: an allele's own trims may leave a base the other
+        // allele changes in the flank) and are not the other allele's own.
+        for (side, own, counter, end) in [(0usize, reference, &ev.hap[..], hi), (1, &ev.hap[..], reference, alt_hi)] {
+            let n = end - lo;
+            let bases: Option<Vec<u8>> = (0..n).map(|i| read(i).filter(|&(b, ok)| ok && b != WILD).map(|(b, _)| b)).collect();
+            let Some(bases) = bases else { continue };
+            placed.full[side].entry(bases.clone()).or_default().insert(qname);
+            let past_fits = ev.d == 0 || {
+                let past = end..end + PLACED_REACH;
+                let misfits = |h: &[u8]| {
+                    past.clone().filter(|&i| read(i - lo).is_some_and(|(b, ok)| ok && b != WILD && h.get(i) != Some(&b))).count()
+                };
+                past.end <= own.len()
+                    && past.clone().all(|i| read(i - lo).is_some())
+                    && misfits(own) <= PLACED_CHANGES
+                    && misfits(own) <= misfits(counter)
             };
-            past.end <= ev.hap.len()
-                && past.clone().all(|i| read(i - lo).is_some())
-                && misfits(&ev.hap) <= PLACED_CHANGES
-                && misfits(&ev.hap) <= misfits(reference)
-        };
-        let other = (FLANK..n - FLANK).any(|i| bases[i] != ev.hap[lo + i]) && refs != Some(&bases[..]);
-        if past_fits && other {
-            placed.spellings.entry(bases).or_default().insert(qname);
+            let other = (FLANK..n - FLANK).any(|i| bases[i] != own[lo + i]) && counter.get(lo..end) != Some(&bases[..]);
+            if past_fits && other {
+                placed.spellings[side].entry(bases).or_default().insert(qname);
+            }
         }
     }
     Some(placed)
@@ -1266,52 +1301,63 @@ fn grown_background(placed: &Placed, reference: &[u8], ev: &Event) -> Vec<usize>
     (ev.lo..c_lo).chain(c_hi..ev.hi).filter(|&off| background(off) || (own(off) && isolated(off))).collect()
 }
 
-/// The other alleles of the ALT's length at the locus (RJ-25): the spellings read in
-/// full on [`GUARD_MIN_READS`] fragments or more and on [`GUARD_REF_SHARE`] of the
-/// fragments spelling the allele they are nearest, REF's own bases or the ALT's (the
-/// larger, when as near): an allele recurs above the errors of the molecules it could
-/// be an error of, not as a recurring error does. Save one whose every difference
-/// from the ALT is a change from the reference the REF molecules carry too (on
-/// GUARD_MIN_READS and GUARD_REF_SHARE of those reading it, where the ALT's base sits
-/// on the reference: left-aligned, or right-aligned past the length change): a
-/// separate event on both haplotypes. The reference's own base is no such change: an
-/// allele lacking part of the event is another allele. And the co-annotated siblings
-/// that spell one: the ALT's haplotype save inside the event and [`FLANK`] bases each
-/// side, differing from it inside the event. None differs from the ALT only at
-/// `masked` positions (genome): that is the ALT with a separate event, which no read
-/// could tell from it. For an event keeping the length (an MNP) none differs from the
-/// ALT only beside the given allele's own bases: with nothing to place, that is the
-/// ALT with a phased neighbour (named, as beside any event), not another allele.
+/// Which allele a set of other alleles stands beside: REF (its window `[lo, hi)`) or
+/// the ALT (`[lo, alt_hi)`); for an event keeping the length the two windows are one.
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub(crate) enum Side {
+    Ref,
+    Alt,
+}
+
+/// The other alleles of one allele's length at the locus (RJ-25), beside REF or the
+/// ALT (`side`): the spellings read in full on [`GUARD_MIN_READS`] fragments or more
+/// and on [`GUARD_REF_SHARE`] of the fragments spelling the allele they are nearest,
+/// REF's own bases or the ALT's (the larger, when as near): an allele recurs above the
+/// errors of the molecules it could be an error of, not as a recurring error does.
+/// Beside the ALT, save one whose every difference from it is a change from the
+/// reference the REF molecules carry too (on GUARD_MIN_READS and GUARD_REF_SHARE of
+/// those reading it, where the ALT's base sits on the reference: left-aligned, or
+/// right-aligned past the length change): a separate event on both haplotypes. The
+/// reference's own base is no such change: an allele lacking part of the event is
+/// another allele. And the co-annotated siblings that spell one (the allele's
+/// haplotype save inside the event and [`FLANK`] bases each side, differing from it
+/// inside the event) where at least one fragment spells them in full: a component of
+/// the event the reads never show apart from it is part of it. None differs from the
+/// allele only at `masked` positions (genome): that is the allele with a separate
+/// event, which no read could tell from it. For an event keeping the length (an MNP)
+/// none differs only beside the given allele's own bases: with nothing to place, that
+/// is the allele with a phased neighbour (named, as beside any event).
 fn other_alleles(
     placed: &Placed,
     (start, reference): (i64, &[u8]),
     ev: &Event,
     siblings: &[Variant],
     masked: &[i64],
+    side: Side,
 ) -> Vec<OtherAllele> {
     let lo = ev.lo - FLANK;
     let (hi, alt_hi) = (ev.hi + FLANK, (ev.hi as i64 + ev.d) as usize + FLANK);
-    // the masked positions on the ALT's haplotype: left of the given allele the same,
-    // right of it shifted by the length change
     let (c_lo, c_hi) = ev.core;
-    let masked_hap: Vec<usize> = masked
+    // The masked positions on each allele's coordinates: REF's as the genome's; the
+    // ALT's left of the given allele the same, right of it shifted by the length change.
+    let masked_ref: Vec<usize> = masked.iter().filter_map(|&p| usize::try_from(p - start).ok()).collect();
+    let masked_hap: Vec<usize> = masked_ref
         .iter()
-        .filter_map(|&p| usize::try_from(p - start).ok())
-        .filter_map(|off| match off {
+        .filter_map(|&off| match off {
             off if off < c_lo => Some(off),
             off if off >= c_hi => usize::try_from(off as i64 + ev.d).ok(),
             _ => None,
         })
         .collect();
-    let tellable = |h: &[u8]| {
-        h.iter().zip(&ev.hap).enumerate().any(|(i, (x, y))| x != y && !masked_hap.contains(&i))
-            && (ev.d != 0 || (c_lo..c_hi).any(|i| h[i] != ev.hap[i]))
-    };
-    let (ref_spelling, alt_spelling) = (reference.get(lo..alt_hi), &ev.hap[lo..alt_hi]);
-    // How far a spelling is from REF's or the ALT's, at the bases that can tell: not
-    // where the guard masks (on that allele's coordinates), nor, for an MNP, beside its
-    // own bases (a phased neighbour there is no difference).
-    let masked_ref: Vec<usize> = masked.iter().filter_map(|&p| usize::try_from(p - start).ok()).collect();
+    // this allele's haplotype, window end, masks and spellings; the other allele's
+    let (own, counter): (&[u8], &[u8]) = if side == Side::Ref { (reference, &ev.hap) } else { (&ev.hap, reference) };
+    let (masked_own, masked_counter) = if side == Side::Ref { (&masked_ref, &masked_hap) } else { (&masked_hap, &masked_ref) };
+    let end = if side == Side::Ref { hi } else { alt_hi };
+    let full = &placed.full[if side == Side::Ref { 0 } else { 1 }];
+    let (own_spelling, counter_spelling) = (&own[lo..end], counter.get(lo..end));
+    // How far a spelling is from an allele's, at the bases that can tell: not where the
+    // guard masks (on that allele's coordinates), nor, for an MNP, beside its own bases
+    // (a phased neighbour there is no difference).
     let apart = |b: &[u8], allele: &[u8], masked_at: &[usize]| {
         b.iter()
             .zip(allele)
@@ -1322,27 +1368,33 @@ fn other_alleles(
             })
             .count()
     };
-    // the fragments spelling REF's own bases and the ALT's, so measured
+    let tellable = |h: &[u8]| {
+        h.iter().zip(own).enumerate().any(|(i, (x, y))| x != y && !masked_own.contains(&i))
+            && (ev.d != 0 || (c_lo..c_hi).any(|i| h[i] != own[i]))
+    };
+    // the fragments spelling an allele's bases over the window, so measured
     let spellers = |allele: Option<&[u8]>, masked_at: &[usize]| -> u32 {
         let Some(allele) = allele else { return 0 };
         let mut frags = std::collections::HashSet::new();
-        for (b, f) in &placed.full {
+        for (b, f) in full {
             if apart(b, allele, masked_at) == 0 {
                 frags.extend(f.iter().copied());
             }
         }
         frags.len() as u32
     };
-    let (ref_n, alt_n) = (spellers(ref_spelling, &masked_ref), spellers(Some(alt_spelling), &masked_hap));
+    let (own_n, counter_n) = (spellers(Some(own_spelling), masked_own), spellers(counter_spelling, masked_counter));
     // the fragments spelling the allele a spelling is nearest
     let source = |b: &[u8]| {
-        let to_alt = apart(b, alt_spelling, &masked_hap);
-        match ref_spelling.map(|r| apart(b, r, &masked_ref)) {
-            Some(to_ref) if to_ref < to_alt => ref_n,
-            Some(to_ref) if to_ref == to_alt => ref_n.max(alt_n),
-            _ => alt_n,
+        let to_own = apart(b, own_spelling, masked_own);
+        match counter_spelling.map(|r| apart(b, r, masked_counter)) {
+            Some(to_counter) if to_counter < to_own => counter_n,
+            Some(to_counter) if to_counter == to_own => own_n.max(counter_n),
+            _ => own_n,
         }
     };
+    // beside the ALT: a non-reference change the REF molecules carry too, where the
+    // ALT's base sits on the reference
     let ref_carries = |i: usize, b: u8| {
         let left = (i < ev.hi).then_some(i);
         let right = usize::try_from(i as i64 - ev.d).ok().filter(|&j| i >= ev.lo && j >= ev.lo);
@@ -1354,16 +1406,17 @@ fn other_alleles(
             })
         })
     };
-    let mut others: Vec<OtherAllele> = placed
-        .spellings
+    let separate = |b: &[u8]| side == Side::Alt && b.iter().enumerate().all(|(k, &x)| x == own[lo + k] || ref_carries(lo + k, x));
+    let mut others: Vec<OtherAllele> = placed.spellings[if side == Side::Ref { 0 } else { 1 }]
         .iter()
         .filter(|(b, f)| {
             let n = f.len() as u32;
-            ref_spelling.is_none_or(|r| apart(b, r, &masked_ref) > 0)
+            counter_spelling.is_none_or(|r| apart(b, r, masked_counter) > 0)
                 && n >= GUARD_MIN_READS
                 && n as f64 >= GUARD_REF_SHARE * source(b) as f64
-                && b.iter().enumerate().any(|(k, &x)| x != ev.hap[lo + k] && !ref_carries(lo + k, x))
+                && !separate(b)
         })
+        // the spelling in place of REF's window bases (either allele's window starts at lo)
         .map(|(b, _)| OtherAllele { pos: start + lo as i64, ref_allele: reference[lo..hi].to_vec(), alt_allele: b.clone() })
         .collect();
     others.retain(|o| o.on(start, reference).is_some_and(|h| tellable(&h)));
@@ -1371,11 +1424,13 @@ fn other_alleles(
     for sib in siblings {
         let o = OtherAllele { pos: sib.pos, ref_allele: upper(&sib.ref_allele), alt_allele: upper(&sib.alt_allele) };
         let Some(h) = o.on(start, reference) else { continue };
-        let spells = h.len() == ev.hap.len()
-            && h[..lo] == ev.hap[..lo]
-            && h[alt_hi..] == ev.hap[alt_hi..]
-            && (ev.lo..alt_hi - FLANK).any(|i| h[i] != ev.hap[i]);
-        if spells && tellable(&h) && !haps.contains(&h) {
+        let spells = h.len() == own.len()
+            && h[..lo] == own[..lo]
+            && h[end..] == own[end..]
+            && (ev.lo..end - FLANK).any(|i| h[i] != own[i]);
+        // spelled in full by at least one fragment, past the masks
+        let seen = || full.keys().any(|b| apart(b, &h[lo..end], masked_own) == 0);
+        if spells && tellable(&h) && !haps.contains(&h) && seen() {
             haps.push(h);
             others.push(o);
         }
@@ -1590,19 +1645,22 @@ pub(crate) fn guard_for(
             masked.push(p);
         }
     }
-    let others =
-        placed.as_ref().map_or_else(Vec::new, |p| other_alleles(p, (start, &reference), &ev, siblings, &masked));
-    if masked.is_empty() && larger.is_none() && others.is_empty() {
+    let others_of = |side| {
+        placed.as_ref().map_or_else(Vec::new, |p| other_alleles(p, (start, &reference), &ev, siblings, &masked, side))
+    };
+    let (others, ref_others) = (others_of(Side::Alt), others_of(Side::Ref));
+    if masked.is_empty() && larger.is_none() && others.is_empty() && ref_others.is_empty() {
         return None;
     }
     trace!(
         "carrier guard at {}:{} {}>{}: {} recurring changes beside the event masked ({} inside the repeat it grew \
-         through), {} on the ALT reads alone, {} other alleles of its length",
+         through), {} on the ALT reads alone, {} other alleles of its length, {} of REF's",
         v.chrom, v.pos + 1, v.ref_allele, v.alt_allele, masked.len(), grown.len(),
-        alt_only.iter().map(Vec::len).sum::<usize>(), others.len(),
+        alt_only.iter().map(Vec::len).sum::<usize>(), others.len(), ref_others.len(),
     );
     let mut guard = Guard::new(v, masked, larger, scanned);
     guard.others = others;
+    guard.ref_others = ref_others;
     Some(guard)
 }
 
@@ -2255,7 +2313,9 @@ mod tests {
         let two = others(&[base.clone(), fragments(&carrier("TTCGCT"), 2, "o")].concat(), &[]);
         assert!(two.is_empty(), "two fragments are not looked for");
         let sib = var(&ctx, 30, &ctx[30..58], "TTCGCT");
-        assert_eq!(others(&base, std::slice::from_ref(&sib)), vec![hap("TTCGCT")], "co-annotated, with no read");
+        assert!(others(&base, std::slice::from_ref(&sib)).is_empty(), "co-annotated, never spelled: part of the event");
+        let once = [base.clone(), fragments(&carrier("TTCGCT"), 1, "o")].concat();
+        assert_eq!(others(&once, std::slice::from_ref(&sib)), vec![hap("TTCGCT")], "co-annotated, spelled once");
         let longer = var(&ctx, 30, &ctx[30..58], "TTCGCTC");
         assert!(others(&base, &[longer, v.clone()]).is_empty(), "another length, or the ALT itself");
     }
@@ -2348,7 +2408,7 @@ mod tests {
         let (start, reference) = prepared_reference(&v).unwrap();
         let lo = event(start, &reference, &v).unwrap().lo - FLANK;
         let other = OtherAllele { pos: p as i64, ref_allele: b"G".to_vec(), alt_allele: b"ACA".to_vec() };
-        let layout = Layout { from_right: false, masked: vec![(p + 4) as i64], others: vec![other] };
+        let layout = Layout { from_right: false, masked: vec![(p + 4) as i64], others: vec![other], ref_others: vec![] };
         let w = windows(&v, &layout).unwrap();
         let (r, a) = only_pair(&w);
         // right of the given allele: the REF's base at its place, the ALT's two later
@@ -2387,7 +2447,7 @@ mod tests {
             aligned_low(seq.as_bytes(), vec![Cigar::Match(ctx.len() as u32)], low)
         };
         let quals = |r: &Record| r.qual().to_vec();
-        let tells = |r: &Record, g: &Guard| tells_others_aligned(r, &quals(r), 20, &v, g);
+        let tells = |r: &Record, g: &Guard| tells_others_aligned(r, &quals(r), 20, &v, g, Side::Alt);
         assert!(tells(&read(&[p]), &guard), "no other allele");
         guard.others = vec![OtherAllele { pos: p as i64, ref_allele: b"GC".to_vec(), alt_allele: b"GT".to_vec() }];
         assert!(!tells(&read(&[p]), &guard), "?T: only the base GT shares");
@@ -2429,8 +2489,12 @@ mod tests {
         let g = guard_for(&reads, &v, &|_| true, 20, std::slice::from_ref(&merged)).expect("the background");
         assert!(g.masked.contains(&((p + 4) as i64)));
         assert!(g.others.is_empty(), "only a masked difference");
-        // a sibling with another base inside the event as well is another allele
+        // a sibling with another base inside the event as well is another allele, once a
+        // fragment spells it
         let other = var(&ctx, p as i64, &ctx[p..p + 5], "ACACACG");
+        let spelled = format!("{}ACACACG{}", &ctx[..p], &ctx[p + 5..]);
+        let one = aligned(spelled.as_bytes(), vec![Cigar::Match((p + 1) as u32), Cigar::Ins(2), Cigar::Match((ctx.len() - p - 1) as u32)], 0);
+        let reads = [reads, fragments(&one, 1, "o")].concat();
         let g = guard_for(&reads, &v, &|_| true, 20, std::slice::from_ref(&other)).expect("the background");
         assert_eq!(g.others.len(), 1);
     }

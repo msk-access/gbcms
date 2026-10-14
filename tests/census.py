@@ -42,10 +42,11 @@ bases:
   rule reads the CIGAR, as the engine does: in a run, the aligner writes a masked
   base as the insertion.
 - at a complex variant, an ALT verdict needs a base telling the ALT from each other
-  allele of its length at the locus (RJ-25): a read whose bases fit the ALT and another
-  allele too is neither (FITS_OTHER). The census is told those alleles by the caller,
-  as the engine finds them (co-annotated, or read in full on 3 or more fragments); it
-  never looks for them.
+  allele of its length at the locus, and a REF verdict one telling REF from each of
+  REF's length (RJ-25): a read whose bases fit its allele and another allele of that
+  length too is neither (FITS_OTHER). The census is told those alleles by the caller,
+  as the engine finds them (co-annotated and spelled at least once, or read in full on
+  3 or more fragments); it never looks for them.
 
 A pure deletion of 50 bp or more (RJ-24) is judged at its POS breakpoint instead:
 one window of equal length per allele, read from the left flank (4 clean flank
@@ -129,8 +130,10 @@ class Window:
     ref_left: str
     alt_left: str
     # Each other allele of the ALT's length the caller names, sliced as the ALT is:
-    # (between the anchors, read on rightwards, read on leftwards).
+    # (between the anchors, read on rightwards, read on leftwards); and each of REF's
+    # length, sliced as REF is (for an MNP an allele is both).
     others: tuple[tuple[str, str, str], ...] = field(default=(), repr=False)
+    ref_others: tuple[tuple[str, str, str], ...] = field(default=(), repr=False)
 
 
 @dataclass(frozen=True)
@@ -221,7 +224,8 @@ def window_for(variant, contig: str, others=()) -> Window | Junction:
     positions index). A pure indel's anchors are the two flank bases of its tract,
     which both alleles share; the tract is the census's own slide. A pure deletion of
     LONG_DELETION or more gets its junction windows (RJ-24). `others` are the other
-    alleles of the ALT's length at the locus, `(pos, ref, alt)` on `contig`."""
+    alleles at the locus, `(pos, ref, alt)` on `contig`, each beside the allele of its
+    length."""
     pos, ref, alt = variant.pos, variant.ref_allele.upper(), variant.alt_allele.upper()
     contig = contig.upper()
     if is_pure_indel(ref, alt) and len(ref) - len(alt) >= LONG_DELETION:
@@ -250,7 +254,9 @@ def window_for(variant, contig: str, others=()) -> Window | Junction:
     ext = abs(delta) + 2  # a one-sided reading may run past the far anchor
     lo_ext, hi_ext = max(left + 1 - ext, 0), min(right + ext, len(contig))
     other_haps = [contig[:p] + a.upper() + contig[p + len(r) :] for p, r, a in others]
-    assert all(len(h) == len(hap) for h in other_haps), "another allele of the ALT's length"
+    assert all(
+        len(h) in (len(hap), len(contig)) for h in other_haps
+    ), "another allele of REF's or the ALT's length"
     return Window(
         left,
         right,
@@ -265,6 +271,12 @@ def window_for(variant, contig: str, others=()) -> Window | Junction:
         tuple(
             (h[left + 1 : right + delta], h[left + 1 : hi_ext + delta], h[lo_ext : right + delta])
             for h in other_haps
+            if len(h) == len(hap)
+        ),
+        tuple(
+            (h[left + 1 : right], h[left + 1 : hi_ext], h[lo_ext:right])
+            for h in other_haps
+            if len(h) == len(contig)
         ),
     )
 
@@ -583,10 +595,10 @@ def judge(read, window: Window | Junction, min_baseq: int = 20) -> Verdict:
     def unread(spans) -> bool:
         return insertion and _insert_unread(read, bases, spans)
 
-    def fits_other(both_anchors: bool) -> bool:
-        """Whether the read's bases fit another allele of the ALT's length as they fit
-        the ALT (RJ-25): no base it reads tells the two apart."""
-        for between, right, left in window.others:
+    def fits_other(both_anchors: bool, alleles) -> bool:
+        """Whether the read's bases fit another allele of its allele's length as they
+        fit that allele (RJ-25): no base it reads tells the two apart."""
+        for between, right, left in alleles:
             if both_anchors:
                 if _fits(bases[ql + 1 : qr], between):
                     return True
@@ -614,7 +626,9 @@ def judge(read, window: Window | Junction, min_baseq: int = 20) -> Verdict:
         verdict = _verdict(fits_alt, fits_ref)
         if verdict is Verdict.ALT and unread([(ql + 1, qr)]):
             return Verdict.UNREADABLE
-        if verdict is Verdict.ALT and fits_other(True):
+        if verdict is Verdict.ALT and fits_other(True, window.others):
+            return Verdict.FITS_OTHER
+        if verdict is Verdict.REF and not window.indel and fits_other(True, window.ref_others):
             return Verdict.FITS_OTHER
         return verdict
     sides, spans = [], []
@@ -630,7 +644,9 @@ def judge(read, window: Window | Junction, min_baseq: int = 20) -> Verdict:
     verdict = _verdict(all(a for a, _ in sides), all(r for _, r in sides))
     if verdict is Verdict.ALT and unread(spans):
         return Verdict.UNREADABLE
-    if verdict is Verdict.ALT and fits_other(False):
+    if verdict is Verdict.ALT and fits_other(False, window.others):
+        return Verdict.FITS_OTHER
+    if verdict is Verdict.REF and not window.indel and fits_other(False, window.ref_others):
         return Verdict.FITS_OTHER
     return verdict
 

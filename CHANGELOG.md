@@ -30,6 +30,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   and at the normals. Panel: 10 rows change (AD -43), each beside another allele the
   reads show; normals, ACCESS, WES and HG002 unchanged. As GATK and Octopus treat a
   read that cannot tell two haplotypes apart.
+- **REF alike, and components (operator, 2026-10-14).** A read that fits REF counts REF
+  only when it tells REF from every other allele of REF's length at the locus (the
+  germline haplotype beside a merged MNP, a germline change inside a delins's deleted
+  bases): otherwise neither. A co-annotated sibling is another allele only where at
+  least one fragment spells it in full: an MNP's component SNV that sign-out reports
+  beside it, never seen apart from the MNP, is part of it (20 panel carriers had been
+  demoted for it).
 - **A change inside the grown event (RJ-23, amended).** A REF read holding the given
   REF allele with a germline SNP in the repeat the event was grown through was
   neither, silently (RD down by a third to a half at 2 panel rows, a matched normal

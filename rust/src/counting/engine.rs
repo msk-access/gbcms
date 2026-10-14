@@ -2640,6 +2640,18 @@ fn check_allele_with_qual<F: Fn(u8, u8) -> i32>(
     } else if kind == AlleleKind::Mnp {
         // MNP: selective discriminating-position quality gate with no Phase 3 fallback.
         match check_mnp(record, variant, quals, min_baseq) {
+            MnpResult::Ref(_, had_n)
+                if rules.guard.and_then(|g| g.get(variant)).is_some_and(|g| {
+                    !carrier::tells_others_aligned(record, quals, min_baseq, variant, g, carrier::Side::Ref)
+                }) =>
+            {
+                // A REF read counts only if it tells REF from every other allele of its
+                // length at the locus (RJ-25): that allele or REF, no evidence for ALT.
+                trace!("MNP: no base read tells REF from another allele of its length → neither");
+                let mut r = ClassifyResult::neither(ClassifyPhase::MaskedCompare);
+                r.has_n_base = had_n;
+                r
+            }
             MnpResult::Ref(q, had_n) => {
                 let mut r = ClassifyResult::is_ref(q, ClassifyPhase::MaskedCompare);
                 r.has_n_base = had_n;
@@ -2649,7 +2661,7 @@ fn check_allele_with_qual<F: Fn(u8, u8) -> i32>(
                 if rules
                     .guard
                     .and_then(|g| g.get(variant))
-                    .is_some_and(|g| !carrier::tells_others_aligned(record, quals, min_baseq, variant, g)) =>
+                    .is_some_and(|g| !carrier::tells_others_aligned(record, quals, min_baseq, variant, g, carrier::Side::Alt)) =>
             {
                 // An ALT read counts only if it tells the ALT from every other allele
                 // of its length at the locus (RJ-25): one leaving a differing base

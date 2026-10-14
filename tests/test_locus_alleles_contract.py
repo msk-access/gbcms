@@ -935,3 +935,130 @@ def test_a_neighbour_on_carriers_written_as_a_shifted_block_is_masked(tmp_path):
     (c,) = count_checked(bam, [v])
     _invariants(c)
     assert c.ad == 6
+
+
+# ── REF alike, and components (operator, 2026-10-14) ──────────────────────
+
+
+def test_a_ref_read_showing_only_the_germline_base_is_not_ref(tmp_path):
+    """GC>AT beside the germline GT (20 fragments): a REF read whose C is below min BQ
+    shows only the G, which REF and GT share, so it is neither; REF reads reading the C
+    count REF."""
+    contig = _mnp_contig()
+    reads = _mnp_reads(contig, "GC", "ref", 20) + _mnp_reads(
+        contig, "GC", "reflow", 4, first=20, low_at=1
+    )
+    reads += _mnp_reads(contig, "GT", "germ", 20, first=24) + _mnp_reads(
+        contig, "AT", "som", 6, first=44
+    )
+    fa, bam = write_contig(tmp_path, contig, reads)
+    (v,) = _prepared(fa, [(P, "GC", "AT")])
+    (c,) = count_checked(bam, [v])
+    _invariants(c)
+    assert (c.rd, c.ad) == (20, 6)
+    assert_matches(c, census(bam, contig, v, others=[(P, "GC", "GT")]))
+
+
+def test_an_mnp_read_spelling_another_allele_where_the_alt_keeps_the_reference_is_not_ref(
+    tmp_path,
+):
+    """GCA>ACT beside GTA on 6 fragments, read plainly: GTA shows REF's bases where REF
+    and the ALT differ, but REF's C is its T, so its reads are neither."""
+    contig = list(_contig(seed=41))
+    contig[P : P + 3] = "GCA"
+    contig = "".join(contig)
+    reads = []
+    for tag, block, n in (("ref", "GCA", 20), ("alt", "ACT", 10), ("oth", "GTA", 6)):
+        for i in range(n):
+            s = P - 50 + i
+            reads.append(
+                make_read(
+                    f"{tag}{i}", contig[s:P] + block + contig[P + 3 : s + READ], s, ((0, READ),)
+                )
+            )
+    fa, bam = write_contig(tmp_path, contig, reads)
+    (v,) = _prepared(fa, [(P, "GCA", "ACT")])
+    (c,) = count_checked(bam, [v])
+    _invariants(c)
+    assert (c.rd, c.ad) == (20, 10)
+    assert_matches(c, census(bam, contig, v, others=[(P, "GCA", "GTA")]))
+
+
+def _delins_ref_allele(tmp_path, n_changed, n_low, sibling=False):
+    """The 28-to-6 delins: 20 clean REF reads, `n_changed` more with a change at the
+    deleted bases' eleventh, `n_low` reading that base below min BQ, 10 carriers; with
+    `sibling`, that change co-annotated as an SNV."""
+    contig = _contig()
+    ref = contig[P : P + REF_LEN]
+    at = P + 10
+    new = _other_base(contig, at)
+    reads = []
+    for i in range(20 + n_changed + n_low):
+        s = P - 60 + (i % 40)
+        seq = list(contig[s : s + READ])
+        if 20 <= i < 20 + n_changed:
+            seq[at - s] = new
+        r = make_read(f"ref{i}", "".join(seq), s, ((0, READ),))
+        reads.append(_low(r, [at - s]) if i >= 20 + n_changed else r)
+    reads += _delins_reads(contig, ALT, "alt", 10)
+    fa, bam = write_contig(tmp_path, contig, reads)
+    rows = [(P, ref, ALT)] + ([(at, contig[at], new)] if sibling else [])
+    vs = _prepared(fa, rows)
+    counts = count_checked(bam, vs, sibling_variants=[[w for w in vs if w is not v] for v in vs])
+    _invariants(counts[0])
+    return contig, bam, vs, counts[0], (at, contig[at], new)
+
+
+def test_a_ref_read_that_cannot_tell_ref_from_a_germline_change_inside_the_event_is_not_ref(
+    tmp_path,
+):
+    """6 REF-length fragments carry a change inside the deleted bases (another allele of
+    REF's length: it lacks the given REF's base); 4 REF reads read that base below min
+    BQ, so they are REF or that allele: neither."""
+    contig, bam, vs, c, other = _delins_ref_allele(tmp_path, 6, 4)
+    assert (c.rd, c.ad) == (20, 10)
+    assert_matches(c, census(bam, contig, vs[0], others=[other]))
+
+
+def test_with_no_other_allele_of_refs_length_a_partly_read_ref_read_counts(tmp_path):
+    """No REF-length allele besides REF: the 4 REF reads with that base unread count REF."""
+    _, _, _, c, _ = _delins_ref_allele(tmp_path, 0, 4)
+    assert (c.rd, c.ad) == (24, 10)
+
+
+@pytest.mark.parametrize("seen", [False, True])
+def test_a_co_annotated_snv_inside_the_deleted_bases_is_another_allele_only_where_seen(
+    tmp_path, seen
+):
+    """The change co-annotated as an SNV: never spelled in full by a fragment, it is no
+    other allele (the 4 partly read REF reads count REF); on one fragment, it is."""
+    _, _, _, c, _ = _delins_ref_allele(tmp_path, 1 if seen else 0, 4, sibling=True)
+    assert c.rd == (20 if seen else 24)
+
+
+def _component_locus(tmp_path, alone):
+    """CC>GT co-annotated with its component C>G: 10 carriers read in full, 4 with the T
+    below min BQ (showing only the G), and `alone` fragments spelling G then C."""
+    contig = list(_contig(seed=31))
+    contig[P - 1 : P + 3] = "ACCA"
+    contig = "".join(contig)
+    reads = _mnp_reads(contig, "CC", "ref", 20) + _mnp_reads(contig, "GT", "alt", 10, first=20)
+    reads += _mnp_reads(contig, "GT", "altlow", 4, first=30, low_at=1)
+    reads += _mnp_reads(contig, "GC", "snv", alone, first=34)
+    fa, bam = write_contig(tmp_path, contig, reads)
+    vs = _prepared(fa, [(P, "CC", "GT"), (P, "C", "G")])
+    counts = count_checked(bam, vs, sibling_variants=[[vs[1]], [vs[0]]])
+    _invariants(counts[0])
+    return counts[0]
+
+
+def test_a_component_never_seen_alone_is_part_of_the_mnp(tmp_path):
+    """No fragment spells the co-annotated C>G apart from the MNP: it is part of the
+    MNP, so the 4 carriers reading only the G count ALT."""
+    assert _component_locus(tmp_path, 0).ad == 14
+
+
+def test_a_component_seen_alone_is_another_allele(tmp_path):
+    """One fragment spells G then C in full: the component is another allele, so the 4
+    carriers reading only the G are neither."""
+    assert _component_locus(tmp_path, 1).ad == 10
