@@ -23,3 +23,15 @@ comparison was incomplete.
 see" and how to measure it; prefer building that measurement (spike-in, a hotspot
 audit, a synthetic competitor) over choosing among under-measured options. Related:
 [[better-than-standard]], [[test-across-data-types]], [[decisions-worked-examples]].
+
+**Both phases (operator, 2026-10-14):** the best and most accurate route, past the
+current standard, holds in the analysis before implementation *and* in the
+implementation itself, "testing and implementing as and where we can". On #277 each
+new synthetic shape (germline SNP in the grown repeat, realistic low-VAF somatic on a
+germline het, phantom with the allele absent, natural quality) found a flaw the real
+arms could not, an alignment-trusting tally made me misjudge a real rival, and a
+count-neutral diagnostic sized a pre-existing silent RD loss on every arm. So: stress
+every candidate with such shapes and score VAF/phantom share, keep oracles free of
+alignment trust, size suspected defects with diagnostics; then turn every shape into a
+red-first test, land the rule in every path judging the same question, unit-test each
+component, and rerun the measurements on the final build.

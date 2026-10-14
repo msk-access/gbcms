@@ -28,6 +28,14 @@ alwaysApply: true
 - [ ] A decision whose options all cost something is not settled by the least-bad one:
       name what the measurements cannot see (the risk the rule guards, a missing truth
       source), measure it, and look for a rule better on every axis before recommending
+- [ ] Analysis aims past the standard: stress each candidate with synthetic shapes for
+      what real data cannot show (the guarded risk, the realistic mix, the phantom where
+      the allele is absent, natural quality), score what matters (VAF vs truth, phantom
+      share), check the oracle trusts no alignment, and size a suspected defect with a
+      count-neutral diagnostic on every arm before deciding
+- [ ] Implementation carries the analysis: every stress shape becomes a red-first test,
+      the rule lands in every path that judges the same question, each new component
+      gets its own unit test, and the measurements are rerun on the final build
 
 **AFTER implementing, compare code against implementation plan:**
 - [ ] Re-read the relevant plan section(s)

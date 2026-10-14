@@ -17,6 +17,27 @@ regenerating a section.
 
 ---
 
+## [LRN-20261014-001] rule-body | the best route holds in the analysis and in the implementation
+- **Status:** resolved (rule promoted)
+- **Cause:** rule-body
+- **Summary:** On #277 the locus-aware rule looked finished after the first synthetic
+  competitor arm. Five more synthetic shapes and a count-neutral diagnostic each found
+  something the real arms and HG002 could not: a germline SNP in the grown repeat taken
+  for a rival; ALT carriers aligned around the anchor counted as REF molecules (an
+  alignment-trusting tally, which also made me call a real rival false); a rival's
+  reference base read as a change REF carries; the MNP check judging the same question
+  without the rule; and a pre-existing silent loss of REF reads to a germline SNP inside
+  the grown event (RD -33..-50% on 4 real rows). The operator asked that both the
+  analysis before implementation and the implementation itself take the best and most
+  accurate route, past the current standard, testing and implementing wherever we can.
+- **Promotion target:** `.agents/rules/code-quality.md` — `DONE:` two Step Review items:
+  analysis stresses each candidate with synthetic shapes (guarded risk, realistic mix,
+  phantom, natural quality), scores what matters, checks the oracle trusts no alignment,
+  and sizes a suspected defect with a count-neutral diagnostic; implementation turns
+  every stress shape into a red-first test, lands the rule in every path judging the
+  same question, unit-tests each component, and reruns the measurements.
+- **Related:** [[best-not-least-bad]], [[better-than-standard]], [[genotyper-not-caller]].
+
 ## [LRN-20261013-001] rule-body | a decision is not settled by picking the least-bad measured option
 - **Status:** resolved (rule promoted)
 - **Cause:** rule-body

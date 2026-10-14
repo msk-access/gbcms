@@ -3,48 +3,47 @@
 > Tactical state that must survive a closed laptop or a context summary.
 > Update the **Now** and **Next** sections as work progresses.
 
-_Last updated: 2026-10-13_
+_Last updated: 2026-10-14_
 
 ## Now
-6.7.0 cycle (tracker #196; plan merged in #257). Two stacked branches, both reviewed
-(Fable) and accepted on every arm (panel + matched normals, ACCESS duplex/simplex +
-normals, cohort runs, TEMPO WES, HG002); neither pushed since review (awaiting the
-operator's go):
-- **C39 / RJ-23** (`feature/c39-one-sided-windows`, PR #272, pushed head 07ed9d2b;
-  local head `9b412839`; worktree `.claude/worktrees/c39`): equal-length windows run
-  through bases the alleles share; other-flank placement as the allele the read's
-  confident bases favour; germline changes (on 3+ REF fragments, runs included)
-  masked; no larger allele named beside a run. Panel delins within 10% of sign-out
-  100/136 (6.6.0 88/135); HG002 het delins in 0.35-0.65 180/236 and 122/149.
-- **C40 / RJ-24** (`feature/c40-long-deletions`, local head `269e68ef`, merges C39):
-  50+ bp deletions at the POS breakpoint; placement from the shared right flank on
-  confident bases; guard background only in the shared flank and microhomology.
-  WES 0/132 -> 40/143 within 10% of sign-out; HG002 median VAF 0.500, 132/188 in
-  band; panel 41/60 (bases-only oracle 40/60; 6.6.0 50/60 counts the CIGAR like
-  sign-out); normals clean. Also mFSD sizes an ALT fragment as its molecule.
-- Open operator questions: ALT by length alone when a complex carrier's whole ALT
-  core is below min BQ (RJ-20 analogue); a run in cis with no REF reads (hom-ALT /
-  LOH) reads partial; a germline indel in the junction flank zeroes both alleles.
-- 2026-10-13 audit (local harness `plan670/tools`, report artifact; aggregates only),
-  decisions walked through with the operator, awaiting calls:
-  - **Pure indels are judged by their CIGAR.** HG002 arms (`giab/pri_ins`, `pri_sins`,
-    `pri_sdel`): carriers the aligner writes without the op are counted REF, and REF
-    is credited to reads 1-4 bases past a tract where a carrier cannot be. Insertions
-    10+ bp: median VAF 0.13, 110/603 in band (GATK HC 343); short insertions 0.43,
-    short deletions 0.455. Prototypes (`src_pi10`, `src_pa1`, `src_ph1`, patches
-    beside them): every indel by the exact-carrier rule gives 0.500 on short indels
-    and 332/603 on long insertions, but changes 22 decided spec cases (4 substantive);
-    the hybrid keeps every case but fixes only part. Reopens C41's insertion finding.
-  - **New C40 defect:** a co-annotated sibling SNV inside a long deletion's span
-    withdraws REF reads (RJ-5) though the junction windows read 4 bases past the
-    junction: 2,667 REF reads at 10/60 panel rows (one row VAF 0.17 -> 0.30).
-    Fixed in C40 (5aaf76a4, review fix 639f21a2: siblings claim only from the anchor
-    through REF's window): panel long deletions within 10% of sign-out 41 -> 45/60
-    (of the reads' VAF 46 -> 50/60; 6.6.0 50 and 53).
-  - The junction-window germline question (adaptive window `src_pj4`, guard reading
-    on `src_pj5`) gains nothing on any arm.
-  - ACCESS: ABRA2's post-collapse pass can introduce events; validate indel rules
-    against the standard BAMs (operator will slice on HPC).
+6.7.0 (tracker #196): C39 (#272) and C40 (#281) merged; C43 #276 (pure indels judged by
+their bases) in 6.7.0 with one HPC gate for C39 + C40 + C43.
+- **Decided (operator, 2026-10-14):** #277 takes the **locus-aware rule**, and the
+  **grown-event fix** is folded into C43. Branch `feature/c43-indels-by-bases` (local,
+  unpushed; worktree `.claude/worktrees/c43`, scratch venv `scratchpad/venv_c43`) was
+  rebuilt from develop e70b66ba; the first cut (D4, c504a454) and its B/C variants are
+  archived on `archive/c43-d4-first-cut` (REJ-20261014-001).
+  - Locus-aware (prototype `scratchpad/proto_rivals`, frozen `plan670/src_c43m`
+    a91591c7): a read leaving the ALT's telling bases unread (an unreadable core, or an
+    MNP read with a differing base below min BQ) counts only if, for every other allele
+    of the ALT's length at the locus (a co-annotated sibling, or one spelled on >= 3
+    fragments by bases placed from the left anchor), it reads a base telling the ALT
+    from it. An allele whose every difference is a non-reference change the REF
+    molecules (by bases, not alignment) carry too is a separate event. No rival:
+    develop's behaviour. Measured: synthetic `plan670/c43syn` (13 shapes) 0 false ALT in
+    every competitor and phantom shape; panel 10 rows AD -43, all with a rival present;
+    normals, WES, HG002 delins unchanged.
+  - Grown-event fix: a REF read holding the given REF allele but carrying a het SNP in
+    the repeat the event was grown through is called neither (RD -33..-50%, silent
+    PASS): panel 2 rows, normals 1, WES 1 (`plan670/inside_change.py`). The guard should
+    mask such background changes in the grown part (REF molecules by bases; map a
+    position by the given allele's span: left context unshifted, right context + d).
+  - Plan: red-first tests from every synthetic shape (Rust unit tests per component,
+    Python spec cases), the two approved RJ-16/RJ-9 edits and the D4 tests shown to the
+    operator before they change, census mirror, docs (RJ-20/RJ-23, new entry),
+    CHANGELOG, frozen build on every arm + synthetic, adversarial review, PR.
+  - Kept from the first cut: the run case (a +1 in a homopolymer with its inserted
+    base N) waits for C43's insertion routing with RJ-20's own-inserted-bases check;
+    `event()` widens the core to POS (`.min(p)`, `.max(p + r_al.len())`), so a pure
+    indel's core holds the anchor: take the core from the trims' union first when C43
+    routes pure indels here.
+- Next after #277: the five #278 shape calls, the C43 routing + census, #279; in
+  parallel #280 (operator slices ACCESS standard BAMs on HPC) and D12 #275 phases 1-3.
+- Shared report (artifact, v2): https://claude.ai/artifact/Chj5ehCfeRr54f99ZSnWRK.
+  Harness (local, PHI): `~/test/gbcms/harness/plan670/` — HG002 arms `giab/pri_ins`,
+  `pri_sins`, `pri_sdel`; prototypes `src_pi10`, `src_pa1`, `src_ph1`, `src_pd8`,
+  `src_pj4/5` with their patches; frozen `src_c40j` (639f21a2). Harness cleanup of the
+  C39/C40 `src_*` builds is still to do.
 
 Then: C40 PR stacked on #272; C31 (#212, fragment end from the mate's unclipped 5'
 end); D12 re-scope (RNA rules, low-VAF cfDNA, K re-test, per-read confirmation) as a
