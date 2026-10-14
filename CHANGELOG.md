@@ -36,7 +36,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   bases): otherwise neither. A co-annotated sibling is another allele only where at
   least one fragment spells it in full: an MNP's component SNV that sign-out reports
   beside it, never seen apart from the MNP, is part of it (20 panel carriers had been
-  demoted for it).
+  demoted for it). As on the ALT's side, a REF-length allele whose every difference
+  from REF is a change the ALT molecules carry too (a germline change at a base the
+  event keeps, in cis) is a separate event, not another allele; a REF read that is ALT
+  for a co-annotated sibling stays partial evidence (RJ-5).
 - **A change inside the grown event (RJ-23, amended).** A REF read holding the given
   REF allele with a germline SNP in the repeat the event was grown through was
   neither, silently (RD down by a third to a half at 2 panel rows, a matched normal

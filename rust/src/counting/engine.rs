@@ -1207,7 +1207,8 @@ fn count_bin_shared(
         // A change recurring beside a complex event is masked in the exact-carrier
         // windows, and one the ALT reads alone carry names their larger allele; the
         // other alleles of the ALT's length at the locus (the co-annotated siblings and
-        // those the reads spell) are what a read must tell the ALT from. Found from the
+        // those the reads spell) are what a read must tell the ALT from, and those of
+        // REF's length what it must tell REF from. Found from the
         // reads the counts read, on first use, for the main and per-transcript counts
         // alike. The decomposed form is another allele: it finds its own, beside the
         // same siblings.
@@ -2129,8 +2130,9 @@ fn ref_guard_siblings<'a>(variant: &Variant, siblings: &'a [Variant]) -> Vec<&'a
 }
 
 /// Whether a read classified REF for `variant` (or whose REF call was
-/// withdrawn as uninformative) is ALT for a co-annotated sibling whose change
-/// lies where `variant`'s REF is read (`window_siblings`, from
+/// withdrawn as uninformative, or for another allele of REF's length) is ALT for a
+/// co-annotated sibling whose change lies where `variant`'s REF is read
+/// (`window_siblings`, from
 /// `ref_guard_siblings`). Such a read
 /// carries a different allele where this row's REF is read, so it is not REF
 /// testimony here. A carrier of a sibling elsewhere in the group shows the
@@ -2151,7 +2153,7 @@ fn sibling_claims_ref<F: Fn(u8, u8) -> i32>(
     backend: &AlignmentBackend,
     rules: &carrier::ReadRules,
 ) -> bool {
-    if !result.is_ref && !result.uninformative {
+    if !result.is_ref && !result.uninformative && !result.ref_untold {
         return false;
     }
     for sib in window_siblings {
@@ -2650,6 +2652,7 @@ fn check_allele_with_qual<F: Fn(u8, u8) -> i32>(
                 trace!("MNP: no base read tells REF from another allele of its length → neither");
                 let mut r = ClassifyResult::neither(ClassifyPhase::MaskedCompare);
                 r.has_n_base = had_n;
+                r.ref_untold = true;
                 r
             }
             MnpResult::Ref(q, had_n) => {

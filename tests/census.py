@@ -663,8 +663,8 @@ def census(
 ) -> Census:
     """Judge every admitted read whose extent inside its fragment overlaps the
     variant's anchor base (the reads whose depth the engine reports), keyed by
-    (name, mate). `others`: the other alleles of the ALT's length at the locus
-    (`(pos, ref, alt)` on `contig`), as the engine finds them (RJ-25)."""
+    (name, mate). `others`: the other alleles of the ALT's or REF's length at the
+    locus (`(pos, ref, alt)` on `contig`), as the engine finds them (RJ-25)."""
     window = window_for(variant, contig, others)
     result = Census(window)
     if isinstance(window, Junction):

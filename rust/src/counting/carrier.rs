@@ -422,7 +422,7 @@ pub(crate) fn classify(
         // REF alike (RJ-25): another allele of REF's length is at the locus and the read
         // reads no base telling the two apart: that allele or REF, no evidence for ALT.
         trace!("carrier: fits REF but reads no base telling it from another allele of its length → neither");
-        ClassifyResult::neither(ClassifyPhase::MaskedCompare)
+        ClassifyResult { ref_untold: true, ..ClassifyResult::neither(ClassifyPhase::MaskedCompare) }
     } else if every((true, false)) {
         ClassifyResult::is_ref(qual, ClassifyPhase::MaskedCompare)
     } else if held.is_some() && mm_alt < mm_ref {
@@ -856,7 +856,7 @@ fn haplotype(reference: &[u8], p: usize, r: &[u8], a: &[u8]) -> Option<Vec<u8>> 
     Some(hap)
 }
 
-/// Another allele of the ALT's length at the variant's locus (RJ-25), on the
+/// Another allele of the ALT's or REF's length at the variant's locus (RJ-25), on the
 /// reference: a co-annotated sibling, or an allele the reads spell in full.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct OtherAllele {
@@ -922,7 +922,7 @@ fn event(start: i64, reference: &[u8], v: &Variant) -> Option<Event> {
 
 /// How a variant's windows are laid out beyond the event itself: which flank they
 /// are read from, the genome positions the neighbouring-change guard masks, and the
-/// other alleles of the ALT's length at the locus.
+/// other alleles of the ALT's and of REF's length at the locus.
 #[derive(Clone, Default)]
 struct Layout {
     from_right: bool,
@@ -986,8 +986,8 @@ fn windows(v: &Variant, layout: &Layout) -> Option<Windows> {
     let (lo, hi, alt_hi) = if tail { (lo - ext, hi, alt_hi) } else { (lo, hi + ext, alt_hi + ext) };
     let j = if !long { short + ext } else if tail { j_right } else { j_left };
     let (c_lo, c_hi) = ev.core;
-    // Each other allele of the ALT's length, on this reference (one it does not hold,
-    // or of another length, is not read here).
+    // Each other allele of the ALT's length and of REF's, on this reference (one it
+    // does not hold, or of another length, is not read here).
     let other_haps: Vec<Vec<u8>> =
         layout.others.iter().filter_map(|o| o.on(start, &reference)).filter(|h| h.len() == ev.hap.len()).collect();
     let ref_other_haps: Vec<Vec<u8>> =
@@ -1123,8 +1123,8 @@ impl<'a> CarrierGuard<'a> {
 
 /// What the reads show placed by their bases from the event's left flank, as the
 /// windows read them, not where the aligner wrote the gap (RJ-25): per fragment,
-/// the spellings of another allele of the ALT's length, and the bases of the REF and
-/// the ALT molecules over the event and [`FLANK`] bases each side.
+/// the spellings of another allele of REF's or the ALT's length, and the bases of the
+/// REF and the ALT molecules over the event and [`FLANK`] bases each side.
 struct Placed<'a> {
     /// Per allele's window (REF's `[lo, hi)` 0, the ALT's `[lo, alt_hi)` 1: the event
     /// with FLANK bases each side), the spellings that differ from that allele inside
@@ -1314,12 +1314,12 @@ pub(crate) enum Side {
 /// and on [`GUARD_REF_SHARE`] of the fragments spelling the allele they are nearest,
 /// REF's own bases or the ALT's (the larger, when as near): an allele recurs above the
 /// errors of the molecules it could be an error of, not as a recurring error does.
-/// Beside the ALT, save one whose every difference from it is a change from the
-/// reference the REF molecules carry too (on GUARD_MIN_READS and GUARD_REF_SHARE of
-/// those reading it, where the ALT's base sits on the reference: left-aligned, or
-/// right-aligned past the length change): a separate event on both haplotypes. The
-/// reference's own base is no such change: an allele lacking part of the event is
-/// another allele. And the co-annotated siblings that spell one (the allele's
+/// Save one whose every difference from the allele is a change from the other allele's
+/// base that the other allele's molecules carry too (on GUARD_MIN_READS and
+/// GUARD_REF_SHARE of those reading it, where the allele's base sits on the other's
+/// haplotype: left-aligned, or right-aligned past the length change): a separate event
+/// on both haplotypes. The other allele's own base is no such change: an allele lacking
+/// part of the event, or carrying part of it, is another allele. And the co-annotated siblings that spell one (the allele's
 /// haplotype save inside the event and [`FLANK`] bases each side, differing from it
 /// inside the event) where at least one fragment spells them in full: a component of
 /// the event the reads never show apart from it is part of it. None differs from the
@@ -1393,20 +1393,25 @@ fn other_alleles(
             _ => own_n,
         }
     };
-    // beside the ALT: a non-reference change the REF molecules carry too, where the
-    // ALT's base sits on the reference
-    let ref_carries = |i: usize, b: u8| {
-        let left = (i < ev.hi).then_some(i);
-        let right = usize::try_from(i as i64 - ev.d).ok().filter(|&j| i >= ev.lo && j >= ev.lo);
+    // A change from the other allele's base that its molecules carry too, where this
+    // allele's base sits on the other allele's haplotype (left-aligned, or right-aligned
+    // past the length change): beside the ALT, a non-reference change the REF molecules
+    // carry; beside REF, a change from the ALT's base the ALT molecules carry.
+    let (counter_bases, counter_cover) =
+        if side == Side::Ref { (&placed.alt_bases, &placed.alt_cover) } else { (&placed.ref_bases, &placed.ref_cover) };
+    let (counter_end, shift) = if side == Side::Ref { (ev.hi as i64 + ev.d, ev.d) } else { (ev.hi as i64, -ev.d) };
+    let counter_carries = |i: usize, b: u8| {
+        let left = ((i as i64) < counter_end).then_some(i);
+        let right = usize::try_from(i as i64 + shift).ok().filter(|&j| i >= ev.lo && j >= ev.lo);
         let k = b"ACGT".iter().position(|&x| x == b);
         [left, right].into_iter().flatten().any(|j| {
             k.is_some_and(|k| {
-                let (n, of) = (placed.ref_bases[j - lo][k], placed.ref_cover[j - lo]);
-                b != reference[j] && n >= GUARD_MIN_READS && share(n, of) >= GUARD_REF_SHARE
+                let (n, of) = (counter_bases[j - lo][k], counter_cover[j - lo]);
+                b != counter[j] && n >= GUARD_MIN_READS && share(n, of) >= GUARD_REF_SHARE
             })
         })
     };
-    let separate = |b: &[u8]| side == Side::Alt && b.iter().enumerate().all(|(k, &x)| x == own[lo + k] || ref_carries(lo + k, x));
+    let separate = |b: &[u8]| b.iter().enumerate().all(|(k, &x)| x == own[lo + k] || counter_carries(lo + k, x));
     let mut others: Vec<OtherAllele> = placed.spellings[if side == Side::Ref { 0 } else { 1 }]
         .iter()
         .filter(|(b, f)| {
@@ -1472,8 +1477,9 @@ fn tally(bases: &mut [[u32; 4]], cover: &mut [u32], n: usize, read: &dyn Fn(usiz
 /// indel or MNP beside the event, another allele: not masked. The variant's own reads,
 /// placed by their bases ([`placed_reads`]), add the background inside the repeat the
 /// event was grown through ([`grown_background`]; the scan lets it fit) and the other
-/// alleles of the ALT's length at the locus ([`other_alleles`], RJ-25). None when
-/// nothing is masked, named or found, or the variant is not judged by this rule.
+/// alleles of the ALT's and of REF's length at the locus ([`other_alleles`], RJ-25).
+/// None when nothing is masked, named or found, or the variant is not judged by this
+/// rule.
 pub(crate) fn guard_for(
     read_cache: &[Record],
     v: &Variant,
@@ -1638,8 +1644,8 @@ pub(crate) fn guard_for(
             given_carriers: given,
         })
     };
-    // The background inside the grown event joins the masks; the other alleles of the
-    // ALT's length are those a read can tell from it past every mask.
+    // The background inside the grown event joins the masks; the other alleles of each
+    // allele's length are those a read can tell from it past every mask.
     for p in grown.iter().map(|&off| g(off)) {
         if !masked.contains(&p) {
             masked.push(p);

@@ -157,6 +157,11 @@ pub struct ClassifyResult {
     /// here), and a fragment whose reads are all like this is left out of the mFSD
     /// classes.
     pub uninformative: bool,
+    /// A REF call withdrawn because the read tells REF from no other allele of REF's
+    /// length at the locus (RJ-25): that allele or REF. The sibling REF guard still
+    /// checks it, so a co-annotated sibling's allele it carries is partial evidence
+    /// here (RJ-5).
+    pub ref_untold: bool,
     /// An ALT call on a pure indel withdrawn because the read spans neither
     /// ALT-side window and its bases could not be judged: no prepared reference
     /// holds the event (an unprepared variant), or the deciding base lies past the
@@ -208,6 +213,7 @@ impl ClassifyResult {
             read_from_right: false,
             sw_fallback: false,
             uninformative: false,
+            ref_untold: false,
             alt_unjudged: false,
             carrier_fallback: false,
             ref_withdrawn: false,

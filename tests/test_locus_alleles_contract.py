@@ -106,7 +106,10 @@ def test_a_carrier_that_cannot_tell_the_alt_from_another_allele_is_not_alt(tmp_p
 
 
 def test_a_co_annotated_allele_is_another_allele_at_any_depth(tmp_path):
-    """The other allele co-annotated, with no read spelling it: the same."""
+    """The other allele co-annotated, with no read spelling it: the same. No fragment
+    spells it, so the guard does not look for it; the carriers reading its telling base
+    below min BQ match its ALT exactly as well as this row's, so the sibling claim
+    leaves them ambiguous (neither row's AD)."""
     contig, bam, vs, counts = _delins_locus(tmp_path, others_on=0, co_annotated=True)
     c = counts[0]
     _invariants(c)
@@ -1062,3 +1065,88 @@ def test_a_component_seen_alone_is_another_allele(tmp_path):
     """One fragment spells G then C in full: the component is another allele, so the 4
     carriers reading only the G are neither."""
     assert _component_locus(tmp_path, 1).ad == 10
+
+
+# ── fifth review (2026-10-14) ─────────────────────────────────────────────
+
+
+def _cis_germline_mnp(tmp_path, carriers="ATT", sibling=False, n_germ=20):
+    """GCA>ACT, the middle base kept: 20 REF reads, `n_germ` reads of the germline
+    haplotype GTA (a T at the kept base) and 10 carriers spelling `carriers`; with
+    `sibling`, the T co-annotated as an SNV."""
+    contig = list(_contig(seed=41))
+    contig[P : P + 3] = "GCA"
+    contig = "".join(contig)
+    reads, k = [], 0
+    for tag, block, n in (("ref", "GCA", 20), ("germ", "GTA", n_germ), ("alt", carriers, 10)):
+        for i in range(n):
+            s = P - 50 + k % 45
+            k += 1
+            seq = contig[s:P] + block + contig[P + 3 : s + READ]
+            reads.append(make_read(f"{tag}{i}", seq, s, ((0, READ),)))
+    fa, bam = write_contig(tmp_path, contig, reads)
+    rows = [(P, "GCA", "ACT")] + ([(P + 1, "C", "T")] if sibling else [])
+    vs = _prepared(fa, rows)
+    counts = count_checked(bam, vs, sibling_variants=[[w for w in vs if w is not v] for v in vs])
+    _invariants(counts[0])
+    return counts[0]
+
+
+def test_a_germline_change_the_carriers_carry_too_leaves_ref_reads_ref(tmp_path):
+    """The MNP on the germline T's haplotype (carriers ATT): the T is a separate event on
+    both haplotypes, so neither GTA nor ATT is another allele, as on the ALT's side."""
+    c = _cis_germline_mnp(tmp_path)
+    assert (c.rd, c.ad) == (40, 10)
+
+
+def test_a_germline_change_the_carriers_lack_is_another_allele_of_refs_length(tmp_path):
+    """The MNP on the other haplotype (carriers ACT): no ALT molecule carries the T, so
+    GTA lacks the given REF's base and its reads are neither."""
+    c = _cis_germline_mnp(tmp_path, carriers="ACT")
+    assert (c.rd, c.ad) == (20, 10)
+
+
+def test_a_ref_read_carrying_a_co_annotated_sibling_is_partial_evidence(tmp_path):
+    """The T co-annotated as an SNV on 6 fragments, the carriers ACT: a GTA read is ALT
+    for the sibling where this row's REF is read, so it is partial evidence here (RJ-5),
+    not plain neither."""
+    c = _cis_germline_mnp(tmp_path, carriers="ACT", sibling=True, n_germ=6)
+    assert (c.rd, c.ad, c.partial_alt) == (20, 10, 6)
+
+
+def test_a_germline_change_inside_a_delins_the_carriers_carry_too_leaves_ref_reads_ref(
+    tmp_path,
+):
+    """CAGTC>GAGC with a germline A>T at the base the ALT keeps, in cis with it: 6 REF
+    reads and 6 carriers read that base below min BQ. The carriers carry the T too, so
+    CTGTC is REF with a separate event: those REF reads count REF, as those carriers
+    count ALT. (Reads showing the T are neither on either side: the event's own bases
+    are read exactly.)"""
+    contig = list(_contig(seed=43))
+    contig[P : P + 5] = "CAGTC"
+    contig = "".join(contig)
+    reads, k = [], 0
+    for tag, block, n, low in (
+        ("ref", "CAGTC", 20, False),
+        ("reflow", "CAGTC", 6, True),
+        ("germ", "CTGTC", 20, False),
+        ("alt", "GTGC", 10, False),
+        ("altlow", "GTGC", 6, True),
+    ):
+        for i in range(n):
+            s = P - 50 + k % 45
+            k += 1
+            seq = (contig[s:P] + block + contig[P + 5 : s + READ + 5])[:READ]
+            left = P - s
+            cig = (
+                ((0, READ),)
+                if len(block) == 5
+                else ((0, left), (1, 4), (2, 5), (0, READ - left - 4))
+            )
+            r = make_read(f"{tag}{i}", seq, s, cig)
+            reads.append(_low(r, [left + 1]) if low else r)
+    fa, bam = write_contig(tmp_path, contig, reads)
+    (v,) = _prepared(fa, [(P, "CAGTC", "GAGC")])
+    (c,) = count_checked(bam, [v])
+    _invariants(c)
+    assert (c.rd, c.ad) == (26, 6)
