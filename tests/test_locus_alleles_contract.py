@@ -1039,15 +1039,18 @@ def test_a_co_annotated_snv_inside_the_deleted_bases_is_another_allele_only_wher
     assert c.rd == (20 if seen else 24)
 
 
-def _component_locus(tmp_path, alone):
-    """CC>GT co-annotated with its component C>G: 10 carriers read in full, 4 with the T
-    below min BQ (showing only the G), and `alone` fragments spelling G then C."""
+def _component_locus(tmp_path, alone, n_ref=20):
+    """CC>GT co-annotated with its component C>G: `n_ref` REF reads, 10 carriers read in
+    full, 4 with the T below min BQ (showing only the G), and `alone` fragments spelling
+    G then C."""
     contig = list(_contig(seed=31))
     contig[P - 1 : P + 3] = "ACCA"
     contig = "".join(contig)
-    reads = _mnp_reads(contig, "CC", "ref", 20) + _mnp_reads(contig, "GT", "alt", 10, first=20)
-    reads += _mnp_reads(contig, "GT", "altlow", 4, first=30, low_at=1)
-    reads += _mnp_reads(contig, "GC", "snv", alone, first=34)
+    reads = _mnp_reads(contig, "CC", "ref", n_ref) + _mnp_reads(
+        contig, "GT", "alt", 10, first=n_ref
+    )
+    reads += _mnp_reads(contig, "GT", "altlow", 4, first=n_ref + 10, low_at=1)
+    reads += _mnp_reads(contig, "GC", "snv", alone, first=n_ref + 14)
     fa, bam = write_contig(tmp_path, contig, reads)
     vs = _prepared(fa, [(P, "CC", "GT"), (P, "C", "G")])
     counts = count_checked(bam, vs, sibling_variants=[[vs[1]], [vs[0]]])
@@ -1065,6 +1068,14 @@ def test_a_component_seen_alone_is_another_allele(tmp_path):
     """One fragment spells G then C in full: the component is another allele, so the 4
     carriers reading only the G are neither."""
     assert _component_locus(tmp_path, 1).ad == 10
+
+
+@pytest.mark.parametrize("alone, ad", [(1, 14), (5, 10)])
+def test_a_component_is_seen_only_above_the_errors_of_its_nearest_allele(tmp_path, alone, ad):
+    """100 REF fragments: one spelling G then C is under 5% of REF's, an error's share,
+    so the component is part of the MNP (the 4 carriers reading only the G count ALT);
+    five reach it, so it is another allele."""
+    assert _component_locus(tmp_path, alone, n_ref=100).ad == ad
 
 
 # ── fifth review (2026-10-14) ─────────────────────────────────────────────

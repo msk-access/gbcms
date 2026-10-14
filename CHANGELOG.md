@@ -33,10 +33,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **REF alike, and components (operator, 2026-10-14).** A read that fits REF counts REF
   only when it tells REF from every other allele of REF's length at the locus (the
   germline haplotype beside a merged MNP, a germline change inside a delins's deleted
-  bases): otherwise neither. A co-annotated sibling is another allele only where at
-  least one fragment spells it in full: an MNP's component SNV that sign-out reports
-  beside it, never seen apart from the MNP, is part of it (20 panel carriers had been
-  demoted for it). As on the ALT's side, a REF-length allele whose every difference
+  bases): otherwise neither. A co-annotated sibling is another allele only where the
+  fragments spelling it in full are at least one and 5% of those spelling the allele
+  it is nearest: an MNP's component SNV that sign-out reports beside it, never seen
+  apart from the MNP, is part of it (20 panel carriers had been demoted for it), and
+  at depth one error read spelling it no longer makes it another allele (a Monte
+  Carlo at 1000x: 9 of 60 loci flipped on one error, losing about 5% of RD and AD;
+  none now). The annotation lowers RJ-25's 3-fragment floor, not its share. As on the ALT's side, a REF-length allele whose every difference
   from REF is a change the ALT molecules carry too (a germline change at a base the
   event keeps, in cis) is a separate event, not another allele; a REF read that is ALT
   for a co-annotated sibling stays partial evidence (RJ-5).

@@ -1321,8 +1321,9 @@ pub(crate) enum Side {
 /// on both haplotypes. The other allele's own base is no such change: an allele lacking
 /// part of the event, or carrying part of it, is another allele. And the co-annotated siblings that spell one (the allele's
 /// haplotype save inside the event and [`FLANK`] bases each side, differing from it
-/// inside the event) where at least one fragment spells them in full: a component of
-/// the event the reads never show apart from it is part of it. None differs from the
+/// inside the event) where the fragments spelling them in full are at least one and
+/// GUARD_REF_SHARE of those spelling the allele they are nearest: a component of the
+/// event the reads never show apart from it, but for an error, is part of it. None differs from the
 /// allele only at `masked` positions (genome): that is the allele with a separate
 /// event, which no read could tell from it. For an event keeping the length (an MNP)
 /// none differs only beside the given allele's own bases: with nothing to place, that
@@ -1433,8 +1434,13 @@ fn other_alleles(
             && h[..lo] == own[..lo]
             && h[end..] == own[end..]
             && (ev.lo..end - FLANK).any(|i| h[i] != own[i]);
-        // spelled in full by at least one fragment, past the masks
-        let seen = || full.keys().any(|b| apart(b, &h[lo..end], masked_own) == 0);
+        // Spelled in full past the masks by at least one fragment and by GUARD_REF_SHARE
+        // of those spelling the allele it is nearest: the annotation lowers the
+        // GUARD_MIN_READS floor, not the share, so one error read at depth shows nothing.
+        let seen = || {
+            let n = spellers(Some(&h[lo..end]), masked_own);
+            n > 0 && n as f64 >= GUARD_REF_SHARE * source(&h[lo..end]) as f64
+        };
         if spells && tellable(&h) && !haps.contains(&h) && seen() {
             haps.push(h);
             others.push(o);
