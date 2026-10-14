@@ -1105,10 +1105,10 @@ struct Placed<'a> {
     ref_cover: Vec<u32>,
     alt_bases: Vec<[u32; 4]>,
     alt_cover: Vec<u32>,
-    /// Fragments spelling REF's own bases and the ALT's over `[lo, alt_hi)` placed
-    /// this way: a spelling must recur above the errors of the one it is nearest.
-    ref_spellers: u32,
-    alt_spellers: u32,
+    /// Every spelling of `[lo, alt_hi)` read in full, by the fragments showing each:
+    /// a spelling must recur above the errors of the allele it is nearest, counted
+    /// from these once the masks are known.
+    full: HashMap<Vec<u8>, std::collections::HashSet<&'a [u8]>>,
 }
 
 /// The [`Placed`] tallies of the variant's own reads in `read_cache` (those
@@ -1145,11 +1145,9 @@ fn placed_reads<'a>(
         ref_cover: vec![0; hi - lo],
         alt_bases: vec![[0; 4]; alt_hi - lo],
         alt_cover: vec![0; alt_hi - lo],
-        ref_spellers: 0,
-        alt_spellers: 0,
+        full: HashMap::new(),
     };
     let (mut ref_frags, mut alt_frags) = (std::collections::HashSet::new(), std::collections::HashSet::new());
-    let (mut ref_spellers, mut alt_spellers) = (std::collections::HashSet::new(), std::collections::HashSet::new());
     for record in read_cache {
         if !counted(record) || record.pos() >= w_end || crate::shared::bam_utils::ref_end(record) <= w_start {
             continue;
@@ -1207,12 +1205,8 @@ fn placed_reads<'a>(
         let n = alt_hi - lo;
         let bases: Option<Vec<u8>> = (0..n).map(|i| read(i).filter(|&(b, ok)| ok && b != WILD).map(|(b, _)| b)).collect();
         let Some(bases) = bases else { continue };
+        placed.full.entry(bases.clone()).or_default().insert(qname);
         let refs = reference.get(lo..lo + n);
-        if refs == Some(&bases[..]) {
-            ref_spellers.insert(qname);
-        } else if bases[..] == ev.hap[lo..alt_hi] {
-            alt_spellers.insert(qname);
-        }
         let past_fits = ev.d == 0 || {
             let past = alt_hi..alt_hi + PLACED_REACH;
             let misfits = |h: &[u8]| {
@@ -1228,8 +1222,6 @@ fn placed_reads<'a>(
             placed.spellings.entry(bases).or_default().insert(qname);
         }
     }
-    placed.ref_spellers = ref_spellers.len() as u32;
-    placed.alt_spellers = alt_spellers.len() as u32;
     Some(placed)
 }
 
@@ -1239,29 +1231,39 @@ fn share(n: u32, of: u32) -> f64 {
 }
 
 /// The reference offsets inside the repeat the event was grown through, off the
-/// given allele's own bases, where the REF molecules carry a change from the
-/// reference as background (RJ-23, 2026-10-14), as beside the event: recurring on
-/// them, or recurring on the ALT molecules and on [`GUARD_MIN_READS`] and
-/// [`GUARD_REF_SHARE`] of them. A change the ALT molecules alone carry there is none:
-/// inside the repeat it may be the event's own sequence.
+/// given allele's own bases, masked as beside the event (RJ-23, 2026-10-14). A change
+/// the REF molecules carry is background: recurring on them, or recurring on the ALT
+/// molecules and on [`GUARD_MIN_READS`] and [`GUARD_REF_SHARE`] of them. A change the
+/// ALT molecules alone carry there is none for an event changing the length (inside
+/// the repeat it may be the event's own sequence); for an MNP, which has nothing to
+/// place, the run is beside it, so an isolated one is its phased neighbour, masked as
+/// beside any event (a run of them is another allele). Read from the molecules placed
+/// by their bases, so a carrier however aligned feeds it.
 fn grown_background(placed: &Placed, reference: &[u8], ev: &Event) -> Vec<usize> {
     let lo = ev.lo - FLANK;
     let (c_lo, c_hi) = ev.core;
     let recurs = |n: u32, of: u32| n >= GUARD_MIN_READS && share(n, of) >= GUARD_MIN_SHARE;
-    (ev.lo..c_lo)
-        .chain(c_hi..ev.hi)
-        .filter(|&off| {
-            // the ALT's haplotype offset: left of the given allele the same, right of it
-            // shifted by the length change
-            let h = if off < c_lo { off } else { (off as i64 + ev.d) as usize };
-            (0..4).any(|k| {
-                let (n, of) = (placed.ref_bases[off - lo][k], placed.ref_cover[off - lo]);
-                let (an, aof) = (placed.alt_bases[h - lo][k], placed.alt_cover[h - lo]);
-                b"ACGT"[k] != reference[off]
-                    && (recurs(n, of) || (recurs(an, aof) && n >= GUARD_MIN_READS && share(n, of) >= GUARD_REF_SHARE))
-            })
+    let grown = |off: usize| (ev.lo..c_lo).contains(&off) || (c_hi..ev.hi).contains(&off);
+    // the ALT's haplotype offset: left of the given allele the same, right of it
+    // shifted by the length change
+    let on_alt = |off: usize| if off < c_lo { off } else { (off as i64 + ev.d) as usize };
+    let background = |off: usize| {
+        let h = on_alt(off);
+        (0..4).any(|k| {
+            let (n, of) = (placed.ref_bases[off - lo][k], placed.ref_cover[off - lo]);
+            let (an, aof) = (placed.alt_bases[h - lo][k], placed.alt_cover[h - lo]);
+            b"ACGT"[k] != reference[off]
+                && (recurs(n, of) || (recurs(an, aof) && n >= GUARD_MIN_READS && share(n, of) >= GUARD_REF_SHARE))
         })
-        .collect()
+    };
+    let own = |off: usize| {
+        ev.d == 0
+            && grown(off)
+            && !background(off)
+            && (0..4).any(|k| b"ACGT"[k] != reference[off] && recurs(placed.alt_bases[off - lo][k], placed.alt_cover[off - lo]))
+    };
+    let isolated = |off: usize| !(own(off + 1) || off > 0 && own(off - 1));
+    (ev.lo..c_lo).chain(c_hi..ev.hi).filter(|&off| background(off) || (own(off) && isolated(off))).collect()
 }
 
 /// The other alleles of the ALT's length at the locus (RJ-25): the spellings read in
@@ -1306,14 +1308,39 @@ fn other_alleles(
             && (ev.d != 0 || (c_lo..c_hi).any(|i| h[i] != ev.hap[i]))
     };
     let (ref_spelling, alt_spelling) = (reference.get(lo..alt_hi), &ev.hap[lo..alt_hi]);
-    let apart = |a: &[u8], b: &[u8]| a.iter().zip(b).filter(|(x, y)| x != y).count();
+    // How far a spelling is from REF's or the ALT's, at the bases that can tell: not
+    // where the guard masks (on that allele's coordinates), nor, for an MNP, beside its
+    // own bases (a phased neighbour there is no difference).
+    let masked_ref: Vec<usize> = masked.iter().filter_map(|&p| usize::try_from(p - start).ok()).collect();
+    let apart = |b: &[u8], allele: &[u8], masked_at: &[usize]| {
+        b.iter()
+            .zip(allele)
+            .enumerate()
+            .filter(|&(k, (x, y))| {
+                let i = lo + k;
+                x != y && !masked_at.contains(&i) && (ev.d != 0 || (c_lo..c_hi).contains(&i))
+            })
+            .count()
+    };
+    // the fragments spelling REF's own bases and the ALT's, so measured
+    let spellers = |allele: Option<&[u8]>, masked_at: &[usize]| -> u32 {
+        let Some(allele) = allele else { return 0 };
+        let mut frags = std::collections::HashSet::new();
+        for (b, f) in &placed.full {
+            if apart(b, allele, masked_at) == 0 {
+                frags.extend(f.iter().copied());
+            }
+        }
+        frags.len() as u32
+    };
+    let (ref_n, alt_n) = (spellers(ref_spelling, &masked_ref), spellers(Some(alt_spelling), &masked_hap));
     // the fragments spelling the allele a spelling is nearest
     let source = |b: &[u8]| {
-        let to_alt = apart(b, alt_spelling);
-        match ref_spelling.map(|r| apart(b, r)) {
-            Some(to_ref) if to_ref < to_alt => placed.ref_spellers,
-            Some(to_ref) if to_ref == to_alt => placed.ref_spellers.max(placed.alt_spellers),
-            _ => placed.alt_spellers,
+        let to_alt = apart(b, alt_spelling, &masked_hap);
+        match ref_spelling.map(|r| apart(b, r, &masked_ref)) {
+            Some(to_ref) if to_ref < to_alt => ref_n,
+            Some(to_ref) if to_ref == to_alt => ref_n.max(alt_n),
+            _ => alt_n,
         }
     };
     let ref_carries = |i: usize, b: u8| {
@@ -1400,13 +1427,18 @@ pub(crate) fn guard_for(
     }
     let (start, reference) = prepared_reference(v)?;
     let ev = event(start, &reference, v)?;
-    if ev.lo == 0 || ev.hi >= reference.len() {
+    // The scan beside the event starts where the event ends: for one changing the
+    // length, past the repeat it was grown through (the change may sit anywhere in
+    // it); for an MNP, at its own bases (it has nothing to place, so the run beside it
+    // is beside it, and a change there a phased neighbour or background).
+    let (s_lo, s_hi) = if ev.d == 0 { ev.core } else { (ev.lo, ev.hi) };
+    if s_lo == 0 || s_hi >= reference.len() || ev.lo == 0 {
         return None;
     }
-    let reach_l = GUARD_REACH.min(ev.lo);
-    let reach_r = GUARD_REACH.min(reference.len() - ev.hi);
-    let alt_core = &ev.hap[ev.lo..(ev.hi as i64 + ev.d) as usize];
-    let ref_core = &reference[ev.lo..ev.hi];
+    let reach_l = GUARD_REACH.min(s_lo);
+    let reach_r = GUARD_REACH.min(reference.len() - s_hi);
+    let alt_core = &ev.hap[s_lo..(s_hi as i64 + ev.d) as usize];
+    let ref_core = &reference[s_lo..s_hi];
     let g = |off: usize| start + off as i64;
     // The variant's own reads placed by their bases (RJ-25): the background inside the
     // repeat the event was grown through, which the scan beside the event lets fit
@@ -1415,8 +1447,8 @@ pub(crate) fn guard_for(
     let grown = placed.as_ref().map_or_else(Vec::new, |p| grown_background(p, &reference, &ev));
     let c_lo = ev.core.0;
     let on_alt = |off: usize| if off < c_lo { off } else { (off as i64 + ev.d) as usize };
-    let ref_wild: Vec<bool> = (ev.lo..ev.hi).map(|off| grown.contains(&off)).collect();
-    let alt_wild: Vec<bool> = (ev.lo..ev.lo + alt_core.len()).map(|h| grown.iter().any(|&off| on_alt(off) == h)).collect();
+    let ref_wild: Vec<bool> = (s_lo..s_hi).map(|off| grown.contains(&off)).collect();
+    let alt_wild: Vec<bool> = (s_lo..s_lo + alt_core.len()).map(|h| grown.iter().any(|&off| on_alt(off) == h)).collect();
     // Per allele (REF 0, ALT 1) and side (left 0, right 1), by distance from the
     // event (index 0 is the flank base beside it): reads reading the base, and reads
     // showing a confident change there.
@@ -1436,7 +1468,7 @@ pub(crate) fn guard_for(
         if seq.is_empty() || quals.len() < seq.len() {
             continue;
         }
-        let (Some(ql), Some(qr)) = (find_read_pos(record, g(ev.lo - 1)), find_read_pos(record, g(ev.hi))) else {
+        let (Some(ql), Some(qr)) = (find_read_pos(record, g(s_lo - 1)), find_read_pos(record, g(s_hi))) else {
             continue;
         };
         if qr <= ql {
@@ -1461,7 +1493,7 @@ pub(crate) fn guard_for(
         scanned += 1;
         for (side, reach) in [(0usize, reach_l), (1usize, reach_r)] {
             for i in 0..reach {
-                let off = if side == 0 { ev.lo - 1 - i } else { ev.hi + i };
+                let off = if side == 0 { s_lo - 1 - i } else { s_hi + i };
                 let Some(q) = find_read_pos(record, g(off)) else { break };
                 cover[allele][side][i] += 1;
                 let b = seq[q].to_ascii_uppercase();
@@ -1498,7 +1530,7 @@ pub(crate) fn guard_for(
     let (mut masked, mut alt_only, mut run) = (Vec::new(), [Vec::new(), Vec::new()], false);
     for (side, reach) in [(0usize, reach_l), (1usize, reach_r)] {
         for i in 0..reach {
-            let off = if side == 0 { ev.lo - 1 - i } else { ev.hi + i };
+            let off = if side == 0 { s_lo - 1 - i } else { s_hi + i };
             if recurs(1, side, i) && !on_ref(side, i) {
                 alt_only[side].push(i);
             }
@@ -1517,8 +1549,8 @@ pub(crate) fn guard_for(
         None
     } else {
         let far = |side: usize| alt_only[side].iter().max().copied();
-        let lo = far(0).map_or(ev.lo, |i| ev.lo - 1 - i);
-        let hi = far(1).map_or(ev.hi, |i| ev.hi + i + 1);
+        let lo = far(0).map_or(s_lo, |i| s_lo - 1 - i);
+        let hi = far(1).map_or(s_hi, |i| s_hi + i + 1);
         let (mut carriers, mut given) = (u32::MAX, 0u32);
         for side in 0..2 {
             for &i in &alt_only[side] {
@@ -1534,9 +1566,9 @@ pub(crate) fn guard_for(
             b"ACGT"[k]
         };
         let mut alt = Vec::with_capacity(hi - lo + alt_core.len());
-        alt.extend((lo..ev.lo).map(|off| base_at(0, ev.lo - 1 - off, off)));
+        alt.extend((lo..s_lo).map(|off| base_at(0, s_lo - 1 - off, off)));
         alt.extend_from_slice(alt_core);
-        alt.extend((ev.hi..hi).map(|off| base_at(1, off - ev.hi, off)));
+        alt.extend((s_hi..hi).map(|off| base_at(1, off - s_hi, off)));
         // named like every observed allele: left-aligned, minimal VCF form
         let base = |p: i64| usize::try_from(p - start).ok().and_then(|o| reference.get(o).copied());
         let text = |x: Vec<u8>| String::from_utf8_lossy(&x).into_owned();
@@ -1550,7 +1582,11 @@ pub(crate) fn guard_for(
     };
     // The background inside the grown event joins the masks; the other alleles of the
     // ALT's length are those a read can tell from it past every mask.
-    masked.extend(grown.iter().map(|&off| g(off)));
+    for p in grown.iter().map(|&off| g(off)) {
+        if !masked.contains(&p) {
+            masked.push(p);
+        }
+    }
     let others =
         placed.as_ref().map_or_else(Vec::new, |p| other_alleles(p, (start, &reference), &ev, siblings, &masked));
     if masked.is_empty() && larger.is_none() && others.is_empty() {

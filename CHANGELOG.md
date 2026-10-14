@@ -49,7 +49,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   a low-VAF ALT is found at any depth; molecules are told by all their bases (a run past
   the event, or a large deletion, left none placed) with up to two phased changes
   beside the event; a change beside an MNP's own bases is a phased neighbour, not
-  another allele.
+  another allele. A third review: the fragments spelling REF or the ALT are counted
+  past the masks (a masked change on every carrier left none, so any recurring error
+  became an allele); for an MNP the run beside it is beside it on both routes, so a
+  carrier with a phased neighbour there counts ALT however it is aligned.
 - **Read census.** Told the locus's other alleles, it judges a read fitting the ALT
   and another allele as neither (`FITS_OTHER`).
 - **Tests.** Two `--rescue-mnp` tests' unrescued counts move from (REF 20, ALT 1,

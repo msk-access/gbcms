@@ -735,3 +735,145 @@ def test_another_allele_as_common_as_a_low_alt_is_found_at_any_depth(tmp_path, n
     (c,) = count_checked(bam, [v])
     _invariants(c)
     assert c.ad == 10
+
+
+# ── third review (2026-10-14) ─────────────────────────────────────────────
+
+
+def _uv_contig():
+    """GACCCA at P - 2: a CC>TT at P beside a third C."""
+    contig = list(_contig(seed=34))
+    contig[P - 2 : P + 4] = "GACCCA"
+    return "".join(contig)
+
+
+def _delins_errors(tmp_path, flank_change, ref_carry, n_alt, n_err, n_low):
+    """The 28-to-6 delins on `n_alt` carriers: `n_err` with a confident error at the
+    third inserted base, `n_low` more reading it below min BQ; with `flank_change`, every
+    carrier carries a change at P - 1 (in cis; with `ref_carry`, half the REF reads too)."""
+    contig = _contig()
+    ref = contig[P : P + REF_LEN]
+    hap = list(contig[:P] + ALT + contig[P + REF_LEN :])
+    if flank_change:
+        hap[P - 1] = _other_base(contig, P - 1)
+    hap = "".join(hap)
+    reads = []
+    for i in range(40):
+        s = P - 60 + i
+        seq = list(contig[s : s + READ])
+        if ref_carry and i % 2:
+            seq[P - 1 - s] = hap[P - 1]
+        reads.append(make_read(f"ref{i}", "".join(seq), s, ((0, READ),)))
+    for i in range(n_alt):
+        s = P - 60 + (i % 40)
+        left = P - s
+        seq = list(hap[s : s + READ])
+        if i < n_err:
+            seq[left + TELL] = "C"
+        cig = ((0, left), (1, len(ALT)), (2, REF_LEN), (0, READ - left - len(ALT)))
+        r = make_read(f"alt{i}", "".join(seq), s, cig)
+        reads.append(_low(r, [left + TELL]) if n_err <= i < n_err + n_low else r)
+    fa, bam = write_contig(tmp_path, contig, reads)
+    (v,) = _prepared(fa, [(P, ref, ALT)])
+    (c,) = count_checked(bam, [v])
+    _invariants(c)
+    return c
+
+
+@pytest.mark.parametrize("flank_change,ref_carry", [(False, False), (True, False), (True, True)])
+def test_a_recurring_error_among_carriers_sharing_a_masked_change_is_no_allele(
+    tmp_path, flank_change, ref_carry
+):
+    """200 carriers, 6 with one error at an inserted base: with every carrier carrying a
+    masked change in the window (a phased neighbour, a germline SNP in cis), they still
+    spell the ALT, so 6 is under 5% of them and the 10 reading that base below min BQ
+    count ALT."""
+    c = _delins_errors(tmp_path, flank_change, ref_carry, n_alt=200, n_err=6, n_low=10)
+    assert c.ad == 194
+
+
+def test_a_recurring_error_among_deep_carriers_is_no_allele(tmp_path):
+    """1000 carriers with a masked change in cis, 3 with one error: no allele."""
+    c = _delins_errors(tmp_path, True, False, n_alt=1000, n_err=3, n_low=30)
+    assert c.ad == 997
+
+
+def test_a_recurring_error_among_mnp_carriers_with_a_neighbour_is_no_allele(tmp_path):
+    """CC>TT carriers spelling TTT (a phased neighbour beside the MNP), 6 of 200 with an
+    error at the first T: under 5% of the carriers, no allele."""
+    contig = _uv_contig()
+    reads = [
+        make_read(f"ref{i}", contig[P - 50 + i : P + 50 + i], P - 50 + i, ((0, READ),))
+        for i in range(40)
+    ]
+    for i in range(200):
+        s = P - 50 + (i % 40)
+        block = "GTT" if i < 6 else "TTT"
+        r = make_read(f"alt{i}", contig[s:P] + block + contig[P + 3 : s + READ], s, ((0, READ),))
+        reads.append(_low(r, [P - s]) if 6 <= i < 16 else r)
+    fa, bam = write_contig(tmp_path, contig, reads)
+    (v,) = _prepared(fa, [(P, "CC", "TT")])
+    (c,) = count_checked(bam, [v])
+    _invariants(c)
+    assert c.ad == 194
+
+
+@pytest.mark.parametrize("hom_at", [P - 1, P + 2])
+def test_ref_errors_beside_a_homozygous_snp_are_no_allele(tmp_path, hom_at):
+    """GC>AT with a homozygous SNP beside it (masked background, on every read): 4 of
+    1000 REF reads with an error spelling AC are no allele, so the 10 carriers reading
+    only the A count ALT."""
+    contig = _mnp_contig()
+    hom = _other_base(contig, hom_at)
+    reads = []
+    for i in range(1000):
+        s = P - 50 + (i % 40)
+        seq = list(contig[s : s + READ])
+        seq[hom_at - s] = hom
+        if i < 4:
+            seq[P - s] = "A"
+        reads.append(make_read(f"ref{i}", "".join(seq), s, ((0, READ),)))
+    for i in range(30):
+        s = P - 50 + (i % 40)
+        seq = list(contig[s : s + READ])
+        seq[hom_at - s] = hom
+        seq[P - s : P - s + 2] = "AT"
+        r = make_read(f"alt{i}", "".join(seq), s, ((0, READ),))
+        reads.append(_low(r, [P + 1 - s]) if i < 10 else r)
+    fa, bam = write_contig(tmp_path, contig, reads)
+    (v,) = _prepared(fa, [(P, "GC", "AT")])
+    (c,) = count_checked(bam, [v])
+    _invariants(c)
+    assert c.ad == 30
+
+
+@pytest.mark.parametrize("shape", ["plain", "clip", "indel", "all indel"])
+@pytest.mark.parametrize("block", ["TTC", "TTT"])
+def test_an_mnp_carrier_with_a_neighbour_counts_however_it_is_aligned(tmp_path, block, shape):
+    """CC>TT carriers spelling TTC, or TTT (a phased neighbour beside the MNP's own
+    bases): 6 aligned plainly and 4 aligned as `shape` (the block's end clipped, or an
+    indel at the block; or all 10 with the indel), all ALT: the exact-carrier route reads
+    beside an MNP as beside any event, the neighbour found from the carriers' bases."""
+    contig = _uv_contig()
+    reads = [
+        make_read(f"ref{i}", contig[P - 50 + i : P + 50 + i], P - 50 + i, ((0, READ),))
+        for i in range(20)
+    ]
+    for i in range(10):
+        s = P - 60 + i
+        seq = contig[s:P] + block + contig[P + 3 : s + READ]
+        kind = "indel" if shape == "all indel" else shape if i >= 6 else "plain"
+        if kind == "plain":
+            reads.append(make_read(f"alt{i}", seq, s, ((0, READ),)))
+        elif kind == "clip":
+            e = P + 7
+            short = contig[s:P] + block + contig[P + 3 : e]
+            reads.append(make_read(f"alt{i}", short, s, ((0, P - s + 1), (4, e - P - 1))))
+        else:
+            cig = ((0, P - s), (1, 1), (0, 2), (2, 1), (0, len(seq) - (P - s) - 3))
+            reads.append(make_read(f"alt{i}", seq, s, cig))
+    fa, bam = write_contig(tmp_path, contig, reads)
+    (v,) = _prepared(fa, [(P, "CC", "TT")])
+    (c,) = count_checked(bam, [v])
+    _invariants(c)
+    assert c.ad == 10
