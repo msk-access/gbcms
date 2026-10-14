@@ -962,16 +962,13 @@ def test_a_ref_read_showing_only_the_germline_base_is_not_ref(tmp_path):
     assert_matches(c, census(bam, contig, v, others=[(P, "GC", "GT")]))
 
 
-def test_an_mnp_read_spelling_another_allele_where_the_alt_keeps_the_reference_is_not_ref(
-    tmp_path,
-):
-    """GCA>ACT beside GTA on 6 fragments, read plainly: GTA shows REF's bases where REF
-    and the ALT differ, but REF's C is its T, so its reads are neither."""
+def _gta_beside(tmp_path, n_oth):
+    """GCA>ACT: 20 REF reads, 10 carriers and `n_oth` reads of GTA, read plainly."""
     contig = list(_contig(seed=41))
     contig[P : P + 3] = "GCA"
     contig = "".join(contig)
     reads = []
-    for tag, block, n in (("ref", "GCA", 20), ("alt", "ACT", 10), ("oth", "GTA", 6)):
+    for tag, block, n in (("ref", "GCA", 20), ("alt", "ACT", 10), ("oth", "GTA", n_oth)):
         for i in range(n):
             s = P - 50 + i
             reads.append(
@@ -983,8 +980,28 @@ def test_an_mnp_read_spelling_another_allele_where_the_alt_keeps_the_reference_i
     (v,) = _prepared(fa, [(P, "GCA", "ACT")])
     (c,) = count_checked(bam, [v])
     _invariants(c)
+    return contig, bam, v, c
+
+
+def test_an_mnp_read_spelling_another_allele_where_the_alt_keeps_the_reference_is_not_ref(
+    tmp_path,
+):
+    """GCA>ACT beside GTA on 3 fragments (under a fifth of the REF molecules): GTA shows
+    REF's bases where REF and the ALT differ, but REF's C is its T, so its reads are
+    neither."""
+    contig, bam, v, c = _gta_beside(tmp_path, 3)
     assert (c.rd, c.ad) == (20, 10)
     assert_matches(c, census(bam, contig, v, others=[(P, "GCA", "GTA")]))
+
+
+def test_a_change_on_a_fifth_of_the_ref_molecules_at_a_base_an_mnp_keeps_is_background(
+    tmp_path,
+):
+    """GTA on 6 fragments, 23% of the REF molecules: the T at the base the MNP keeps is
+    background, masked as in the grown part (operator, 2026-10-14), so GTA reads are
+    REF. (Until then this case was neither, RD 20.)"""
+    _, _, _, c = _gta_beside(tmp_path, 6)
+    assert (c.rd, c.ad) == (26, 10)
 
 
 def _delins_ref_allele(tmp_path, n_changed, n_low, sibling=False):
@@ -1081,10 +1098,11 @@ def test_a_component_is_seen_only_above_the_errors_of_its_nearest_allele(tmp_pat
 # ── fifth review (2026-10-14) ─────────────────────────────────────────────
 
 
-def _cis_germline_mnp(tmp_path, carriers="ATT", sibling=False, n_germ=20):
+def _cis_germline_mnp(tmp_path, carriers="ATT", sibling=False, n_germ=20, indel=0):
     """GCA>ACT, the middle base kept: 20 REF reads, `n_germ` reads of the germline
-    haplotype GTA (a T at the kept base) and 10 carriers spelling `carriers`; with
-    `sibling`, the T co-annotated as an SNV."""
+    haplotype GTA (a T at the kept base) and 10 carriers spelling `carriers`, the first
+    `indel` written with an indel at the block; with `sibling`, the T co-annotated as an
+    SNV."""
     contig = list(_contig(seed=41))
     contig[P : P + 3] = "GCA"
     contig = "".join(contig)
@@ -1094,7 +1112,10 @@ def _cis_germline_mnp(tmp_path, carriers="ATT", sibling=False, n_germ=20):
             s = P - 50 + k % 45
             k += 1
             seq = contig[s:P] + block + contig[P + 3 : s + READ]
-            reads.append(make_read(f"{tag}{i}", seq, s, ((0, READ),)))
+            left = P - s
+            shifted = ((0, left), (1, 1), (0, 2), (2, 1), (0, READ - left - 3))
+            cig = shifted if tag == "alt" and i < indel else ((0, READ),)
+            reads.append(make_read(f"{tag}{i}", seq, s, cig))
     fa, bam = write_contig(tmp_path, contig, reads)
     rows = [(P, "GCA", "ACT")] + ([(P + 1, "C", "T")] if sibling else [])
     vs = _prepared(fa, rows)
@@ -1110,11 +1131,24 @@ def test_a_germline_change_the_carriers_carry_too_leaves_ref_reads_ref(tmp_path)
     assert (c.rd, c.ad) == (40, 10)
 
 
-def test_a_germline_change_the_carriers_lack_is_another_allele_of_refs_length(tmp_path):
-    """The MNP on the other haplotype (carriers ACT): no ALT molecule carries the T, so
-    GTA lacks the given REF's base and its reads are neither."""
+def test_a_germline_change_at_a_base_an_mnp_keeps_on_the_other_haplotype_is_background(
+    tmp_path,
+):
+    """The MNP on the other haplotype (carriers ACT): no ALT molecule carries the T, but
+    half the REF molecules do, so it is background at a base the MNP keeps, masked
+    (operator, 2026-10-14): GTA reads are REF, not RD halved. (Until then, RD 20.)"""
     c = _cis_germline_mnp(tmp_path, carriers="ACT")
-    assert (c.rd, c.ad) == (20, 10)
+    assert (c.rd, c.ad) == (40, 10)
+
+
+def test_carriers_with_an_indel_at_the_block_and_a_germline_change_at_a_kept_base_count(
+    tmp_path,
+):
+    """The MNP on the germline T's haplotype, 5 of its 10 carriers written with an indel
+    at the block (the exact-carrier route): the T is masked there too, so they count
+    ALT as the plain ones do on the MNP check's route."""
+    c = _cis_germline_mnp(tmp_path, indel=5)
+    assert (c.rd, c.ad) == (40, 10)
 
 
 def test_a_ref_read_carrying_a_co_annotated_sibling_is_partial_evidence(tmp_path):

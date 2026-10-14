@@ -48,7 +48,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   neither, silently (RD down by a third to a half at 2 panel rows, a matched normal
   and a WES row). Such a change, carried by the REF molecules, is now background,
   masked in both windows where it sits on each allele, so REF reads and carriers
-  carrying it keep their call. One on the ALT molecules alone stays unmasked.
+  carrying it keep their call. One on the ALT molecules alone stays unmasked. The
+  same at the bases an MNP keeps inside its core (operator, 2026-10-14): a germline
+  het there in trans made the germline haplotype's REF reads neither (RD halved, VAF
+  0.20 -> 0.33 in a synthetic case), and in cis carriers written with an indel at the
+  block were neither while plain ones counted. No real row changes.
 - **From the adversarial review (2026-10-14).** An allele the reads spell must also
   reach 5% of the fragments reading the same bases in full, so a recurring error at
   depth is no other allele; one differing from the ALT only where the guard masks is

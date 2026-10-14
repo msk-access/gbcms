@@ -993,9 +993,10 @@ fn windows(v: &Variant, layout: &Layout) -> Option<Windows> {
     let ref_other_haps: Vec<Vec<u8>> =
         layout.ref_others.iter().filter_map(|o| o.on(start, &reference)).filter(|h| h.len() == reference.len()).collect();
     // A masked base (a change recurring beside the event, or one the REF molecules
-    // carry inside the repeat it was grown through) matches any read base. Left of
-    // the given allele the alleles share coordinates; right of it the ALT's are
-    // shifted by the length change. The given allele's own bases are never masked.
+    // carry inside the repeat it was grown through, or at a base an MNP keeps) matches
+    // any read base. Left of the given allele the alleles share coordinates; right of
+    // it the ALT's are shifted by the length change. The given allele's own bases are
+    // never masked (a base an MNP keeps is no change of its own).
     let (mut reference, mut hap) = (reference, ev.hap.clone());
     for &p in &layout.masked {
         let off = p - start;
@@ -1005,6 +1006,9 @@ fn windows(v: &Variant, layout: &Layout) -> Option<Windows> {
         } else if off >= c_hi as i64 && off < hi as i64 {
             reference[off as usize] = WILD;
             hap[(off + d) as usize] = WILD;
+        } else if d == 0 && off >= c_lo as i64 && off < c_hi as i64 && reference[off as usize] == hap[off as usize] {
+            reference[off as usize] = WILD;
+            hap[off as usize] = WILD;
         }
     }
     let (ref_win, alt_win) = (&reference[lo..hi], &hap[lo..alt_hi]);
@@ -1272,8 +1276,11 @@ fn share(n: u32, of: u32) -> f64 {
 /// ALT molecules alone carry there is none for an event changing the length (inside
 /// the repeat it may be the event's own sequence); for an MNP, which has nothing to
 /// place, the run is beside it, so an isolated one is its phased neighbour, masked as
-/// beside any event (a run of them is another allele). Read from the molecules placed
-/// by their bases, so a carrier however aligned feeds it.
+/// beside any event (a run of them is another allele). For an MNP, the bases it keeps
+/// inside its core too: they sit on both alleles as the grown part's do, so background
+/// there is masked (a germline SNP in cis or in trans with it), while a change the ALT
+/// molecules alone carry there is another allele. Read from the molecules placed by
+/// their bases, so a carrier however aligned feeds it.
 fn grown_background(placed: &Placed, reference: &[u8], ev: &Event) -> Vec<usize> {
     let lo = ev.lo - FLANK;
     let (c_lo, c_hi) = ev.core;
@@ -1298,7 +1305,12 @@ fn grown_background(placed: &Placed, reference: &[u8], ev: &Event) -> Vec<usize>
             && (0..4).any(|k| b"ACGT"[k] != reference[off] && recurs(placed.alt_bases[off - lo][k], placed.alt_cover[off - lo]))
     };
     let isolated = |off: usize| !(own(off + 1) || off > 0 && own(off - 1));
-    (ev.lo..c_lo).chain(c_hi..ev.hi).filter(|&off| background(off) || (own(off) && isolated(off))).collect()
+    let kept = |off: usize| ev.d == 0 && reference[off] == ev.hap[off];
+    (ev.lo..c_lo)
+        .chain(c_hi..ev.hi)
+        .filter(|&off| background(off) || (own(off) && isolated(off)))
+        .chain((c_lo..c_hi).filter(|&off| kept(off) && background(off)))
+        .collect()
 }
 
 /// Which allele a set of other alleles stands beside: REF (its window `[lo, hi)`) or
@@ -1340,12 +1352,13 @@ fn other_alleles(
     let (hi, alt_hi) = (ev.hi + FLANK, (ev.hi as i64 + ev.d) as usize + FLANK);
     let (c_lo, c_hi) = ev.core;
     // The masked positions on each allele's coordinates: REF's as the genome's; the
-    // ALT's left of the given allele the same, right of it shifted by the length change.
+    // ALT's left of the given allele the same, right of it shifted by the length change
+    // (for an MNP, the same throughout).
     let masked_ref: Vec<usize> = masked.iter().filter_map(|&p| usize::try_from(p - start).ok()).collect();
     let masked_hap: Vec<usize> = masked_ref
         .iter()
         .filter_map(|&off| match off {
-            off if off < c_lo => Some(off),
+            off if off < c_lo || ev.d == 0 => Some(off),
             off if off >= c_hi => usize::try_from(off as i64 + ev.d).ok(),
             _ => None,
         })
@@ -1482,7 +1495,8 @@ fn tally(bases: &mut [[u32; 4]], cover: &mut [u32], n: usize, read: &dyn Fn(usiz
 /// neighbouring distance recurring there, the bases past the window included) is an
 /// indel or MNP beside the event, another allele: not masked. The variant's own reads,
 /// placed by their bases ([`placed_reads`]), add the background inside the repeat the
-/// event was grown through ([`grown_background`]; the scan lets it fit) and the other
+/// event was grown through and at the bases an MNP keeps ([`grown_background`]; the
+/// scan lets it fit) and the other
 /// alleles of the ALT's and of REF's length at the locus ([`other_alleles`], RJ-25).
 /// None when nothing is masked, named or found, or the variant is not judged by this
 /// rule.
@@ -2345,8 +2359,8 @@ mod tests {
         let g = guard_for(&reads, &v, &|_| true, 20, &[]).expect("the germline allele");
         assert_eq!(g.others.iter().map(|o| spelled(o, &ctx)).collect::<Vec<_>>(), vec![block("GT")]);
         // CCCAC>ACCAG with a germline C>T at its middle base on the REF and ALT reads
-        // alike: the ALT with it is no other allele (a separate event on both
-        // haplotypes); the REF with it is one (it lacks the event).
+        // alike: background at a base the MNP keeps, masked (RJ-23, 2026-10-14), so
+        // neither the ALT nor REF with it is another allele.
         let ctx = format!("{}GCCCACA{}", ag(40, 13), ag(40, 14));
         let v = var(&ctx, p as i64, "CCCAC", "ACCAG");
         let block = |b: &str| format!("{}{b}{}", &ctx[..p], &ctx[p + 5..]);
@@ -2358,8 +2372,9 @@ mod tests {
             fragments(&read("ACCAG"), 4, "b"),
         ]
         .concat();
-        let g = guard_for(&reads, &v, &|_| true, 20, &[]).expect("the REF haplotype with the SNP");
-        assert_eq!(g.others.iter().map(|o| spelled(o, &ctx)).collect::<Vec<_>>(), vec![block("CCTAC")]);
+        let g = guard_for(&reads, &v, &|_| true, 20, &[]).expect("the background at the kept base");
+        assert!(g.others.is_empty(), "no other allele");
+        assert!(g.masked.contains(&((p + 2) as i64)), "the middle base masked");
     }
 
     #[test]
@@ -2407,6 +2422,31 @@ mod tests {
         for (on_ref, on_alt, masked) in [(true, false, true), (true, true, true), (false, true, false)] {
             let (_, p, g) = ca_run(on_ref, on_alt);
             let got = g.is_some_and(|g| g.masked.contains(&((p + 4) as i64)));
+            assert_eq!(got, masked, "on REF {on_ref}, on ALT {on_alt}");
+        }
+    }
+
+    /// GCA>ACT (the C kept) with four fragments each of REF and the ALT, and four more of
+    /// each with a T at the kept base (`on_ref`, `on_alt`) or without.
+    fn kept_base(on_ref: bool, on_alt: bool) -> (usize, Option<Guard>) {
+        let left = ag(40, 31);
+        let ctx = format!("{left}GCA{}", ag(40, 32));
+        let p = left.len();
+        let v = var(&ctx, p as i64, "GCA", "ACT");
+        let t = |s: &str| format!("{}T{}", &s[..p + 1], &s[p + 2..]);
+        let hap = format!("{}ACT{}", &ctx[..p], &ctx[p + 3..]);
+        let plain = |s: &str| aligned(s.as_bytes(), vec![Cigar::Match(ctx.len() as u32)], 0);
+        let mut reads = [fragments(&plain(&ctx), 4, "r"), fragments(&plain(&hap), 4, "a")].concat();
+        reads.extend(fragments(&plain(&if on_ref { t(&ctx) } else { ctx.clone() }), 4, "s"));
+        reads.extend(fragments(&plain(&if on_alt { t(&hap) } else { hap.clone() }), 4, "b"));
+        (p, guard_for(&reads, &v, &|_| true, 20, &[]))
+    }
+
+    #[test]
+    fn a_change_the_ref_molecules_carry_at_a_base_an_mnp_keeps_is_masked() {
+        for (on_ref, on_alt, masked) in [(true, false, true), (true, true, true), (false, true, false)] {
+            let (p, g) = kept_base(on_ref, on_alt);
+            let got = g.is_some_and(|g| g.masked.contains(&((p + 1) as i64)));
             assert_eq!(got, masked, "on REF {on_ref}, on ALT {on_alt}");
         }
     }
