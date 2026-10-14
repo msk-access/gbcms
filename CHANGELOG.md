@@ -36,6 +36,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   and a WES row). Such a change, carried by the REF molecules, is now background,
   masked in both windows where it sits on each allele, so REF reads and carriers
   carrying it keep their call. One on the ALT molecules alone stays unmasked.
+- **From the adversarial review (2026-10-14).** An allele the reads spell must also
+  reach 5% of the fragments reading the same bases in full, so a recurring error at
+  depth is no other allele; one differing from the ALT only where the guard masks is
+  no other allele (it took every carrier); the alleles are found from the variant's
+  own reads only (binning invariance); a molecule may differ from its allele at one
+  base past the event (a phased SNP hid a germline allele); a molecule past a run
+  must read a base telling its allele from the other (a shifted carrier was taken for
+  REF at one HG002 row); every read the MNP check calls ALT follows the rule, and one
+  set aside keeps its N.
 - **Read census.** Told the locus's other alleles, it judges a read fitting the ALT
   and another allele as neither (`FITS_OTHER`).
 - **Tests.** Two `--rescue-mnp` tests' unrescued counts move from (REF 20, ALT 1,

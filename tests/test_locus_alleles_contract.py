@@ -359,3 +359,219 @@ def test_a_carrier_shifted_into_a_run_past_the_event_is_no_ref_molecule(tmp_path
     _invariants(c)
     assert (c.rd, c.ad) == (10, 14)
     assert_matches(c, census(bam, contig, v))
+
+
+# ── review findings (2026-10-14) ──────────────────────────────────────────
+
+
+def _ca_reads(contig, ref_snp=(), alt_snp=(), alt_change=None, n=20):
+    """REF reads and G>TCA carriers at the CA repeat: the reads numbered in `ref_snp` /
+    `alt_snp` carry the germline A>G at the repeat's fourth base; with `alt_change` (a
+    REF offset and a base), every carrier carries that change too."""
+    snp = P + 4
+    hap = contig[:P] + "TCA" + contig[P + 1 :]
+    reads = []
+    for i in range(n):
+        s = P - 50 + i
+        seq = list(contig[s : s + READ])
+        if i in ref_snp:
+            seq[snp - s] = "G"
+        reads.append(make_read(f"ref{i}", "".join(seq), s, ((0, READ),)))
+    for i in range(n):
+        s = P - 50 + i
+        left = P - s
+        seq = list(hap[s : s + READ])
+        if i in alt_snp:
+            seq[snp + 2 - s] = "G"
+        if alt_change:
+            seq[alt_change[0] + 2 - s] = alt_change[1]
+        reads.append(
+            make_read(f"alt{i}", "".join(seq), s, ((0, left + 1), (1, 2), (0, READ - left - 3)))
+        )
+    return reads
+
+
+def _other_base(contig, at):
+    return next(b for b in "ACGT" if b not in contig[at - 1 : at + 2])
+
+
+def test_an_allele_differing_from_the_alt_only_at_masked_bases_is_not_another(tmp_path):
+    """A co-annotated row merging the event with the germline SNP the REF molecules
+    carry in the repeat (masked background) differs from the ALT only there: it is the
+    ALT with a separate event, so the carriers stay the ALT's."""
+    contig = _ca_run_contig()
+    reads = _ca_reads(contig, ref_snp=range(1, 20, 2))
+    fa, bam = write_contig(tmp_path, contig, reads)
+    vs = _prepared(fa, [(P, "G", "TCA"), (P, contig[P : P + 5], "TCACACG")])
+    counts = count_checked(bam, vs, sibling_variants=[[vs[1]], [vs[0]]])
+    _invariants(counts[0])
+    assert (counts[0].rd, counts[0].ad) == (20, 20)
+
+
+def test_masked_background_and_an_isolated_change_leave_every_carrier_alt(tmp_path):
+    """The germline SNP in the repeat on half the REF reads and carriers, and every
+    carrier with an isolated change two bases past the event (its own, masked and
+    named): an allele differing only at those masked bases is no other allele."""
+    contig = _ca_run_contig()
+    change = (P + 8, _other_base(contig, P + 8))
+    reads = _ca_reads(contig, ref_snp=range(1, 20, 2), alt_snp=range(1, 20, 2), alt_change=change)
+    fa, bam = write_contig(tmp_path, contig, reads)
+    (v,) = _prepared(fa, [(P, "G", "TCA")])
+    (c,) = count_checked(bam, [v])
+    _invariants(c)
+    assert c.ad == 20
+
+
+def test_background_on_every_carrier_beside_a_phased_change_leaves_them_alt(tmp_path):
+    """Every carrier carries the germline SNP (on half the REF reads too) and an
+    isolated change of its own two bases past the event: the guard reads past the event
+    through the masked repeat, so it masks that change and the carriers count ALT."""
+    contig = _ca_run_contig()
+    change = (P + 8, _other_base(contig, P + 8))
+    reads = _ca_reads(contig, ref_snp=range(1, 20, 2), alt_snp=range(20), alt_change=change)
+    fa, bam = write_contig(tmp_path, contig, reads)
+    (v,) = _prepared(fa, [(P, "G", "TCA")])
+    (c,) = count_checked(bam, [v])
+    _invariants(c)
+    assert c.ad == 20
+
+
+def test_a_second_snp_past_the_event_leaves_the_background_found(tmp_path):
+    """The REF molecules carrying the repeat's germline SNP carry another in phase three
+    bases past the event: one change past the event does not stop them being read as
+    REF molecules, so the background is still found and every REF read counts."""
+    contig = _ca_run_contig()
+    far = P + 10
+    reads = _ca_reads(contig, ref_snp=range(1, 20, 2))
+    new = _other_base(contig, far)
+    for i in range(1, 20, 2):
+        r = reads[i]
+        seq = list(r.query_sequence)
+        seq[far - r.reference_start] = new
+        quals = r.query_qualities
+        r.query_sequence = "".join(seq)
+        r.query_qualities = quals
+    fa, bam = write_contig(tmp_path, contig, reads)
+    (v,) = _prepared(fa, [(P, "G", "TCA")])
+    (c,) = count_checked(bam, [v])
+    _invariants(c)
+    assert (c.rd, c.ad) == (20, 20)
+
+
+def test_a_germline_allele_with_a_second_snp_past_the_mnp_is_still_another(tmp_path):
+    """The germline GT carries a second SNP seven bases past the block: it is still
+    another allele, so with no AT molecule its reads showing only the T are no ALT."""
+    contig = _mnp_contig()
+    far = P + 7
+    new = _other_base(contig, far)
+    reads = _mnp_reads(contig, "GC", "ref", 20)
+    germ = _mnp_reads(contig, "GT", "germ", 20) + _mnp_reads(
+        contig, "GT", "germlow", 4, first=20, low_at=0
+    )
+    for r in germ:
+        seq, quals = list(r.query_sequence), r.query_qualities
+        seq[far - r.reference_start] = new
+        r.query_sequence = "".join(seq)
+        r.query_qualities = quals
+    fa, bam = write_contig(tmp_path, contig, reads + germ)
+    (v,) = _prepared(fa, [(P, "GC", "AT")])
+    (c,) = count_checked(bam, [v])
+    _invariants(c)
+    assert c.ad == 0
+
+
+def test_a_recurring_sequencing_error_is_not_another_allele(tmp_path):
+    """CC>TT at 300 REF fragments, 3 of them (1%) with a C>T error spelling CT, under the
+    share an allele the reads spell must reach: the 5 carriers whose first T is below
+    min BQ count ALT, at any depth."""
+    contig = list(_contig(seed=43))
+    contig[P - 1 : P + 3] = "GCCA"
+    contig = "".join(contig)
+    reads = []
+    for i in range(300):
+        s = P - 60 + (i % 50)
+        block = "CT" if i < 3 else "CC"
+        reads.append(
+            make_read(f"ref{i}", contig[s:P] + block + contig[P + 2 : s + READ], s, ((0, READ),))
+        )
+    for i in range(20):
+        s = P - 60 + (i % 50)
+        r = make_read(f"alt{i}", contig[s:P] + "TT" + contig[P + 2 : s + READ], s, ((0, READ),))
+        reads.append(_low(r, [P - s]) if i < 5 else r)
+    fa, bam = write_contig(tmp_path, contig, reads)
+    (v,) = _prepared(fa, [(P, "CC", "TT")])
+    (c,) = count_checked(bam, [v])
+    _invariants(c)
+    assert c.ad == 20
+
+
+def test_an_mnp_read_spelling_another_allele_where_the_alt_keeps_the_reference_is_not_alt(
+    tmp_path,
+):
+    """GCA>ACT beside AGT on 6 fragments, read plainly: AGT differs from the ALT only at
+    the base the ALT keeps, which the MNP check does not compare; RJ-25 does, so those
+    reads are another allele, not the ALT."""
+    contig = list(_contig(seed=41))
+    contig[P : P + 3] = "GCA"
+    contig = "".join(contig)
+    reads = []
+    for tag, block, n in (("ref", "GCA", 20), ("alt", "ACT", 10), ("oth", "AGT", 6)):
+        for i in range(n):
+            s = P - 50 + i
+            reads.append(
+                make_read(
+                    f"{tag}{i}", contig[s:P] + block + contig[P + 3 : s + READ], s, ((0, READ),)
+                )
+            )
+    fa, bam = write_contig(tmp_path, contig, reads)
+    (v,) = _prepared(fa, [(P, "GCA", "ACT")])
+    (c,) = count_checked(bam, [v])
+    _invariants(c)
+    assert (c.rd, c.ad) == (20, 10)
+    assert_matches(c, census(bam, contig, v, others=[(P, "GCA", "AGT")]))
+
+
+def test_an_mnp_read_set_aside_for_another_allele_keeps_its_n(tmp_path):
+    """GC>AT beside the germline GT: reads with N for the A are another allele's or the
+    ALT's, and still count toward the N reads."""
+    contig = _mnp_contig()
+    reads = _mnp_reads(contig, "GC", "ref", 20) + _mnp_reads(contig, "GT", "germ", 20)
+    reads += _mnp_reads(contig, "AT", "som", 6, first=40)
+    for r in _mnp_reads(contig, "NT", "somN", 4, first=46):
+        reads.append(r)
+    fa, bam = write_contig(tmp_path, contig, reads)
+    (v,) = _prepared(fa, [(P, "GC", "AT")])
+    (c,) = count_checked(bam, [v])
+    _invariants(c)
+    assert (c.ad, c.n_count) == (6, 4)
+
+
+def test_the_alleles_at_a_locus_do_not_depend_on_bin_geometry(tmp_path):
+    """G>AT after a 30-A run grows left past the variant's read window. A read aligned
+    there with the event in its clip is in a bin's reads for a neighbouring row, not in
+    this variant's: the other alleles are found from the variant's own reads, so the
+    counts match one variant per bin (count_checked) and AC on two fragments is none."""
+    contig = list(_contig(seed=91))
+    contig[P - 30 : P] = "A" * 30
+    contig[P] = "G"
+    contig = "".join(contig)
+    hap, oth = (contig[:P] + b + contig[P + 1 :] for b in ("AT", "AC"))
+    reads = [
+        make_read(f"ref{i}", contig[P - 50 + i : P + 50 + i], P - 50 + i, ((0, READ),))
+        for i in range(10)
+    ]
+    for tag, h, n in (("alt", hap, 16), ("oth", oth, 2)):
+        for i in range(n):
+            s = P - 50 + i
+            left = P - s + 1
+            r = make_read(
+                f"{tag}{i}", h[s : s + READ], s, ((0, left), (1, 1), (0, READ - left - 1))
+            )
+            reads.append(_low(r, [left]) if tag == "alt" and i >= 10 else r)
+    reads.append(make_read("othclip", oth[P - 40 : P + 20], P - 40, ((0, 30), (4, 30))))
+    fa, bam = write_contig(tmp_path, contig, reads)
+    snv = contig[P - 100]
+    vs = _prepared(fa, [(P - 100, snv, "A" if snv != "A" else "C"), (P, "G", "AT")])
+    counts = count_checked(bam, vs)
+    _invariants(counts[1])
+    assert (counts[1].rd, counts[1].ad, counts[1].partial_alt) == (10, 16, 2)

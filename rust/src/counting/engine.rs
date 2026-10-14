@@ -2645,16 +2645,20 @@ fn check_allele_with_qual<F: Fn(u8, u8) -> i32>(
                 r.has_n_base = had_n;
                 r
             }
-            MnpResult::Alt(q, _, false)
+            MnpResult::Alt(q, had_n, _)
                 if rules
                     .guard
                     .and_then(|g| g.get(variant))
                     .is_some_and(|g| !carrier::tells_others_aligned(record, quals, min_baseq, variant, g)) =>
             {
-                // A read leaving a differing base unread counts only if it tells the
-                // ALT from every other allele of its length at the locus (RJ-25).
-                trace!("MNP: a differing base unread, and no base read tells the ALT from another allele of its length → neither, partial");
-                ClassifyResult::neither_with_nearby(q, ClassifyPhase::MaskedCompare)
+                // An ALT read counts only if it tells the ALT from every other allele
+                // of its length at the locus (RJ-25): one leaving a differing base
+                // unread, or one spelling another allele where the ALT keeps the
+                // reference's base, which this check does not compare.
+                trace!("MNP: no base read tells the ALT from another allele of its length → neither, partial");
+                let mut r = ClassifyResult::neither_with_nearby(q, ClassifyPhase::MaskedCompare);
+                r.has_n_base = had_n;
+                r
             }
             MnpResult::Alt(q, had_n, confirmed) => {
                 let mut r = ClassifyResult::is_alt(q, ClassifyPhase::MaskedCompare);
