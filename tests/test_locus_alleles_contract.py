@@ -321,3 +321,41 @@ def test_a_change_both_haplotypes_carry_is_neither_another_allele_nor_a_mismatch
     (c,) = count_checked(bam, [v])
     _invariants(c)
     assert (c.rd, c.ad, c.partial_alt) == (30, 26, 0)
+
+
+# GRCh38 chr6:76972991-76973290 (public reference), where HG002 carries a T>C and, on
+# the same haplotype, a TG deletion twelve bases on, written as one delins; past it, a
+# run of 17 T's.
+LOCUS_6 = (
+    "ATGACTTTTTTGGCCTGTTAGGAGCTGCATCCAACACACCACAAACTTGACAGTATCAGTTTTCTGTTGTGATGTAATGAACT"
+    "ACCCCAACTGATCAGCTTTAAACAACTGATTATTTGCTTAAAATTGTTGGGTGGCATCACTGGGTAG"
+    "TTCCTATGCTGTTGTGTTTTTTTTTTTTTTTTTCTGTTTTTCTGGGATCACTCACTCATGTGGTGGTAGTCAGTTGAAATCT"
+    "CAGTAGGGCCTGGATGGACTAAGATGACCTCACTCACATGTCTGGCAATTGGTGCTCACTGTAGGCTG"
+)
+
+
+def test_a_carrier_shifted_into_a_run_past_the_event_is_no_ref_molecule(tmp_path):
+    """Past the event a molecule shifted by the length change fits REF's bases as well,
+    so it is a REF molecule only where it reads a base telling REF from the ALT. The
+    carriers' own T after the TG deletion is then no change the REF molecules carry,
+    and a carrier reading only that T confidently (its C and the run's end below min
+    BQ, as one HG002 read) still tells the ALT from REF by it."""
+    contig, p = LOCUS_6, 150
+    ref, alt = contig[p : p + 14], "CTCCTATGCTGT"
+    hap = contig[:p] + alt + contig[p + 14 :]
+    reads = [
+        make_read(f"ref{i}", contig[p - 60 + i : p + 40 + i], p - 60 + i, ((0, READ),))
+        for i in range(10)
+    ]
+    for i in range(14):
+        s = p - 60 + i
+        left = p + 12 - s
+        r = make_read(f"alt{i}", hap[s : s + READ], s, ((0, left), (2, 2), (0, READ - left)))
+        # as HG002's read: its C, and the run's end where the windows next differ, at Q11
+        reads.append(_low(r, [p - s, p + 31 - s, p + 33 - s]) if i >= 10 else r)
+    fa, bam = write_contig(tmp_path, contig, reads)
+    (v,) = _prepared(fa, [(p, ref, alt)])
+    (c,) = count_checked(bam, [v])
+    _invariants(c)
+    assert (c.rd, c.ad) == (10, 14)
+    assert_matches(c, census(bam, contig, v))

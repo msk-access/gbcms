@@ -1107,12 +1107,15 @@ struct Placed<'a> {
 /// `[lo, alt_hi)` (ALT), `lo` being FLANK bases before the event. A read is placed at
 /// its aligned base on `lo`. It is a molecule of an allele when its bases outside the
 /// event, through [`PLACED_REACH`] bases past the window, fit that allele (masked
-/// bases fit) with PLACED_REACH of them read: a molecule of the other length, shifted
-/// by the change, does not fit that by chance, so a carrier written with its gap
-/// outside the event is no REF molecule. For an event that keeps the length the
-/// alleles differ only inside it, so each molecule must also show its own allele's
-/// bases where the other has different ones. Inside a length-changing event a change
-/// fits (a germline SNP in the repeat it grew through), and is tallied.
+/// bases fit) with PLACED_REACH of them read, one of them where the other allele,
+/// placed the same way, has another base: a molecule of the other length, shifted by
+/// the change, does not fit that, so a carrier written with its gap outside the event
+/// is no REF molecule; and where the bases past the event repeat themselves (a run a
+/// shifted molecule fits as well) a read showing no such base is neither allele's.
+/// For an event that keeps the length the alleles differ only inside it, so each
+/// molecule must show its own allele's bases where the other has different ones.
+/// Inside a length-changing event a change fits (a germline SNP in the repeat it grew
+/// through), and is tallied.
 fn placed_reads<'a>(
     read_cache: &'a [Record],
     counted: &dyn Fn(&Record) -> bool,
@@ -1151,21 +1154,25 @@ fn placed_reads<'a>(
                 return false;
             }
             let outside = (lo..ev.lo).chain(end - FLANK..past);
-            let (mut fits, mut read_n) = (true, 0usize);
+            let (mut fits, mut read_n, mut told) = (true, 0usize, false);
             for i in outside {
                 match read(i - lo) {
                     Some((b, true)) if b != WILD => {
                         read_n += 1;
                         fits &= b == allele[i];
+                        told |= b == allele[i] && other.get(i).is_some_and(|&o| o != b);
                     }
                     Some(_) => {}
                     None => return false,
                 }
             }
-            let own = ev.d != 0
-                || (ev.lo..end - FLANK)
+            let own = if ev.d != 0 {
+                told
+            } else {
+                (ev.lo..end - FLANK)
                     .filter(|&i| allele[i] != other[i])
-                    .all(|i| read(i - lo).is_some_and(|(b, ok)| ok && b == allele[i]));
+                    .all(|i| read(i - lo).is_some_and(|(b, ok)| ok && b == allele[i]))
+            };
             fits && read_n >= PLACED_REACH && own
         };
         let qname = record.qname();
