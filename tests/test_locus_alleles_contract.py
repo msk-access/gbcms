@@ -13,6 +13,7 @@ Each locus is checked against the read census told the true allele set.
 
 import random
 
+import pytest
 from census import assert_matches, census
 from helpers import count_checked, make_read, write_contig
 
@@ -335,11 +336,12 @@ LOCUS_6 = (
 
 
 def test_a_carrier_shifted_into_a_run_past_the_event_is_no_ref_molecule(tmp_path):
-    """Past the event a molecule shifted by the length change fits REF's bases as well,
-    so it is a REF molecule only where it reads a base telling REF from the ALT. The
-    carriers' own T after the TG deletion is then no change the REF molecules carry,
-    and a carrier reading only that T confidently (its C and the run's end below min
-    BQ, as one HG002 read) still tells the ALT from REF by it."""
+    """Past the event a run lets a molecule shifted by the length change fit REF's
+    bases as well, so a molecule is REF's only where its bases, the event's included,
+    favour REF over the ALT placed the same way. The carriers' own T after the TG
+    deletion is then no change the REF molecules carry, and a carrier reading only that
+    T confidently (its C and the run's end below min BQ, as one HG002 read) still tells
+    the ALT from REF by it."""
     contig, p = LOCUS_6, 150
     ref, alt = contig[p : p + 14], "CTCCTATGCTGT"
     hap = contig[:p] + alt + contig[p + 14 :]
@@ -575,3 +577,161 @@ def test_the_alleles_at_a_locus_do_not_depend_on_bin_geometry(tmp_path):
     counts = count_checked(bam, vs)
     _invariants(counts[1])
     assert (counts[1].rd, counts[1].ad, counts[1].partial_alt) == (10, 16, 2)
+
+
+# ── second review (2026-10-14) ────────────────────────────────────────────
+
+
+def _locus6_reads(snp_at, new, on_ref, on_alt):
+    """LOCUS_6's delins, REF reads and carriers (20 each), a germline change at `snp_at`
+    (REF offset) on half the REF reads and / or half the carriers."""
+    contig, p = LOCUS_6, 150
+    alt = "CTCCTATGCTGT"
+    d = len(alt) - 14
+    hap = contig[:p] + alt + contig[p + 14 :]
+    reads = []
+    for i in range(20):
+        s = p - 60 + i
+        seq = list(contig[s : s + READ])
+        if on_ref and i % 2:
+            seq[snp_at - s] = new
+        reads.append(make_read(f"ref{i}", "".join(seq), s, ((0, READ),)))
+    for i in range(20):
+        s = p - 60 + i
+        left = p + 12 - s
+        seq = list(hap[s : s + READ])
+        if on_alt and i % 2:
+            seq[snp_at + d - s] = new
+        reads.append(make_read(f"alt{i}", "".join(seq), s, ((0, left), (2, 2), (0, READ - left))))
+    return contig, p, alt, reads
+
+
+@pytest.mark.parametrize("on_alt", [False, True])
+def test_a_germline_snp_in_the_repeat_before_a_run_is_background(tmp_path, on_alt):
+    """LOCUS_6: past the event a run tells neither allele from the other, so REF
+    molecules are told by the bases inside the event; a germline G>A in the TG repeat
+    the event grew through, on half the REF reads (and carriers), is then background."""
+    contig, p, alt, reads = _locus6_reads(165, "A", True, on_alt)
+    fa, bam = write_contig(tmp_path, contig, reads)
+    (v,) = _prepared(fa, [(p, contig[p : p + 14], alt)])
+    (c,) = count_checked(bam, [v])
+    _invariants(c)
+    assert (c.rd, c.ad) == (20, 20)
+
+
+def test_a_germline_snp_beside_a_large_deletion_is_background(tmp_path):
+    """A 60-base delins grown through a G run, a germline G>C in the run on half the REF
+    reads: the ALT's haplotype ends before the bases past the event, so REF molecules
+    are told by their own deleted bases."""
+    p, n, alt = 500, 60, "ATCTA"
+    c = list(_contig(n=1200, seed=76))
+    c[p - 6 : p + 1] = "GGGGGGG"
+    contig = "".join(c)
+    hap = contig[:p] + alt + contig[p + n :]
+    reads = []
+    for i in range(20):
+        s = p - 30 + i
+        seq = list(contig[s : s + 150])
+        if i % 2:
+            seq[p - 4 - s] = "C"
+        reads.append(make_read(f"ref{i}", "".join(seq), s, ((0, 150),)))
+    for i in range(20):
+        s = p - 30 + i
+        left = p - s
+        cig = ((0, left), (1, len(alt)), (2, n), (0, 150 - left - len(alt)))
+        reads.append(make_read(f"alt{i}", hap[s : s + 150], s, cig))
+    fa, bam = write_contig(tmp_path, contig, reads)
+    (v,) = _prepared(fa, [(p, contig[p : p + n], alt)])
+    (c,) = count_checked(bam, [v])
+    _invariants(c)
+    assert (c.rd, c.ad) == (20, 20)
+
+
+@pytest.mark.parametrize("half", [False, True])
+def test_an_mnp_with_a_phased_change_beside_its_bases_keeps_its_carriers(tmp_path, half):
+    """CC>TT where the carriers carry CCC>TTT (the input under-describes a UV triplet):
+    the third T is beside the MNP's own bases, a phased neighbour, not another allele,
+    so every carrier counts ALT, as beside any event."""
+    contig = list(_contig(seed=34))
+    contig[P - 2 : P + 4] = "GACCCA"
+    contig = "".join(contig)
+    reads = [
+        make_read(f"ref{i}", contig[P - 50 + i : P + 50 + i], P - 50 + i, ((0, READ),))
+        for i in range(20)
+    ]
+    for i in range(10):
+        s = P - 50 + i
+        block = "TTT" if not half or i % 2 else "TTC"
+        reads.append(
+            make_read(f"alt{i}", contig[s:P] + block + contig[P + 3 : s + READ], s, ((0, READ),))
+        )
+    fa, bam = write_contig(tmp_path, contig, reads)
+    (v,) = _prepared(fa, [(P, "CC", "TT")])
+    (c,) = count_checked(bam, [v])
+    _invariants(c)
+    assert (c.rd, c.ad) == (20, 10)
+
+
+def test_a_germline_allele_with_a_phased_dnp_past_the_mnp_is_still_another(tmp_path):
+    """The germline GT carries a DNP five bases past the block: still another allele."""
+    contig = _mnp_contig()
+    reads = _mnp_reads(contig, "GC", "ref", 20)
+    germ = _mnp_reads(contig, "GT", "germ", 20) + _mnp_reads(
+        contig, "GT", "germlow", 4, first=20, low_at=0
+    )
+    for r in germ:
+        seq, quals = list(r.query_sequence), r.query_qualities
+        for at in (P + 5, P + 6):
+            seq[at - r.reference_start] = _other_base(contig, at)
+        r.query_sequence = "".join(seq)
+        r.query_qualities = quals
+    fa, bam = write_contig(tmp_path, contig, reads + germ)
+    (v,) = _prepared(fa, [(P, "GC", "AT")])
+    (c,) = count_checked(bam, [v])
+    _invariants(c)
+    assert c.ad == 0
+
+
+def test_a_germline_dnp_past_the_event_leaves_the_background_found(tmp_path):
+    """The REF molecules carrying the repeat's germline SNP carry a DNP in phase past the
+    event: two changes beside it, still REF molecules, the background still found."""
+    contig = _ca_run_contig()
+    reads = _ca_reads(contig, ref_snp=range(1, 20, 2))
+    for i in range(1, 20, 2):
+        r = reads[i]
+        seq, quals = list(r.query_sequence), r.query_qualities
+        for at in (P + 10, P + 11):
+            seq[at - r.reference_start] = _other_base(contig, at)
+        r.query_sequence = "".join(seq)
+        r.query_qualities = quals
+    fa, bam = write_contig(tmp_path, contig, reads)
+    (v,) = _prepared(fa, [(P, "G", "TCA")])
+    (c,) = count_checked(bam, [v])
+    _invariants(c)
+    assert (c.rd, c.ad) == (20, 20)
+
+
+@pytest.mark.parametrize("n_ref", [50, 300, 1000])
+def test_another_allele_as_common_as_a_low_alt_is_found_at_any_depth(tmp_path, n_ref):
+    """The 28-to-6 delins and the allele one inserted base apart, each on 16 fragments
+    (6 of the carriers with that base below min BQ), beside 50 to 1000 REF reads: the
+    other allele recurs far above the ALT's errors, so it is found at any depth."""
+    contig = _contig()
+    ref = contig[P : P + REF_LEN]
+    reads = [
+        make_read(
+            f"ref{i}",
+            contig[P - 60 + (i % 40) : P + 40 + (i % 40)],
+            P - 60 + (i % 40),
+            ((0, READ),),
+        )
+        for i in range(n_ref)
+    ]
+    reads += _delins_reads(contig, ALT, "alt", 10)
+    reads += _delins_reads(contig, ALT, "low", 6, first=10, low=True)
+    reads += _delins_reads(contig, OTHER, "oth", 16, first=20)
+    fa, bam = write_contig(tmp_path, contig, reads)
+    (v,) = _prepared(fa, [(P, ref, ALT)])
+    (c,) = count_checked(bam, [v])
+    _invariants(c)
+    assert c.ad == 10

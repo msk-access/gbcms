@@ -44,7 +44,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   base past the event (a phased SNP hid a germline allele); a molecule past a run
   must read a base telling its allele from the other (a shifted carrier was taken for
   REF at one HG002 row); every read the MNP check calls ALT follows the rule, and one
-  set aside keeps its N.
+  set aside keeps its N. A second review: an allele the reads spell must recur on 5% of
+  the fragments spelling the allele it is nearest (REF or the ALT), so one as common as
+  a low-VAF ALT is found at any depth; molecules are told by all their bases (a run past
+  the event, or a large deletion, left none placed) with up to two phased changes
+  beside the event; a change beside an MNP's own bases is a phased neighbour, not
+  another allele.
 - **Read census.** Told the locus's other alleles, it judges a read fitting the ALT
   and another allele as neither (`FITS_OTHER`).
 - **Tests.** Two `--rescue-mnp` tests' unrescued counts move from (REF 20, ALT 1,
