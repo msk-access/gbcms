@@ -17,6 +17,21 @@ regenerating a section.
 
 ---
 
+## [LRN-20261013-001] rule-body | a decision is not settled by picking the least-bad measured option
+- **Status:** resolved (rule promoted)
+- **Cause:** rule-body
+- **Summary:** On #277 every candidate rule had a cost, and I recommended the one that
+  cost least on HG002 (the first cut) with its repeat-position defect pinned as a known
+  limit. The operator agreed but corrected the approach: the aim is the best and most
+  accurate rule, not the least-bad. The comparison was incomplete: HG002 germline hets
+  cannot show the risk the rule guards (another allele of the same length at the locus),
+  so no candidate was measured where it matters.
+- **Promotion target:** `.agents/rules/code-quality.md` — `DONE:` a Step Review
+  Discipline item: when every option costs something, name what the measurements cannot
+  see, measure it, and look for a rule better on every axis before recommending; only
+  then recommend with the residual named.
+- **Related:** [[best-not-least-bad]], [[better-than-standard]].
+
 ## [LRN-20261012-002] rule-body | a new test file's name is checked before it is written
 - **Status:** resolved (rule promoted)
 - **Cause:** rule-body

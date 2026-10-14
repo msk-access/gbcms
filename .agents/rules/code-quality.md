@@ -25,6 +25,9 @@ alwaysApply: true
       tumour + matched normal; cfDNA duplex/simplex via `gbcms merge`; WES/WGS without
       realignment; RNA) and more than one truth source — one dataset (e.g. GIAB) is a data
       point, not acceptance; DNA and RNA may need different rules (see add-feature step 6)
+- [ ] A decision whose options all cost something is not settled by the least-bad one:
+      name what the measurements cannot see (the risk the rule guards, a missing truth
+      source), measure it, and look for a rule better on every axis before recommending
 
 **AFTER implementing, compare code against implementation plan:**
 - [ ] Re-read the relevant plan section(s)
