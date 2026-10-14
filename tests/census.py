@@ -30,7 +30,7 @@ How a read is judged:
 The tract is the census's own slide of the indel along the reference, not prep's
 `shift_region`, so a prep error cannot move the census with it.
 
-Three of the engine's decided rules are encoded here, because they are policy, not
+Four of the engine's decided rules are encoded here, because they are policy, not
 bases:
 - a REF verdict needs one base past the first base where the alleles differ (the
   margin that guards CIGAR-only REF calls against a hidden terminal mismatch);
@@ -41,6 +41,11 @@ bases:
   read then carries the insertion's length, not its sequence (UNREADABLE). This
   rule reads the CIGAR, as the engine does: in a run, the aligner writes a masked
   base as the insertion.
+- at a complex variant, an ALT verdict needs a base telling the ALT from each other
+  allele of its length at the locus (RJ-25): a read whose bases fit the ALT and another
+  allele too is neither (FITS_OTHER). The census is told those alleles by the caller,
+  as the engine finds them (co-annotated, or read in full on 3 or more fragments); it
+  never looks for them.
 
 A pure deletion of 50 bp or more (RJ-24) is judged at its POS breakpoint instead:
 one window of equal length per allele, read from the left flank (4 clean flank
@@ -103,6 +108,7 @@ class Verdict(Enum):
     NOT_ANCHORED = "not anchored"
     SPLICED = "spliced"
     UNREADABLE = "insert unread"
+    FITS_OTHER = "fits another allele too"
 
 
 @dataclass(frozen=True)
@@ -122,6 +128,9 @@ class Window:
     alt_right: str
     ref_left: str
     alt_left: str
+    # Each other allele of the ALT's length the caller names, sliced as the ALT is:
+    # (between the anchors, read on rightwards, read on leftwards).
+    others: tuple[tuple[str, str, str], ...] = field(default=(), repr=False)
 
 
 @dataclass(frozen=True)
@@ -207,11 +216,12 @@ def tract(pos: int, ref: str, alt: str, contig: str) -> tuple[int, int]:
     return lo, hi + n
 
 
-def window_for(variant, contig: str) -> Window | Junction:
+def window_for(variant, contig: str, others=()) -> Window | Junction:
     """The census window for a `Variant` on `contig` (the reference sequence its
     positions index). A pure indel's anchors are the two flank bases of its tract,
     which both alleles share; the tract is the census's own slide. A pure deletion of
-    LONG_DELETION or more gets its junction windows (RJ-24)."""
+    LONG_DELETION or more gets its junction windows (RJ-24). `others` are the other
+    alleles of the ALT's length at the locus, `(pos, ref, alt)` on `contig`."""
     pos, ref, alt = variant.pos, variant.ref_allele.upper(), variant.alt_allele.upper()
     contig = contig.upper()
     if is_pure_indel(ref, alt) and len(ref) - len(alt) >= LONG_DELETION:
@@ -239,6 +249,8 @@ def window_for(variant, contig: str) -> Window | Junction:
     hap, delta = contig[:pos] + alt + contig[pos + len(ref) :], len(alt) - len(ref)
     ext = abs(delta) + 2  # a one-sided reading may run past the far anchor
     lo_ext, hi_ext = max(left + 1 - ext, 0), min(right + ext, len(contig))
+    other_haps = [contig[:p] + a.upper() + contig[p + len(r) :] for p, r, a in others]
+    assert all(len(h) == len(hap) for h in other_haps), "another allele of the ALT's length"
     return Window(
         left,
         right,
@@ -250,6 +262,10 @@ def window_for(variant, contig: str) -> Window | Junction:
         hap[left + 1 : hi_ext + delta],
         contig[lo_ext:right],
         hap[lo_ext : right + delta],
+        tuple(
+            (h[left + 1 : right + delta], h[left + 1 : hi_ext + delta], h[lo_ext : right + delta])
+            for h in other_haps
+        ),
     )
 
 
@@ -567,6 +583,26 @@ def judge(read, window: Window | Junction, min_baseq: int = 20) -> Verdict:
     def unread(spans) -> bool:
         return insertion and _insert_unread(read, bases, spans)
 
+    def fits_other(both_anchors: bool) -> bool:
+        """Whether the read's bases fit another allele of the ALT's length as they fit
+        the ALT (RJ-25): no base it reads tells the two apart."""
+        for between, right, left in window.others:
+            if both_anchors:
+                if _fits(bases[ql + 1 : qr], between):
+                    return True
+                continue
+            sides = []
+            if ql is not None:
+                lo, hi = left_span()
+                sides.append(_one_side(bases[lo:hi], window.ref_right, right, False)[0])
+            if qr is not None:
+                lo, hi = right_span()
+                stretch = bases[lo:hi]
+                sides.append(_one_side(stretch[::-1], window.ref_left[::-1], left[::-1], False)[0])
+            if sides and all(sides):
+                return True
+        return False
+
     if ql is not None and qr is not None and not any(ql < q <= qr for q in stops):
         stretch = bases[ql + 1 : qr]
         fits_alt, fits_ref = _fits(stretch, window.alt), _fits(stretch, window.ref)
@@ -578,6 +614,8 @@ def judge(read, window: Window | Junction, min_baseq: int = 20) -> Verdict:
         verdict = _verdict(fits_alt, fits_ref)
         if verdict is Verdict.ALT and unread([(ql + 1, qr)]):
             return Verdict.UNREADABLE
+        if verdict is Verdict.ALT and fits_other(True):
+            return Verdict.FITS_OTHER
         return verdict
     sides, spans = [], []
     if ql is not None:
@@ -592,6 +630,8 @@ def judge(read, window: Window | Junction, min_baseq: int = 20) -> Verdict:
     verdict = _verdict(all(a for a, _ in sides), all(r for _, r in sides))
     if verdict is Verdict.ALT and unread(spans):
         return Verdict.UNREADABLE
+    if verdict is Verdict.ALT and fits_other(False):
+        return Verdict.FITS_OTHER
     return verdict
 
 
@@ -603,11 +643,13 @@ def census(
     min_mapq: int = 20,
     min_baseq: int = 20,
     skip_flags: int = SKIP_FLAGS,
+    others=(),
 ) -> Census:
     """Judge every admitted read whose extent inside its fragment overlaps the
     variant's anchor base (the reads whose depth the engine reports), keyed by
-    (name, mate)."""
-    window = window_for(variant, contig)
+    (name, mate). `others`: the other alleles of the ALT's length at the locus
+    (`(pos, ref, alt)` on `contig`), as the engine finds them (RJ-25)."""
+    window = window_for(variant, contig, others)
     result = Census(window)
     if isinstance(window, Junction):
         _census_junction(bam_path, variant.chrom, window, result, min_mapq, min_baseq, skip_flags)

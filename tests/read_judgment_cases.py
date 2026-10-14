@@ -704,6 +704,114 @@ DELINS_SHAPES["delins 28>6"] += (
     "carrier written at the event's other copy as plain matches",
 )
 
+# Other alleles of the ALT's length at the locus (RJ-25), and a change inside the repeat
+# an event is grown through (RJ-23, 2026-10-14). Each case is its shape's four reads
+# with the reads of the locus they are judged beside.
+# The 28-to-6 delins, with another allele one inserted base apart.
+OTHER_INSERT = "ATCTGA"
+# An MNP joining a somatic change (G>A) to a germline SNP beside it (C>T): the germline
+# allele alone is GT.
+MNP = ("GC", "AT", "GT")
+# An insertion grown through a CA repeat: G then CACACA, a germline A>G at the repeat's
+# fourth base.
+CA_RUN = ("GCACACAT", "G", "TCA", 4)
+LOCUS = {
+    "delins 28>6, another allele": (
+        "carriers with the telling base below min BQ, the other allele on four fragments",
+        "carriers reading the telling base, the other allele on four fragments",
+        "carriers with the telling base below min BQ, the other allele on two fragments",
+        "carriers with the telling base below min BQ, no other allele",
+        "carriers with the telling base below min BQ, the other allele co-annotated",
+    ),
+    "MNP GC>AT, germline GT": (
+        "reads showing only the germline base, the germline allele on four fragments",
+        "reads showing only the somatic base, the germline allele on four fragments",
+        "reads showing only the germline base, no germline allele",
+    ),
+    "G>TCA in a CA run, germline SNP": (
+        "REF reads with the SNP, beside REF reads without it",
+        "carriers with the SNP, beside REF reads with it",
+        "carriers with the SNP on the carriers alone",
+    ),
+}
+
+
+def _quals_at(read, at: list[int], q: int = 5) -> None:
+    """Set the bases at query positions `at` to quality `q`, keeping their letters."""
+    quals = list(read.query_qualities)
+    for i in at:
+        quals[i] = q
+    read.query_qualities = quals
+
+
+def _locus_reads(variant: str, shape: str):
+    """A locus case: (contig, reads, rows (pos, ref, alt), co-annotated rows). Reads
+    of the shape are r0..r3; the locus's other reads follow."""
+    reads = []
+
+    def add(tag, contig, s, length, events, low=()):
+        seq, cig = _build(contig, s, length, events)
+        r = make_read(f"{tag}{len(reads)}", seq, s, cig)
+        if low:
+            _quals_at(r, [i - s for i in low])
+        reads.append(r)
+
+    if variant == "delins 28>6, another allele":
+        n, alt = DELINS["delins 28>6"]
+        contig = _delins_contig("delins 28>6")
+        telling = next(k for k in range(len(alt)) if alt[k] != OTHER_INSERT[k])
+        others = 4 if "four fragments" in shape else 2 if "two fragments" in shape else 0
+        masked = "below min BQ" in shape
+        for i in range(N_READS):
+            far = 60 + 3 * i
+            seq, cig = _build(contig, A - far, far + len(alt) + 40, [(A, "I", alt), (A, "D", n)])
+            r = make_read(f"r{i}", seq, A - far, cig)
+            if masked:
+                _quals_at(r, [far + telling])  # the inserted base after `far` flank bases
+            reads.append(r)
+        for i in range(others):
+            far = 61 + 3 * i
+            add("o", contig, A - far, far + len(alt) + 40, [(A, "I", OTHER_INSERT), (A, "D", n)])
+        rows = [(A, contig[A : A + n], alt)]
+        co = [(A, contig[A : A + n], OTHER_INSERT)] if "co-annotated" in shape else []
+        return contig, reads, rows, co
+    if variant == "MNP GC>AT, germline GT":
+        ref, alt, germ = MNP
+        contig = _contig(ref)
+        only = "germline" if "only the germline base" in shape else "somatic"
+        for i in range(N_READS):
+            s = A - 50 + i
+            seq = contig[s:A] + alt + contig[A + 2 : s + 100]
+            r = make_read(f"r{i}", seq, s, ((0, 100),))
+            # showing only the germline base: the somatic base (A) below min BQ
+            _quals_at(r, [A - s if only == "germline" else A + 1 - s])
+            reads.append(r)
+        if "on four fragments" in shape:
+            for i in range(N_READS):
+                s = A - 49 + i
+                reads.append(
+                    make_read(f"g{i}", contig[s:A] + germ + contig[A + 2 : s + 100], s, ((0, 100),))
+                )
+        return contig, reads, [(A, ref, alt)], []
+    motif, ref, alt, snp = CA_RUN
+    contig = _contig(motif)
+    snp_base = "G"
+    carrier = [(A, "X", alt[0]), (A + 1, "I", alt[1:])]
+    with_snp = [(A + snp, "X", snp_base)]
+    if shape == "REF reads with the SNP, beside REF reads without it":
+        shape_events, beside = with_snp, []
+    elif shape == "carriers with the SNP, beside REF reads with it":
+        shape_events, beside = carrier + with_snp, with_snp
+    else:
+        shape_events, beside = carrier + with_snp, []
+    for i in range(N_READS):
+        s = A - 50 + i
+        seq, cig = _build(contig, s, 100, shape_events)
+        reads.append(make_read(f"r{i}", seq, s, cig))
+    for i in range(N_READS):
+        add("b", contig, A - 49 + i, 100, beside)
+    return contig, reads, [(A, ref, alt)], []
+
 
 def cases() -> list[Case]:
     out: list[Case] = []
@@ -723,6 +831,14 @@ def cases() -> list[Case]:
     for v, shapes in LONG_DEL_SHAPES.items():
         for shape in shapes:
             out.append(Case(f"{v} | {shape}", "C40 long deletions", v, shape))
+    for v, shapes in LOCUS.items():
+        group = (
+            "C43 background in the grown event"
+            if "CA run" in v
+            else "C43 other alleles at the locus"
+        )
+        for shape in shapes:
+            out.append(Case(f"{v} | {shape}", group, v, shape))
     out.append(
         Case(
             "u-8 | sibling SNV inside the span", "C2 siblings", "u-8", "sibling SNV inside the span"
@@ -882,6 +998,15 @@ def run(case: Case, workdir: Path) -> tuple[tuple[int, int, int], str]:
         )
         (c,) = _rs.count_bam_binned(bam, [pv.variant], [None], **ARGS)
         return (c.rd, c.ad, c.partial_alt), ""
+    if case.variant in LOCUS:
+        contig, reads, rows, co = _locus_reads(case.variant, case.shape)
+        fa, bam = write_contig(d, contig, reads, "c")
+        given = [_rs.Variant("1", p, r, a, "X") for p, r, a in rows + co]
+        vs = [pv.variant for pv in _rs.prepare_variants(given, fa, 5, False, 1, True)]
+        siblings = [[w for w in vs if w is not v] for v in vs]
+        counts = _rs.count_bam_binned(bam, vs, [None] * len(vs), sibling_variants=siblings, **ARGS)
+        c = counts[0]
+        return (c.rd, c.ad, c.partial_alt), ""
     if case.variant in LONG_DEL:
         n, mh = LONG_DEL[case.variant]
         contig = _long_contig(n, mh)
@@ -935,11 +1060,18 @@ DECISIONS = {
     "C35 unreadable inserts": "decided: an insertion's ALT needs one of the read's own inserted bases read (C35 #240)",
     "C36 inserts of other bases": "decided: a same-length insert of other bases is judged by its bases, never Phase 3 (C36 #243)",
     "C37 inserts behind a substitution": "decided: the junction ALT stays; a carrier behind a substitution is another allele, not REF (C37 #245)",
+    "C43 other alleles at the locus": "decided: ALT only where the read tells it from every other allele of its length at the locus (C43 #277)",
+    "C43 background in the grown event": "decided: a change the REF molecules carry inside the grown event is background (C43 #277)",
 }
 
 # Decided calls the engine does not give yet: the red-first cases of a rule being
 # built, strict xfails in test_read_judgment_spec.py until it lands.
-PENDING: set[str] = set()
+PENDING: set[str] = {
+    "delins 28>6, another allele | carriers with the telling base below min BQ, the other allele on four fragments",
+    "MNP GC>AT, germline GT | reads showing only the germline base, the germline allele on four fragments",
+    "G>TCA in a CA run, germline SNP | REF reads with the SNP, beside REF reads without it",
+    "G>TCA in a CA run, germline SNP | carriers with the SNP, beside REF reads with it",
+}
 
 # (ref_count, alt_count, partial_alt) for the case's four reads.
 EXPECT = {
@@ -1211,6 +1343,52 @@ EXPECT = {
     "del 1000 | left-clipped carrier aligned from the right flank": (0, 4, 0),
     "del 1000 | REF read, long flanks": (4, 0, 0),
     "del 1000 | REF read starting inside the deletion": (0, 0, 0),
+    # Other alleles at the locus (RJ-25): each count holds the shape's four reads and
+    # the locus's others (another allele's reads are another allele).
+    "delins 28>6, another allele | carriers with the telling base below min BQ, the other allele on four fragments": (
+        0,
+        0,
+        8,
+    ),
+    "delins 28>6, another allele | carriers reading the telling base, the other allele on four fragments": (
+        0,
+        4,
+        4,
+    ),
+    "delins 28>6, another allele | carriers with the telling base below min BQ, the other allele on two fragments": (
+        0,
+        4,
+        2,
+    ),
+    "delins 28>6, another allele | carriers with the telling base below min BQ, no other allele": (
+        0,
+        4,
+        0,
+    ),
+    "delins 28>6, another allele | carriers with the telling base below min BQ, the other allele co-annotated": (
+        0,
+        0,
+        4,
+    ),
+    "MNP GC>AT, germline GT | reads showing only the germline base, the germline allele on four fragments": (
+        0,
+        0,
+        8,
+    ),
+    "MNP GC>AT, germline GT | reads showing only the somatic base, the germline allele on four fragments": (
+        0,
+        4,
+        4,
+    ),
+    "MNP GC>AT, germline GT | reads showing only the germline base, no germline allele": (0, 4, 0),
+    # Background in the grown event (RJ-23, 2026-10-14): REF reads beside the shape's.
+    "G>TCA in a CA run, germline SNP | REF reads with the SNP, beside REF reads without it": (
+        8,
+        0,
+        0,
+    ),
+    "G>TCA in a CA run, germline SNP | carriers with the SNP, beside REF reads with it": (4, 4, 0),
+    "G>TCA in a CA run, germline SNP | carriers with the SNP on the carriers alone": (4, 0, 4),
 }
 
 
