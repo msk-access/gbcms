@@ -13327,8 +13327,8 @@ it shows in review instead of slipping in with an unrelated fix.</p>
 </tr>
 <tr>
 <td style="text-align: left;">RJ-7</td>
-<td style="text-align: left;">A read with another insertion or deletion inside the discrimination window (not the ALT at another placement) is not REF: neither, with partial evidence. Extends RJ-5 from annotated siblings to any indel.</td>
-<td style="text-align: left;">C26 #200, operator 2026-10-01</td>
+<td style="text-align: left;">A read with another insertion or deletion inside the discrimination window (not the ALT at another placement) is not REF: neither, with partial evidence. Extends RJ-5 from annotated siblings to any indel. On the exact-carrier rule (2026-10-15, #287): a read whose bases fit REF over the windows, but whose own alignment changes the length inside them with an indel that does not recur as background (on 3 or more fragments and 20% of those spanning the windows, the event's own representation aside), is judged by its bases read on without gaps to its end or next splice; two or more confident mismatches against the reference show the indel (an insertion whose first bases repeat the flank, which the windows do not reach), and the read is another allele. Bases decide: a read whose bases still fit REF (one ending inside a run) stays REF, and a germline indel beside the event keeps its reads' call.</td>
+<td style="text-align: left;">C26 #200, operator 2026-10-01; C39a #287</td>
 </tr>
 <tr>
 <td style="text-align: left;">RJ-8</td>
@@ -13700,7 +13700,7 @@ and at anchor-changing events before an A run.</p>
 </tr>
 <tr>
 <td style="text-align: left;">Other indels inside the window</td>
-<td style="text-align: left;">D1 or I1 near the anchor, D2 after it</td>
+<td style="text-align: left;">D1 or I1 near the anchor, D2 after it; an <abbr title="Multi-Nucleotide Polymorphism - Multiple adjacent base substitutions">MNP</abbr>'s REF reads with a 24-bp duplication of the flank written as an insertion right after the block, on a minority of reads (another allele) or as germline background (REF)</td>
 <td style="text-align: left;">decided (RJ-7)</td>
 </tr>
 <tr>
@@ -18638,6 +18638,20 @@ and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semant
 <li>The Nextflow parameter is gone, and the pipeline no longer warns about it.</li>
 <li>Pipelines that still call <code>build-gtf-cache</code> must drop that step before moving to
     6.7.0.</li>
+</ul>
+<h3 id="development-changelog-fixed-a-ref-read-carrying-another-indel-inside-an-mnps-windows-287">Fixed — a REF read carrying another indel inside an <abbr title="Multi-Nucleotide Polymorphism - Multiple adjacent base substitutions">MNP</abbr>'s windows (#287)<a class="headerlink" href="#development-changelog-fixed-a-ref-read-carrying-another-indel-inside-an-mnps-windows-287" title="Permanent link">¶</a></h3>
+<ul>
+<li>C39's exact-carrier windows counted REF for reads carrying a 24-bp insertion
+  written right after an <abbr title="Multi-Nucleotide Polymorphism - Multiple adjacent base substitutions">MNP</abbr>'s block: the inserted bases repeat the right flank, so
+  the block's windows fit REF and nothing past them was read (REF 439 -&gt; 467 at one
+  gate row; 6.6.0 called them neither, as RJ-7 and RJ-21 require). A read whose own
+  alignment changes the length inside the windows with an indel that does not recur
+  as background is now judged by its bases read on to its end; where they show the
+  indel it is another allele (neither, partial evidence). A read whose bases still
+  fit REF stays REF, and a germline indel beside the event keeps its reads' call.
+  Found by the local interim 6.7.0 gate; on the full gate panel 3 rows change (<abbr title="Reference Depth - Reads supporting the reference allele">RD</abbr>
+  -37 in all), on the plan arms one panel, one WES and one HG002 row (<abbr title="Reference Depth - Reads supporting the reference allele">RD</abbr> -1 to -3),
+  normals and ACCESS none.</li>
 </ul>
 <h3 id="development-changelog-fixed-mfsd-sizes-an-alt-fragment-as-the-molecule-carrying-the-alt">Fixed — <abbr title="Mutant Fragment Size Distribution - Insert-size analysis for REF vs ALT fragments">mFSD</abbr> sizes an ALT fragment as the molecule carrying the ALT<a class="headerlink" href="#development-changelog-fixed-mfsd-sizes-an-alt-fragment-as-the-molecule-carrying-the-alt" title="Permanent link">¶</a></h3>
 <ul>

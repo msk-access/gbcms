@@ -2114,8 +2114,8 @@ it shows in review instead of slipping in with an unrelated fix.</p>
 </tr>
 <tr>
 <td style="text-align: left;">RJ-7</td>
-<td style="text-align: left;">A read with another insertion or deletion inside the discrimination window (not the ALT at another placement) is not REF: neither, with partial evidence. Extends RJ-5 from annotated siblings to any indel.</td>
-<td style="text-align: left;">C26 #200, operator 2026-10-01</td>
+<td style="text-align: left;">A read with another insertion or deletion inside the discrimination window (not the ALT at another placement) is not REF: neither, with partial evidence. Extends RJ-5 from annotated siblings to any indel. On the exact-carrier rule (2026-10-15, #287): a read whose bases fit REF over the windows, but whose own alignment changes the length inside them with an indel that does not recur as background (on 3 or more fragments and 20% of those spanning the windows, the event's own representation aside), is judged by its bases read on without gaps to its end or next splice; two or more confident mismatches against the reference show the indel (an insertion whose first bases repeat the flank, which the windows do not reach), and the read is another allele. Bases decide: a read whose bases still fit REF (one ending inside a run) stays REF, and a germline indel beside the event keeps its reads' call.</td>
+<td style="text-align: left;">C26 #200, operator 2026-10-01; C39a #287</td>
 </tr>
 <tr>
 <td style="text-align: left;">RJ-8</td>
@@ -2487,7 +2487,7 @@ and at anchor-changing events before an A run.</p>
 </tr>
 <tr>
 <td style="text-align: left;">Other indels inside the window</td>
-<td style="text-align: left;">D1 or I1 near the anchor, D2 after it</td>
+<td style="text-align: left;">D1 or I1 near the anchor, D2 after it; an <abbr title="Multi-Nucleotide Polymorphism - Multiple adjacent base substitutions">MNP</abbr>'s REF reads with a 24-bp duplication of the flank written as an insertion right after the block, on a minority of reads (another allele) or as germline background (REF)</td>
 <td style="text-align: left;">decided (RJ-7)</td>
 </tr>
 <tr>
@@ -2569,7 +2569,7 @@ with the read census's verdict next to each pure-indel case.</p>
     <span class="md-icon" title="Last update">
       <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M21 13.1c-.1 0-.3.1-.4.2l-1 1 2.1 2.1 1-1c.2-.2.2-.6 0-.8l-1.3-1.3c-.1-.1-.2-.2-.4-.2m-1.9 1.8-6.1 6V23h2.1l6.1-6.1zM12.5 7v5.2l4 2.4-1 1L11 13V7zM11 21.9c-5.1-.5-9-4.8-9-9.9C2 6.5 6.5 2 12 2c5.3 0 9.6 4.1 10 9.3-.3-.1-.6-.2-1-.2s-.7.1-1 .2C19.6 7.2 16.2 4 12 4c-4.4 0-8 3.6-8 8 0 4.1 3.1 7.5 7.1 7.9l-.1.2z"></path></svg>
     </span>
-    <span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-timeago" title="October 13, 2026 18:26:36 UTC"><span class="timeago" datetime="2026-10-13T18:26:36+00:00" locale="en"></span></span><span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-iso_date" title="October 13, 2026 18:26:36 UTC">2026-10-13</span>
+    <span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-timeago" title="October 15, 2026 12:36:11 UTC"><span class="timeago" datetime="2026-10-15T12:36:11+00:00" locale="en"></span></span><span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-iso_date" title="October 15, 2026 12:36:11 UTC">2026-10-15</span>
   </span>
 
     
