@@ -239,13 +239,44 @@ its own bases:
   loses (202 carriers over three shapes); demoting every read that left the ALT's bases
   unread lost 286 there, 13 reads at the normals that their bases show to be the ALT,
   and moved HG002 (REJ-20261014-001).
-- On real data 10 panel rows change (AD -43, no REF), each beside another allele the
-  reads show: MNP sub-alleles in a hypermutated gene, co-annotated MNP siblings, the
-  germline haplotype under an MNP that merged it with a somatic change, and a 3-to-36
-  duplication whose carriers all carry two SNVs in the copy (the given ALT has no exact
-  carrier; it reads 0 with `PARTIAL_DOMINANT`). Normals, ACCESS, WES and HG002 are
-  unchanged. Of the panel's MNP ALT reads 3.3% leave a differing base unread, and 0.6%
-  read nothing that tells them from an allele the reads show.
+- On real data, against develop, the final build changes 18 gate-panel rows (RD +197,
+  AD -22), 9 matched-normal and ACCESS rows (RD +347), 3 WES rows (RD +28) and 3 HG002
+  rows (RD +9); the FORTE RNA cohort's one delins is unchanged. By rule:
+  - Another allele of the ALT's length: AD -43 at 10 panel rows, each beside another
+    allele the reads show (MNP sub-alleles in a hypermutated gene, co-annotated MNP
+    siblings, the germline haplotype under an MNP that merged it with a somatic change,
+    and a 3-to-36 duplication whose carriers all carry two SNVs in the copy: the given
+    ALT has no exact carrier and reads 0 with `PARTIAL_DOMINANT`). Of these, 20 carriers
+    at 4 rows were demoted only for a co-annotated component the reads never show
+    apart from its MNP, and count again; 2 more at one row (a GC>AG beside a
+    co-annotated GC>AA on about 5% of its molecules: AD 123 -> 125, sign-out 126) count
+    under the seen share. Of the panel's MNP ALT reads 3.3% leave a differing base
+    unread, and 0.6% read nothing that tells them from an allele the reads show.
+  - REF alike: 87 panel reads at 13 rows, 62 at 8 normal and ACCESS rows, 33 at 2 WES
+    rows and 3 at HG002 rows leave REF. Of the panel's, 83 read the base telling REF
+    from another allele below `--min-baseq` and 4 never reach it; of WES's, 31 sit at
+    the two rows whose given REF holds a homozygous germline change, where no molecule
+    carries the given REF (named by `OBSERVED_ALLELE`).
+  - The grown event: +284 REF reads at 2 panel rows, +409 at a matched normal, +61 at a
+    WES row and +12 at an HG002 row.
+  - The REF side's separate event, RJ-5's partial evidence for a REF read carrying a
+    co-annotated sibling, and the background at the bases an MNP keeps change no real
+    row; the synthetic arm is unchanged by them.
+- Decided on the fifth review (operator, 2026-10-14), each measured on every arm:
+  - The seen share: at depth one sequencing error spelled a co-annotated component in
+    full and made it another allele. In a Monte Carlo (CC>GT co-annotated with C>G, no
+    true component, 0.1% substitution errors, 5% of bases below min BQ), 3 of 60 loci
+    flipped at 200x and 9 of 60 at 1000x, each losing about 5% of RD and AD (47 RD at
+    1000x); with the share, none at either depth. A real sibling under 5% of its nearest
+    allele is not looked for: the reads that fit both, its low-quality ones, count for
+    the row, at most about 0.25% of depth.
+  - The bases an MNP keeps: GCA>ACT with a germline T at the kept base gave RD 20 / AD
+    10 in trans (the germline haplotype's REF reads neither: VAF 0.33 for 0.20), and in
+    cis carriers written with an indel at the block were neither (AD 5) while plain ones
+    counted. Masked as background, both give RD 40 / AD 10 on both routes. VCF gives such
+    a change its own record, its haplotype REF at the MNP's row; the original GBCMS
+    (strict span) calls it neither. 13 of the panel's 32 MNPs keep an interior base;
+    none has such a change.
 - Other tools: GATK HaplotypeCaller and Mutect2 score each read against haplotypes and
   count it in AD only when one allele beats the next by 0.2 log10, so a read that cannot
   tell the given allele from an assembled germline haplotype is left out, and counts
@@ -261,9 +292,15 @@ its own bases:
   REF.
 - Limits: an allele on fewer than 3 fragments is not found (at low depth the call is
   develop's); in a long event few reads hold every event base from the left flank, so an
-  allele the reads show is found less often there (a co-annotated one always is); and a
-  read that cannot tell two alleles apart counts toward neither, so beside another allele
-  as common as the ALT, with many partly read reads, the VAF reads low, as GATK's AD does.
+  allele the reads show is found less often there; and a read that cannot tell two
+  alleles apart counts toward neither, so beside another allele as common as the ALT,
+  with many partly read reads, the VAF reads low, as GATK's AD does. REF alike: a REF
+  read that ends before an allele's telling base deep in a long deleted span is neither
+  (a synthetic 28-to-6 delins with a het SNP in trans: RD 91 with the SNP at the 5th
+  deleted base, 73 at the 25th), the read-start asymmetry equal windows remove
+  elsewhere; on real data, 4 reads. Inside a delins the bases kept depend on the alignment, so a germline change
+  there is not masked: reads showing it are neither on either side. The older sibling
+  claim still takes reads that fit a co-annotated sibling no read shows (#282).
 
 Evidence behind RJ-24 (2026-10-09), measured for the 6.7.0 plan and C40 on the 6.6.0 gate
 panel's 60 deletions of 50+ bp (IMPACT, ABRA2-realigned) and 300 HG002 het deletions

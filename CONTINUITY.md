@@ -8,48 +8,33 @@ _Last updated: 2026-10-14_
 ## Now
 6.7.0 (tracker #196): C39 (#272) and C40 (#281) merged; C43 #276 (pure indels judged by
 their bases) in 6.7.0 with one HPC gate for C39 + C40 + C43.
-- **Decided (operator, 2026-10-14):** #277 takes the **locus-aware rule**, and the
-  **grown-event fix** is folded into C43. Branch `feature/c43-indels-by-bases` (local,
-  unpushed; worktree `.claude/worktrees/c43`, scratch venv `scratchpad/venv_c43`) was
-  rebuilt from develop e70b66ba; the first cut (D4, c504a454) and its B/C variants are
-  archived on `archive/c43-d4-first-cut` (REJ-20261014-001).
-  - Locus-aware (prototype `scratchpad/proto_rivals`, frozen `plan670/src_c43m`
-    a91591c7): a read leaving the ALT's telling bases unread (an unreadable core, or an
-    MNP read with a differing base below min BQ) counts only if, for every other allele
-    of the ALT's length at the locus (a co-annotated sibling, or one spelled on >= 3
-    fragments by bases placed from the left anchor), it reads a base telling the ALT
-    from it. An allele whose every difference is a non-reference change the REF
-    molecules (by bases, not alignment) carry too is a separate event. No rival:
-    develop's behaviour. Measured: synthetic `plan670/c43syn` (13 shapes) 0 false ALT in
-    every competitor and phantom shape; panel 10 rows AD -43, all with a rival present;
-    normals, WES, HG002 delins unchanged.
-  - Grown-event fix: a REF read holding the given REF allele but carrying a het SNP in
-    the repeat the event was grown through is called neither (RD -33..-50%, silent
-    PASS): panel 2 rows, normals 1, WES 1 (`plan670/inside_change.py`). The guard should
-    mask such background changes in the grown part (REF molecules by bases; map a
-    position by the given allele's span: left context unshifted, right context + d).
-  - Plan: red-first tests from every synthetic shape (Rust unit tests per component,
-    Python spec cases), the two approved RJ-16/RJ-9 edits and the D4 tests shown to the
-    operator before they change, census mirror, docs (RJ-20/RJ-23, new entry),
-    CHANGELOG, frozen build on every arm + synthetic, adversarial review, PR.
-  - Kept from the first cut: the run case (a +1 in a homopolymer with its inserted
-    base N) waits for C43's insertion routing with RJ-20's own-inserted-bases check;
-    `event()` widens the core to POS (`.min(p)`, `.max(p + r_al.len())`), so a pure
-    indel's core holds the anchor: take the core from the trims' union first when C43
-    routes pure indels here.
-- Next after #277: the five #278 shape calls, the C43 routing + census, #279; in
-  parallel #280 (operator slices ACCESS standard BAMs on HPC) and D12 #275 phases 1-3.
+- **C43a #277 done** on `feature/c43-indels-by-bases` (worktree `.claude/worktrees/c43`,
+  scratch venv `scratchpad/venv_c43`), PR to develop: RJ-25 (a read counts for its allele
+  only when it tells it from every other allele of that length at the locus; REF alike),
+  the grown-event background (RJ-23), components and the seen share, the bases an MNP
+  keeps (operator decisions 2026-10-14). Six adversarial reviews. Final build frozen as
+  `plan670/src_c43x` (a5b60b69): against `src_c40j`, panel 18 rows (AD -22, RD +197),
+  normals/ACCESS 9 (RD +347), WES 3 (RD +28), HG002 3 (RD +9), FORTE delins unchanged;
+  synthetic `plan670/c43syn` unchanged since c43s. Follow-up #282 (the older sibling
+  claim vs the seen rule). First cut archived on `archive/c43-d4-first-cut`.
+- **HPC down 2026-10-14 to Monday.** Slicing kit `plan670/hpc_kit_670/` (copy on HPC:
+  `test/slice_670_downtime`): the gate panel's pure-indel/MNP/delins rows (295 BAMs,
+  ~7 GB), FORTE RNA at every row (33, mates fetched), #280's ACCESS standard BAMs (14),
+  optionally every gate row (~40 GB). The SFTP mounts (FORTE, DMP share) go down with
+  HPC: RNA and the gate panel's pure indels are local only once the tar comes back.
+- Next: #278 (the five decided pure-indel shapes), the C43 routing + census (#276;
+  RJ-20's own-inserted-bases check for the run case; take a pure indel's core from the
+  trims' union, as `event()` widens it to POS), #279, #280 on the standard slices, #282;
+  D12 #275 phases 1-3 (spike-in toolchain local; production BWA/ABRA2 flags from the
+  operator); MNP event growth (the HG002 TTTC row) as its own measured decision.
 - Shared report (artifact, v2): https://claude.ai/artifact/Chj5ehCfeRr54f99ZSnWRK.
-  Harness (local, PHI): `~/test/gbcms/harness/plan670/` — HG002 arms `giab/pri_ins`,
-  `pri_sins`, `pri_sdel`; prototypes `src_pi10`, `src_pa1`, `src_ph1`, `src_pd8`,
-  `src_pj4/5` with their patches; frozen `src_c40j` (639f21a2). Harness cleanup of the
-  C39/C40 `src_*` builds is still to do.
+  Harness (local, PHI): `~/test/gbcms/harness/plan670/` (`accept_*.sh`, `diff_builds.py`,
+  `diff_reads.py`, `c43_refreach/`, `c43_rna/`, `across/`, `wes/`, `giab/`). Cleanup of
+  the C39/C40/C43 `src_*` builds is still to do.
 
-Then: C40 PR stacked on #272; C31 (#212, fragment end from the mate's unclipped 5'
-end); D12 re-scope (RNA rules, low-VAF cfDNA, K re-test, per-read confirmation) as a
-docs PR; production aligner versions/flags from the operator (IMPACT/ACCESS
-BWA+ABRA2, FORTE STAR). Local acceptance harness: `~/test/gbcms/harness/plan670/`
-(PHI; `accept_*.sh`, `diff_builds.py`, `across/`, `wes/`, `giab/`).
+Then: C31 (#212, fragment end from the mate's unclipped 5' end); D12 re-scope (RNA
+rules, low-VAF cfDNA, K re-test, per-read confirmation) as a docs PR; production aligner
+versions/flags from the operator (IMPACT/ACCESS BWA+ABRA2, FORTE STAR).
 
 ### Previous: 6.6.0 release
 **6.6.0 is released** (2026-10-08): #252 merged to main (merge commit 67c45989, tree

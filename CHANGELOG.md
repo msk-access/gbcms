@@ -27,9 +27,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   where the given allele is absent at natural quality, a third of AD for a somatic
   MNP at 10% on a germline het. The rule credits none and loses no carrier where no
   other allele exists; demoting every such read (the first cut) lost carriers there
-  and at the normals. Panel: 10 rows change (AD -43), each beside another allele the
-  reads show; normals, ACCESS, WES and HG002 unchanged. As GATK and Octopus treat a
-  read that cannot tell two haplotypes apart.
+  and at the normals. As GATK and Octopus treat a read that cannot tell two
+  haplotypes apart.
+- **On real data**, against develop: 18 gate-panel rows change (AD -22, RD +197), 9
+  matched-normal and ACCESS rows (RD +347), 3 WES rows (RD +28) and 3 HG002 rows (RD
+  +9); the FORTE RNA delins is unchanged. The ALT side moves 10 panel rows, each beside
+  another allele the reads show (AD -43, of which 22 carriers count again under the
+  component and seen-share rules below); REF alike moves 185 reads, nearly all reading
+  the telling base below `--min-baseq`; the grown event restores 766 REF reads.
 - **REF alike, and components (operator, 2026-10-14).** A read that fits REF counts REF
   only when it tells REF from every other allele of REF's length at the locus (the
   germline haplotype beside a merged MNP, a germline change inside a delins's deleted
@@ -39,10 +44,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   apart from the MNP, is part of it (20 panel carriers had been demoted for it), and
   at depth one error read spelling it no longer makes it another allele (a Monte
   Carlo at 1000x: 9 of 60 loci flipped on one error, losing about 5% of RD and AD;
-  none now). The annotation lowers RJ-25's 3-fragment floor, not its share. As on the ALT's side, a REF-length allele whose every difference
-  from REF is a change the ALT molecules carry too (a germline change at a base the
-  event keeps, in cis) is a separate event, not another allele; a REF read that is ALT
-  for a co-annotated sibling stays partial evidence (RJ-5).
+  none now). The annotation lowers RJ-25's 3-fragment floor, not its share. As on
+  the ALT's side, a REF-length allele whose every difference from REF is a change the
+  ALT molecules carry too (a germline change at a base the event keeps, in cis) is a
+  separate event, not another allele; a REF read that is ALT for a co-annotated
+  sibling stays partial evidence (RJ-5). The older sibling claim still takes reads
+  that fit a co-annotated sibling no read shows (#282).
 - **A change inside the grown event (RJ-23, amended).** A REF read holding the given
   REF allele with a germline SNP in the repeat the event was grown through was
   neither, silently (RD down by a third to a half at 2 panel rows, a matched normal

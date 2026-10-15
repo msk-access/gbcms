@@ -34,8 +34,10 @@ alwaysApply: true
       share), check the oracle trusts no alignment, and size a suspected defect with a
       count-neutral diagnostic on every arm before deciding
 - [ ] Implementation carries the analysis: every stress shape becomes a red-first test,
-      the rule lands in every path that judges the same question, each new component
-      gets its own unit test, and the measurements are rerun on the final build
+      the rule lands in every path that judges the same question, a rule extended to
+      the other allele carries each exclusion and threshold with a mirrored test, each
+      new component gets its own unit test, and the measurements are rerun on the
+      final build
 
 **AFTER implementing, compare code against implementation plan:**
 - [ ] Re-read the relevant plan section(s)
