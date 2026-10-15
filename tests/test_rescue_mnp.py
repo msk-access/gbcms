@@ -184,8 +184,8 @@ def _read(name, block, i, low_bq_block_offset=None, block_cigar=((0, 5),)):
 
 def _component_carrier_reads():
     """20 REF + 9 first-change-only carriers + 1 carrier whose second
-    discriminating base is BQ 5 (masked, so the engine counts it full ALT —
-    the stray ``ad = 1`` that the old ``ad == 0`` gate tripped on)."""
+    discriminating base is BQ 5: it reads only the base it shares with the
+    first-change allele the nine spell, so it is partial too (RJ-25)."""
     reads = [_read(f"ref_{i}", REF_BLOCK, i) for i in range(N_REF)]
     reads += [_read(f"comp_{i}", "AAGGG", i) for i in range(9)]
     reads.append(_read("stray_masked", "AAGGG", 9, low_bq_block_offset=4))
@@ -309,12 +309,13 @@ def test_component_carriers_rescued_as_one_coherent_genotype(tmp_path):
     audit = _audit(row)
     assert audit["method"] == "decomposed"
     assert audit["outcome"] == "rescued"
-    # The MNP's own evaluation survives only here: 20 REF, the one masked
-    # stray counted full ALT, the nine single-change carriers as partial.
+    # The MNP's own evaluation survives only here: 20 REF, and the nine
+    # single-change carriers and the masked stray as partial (the stray cannot
+    # tell the MNP from the first-change allele the nine spell, RJ-25).
     assert (audit["original_ref"], audit["original_alt"], audit["original_partial"]) == (
         "20",
-        "1",
-        "9",
+        "0",
+        "10",
     )
     # The stray's other discriminating base was masked: nothing showed the haplotype.
     assert audit["original_confirmed"] == "0"
@@ -335,9 +336,33 @@ def test_flag_off_reports_engine_counts_without_rescue_column(tmp_path):
     rows = _run(tmp_path, {"S": _component_carrier_reads()}, [MNP_ROW], rescue=False)
     (row,) = rows["S"]
     assert "gbcms_rescue" not in row
-    assert (int(row["ref_count"]), int(row["alt_count"]), int(row["partial_alt"])) == (20, 1, 9)
+    assert (int(row["ref_count"]), int(row["alt_count"]), int(row["partial_alt"])) == (20, 0, 10)
     assert "PARTIAL_DOMINANT" in row["gbcms_diagnostic"].split(";")
     _assert_counting_invariants(row)
+
+
+def test_a_stray_alt_read_does_not_stop_the_rescue(tmp_path):
+    """The nine first-change carriers beside one read of the whole MNP whose first
+    change is BQ 5: it reads the MNP's second change, which tells it from the
+    first-change allele, so the MNP keeps one ALT read (RJ-25) and the rescue, gated
+    on the component's support, still adopts the first change."""
+    reads = [_read(f"ref_{i}", REF_BLOCK, i) for i in range(N_REF)]
+    reads += [_read(f"comp_{i}", "AAGGG", i) for i in range(9)]
+    reads.append(_read("stray_whole", ALT_BLOCK, 9, low_bq_block_offset=0))
+    (row,) = _run(tmp_path, {"S": reads}, [MNP_ROW])["S"]
+    assert (int(row["ref_count"]), int(row["alt_count"]), int(row["partial_alt"])) == (20, 9, 0)
+    _assert_counting_invariants(row)
+    audit = _audit(row)
+    assert audit["outcome"] == "rescued"
+    assert (audit["original_ref"], audit["original_alt"], audit["original_partial"]) == (
+        "20",
+        "1",
+        "9",
+    )
+    assert audit["original_confirmed"] == "0"
+    assert re.fullmatch(r"(chr)?1:201\(G>A\):9\+(chr)?1:205\(G>A\):1", audit["positions"]), audit[
+        "positions"
+    ]
 
 
 def test_cis_carriers_are_not_candidates(tmp_path):

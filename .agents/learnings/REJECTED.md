@@ -10,6 +10,22 @@ Newest at the top.
 
 ---
 
+## [REJ-20261014-001] An unreadable ALT core always carries only the length (#277 first cut, and its own-base variants)
+- **Target:** the exact-carrier rule's reading of an ALT core whose bases are below min BQ
+  (RJ-20), and the MNP check's partly read reads
+- **Proposed:** a carrier that reads none of the ALT's own bases turns partial at every
+  locus (c504a454); variants: own bases count only where they differ from REF's at that
+  read position (71edff1a), and the same for REF (b77873c9).
+- **Reason vetoed:** the locus-aware rule removes the same false ALT without the cost
+  (operator, 2026-10-14). The unconditional form demoted carriers where no other allele
+  of the ALT's length exists: synthetic no-competitor shapes lose 286 carriers vs 202,
+  normals lose 13 reads an independent check calls ALT, HG002 delins shifts; it left the
+  MNP check's phantom ALT untouched (natural quality: 15 phantom reads where the allele
+  is absent). Locus-aware: 0 false ALT in every competitor and phantom shape, no-
+  competitor loss as develop, normals/WES/HG002 unchanged. Frozen builds
+  `plan670/src_c43a` (first cut), `src_c43b`, `src_c43c`, `src_c43m` (locus-aware).
+- **Date:** 2026-10-14
+
 ## [REJ-20261013-002] Keep the CIGAR checks for pure indels; let bases overrule disagreeing or clipped reads (C43 hybrid)
 - **Target:** pure-indel read judgment (`check_insertion`, `check_deletion`)
 - **Proposed:** keep the CIGAR verdict, and hand a read to the exact-carrier rule only

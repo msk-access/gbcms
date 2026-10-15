@@ -7,6 +7,92 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed — reads judged beside the other alleles at their locus (#277)
+
+- **The rule (RJ-25).** A read that fits the ALT counts ALT only when, for every
+  other allele of the ALT's length at the locus, it reads a base telling the two
+  apart (the ALT's base, at or above `--min-baseq`); otherwise it is that allele or
+  the ALT, neither with partial evidence. The other alleles are the co-annotated
+  siblings that spell one and those the reads spell in full on 3 or more fragments,
+  found by the reads' bases placed from the event's left flank, not by where the
+  aligner wrote the gap. An allele whose every difference from the ALT is a change
+  from the reference that the REF molecules carry too is a separate event, not
+  another allele; an allele lacking part of the event (the germline haplotype beside
+  a somatic change written as one MNP) is one. Where the reads show no other allele
+  nothing changes. Complex events (the exact-carrier rule) and the MNP check's
+  partly read reads alike; the opt-in homopolymer twin reads the same siblings.
+- **Why.** Develop credited a read that showed only the length of a complex event,
+  or only the germline base of a merged MNP, as the ALT, even beside another allele
+  that shows the same: on a synthetic arm, 165 such reads under stress masks, 15
+  where the given allele is absent at natural quality, a third of AD for a somatic
+  MNP at 10% on a germline het. The rule credits none and loses no carrier where no
+  other allele exists; demoting every such read (the first cut) lost carriers there
+  and at the normals. As GATK and Octopus treat a read that cannot tell two
+  haplotypes apart.
+- **On real data**, against develop: 18 gate-panel rows change (AD -22, RD +197), 9
+  matched-normal and ACCESS rows (RD +347), 3 WES rows (RD +28) and 3 HG002 rows (RD
+  +9); the FORTE RNA delins is unchanged. The ALT side moves 10 panel rows, each beside
+  another allele the reads show (AD -43, of which 22 carriers count again under the
+  component and seen-share rules below); REF alike moves 185 reads (147 read the
+  telling base below `--min-baseq`, 31 sit at two WES rows whose given REF holds a
+  homozygous germline change); the grown event restores 766 REF reads. On every MNP
+  and delins row of the 6.6.0 gate panel (742 and 180 rows over 235 runs, sliced
+  locally): 39 MNP rows (RD -203, AD -49) and 13 delins (RD +230, AD -7) change, each
+  explained by its reads.
+- **REF alike, and components (operator, 2026-10-14).** A read that fits REF counts REF
+  only when it tells REF from every other allele of REF's length at the locus (the
+  germline haplotype beside a merged MNP, a germline change inside a delins's deleted
+  bases): otherwise neither. A co-annotated sibling is another allele only where the
+  fragments spelling it in full are at least one and 5% of those spelling the allele
+  it is nearest: an MNP's component SNV that sign-out reports beside it, never seen
+  apart from the MNP, is part of it (20 panel carriers had been demoted for it), and
+  at depth one error read spelling it no longer makes it another allele (a Monte
+  Carlo at 1000x: 9 of 60 loci flipped on one error, losing about 5% of RD and AD;
+  none now). The annotation lowers RJ-25's 3-fragment floor, not its share. As on
+  the ALT's side, a REF-length allele whose every difference from REF is a change the
+  ALT molecules carry too (a germline change at a base the event keeps, in cis) is a
+  separate event, not another allele; a REF read that is ALT for a co-annotated
+  sibling stays partial evidence (RJ-5). The older sibling claim still takes reads
+  that fit a co-annotated sibling no read shows (#282).
+- **A change inside the grown event (RJ-23, amended).** A REF read holding the given
+  REF allele with a germline SNP in the repeat the event was grown through was
+  neither, silently (RD down by a third to a half at 2 panel rows, a matched normal
+  and a WES row). Such a change, carried by the REF molecules, is now background,
+  masked in both windows where it sits on each allele, so REF reads and carriers
+  carrying it keep their call. One on the ALT molecules alone stays unmasked. The
+  same at the bases an MNP keeps inside its core (operator, 2026-10-14): a germline
+  het there in trans made the germline haplotype's REF reads neither (RD halved, VAF
+  0.20 -> 0.33 in a synthetic case), and in cis carriers written with an indel at the
+  block were neither while plain ones counted. No real row changes.
+- **From the adversarial review (2026-10-14).** An allele the reads spell must also
+  reach 5% of the fragments reading the same bases in full, so a recurring error at
+  depth is no other allele; one differing from the ALT only where the guard masks is
+  no other allele (it took every carrier); the alleles are found from the variant's
+  own reads only (binning invariance); a molecule may differ from its allele at one
+  base past the event (a phased SNP hid a germline allele); a molecule past a run
+  must read a base telling its allele from the other (a shifted carrier was taken for
+  REF at one HG002 row); every read the MNP check calls ALT follows the rule, and one
+  set aside keeps its N. A second review: an allele the reads spell must recur on 5% of
+  the fragments spelling the allele it is nearest (REF or the ALT), so one as common as
+  a low-VAF ALT is found at any depth; molecules are told by all their bases (a run past
+  the event, or a large deletion, left none placed) with up to two phased changes
+  beside the event; a change beside an MNP's own bases is a phased neighbour, not
+  another allele. A third review: the fragments spelling REF or the ALT are counted
+  past the masks (a masked change on every carrier left none, so any recurring error
+  became an allele); for an MNP the run beside it is beside it on both routes, so a
+  carrier with a phased neighbour there counts ALT however it is aligned. A sixth
+  review: a mask inside the event's span took any base, so a third allele's carriers
+  counted ALT once a germline change had masked the position (it now takes the
+  reference's base and the change's only); a change at a base the event changes, where
+  a third allele's molecules count among the other allele's, is no separate event; and
+  a co-annotated allele faces the separate-event test as a spelled one does.
+- **Read census.** Told the locus's other alleles, it judges a read fitting the ALT
+  and another allele as neither (`FITS_OTHER`).
+- **Tests.** Two `--rescue-mnp` tests' unrescued counts move from (REF 20, ALT 1,
+  partial 9) to (20, 0, 10), with the operator's OK: their masked stray reads only
+  the base it shares with the first-change allele nine fragments spell. A new test
+  keeps a stray ALT read beside the rescue.
+
 ### Changed — complex events read by one pair of equal-length windows (#253)
 
 - **The rule (RJ-23).** A complex event (delins, an anchor-changing indel, an MNP
