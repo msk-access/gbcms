@@ -33,8 +33,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   matched-normal and ACCESS rows (RD +347), 3 WES rows (RD +28) and 3 HG002 rows (RD
   +9); the FORTE RNA delins is unchanged. The ALT side moves 10 panel rows, each beside
   another allele the reads show (AD -43, of which 22 carriers count again under the
-  component and seen-share rules below); REF alike moves 185 reads, nearly all reading
-  the telling base below `--min-baseq`; the grown event restores 766 REF reads.
+  component and seen-share rules below); REF alike moves 185 reads (147 read the
+  telling base below `--min-baseq`, 31 sit at two WES rows whose given REF holds a
+  homozygous germline change); the grown event restores 766 REF reads.
 - **REF alike, and components (operator, 2026-10-14).** A read that fits REF counts REF
   only when it tells REF from every other allele of REF's length at the locus (the
   germline haplotype beside a merged MNP, a germline change inside a delins's deleted
