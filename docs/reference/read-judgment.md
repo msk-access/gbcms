@@ -262,6 +262,21 @@ its own bases:
   - The REF side's separate event, RJ-5's partial evidence for a REF read carrying a
     co-annotated sibling, and the background at the bases an MNP keeps change no real
     row; the synthetic arm is unchanged by them.
+- Every MNP and delins row of the 6.6.0 gate panel (sliced during the HPC downtime; the
+  6.6.0 release reproduces all 73,649 of the gate's recorded non-VCF cells on the
+  slices, 23 RNA per-transcript lists in another order): of 742 MNP and 180 delins rows
+  over 235 runs, 39 MNP rows change (RD -203, AD -49) and 13 delins (RD +230, AD -7);
+  none of the 655 neighbouring rows. By cause: another allele the reads show, or REF
+  alike, at 24 rows (RD -112, AD -55; e.g. CC>AA beside its component CC>CA on about
+  40 reads: AD 33 -> 10, each of the 23 reading the telling base below `--min-baseq`);
+  the given REF on almost no molecule (a homozygous germline change merged into the
+  input's allele) at 12 rows (RD to 0 or 1); rows whose reads carry another allele
+  (`ZERO_ALT`, `OBSERVED_ALLELE`) at 9, losing develop's 32 partly read ALT reads; 43
+  clipped carriers with a phased neighbour at 5 MNP rows, whose plain fellows the MNP
+  check already counted; and the grown event at 2 delins (RD +284). Against sign-out
+  VAF 14 rows move closer and 38 farther: sign-out's counter credits reads that cannot
+  tell the given allele from another the reads show, counts a merged germline input's
+  somatic part alone, and leaves clipped carriers out.
 - Decided on the fifth review (operator, 2026-10-14), each measured on every arm:
   - The seen share: at depth one sequencing error spelled a co-annotated component in
     full and made it another allele. In a Monte Carlo (CC>GT co-annotated with C>G, no

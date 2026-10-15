@@ -35,7 +35,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   another allele the reads show (AD -43, of which 22 carriers count again under the
   component and seen-share rules below); REF alike moves 185 reads (147 read the
   telling base below `--min-baseq`, 31 sit at two WES rows whose given REF holds a
-  homozygous germline change); the grown event restores 766 REF reads.
+  homozygous germline change); the grown event restores 766 REF reads. On every MNP
+  and delins row of the 6.6.0 gate panel (742 and 180 rows over 235 runs, sliced
+  locally): 39 MNP rows (RD -203, AD -49) and 13 delins (RD +230, AD -7) change, each
+  explained by its reads.
 - **REF alike, and components (operator, 2026-10-14).** A read that fits REF counts REF
   only when it tells REF from every other allele of REF's length at the locus (the
   germline haplotype beside a merged MNP, a germline change inside a delins's deleted

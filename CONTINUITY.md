@@ -12,16 +12,24 @@ their bases) in 6.7.0 with one HPC gate for C39 + C40 + C43.
   scratch venv `scratchpad/venv_c43`), PR to develop: RJ-25 (a read counts for its allele
   only when it tells it from every other allele of that length at the locus; REF alike),
   the grown-event background (RJ-23), components and the seen share, the bases an MNP
-  keeps (operator decisions 2026-10-14). Six adversarial reviews. Final build frozen as
-  `plan670/src_c43x` (a5b60b69): against `src_c40j`, panel 18 rows (AD -22, RD +197),
+  keeps (operator decisions 2026-10-14); masks inside the event's span take the
+  background's base only (sixth review). Six adversarial reviews. Final build frozen as
+  `plan670/src_c43y` (9085530b): against `src_c40j`, panel 18 rows (AD -22, RD +197),
   normals/ACCESS 9 (RD +347), WES 3 (RD +28), HG002 3 (RD +9), FORTE delins unchanged;
-  synthetic `plan670/c43syn` unchanged since c43s. Follow-up #282 (the older sibling
-  claim vs the seen rule). First cut archived on `archive/c43-d4-first-cut`.
-- **HPC down 2026-10-14 to Monday.** Slicing kit `plan670/hpc_kit_670/` (copy on HPC:
-  `test/slice_670_downtime`): the gate panel's pure-indel/MNP/delins rows (295 BAMs,
-  ~7 GB), FORTE RNA at every row (33, mates fetched), #280's ACCESS standard BAMs (14),
-  optionally every gate row (~40 GB). The SFTP mounts (FORTE, DMP share) go down with
-  HPC: RNA and the gate panel's pure indels are local only once the tar comes back.
+  the gate panel's MNP/delins rows (`plan670/gate_cx`, 235 runs) 52 rows, each
+  explained by its reads; synthetic `plan670/c43syn` unchanged since c43s. Follow-up
+  #282 (the older sibling claim vs the seen rule). First cut archived on
+  `archive/c43-d4-first-cut`.
+- **HPC down 2026-10-14 to Monday; everything is local.** `plan670/hpc_kit_670/` holds
+  the slices: the gate panel's pure-indel/MNP/delins rows (`slices_indels`, 295 BAMs),
+  FORTE RNA at every row (`slices_forte`, 33, mates fetched), #280's ACCESS standard
+  BAMs (`slices_std`, 14) and every gate row (`slices_all`, 307, 11 GB). Validated:
+  FORTE slices match full-BAM outputs in every column (33/33); the panel arm's 133
+  runs are identical on the new slices; the 6.6.0 release on `slices_all` reproduces
+  all 73,649 of the gate's recorded non-VCF cells (23 RNA per-transcript lists in
+  another order: it differs from HPC's; two local runs agree). The
+  local gate: `plan670/gate_local/` (`dmp/`, `forte/` link the slices under the gate's
+  BAM paths; the kit's `run_panel.sh` runs as is; `compare_cells.py`).
 - Next: #278 (the five decided pure-indel shapes), the C43 routing + census (#276;
   RJ-20's own-inserted-bases check for the run case; take a pure indel's core from the
   trims' union, as `event()` widens it to POS), #279, #280 on the standard slices, #282;
