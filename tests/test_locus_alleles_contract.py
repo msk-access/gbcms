@@ -1159,14 +1159,15 @@ def test_a_ref_read_carrying_a_co_annotated_sibling_is_partial_evidence(tmp_path
     assert (c.rd, c.ad, c.partial_alt) == (20, 10, 6)
 
 
+@pytest.mark.parametrize("sibling", [False, True])
 def test_a_germline_change_inside_a_delins_the_carriers_carry_too_leaves_ref_reads_ref(
-    tmp_path,
+    tmp_path, sibling
 ):
     """CAGTC>GAGC with a germline A>T at the base the ALT keeps, in cis with it: 6 REF
     reads and 6 carriers read that base below min BQ. The carriers carry the T too, so
     CTGTC is REF with a separate event: those REF reads count REF, as those carriers
-    count ALT. (Reads showing the T are neither on either side: the event's own bases
-    are read exactly.)"""
+    count ALT, whether or not the change is co-annotated (`sibling`). (Reads showing
+    the T are neither on either side: the event's own bases are read exactly.)"""
     contig = list(_contig(seed=43))
     contig[P : P + 5] = "CAGTC"
     contig = "".join(contig)
@@ -1191,7 +1192,127 @@ def test_a_germline_change_inside_a_delins_the_carriers_carry_too_leaves_ref_rea
             r = make_read(f"{tag}{i}", seq, s, cig)
             reads.append(_low(r, [left + 1]) if low else r)
     fa, bam = write_contig(tmp_path, contig, reads)
-    (v,) = _prepared(fa, [(P, "CAGTC", "GAGC")])
-    (c,) = count_checked(bam, [v])
+    vs = _prepared(fa, [(P, "CAGTC", "GAGC")] + ([(P + 1, "A", "T")] if sibling else []))
+    c = count_checked(bam, vs, sibling_variants=[[w for w in vs if w is not v] for v in vs])[0]
     _invariants(c)
     assert (c.rd, c.ad) == (26, 6)
+
+
+# ── sixth review (2026-10-14) ─────────────────────────────────────────────
+
+
+def _gca_locus(tmp_path, blocks):
+    """GCA>ACT, the middle base kept: `blocks` of (tag, bases at the MNP, reads)."""
+    contig = list(_contig(seed=41))
+    contig[P : P + 3] = "GCA"
+    contig = "".join(contig)
+    reads, k = [], 0
+    for tag, block, n in blocks:
+        for i in range(n):
+            s = P - 50 + k % 45
+            k += 1
+            seq = contig[s:P] + block + contig[P + 3 : s + READ]
+            reads.append(make_read(f"{tag}{i}", seq, s, ((0, READ),)))
+    fa, bam = write_contig(tmp_path, contig, reads)
+    (v,) = _prepared(fa, [(P, "GCA", "ACT")])
+    (c,) = count_checked(bam, [v])
+    _invariants(c)
+    return c
+
+
+@pytest.mark.parametrize(
+    "blocks, expected",
+    [
+        ((("ref", "GCA", 20), ("germ", "GTA", 20), ("agt", "AGT", 10)), (40, 0, 10)),
+        ((("germ", "GTA", 40), ("agt", "AGT", 10)), (40, 0, 10)),
+        (
+            (("ref", "GCA", 20), ("germ", "GTA", 20), ("alt", "ACT", 10), ("agt", "AGT", 5)),
+            (40, 10, 5),
+        ),
+    ],
+    ids=["trans", "homozygous", "beside-the-alt"],
+)
+def test_a_third_base_where_background_is_masked_is_another_allele(tmp_path, blocks, expected):
+    """A germline T at the base GCA>ACT keeps is background, masked as C or T: carriers
+    spelling AGT carry a third base there, another allele, not the ALT (partial
+    evidence)."""
+    c = _gca_locus(tmp_path, blocks)
+    assert (c.rd, c.ad, c.partial_alt) == expected
+
+
+def test_a_third_base_where_background_is_masked_is_not_ref(tmp_path):
+    """GGA on 5 fragments beside the germline GTA: the G at the kept base is neither
+    REF's C nor the background T (and, on under a fifth of the REF molecules, no
+    background itself), so GGA is another allele of REF's length and its reads are
+    neither."""
+    c = _gca_locus(
+        tmp_path,
+        (("ref", "GCA", 20), ("germ", "GTA", 20), ("alt", "ACT", 10), ("gga", "GGA", 5)),
+    )
+    assert (c.rd, c.ad) == (40, 10)
+
+
+def test_a_third_base_in_the_grown_run_where_background_is_masked_is_another_allele(tmp_path):
+    """CAG>GT grown through a T run, a germline A in the run on half the REF molecules
+    (background, masked as T or A): carriers with a C there carry another allele, as
+    with no germline change."""
+    contig = list(_contig(seed=41))
+    contig[P : P + 10] = "CAGTTTTTTG"
+    contig = "".join(contig)
+    hap = contig[:P] + "GT" + contig[P + 3 :]
+    at = P + 6
+    reads = []
+    for i in range(40):
+        s = P - 50 + i % 45
+        seq = list(contig[s : s + READ])
+        if i % 2:
+            seq[at - s] = "A"
+        reads.append(make_read(f"ref{i}", "".join(seq), s, ((0, READ),)))
+    for i in range(10):
+        s = P - 50 + (i * 3) % 45
+        seq = list(hap[s : s + READ])
+        seq[at - 1 - s] = "C"
+        left = P - s
+        cig = ((0, left), (1, 2), (2, 3), (0, READ - left - 2))
+        reads.append(make_read(f"alt{i}", "".join(seq), s, cig))
+    fa, bam = write_contig(tmp_path, contig, reads)
+    (v,) = _prepared(fa, [(P, "CAG", "GT")])
+    (c,) = count_checked(bam, [v])
+    _invariants(c)
+    assert (c.rd, c.ad, c.partial_alt) == (40, 0, 10)
+
+
+def test_a_change_at_a_base_the_event_changes_is_no_separate_event(tmp_path):
+    """CT>G beside AT (REF-length, A at the changed base) and A (ALT-length, CT>A), 6
+    fragments each: each carries an A where the event changes the C, so neither is a
+    separate event excused by the other's molecules. The 6 REF reads and 6 carriers
+    reading that base below min BQ are neither."""
+    contig = list(_contig(seed=47))
+    contig[P : P + 2] = "CT"
+    contig = "".join(contig)
+    reads, k = [], 0
+    for tag, block, n, low in (
+        ("ref", "CT", 20, False),
+        ("reflow", "CT", 6, True),
+        ("alt", "G", 20, False),
+        ("altlow", "G", 6, True),
+        ("at", "AT", 6, False),
+        ("a", "A", 6, False),
+    ):
+        for i in range(n):
+            s = P - 50 + k % 45
+            k += 1
+            seq = (contig[s:P] + block + contig[P + 2 : s + READ + 2])[:READ]
+            left = P - s
+            cig = (
+                ((0, READ),)
+                if len(block) == 2
+                else ((0, left), (1, 1), (2, 2), (0, READ - left - 1))
+            )
+            r = make_read(f"{tag}{i}", seq, s, cig)
+            reads.append(_low(r, [left]) if low else r)
+    fa, bam = write_contig(tmp_path, contig, reads)
+    (v,) = _prepared(fa, [(P, "CT", "G")])
+    (c,) = count_checked(bam, [v])
+    _invariants(c)
+    assert (c.rd, c.ad) == (20, 20)

@@ -77,7 +77,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   another allele. A third review: the fragments spelling REF or the ALT are counted
   past the masks (a masked change on every carrier left none, so any recurring error
   became an allele); for an MNP the run beside it is beside it on both routes, so a
-  carrier with a phased neighbour there counts ALT however it is aligned.
+  carrier with a phased neighbour there counts ALT however it is aligned. A sixth
+  review: a mask inside the event's span took any base, so a third allele's carriers
+  counted ALT once a germline change had masked the position (it now takes the
+  reference's base and the change's only); a change at a base the event changes, where
+  a third allele's molecules count among the other allele's, is no separate event; and
+  a co-annotated allele faces the separate-event test as a spelled one does.
 - **Read census.** Told the locus's other alleles, it judges a read fitting the ALT
   and another allele as neither (`FITS_OTHER`).
 - **Tests.** Two `--rescue-mnp` tests' unrescued counts move from (REF 20, ALT 1,

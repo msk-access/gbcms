@@ -185,6 +185,46 @@ pub(crate) const GUARD_REF_SHARE: f64 = 0.05;
 const MAX_UNIT: usize = 6;
 /// Masked base: matches any haplotype base.
 pub(crate) const WILD: u8 = b'N';
+/// The bases a masked window position takes, one bit per base (A 1, C 2, G 4, T 8).
+pub(crate) type Bases = u8;
+/// Every base: a change beside the event is a separate event, so a read carrying the
+/// allele counts whatever it shows there.
+const ANY: Bases = 0b1111;
+/// IUPAC codes by the bases they take: a window base masked to a set is written as its
+/// code (N, [`WILD`], for any base), so a read base outside the set still mismatches.
+const IUPAC: &[u8; 16] = b"-ACMGRSVTWYHKDBN";
+
+/// A base's bit (none for N or anything else).
+fn bit(b: u8) -> Bases {
+    match b {
+        b'A' => 1,
+        b'C' => 2,
+        b'G' => 4,
+        b'T' => 8,
+        _ => 0,
+    }
+}
+
+/// The bases a window base takes: its own, or every base of its IUPAC code.
+fn takes(h: u8) -> Bases {
+    IUPAC.iter().position(|&c| c == h).map_or(0, |i| i as Bases)
+}
+
+/// Whether read base `b` fits window base `h`.
+fn fits(b: u8, h: u8) -> bool {
+    bit(b) & takes(h) != 0
+}
+
+/// Base `x`'s class at a position masked to `set` (0: unmasked): the whole set where
+/// it holds `x`, else `x` alone. Two bases tell their alleles apart only where their
+/// classes differ: a background change is no difference, a third base still is.
+fn class(set: Bases, x: u8) -> Bases {
+    if set & bit(x) != 0 {
+        set
+    } else {
+        bit(x)
+    }
+}
 /// Bases past the event a read placed from the left flank must fit as its allele's
 /// (and, for a REF molecule, read): a read of the other length, shifted by the length
 /// change, does not fit that many by chance.
@@ -475,9 +515,10 @@ pub(crate) fn classify(
 }
 
 /// Whether the read, with an allele's window `w` starting at query position `start`,
-/// reads for every other allele's window a base telling that allele from it: a
-/// position where the two differ (neither masked), read inside `[first, after)` as the
-/// allele's base at or above `min_baseq`. True with no other allele.
+/// reads for every other allele's window a base telling that allele from it: read
+/// inside `[first, after)` at or above `min_baseq`, fitting the allele's window base
+/// and not the other's (a masked base takes the bases of its code). True with no other
+/// allele.
 fn tells_others(
     seq: &[u8],
     quals: &[u8],
@@ -487,22 +528,21 @@ fn tells_others(
     start: i64,
     (first, after): (usize, usize),
 ) -> bool {
-    let reads_own = |i: usize| {
-        let q = start + i as i64;
-        q >= first as i64
-            && q < after as i64
-            && seq.get(q as usize).is_some_and(|&b| b.to_ascii_uppercase() == w.allele[i])
-            && quals.get(q as usize).is_some_and(|&b| b >= min_baseq)
+    // the read's confident base at window position i
+    let read = |i: usize| {
+        let q = usize::try_from(start + i as i64).ok().filter(|&q| q >= first && q < after)?;
+        (*quals.get(q)? >= min_baseq).then(|| seq.get(q).map(|b| b.to_ascii_uppercase()))?
     };
     others.iter().all(|other| {
-        other.iter().zip(&w.allele).enumerate().any(|(i, (&o, &a))| o != a && o != WILD && a != WILD && reads_own(i))
+        other.iter().zip(&w.allele).enumerate().any(|(i, (&o, &a))| read(i).is_some_and(|b| fits(b, a) && !fits(b, o)))
     })
 }
 
 /// Whether a read, as aligned, reads for every other allele of `guard` beside REF or
 /// the ALT of `v` (`side`) a base that tells that allele from it: a position where
-/// their haplotypes differ and the guard masks nothing, read as the allele's base at or
-/// above `min_baseq` (RJ-25). The MNP check's rule for every read it calls REF or ALT
+/// their haplotypes differ past the guard's masks (a background base no difference, a
+/// third base still one), read as the allele's base, or its background, at or above
+/// `min_baseq` (RJ-25). The MNP check's rule for every read it calls REF or ALT
 /// (it compares only the bases where REF and ALT differ, so a read spelling another
 /// allele where the ALT keeps the reference's base would pass it); the block is
 /// aligned without an indel, so the haplotypes and the read share coordinates. True
@@ -520,9 +560,21 @@ pub(crate) fn tells_others_aligned(record: &Record, quals: &[u8], min_baseq: u8,
     };
     let Some(own) = own else { return true };
     let seq = record.seq().as_bytes();
-    let reads_own = |i: usize| {
+    // the bases the guard masks at reference offset i to (0: none)
+    let set_at = |i: usize| {
+        let p = start + i as i64;
+        if guard.masked.contains(&p) {
+            guard.background.iter().find(|&&(q, _)| q == p).map_or(ANY, |&(_, s)| s)
+        } else {
+            0
+        }
+    };
+    let reads_own = |i: usize, set: Bases| {
         find_read_pos(record, start + i as i64).is_some_and(|q| {
-            seq.get(q).is_some_and(|&b| b.to_ascii_uppercase() == own[i]) && quals.get(q).is_some_and(|&b| b >= min_baseq)
+            seq.get(q).is_some_and(|&b| {
+                let b = b.to_ascii_uppercase();
+                bit(b) != 0 && class(set, b) == class(set, own[i])
+            }) && quals.get(q).is_some_and(|&b| b >= min_baseq)
         })
     };
     others.iter().all(|o| {
@@ -533,7 +585,10 @@ pub(crate) fn tells_others_aligned(record: &Record, quals: &[u8], min_baseq: u8,
         let (a, b) = o.span();
         let lo = usize::try_from(a.min(v.pos) - start).unwrap_or(0);
         let hi = usize::try_from(b.max(v.pos + v.ref_allele.len() as i64) - start).unwrap_or(0).min(own.len());
-        (lo..hi).any(|i| h[i] != own[i] && !guard.masked.contains(&(start + i as i64)) && reads_own(i))
+        (lo..hi).any(|i| {
+            let set = set_at(i);
+            class(set, h[i]) != class(set, own[i]) && reads_own(i, set)
+        })
     })
 }
 
@@ -656,6 +711,7 @@ fn spliced_windows(
         // masked positions are genome ones: each kept where a segment holds it
         let map = SpliceMap { segments };
         let masked = layout.masked.iter().filter_map(|&p| map.to_spliced(p)).collect();
+        let background = layout.background.iter().filter_map(|&(p, b)| map.to_spliced(p).map(|q| (q, b))).collect();
         // other alleles are genome ones too: each kept where its whole span is where
         // it sits in the genome (no junction of the read crosses it)
         let same = |p: i64| map.to_spliced(p) == Some(p);
@@ -670,7 +726,7 @@ fn spliced_windows(
                 .collect()
         };
         let spliced_layout =
-            Layout { masked, others: in_place(&layout.others), ref_others: in_place(&layout.ref_others), ..layout.clone() };
+            Layout { masked, background, others: in_place(&layout.others), ref_others: in_place(&layout.ref_others), ..layout.clone() };
         Some(Rc::new((windows(&on_spliced, &spliced_layout)?, map)))
     })();
     if let (Some(c), Some(k)) = (cache, key) {
@@ -927,6 +983,9 @@ fn event(start: i64, reference: &[u8], v: &Variant) -> Option<Event> {
 struct Layout {
     from_right: bool,
     masked: Vec<i64>,
+    /// The masked positions that take only some bases (background inside the event's
+    /// span: the reference's base and the change's), with those bases.
+    background: Vec<(i64, Bases)>,
     others: Vec<OtherAllele>,
     ref_others: Vec<OtherAllele>,
 }
@@ -942,6 +1001,7 @@ impl Layout {
             .map_or_else(Layout::default, |g| Layout {
                 from_right: false,
                 masked: g.masked.clone(),
+                background: g.background.clone(),
                 others: g.others.clone(),
                 ref_others: g.ref_others.clone(),
             });
@@ -992,28 +1052,33 @@ fn windows(v: &Variant, layout: &Layout) -> Option<Windows> {
         layout.others.iter().filter_map(|o| o.on(start, &reference)).filter(|h| h.len() == ev.hap.len()).collect();
     let ref_other_haps: Vec<Vec<u8>> =
         layout.ref_others.iter().filter_map(|o| o.on(start, &reference)).filter(|h| h.len() == reference.len()).collect();
-    // A masked base (a change recurring beside the event, or one the REF molecules
-    // carry inside the repeat it was grown through, or at a base an MNP keeps) matches
-    // any read base. Left of the given allele the alleles share coordinates; right of
+    // A masked base matches any read base where a change recurs beside the event, and
+    // only the reference's base or the change's where the REF molecules carry one inside
+    // the repeat it was grown through, or at a base an MNP keeps (a third base there is
+    // another allele). Left of the given allele the alleles share coordinates; right of
     // it the ALT's are shifted by the length change. The given allele's own bases are
     // never masked (a base an MNP keeps is no change of its own).
     let (mut reference, mut hap) = (reference, ev.hap.clone());
+    let mask = |b: u8, p: i64| IUPAC[(bit(b) | layout.background.iter().find(|&&(q, _)| q == p).map_or(ANY, |&(_, s)| s)) as usize];
     for &p in &layout.masked {
         let off = p - start;
-        if off >= lo as i64 && off < c_lo as i64 {
-            reference[off as usize] = WILD;
-            hap[off as usize] = WILD;
+        let (r, h) = if off >= lo as i64 && off < c_lo as i64 {
+            (off as usize, off as usize)
         } else if off >= c_hi as i64 && off < hi as i64 {
-            reference[off as usize] = WILD;
-            hap[(off + d) as usize] = WILD;
+            (off as usize, (off + d) as usize)
         } else if d == 0 && off >= c_lo as i64 && off < c_hi as i64 && reference[off as usize] == hap[off as usize] {
-            reference[off as usize] = WILD;
-            hap[off as usize] = WILD;
-        }
+            (off as usize, off as usize)
+        } else {
+            continue;
+        };
+        reference[r] = mask(reference[r], p);
+        hap[h] = mask(hap[h], p);
     }
     let (ref_win, alt_win) = (&reference[lo..hi], &hap[lo..alt_hi]);
     let kept = |haps: &[Vec<u8>], win: &[u8], (a, b): (usize, usize)| -> Vec<Vec<u8>> {
-        haps.iter().map(|h| h[a..b].iter().zip(win).map(|(&o, &w)| if w == WILD { WILD } else { o }).collect()).collect()
+        // an allele takes the window's mask where its base is one the mask takes
+        let masked = |o: u8, w: u8| if takes(w).count_ones() > 1 && fits(o, w) { w } else { o };
+        haps.iter().map(|h| h[a..b].iter().zip(win).map(|(&o, &w)| masked(o, w)).collect()).collect()
     };
     let (others, ref_others) = (kept(&other_haps, alt_win, (lo, alt_hi)), kept(&ref_other_haps, ref_win, (lo, hi)));
     // Both windows are anchored at the window's ends: the left flank's first base
@@ -1076,6 +1141,9 @@ fn shared_past(reference: &[u8], ev: &Event, (lo, hi, alt_hi): (usize, usize, us
 pub(crate) struct Guard {
     key: (i64, String, String),
     pub masked: Vec<i64>,
+    /// The masked positions that take only some bases (background inside the event's
+    /// span), with those bases; every other masked position takes any.
+    pub background: Vec<(i64, Bases)>,
     /// The reads' larger allele (0-based POS, left-aligned minimal VCF form): its
     /// carriers are the fewest ALT reads showing any one change, its given carriers
     /// the most showing the reference base at one.
@@ -1094,6 +1162,7 @@ impl Guard {
         Self {
             key: (v.pos, v.ref_allele.clone(), v.alt_allele.clone()),
             masked,
+            background: Vec::new(),
             larger,
             scanned,
             others: Vec::new(),
@@ -1270,7 +1339,10 @@ fn share(n: u32, of: u32) -> f64 {
 }
 
 /// The reference offsets inside the repeat the event was grown through, off the
-/// given allele's own bases, masked as beside the event (RJ-23, 2026-10-14). A change
+/// given allele's own bases, masked as beside the event (RJ-23, 2026-10-14), each with
+/// the bases it takes: background takes the reference's base and the change's only (a
+/// third base there is another allele); a phased neighbour any base, as beside the
+/// event. A change
 /// the REF molecules carry is background: recurring on them, or recurring on the ALT
 /// molecules and on [`GUARD_MIN_READS`] and [`GUARD_REF_SHARE`] of them. A change the
 /// ALT molecules alone carry there is none for an event changing the length (inside
@@ -1281,7 +1353,7 @@ fn share(n: u32, of: u32) -> f64 {
 /// there is masked (a germline SNP in cis or in trans with it), while a change the ALT
 /// molecules alone carry there is another allele. Read from the molecules placed by
 /// their bases, so a carrier however aligned feeds it.
-fn grown_background(placed: &Placed, reference: &[u8], ev: &Event) -> Vec<usize> {
+fn grown_background(placed: &Placed, reference: &[u8], ev: &Event) -> Vec<(usize, Bases)> {
     let lo = ev.lo - FLANK;
     let (c_lo, c_hi) = ev.core;
     let recurs = |n: u32, of: u32| n >= GUARD_MIN_READS && share(n, of) >= GUARD_MIN_SHARE;
@@ -1289,27 +1361,38 @@ fn grown_background(placed: &Placed, reference: &[u8], ev: &Event) -> Vec<usize>
     // the ALT's haplotype offset: left of the given allele the same, right of it
     // shifted by the length change
     let on_alt = |off: usize| if off < c_lo { off } else { (off as i64 + ev.d) as usize };
-    let background = |off: usize| {
+    // the background bases at an offset (none: no background there)
+    let background = |off: usize| -> Bases {
         let h = on_alt(off);
-        (0..4).any(|k| {
-            let (n, of) = (placed.ref_bases[off - lo][k], placed.ref_cover[off - lo]);
-            let (an, aof) = (placed.alt_bases[h - lo][k], placed.alt_cover[h - lo]);
-            b"ACGT"[k] != reference[off]
-                && (recurs(n, of) || (recurs(an, aof) && n >= GUARD_MIN_READS && share(n, of) >= GUARD_REF_SHARE))
-        })
+        (0..4)
+            .filter(|&k| {
+                let (n, of) = (placed.ref_bases[off - lo][k], placed.ref_cover[off - lo]);
+                let (an, aof) = (placed.alt_bases[h - lo][k], placed.alt_cover[h - lo]);
+                b"ACGT"[k] != reference[off]
+                    && (recurs(n, of) || (recurs(an, aof) && n >= GUARD_MIN_READS && share(n, of) >= GUARD_REF_SHARE))
+            })
+            .fold(0, |set, k| set | bit(b"ACGT"[k]))
     };
     let own = |off: usize| {
         ev.d == 0
             && grown(off)
-            && !background(off)
+            && background(off) == 0
             && (0..4).any(|k| b"ACGT"[k] != reference[off] && recurs(placed.alt_bases[off - lo][k], placed.alt_cover[off - lo]))
     };
     let isolated = |off: usize| !(own(off + 1) || off > 0 && own(off - 1));
     let kept = |off: usize| ev.d == 0 && reference[off] == ev.hap[off];
+    // background takes the reference's base and its own; a phased neighbour any base
+    let masked = |off: usize, b: Bases| (off, b | bit(reference[off]));
     (ev.lo..c_lo)
         .chain(c_hi..ev.hi)
-        .filter(|&off| background(off) || (own(off) && isolated(off)))
-        .chain((c_lo..c_hi).filter(|&off| kept(off) && background(off)))
+        .filter_map(|off| match background(off) {
+            0 => (own(off) && isolated(off)).then_some((off, ANY)),
+            b => Some(masked(off, b)),
+        })
+        .chain((c_lo..c_hi).filter(|&off| kept(off)).filter_map(|off| match background(off) {
+            0 => None,
+            b => Some(masked(off, b)),
+        }))
         .collect()
 }
 
@@ -1345,7 +1428,7 @@ fn other_alleles(
     (start, reference): (i64, &[u8]),
     ev: &Event,
     siblings: &[Variant],
-    masked: &[i64],
+    masks: &[(i64, Bases)],
     side: Side,
 ) -> Vec<OtherAllele> {
     let lo = ev.lo - FLANK;
@@ -1354,15 +1437,21 @@ fn other_alleles(
     // The masked positions on each allele's coordinates: REF's as the genome's; the
     // ALT's left of the given allele the same, right of it shifted by the length change
     // (for an MNP, the same throughout).
-    let masked_ref: Vec<usize> = masked.iter().filter_map(|&p| usize::try_from(p - start).ok()).collect();
-    let masked_hap: Vec<usize> = masked_ref
+    let masked_ref: Vec<(usize, Bases)> =
+        masks.iter().filter_map(|&(p, b)| usize::try_from(p - start).ok().map(|off| (off, b))).collect();
+    let masked_hap: Vec<(usize, Bases)> = masked_ref
         .iter()
-        .filter_map(|&off| match off {
-            off if off < c_lo || ev.d == 0 => Some(off),
-            off if off >= c_hi => usize::try_from(off as i64 + ev.d).ok(),
+        .filter_map(|&(off, b)| match off {
+            off if off < c_lo || ev.d == 0 => Some((off, b)),
+            off if off >= c_hi => usize::try_from(off as i64 + ev.d).ok().map(|h| (h, b)),
             _ => None,
         })
         .collect();
+    // Whether two bases at an offset are the same past the masks there (a background
+    // base no difference, a third base still one).
+    let same = |at: &[(usize, Bases)], i: usize, x: u8, y: u8| {
+        x == y || at.iter().find(|m| m.0 == i).is_some_and(|&(_, b)| class(b, x) == class(b, y))
+    };
     // this allele's haplotype, window end, masks and spellings; the other allele's
     let (own, counter): (&[u8], &[u8]) = if side == Side::Ref { (reference, &ev.hap) } else { (&ev.hap, reference) };
     let (masked_own, masked_counter) = if side == Side::Ref { (&masked_ref, &masked_hap) } else { (&masked_hap, &masked_ref) };
@@ -1372,22 +1461,22 @@ fn other_alleles(
     // How far a spelling is from an allele's, at the bases that can tell: not where the
     // guard masks (on that allele's coordinates), nor, for an MNP, beside its own bases
     // (a phased neighbour there is no difference).
-    let apart = |b: &[u8], allele: &[u8], masked_at: &[usize]| {
+    let apart = |b: &[u8], allele: &[u8], masked_at: &[(usize, Bases)]| {
         b.iter()
             .zip(allele)
             .enumerate()
-            .filter(|&(k, (x, y))| {
+            .filter(|&(k, (&x, &y))| {
                 let i = lo + k;
-                x != y && !masked_at.contains(&i) && (ev.d != 0 || (c_lo..c_hi).contains(&i))
+                !same(masked_at, i, x, y) && (ev.d != 0 || (c_lo..c_hi).contains(&i))
             })
             .count()
     };
     let tellable = |h: &[u8]| {
-        h.iter().zip(own).enumerate().any(|(i, (x, y))| x != y && !masked_own.contains(&i))
-            && (ev.d != 0 || (c_lo..c_hi).any(|i| h[i] != own[i]))
+        h.iter().zip(own).enumerate().any(|(i, (&x, &y))| !same(masked_own, i, x, y))
+            && (ev.d != 0 || (c_lo..c_hi).any(|i| !same(masked_own, i, h[i], own[i])))
     };
     // the fragments spelling an allele's bases over the window, so measured
-    let spellers = |allele: Option<&[u8]>, masked_at: &[usize]| -> u32 {
+    let spellers = |allele: Option<&[u8]>, masked_at: &[(usize, Bases)]| -> u32 {
         let Some(allele) = allele else { return 0 };
         let mut frags = std::collections::HashSet::new();
         for (b, f) in full {
@@ -1407,10 +1496,12 @@ fn other_alleles(
             _ => own_n,
         }
     };
-    // A change from the other allele's base that its molecules carry too, where this
-    // allele's base sits on the other allele's haplotype (left-aligned, or right-aligned
-    // past the length change): beside the ALT, a non-reference change the REF molecules
-    // carry; beside REF, a change from the ALT's base the ALT molecules carry.
+    // A change from the other allele's base that its molecules carry too, at a base the
+    // event keeps: this allele's base sits on the other allele's haplotype (left-aligned,
+    // or right-aligned past the length change) and is the same base there. Beside the
+    // ALT, a non-reference change the REF molecules carry; beside REF, a change from the
+    // ALT's base the ALT molecules carry. At a base the event changes the other allele's
+    // molecules may be a third allele's, so a change there is no separate event.
     let (counter_bases, counter_cover) =
         if side == Side::Ref { (&placed.alt_bases, &placed.alt_cover) } else { (&placed.ref_bases, &placed.ref_cover) };
     let (counter_end, shift) = if side == Side::Ref { (ev.hi as i64 + ev.d, ev.d) } else { (ev.hi as i64, -ev.d) };
@@ -1419,13 +1510,15 @@ fn other_alleles(
         let right = usize::try_from(i as i64 + shift).ok().filter(|&j| i >= ev.lo && j >= ev.lo);
         let k = b"ACGT".iter().position(|&x| x == b);
         [left, right].into_iter().flatten().any(|j| {
-            k.is_some_and(|k| {
-                let (n, of) = (counter_bases[j - lo][k], counter_cover[j - lo]);
-                b != counter[j] && n >= GUARD_MIN_READS && share(n, of) >= GUARD_REF_SHARE
-            })
+            own[i] == counter[j]
+                && k.is_some_and(|k| {
+                    let (n, of) = (counter_bases[j - lo][k], counter_cover[j - lo]);
+                    b != counter[j] && n >= GUARD_MIN_READS && share(n, of) >= GUARD_REF_SHARE
+                })
         })
     };
-    let separate = |b: &[u8]| b.iter().enumerate().all(|(k, &x)| x == own[lo + k] || counter_carries(lo + k, x));
+    let separate =
+        |b: &[u8]| b.iter().enumerate().all(|(k, &x)| same(masked_own, lo + k, x, own[lo + k]) || counter_carries(lo + k, x));
     let mut others: Vec<OtherAllele> = placed.spellings[if side == Side::Ref { 0 } else { 1 }]
         .iter()
         .filter(|(b, f)| {
@@ -1454,7 +1547,7 @@ fn other_alleles(
             let n = spellers(Some(&h[lo..end]), masked_own);
             n > 0 && n as f64 >= GUARD_REF_SHARE * source(&h[lo..end]) as f64
         };
-        if spells && tellable(&h) && !haps.contains(&h) && seen() {
+        if spells && tellable(&h) && !separate(&h[lo..end]) && !haps.contains(&h) && seen() {
             haps.push(h);
             others.push(o);
         }
@@ -1531,8 +1624,10 @@ pub(crate) fn guard_for(
     let grown = placed.as_ref().map_or_else(Vec::new, |p| grown_background(p, &reference, &ev));
     let c_lo = ev.core.0;
     let on_alt = |off: usize| if off < c_lo { off } else { (off as i64 + ev.d) as usize };
-    let ref_wild: Vec<bool> = (ev.lo..ev.hi).map(|off| grown.contains(&off)).collect();
-    let alt_wild: Vec<bool> = (ev.lo..ev.lo + alt_core.len()).map(|h| grown.iter().any(|&off| on_alt(off) == h)).collect();
+    // the bases each core position takes in the scan's fit (0: its own only)
+    let ref_wild: Vec<Bases> = (ev.lo..ev.hi).map(|off| grown.iter().find(|m| m.0 == off).map_or(0, |m| m.1)).collect();
+    let alt_wild: Vec<Bases> =
+        (ev.lo..ev.lo + alt_core.len()).map(|h| grown.iter().find(|m| on_alt(m.0) == h).map_or(0, |m| m.1)).collect();
     // Per allele (REF 0, ALT 1) and side (left 0, right 1), by distance from the
     // event (index 0 is the flank base beside it): reads reading the base, and reads
     // showing a confident change there.
@@ -1559,11 +1654,11 @@ pub(crate) fn guard_for(
             continue;
         }
         let between = &seq[ql + 1..qr];
-        let fits = |core: &[u8], wild: &[bool]| {
+        let fits = |core: &[u8], wild: &[Bases]| {
             core.len() == between.len()
                 && between.iter().zip(core).enumerate().all(|(i, (&b, &c))| {
                     let b = b.to_ascii_uppercase();
-                    b == c || b == WILD || quals[ql + 1 + i] < min_baseq || wild[i]
+                    b == c || b == WILD || quals[ql + 1 + i] < min_baseq || class(wild[i], b) == class(wild[i], c)
                 })
         };
         let allele = match (fits(ref_core, &ref_wild), fits(alt_core, &alt_wild)) {
@@ -1666,13 +1761,20 @@ pub(crate) fn guard_for(
     };
     // The background inside the grown event joins the masks; the other alleles of each
     // allele's length are those a read can tell from it past every mask.
-    for p in grown.iter().map(|&off| g(off)) {
+    let mut background = Vec::new();
+    for &(off, b) in &grown {
+        let p = g(off);
         if !masked.contains(&p) {
             masked.push(p);
+            if b != ANY {
+                background.push((p, b));
+            }
         }
     }
+    let masks: Vec<(i64, Bases)> =
+        masked.iter().map(|&p| (p, background.iter().find(|&&(q, _)| q == p).map_or(ANY, |&(_, b)| b))).collect();
     let others_of = |side| {
-        placed.as_ref().map_or_else(Vec::new, |p| other_alleles(p, (start, &reference), &ev, siblings, &masked, side))
+        placed.as_ref().map_or_else(Vec::new, |p| other_alleles(p, (start, &reference), &ev, siblings, &masks, side))
     };
     let (others, ref_others) = (others_of(Side::Alt), others_of(Side::Ref));
     if masked.is_empty() && larger.is_none() && others.is_empty() && ref_others.is_empty() {
@@ -1685,6 +1787,7 @@ pub(crate) fn guard_for(
         alt_only.iter().map(Vec::len).sum::<usize>(), others.len(), ref_others.len(),
     );
     let mut guard = Guard::new(v, masked, larger, scanned);
+    guard.background = background;
     guard.others = others;
     guard.ref_others = ref_others;
     Some(guard)
@@ -1845,7 +1948,7 @@ pub(crate) fn confident_weight(seq: &[u8], quals: &[u8], min_baseq: u8, allele: 
         .filter_map(|(i, &h)| {
             let q = usize::try_from(s + i as i64).ok().filter(|&q| q >= first && q < after)?;
             let (b, bq) = (seq.get(q)?.to_ascii_uppercase(), *quals.get(q)?);
-            (b != WILD && h != WILD && bq >= min_baseq && b != h).then(|| one_base_evidence(bq))
+            (b != WILD && bq >= min_baseq && !fits(b, h)).then(|| one_base_evidence(bq))
         })
         .sum()
 }
@@ -1897,19 +2000,20 @@ pub(crate) fn one_base_evidence(q: u8) -> f64 {
 }
 
 
-/// Mismatches of read bases against haplotype bases position by position, masked
-/// bases (below `min_baseq`, or N) matching anything.
+/// Mismatches of read bases against haplotype bases position by position, masked read
+/// bases (below `min_baseq`, or N) matching anything, and a masked haplotype base the
+/// bases its code takes.
 pub(crate) fn score(bases: &[u8], quals: &[u8], min_baseq: u8, hap: &[u8], span: (usize, usize)) -> Reading {
     let (mut mismatches, mut masked, mut had_n, mut mismatch_weight) = (0, 0, false, 0.0);
     for ((&b, &q), &h) in bases.iter().zip(quals).zip(hap) {
         let b = b.to_ascii_uppercase();
         had_n |= b == WILD;
-        if b != WILD && h != WILD && b != h {
+        if b != WILD && !fits(b, h) {
             mismatch_weight += one_base_evidence(q);
         }
         if b == WILD || q < min_baseq {
             masked += 1;
-        } else if b != h && h != WILD {
+        } else if !fits(b, h) {
             mismatches += 1;
         }
     }
@@ -2446,9 +2550,27 @@ mod tests {
     fn a_change_the_ref_molecules_carry_at_a_base_an_mnp_keeps_is_masked() {
         for (on_ref, on_alt, masked) in [(true, false, true), (true, true, true), (false, true, false)] {
             let (p, g) = kept_base(on_ref, on_alt);
-            let got = g.is_some_and(|g| g.masked.contains(&((p + 1) as i64)));
+            let got = g.is_some_and(|g| {
+                let at = (p + 1) as i64;
+                g.masked.contains(&at) && g.background.contains(&(at, bit(b'C') | bit(b'T')))
+            });
             assert_eq!(got, masked, "on REF {on_ref}, on ALT {on_alt}");
         }
+    }
+
+    #[test]
+    fn a_masked_window_base_takes_only_the_bases_of_its_code() {
+        // the C at the window's second base masked to C or T (Y); N takes any base
+        let q = [30u8; 4];
+        assert_eq!(score(b"ATGT", &q, 20, b"AYGT", (0, 4)).mismatches, 0, "the background base");
+        assert_eq!(score(b"ACGT", &q, 20, b"AYGT", (0, 4)).mismatches, 0, "the reference's base");
+        assert_eq!(score(b"AGGT", &q, 20, b"AYGT", (0, 4)).mismatches, 1, "a third base");
+        assert_eq!(score(b"AGGT", &q, 20, b"ANGT", (0, 4)).mismatches, 0, "any base beside the event");
+        assert!(confident_weight(b"AGGT", &q, 20, b"AYGT", 0, (0, 4)) > 0.0);
+        // a read tells the allele from another only by a base fitting the one, not the other
+        let aw = Window { allele: b"AYGT".to_vec(), hold: 4, tail: false, left: None, right: None, before: 0, after: 0 };
+        assert!(tells_others(b"ACGT", &q, 20, &aw, &[b"AGGT".to_vec()], 0, (0, 4)), "a third base is another allele's");
+        assert!(!tells_others(b"ATGT", &q, 20, &aw, &[b"AYGT".to_vec()], 0, (0, 4)), "background tells nothing");
     }
 
     #[test]
@@ -2460,7 +2582,7 @@ mod tests {
         let (start, reference) = prepared_reference(&v).unwrap();
         let lo = event(start, &reference, &v).unwrap().lo - FLANK;
         let other = OtherAllele { pos: p as i64, ref_allele: b"G".to_vec(), alt_allele: b"ACA".to_vec() };
-        let layout = Layout { from_right: false, masked: vec![(p + 4) as i64], others: vec![other], ref_others: vec![] };
+        let layout = Layout { masked: vec![(p + 4) as i64], others: vec![other], ..Layout::default() };
         let w = windows(&v, &layout).unwrap();
         let (r, a) = only_pair(&w);
         // right of the given allele: the REF's base at its place, the ALT's two later

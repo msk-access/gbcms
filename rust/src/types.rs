@@ -124,7 +124,8 @@ pub struct DecisionTally {
     pub carrier_fallback: u64,
     /// Reads the junction judge decided or left as depth (deletions of 50+ bp).
     pub junction_judged: u64,
-    /// REF reads excluded as a sibling's ALT (the multi-allelic REF guard).
+    /// REF reads excluded as a sibling's ALT (the multi-allelic REF guard), REF reads
+    /// withdrawn for another allele of REF's length included.
     pub sibling_ref_excluded: u64,
     /// ALT reads claimed by a sibling (the AD-claiming guard).
     pub sibling_alt_claimed: u64,

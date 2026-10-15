@@ -1785,7 +1785,7 @@ fn count_variant_from_cache(
             d.carrier_judged += u64::from(result.carrier_judged);
             d.junction_judged += u64::from(result.junction_judged);
             d.carrier_fallback += u64::from(result.carrier_fallback);
-            d.sibling_ref_excluded += u64::from(result.is_ref && ref_claimed_by_sibling);
+            d.sibling_ref_excluded += u64::from((result.is_ref || result.ref_untold) && ref_claimed_by_sibling);
             d.sibling_alt_claimed += u64::from(result.is_alt && claimed_by_sibling);
             d.clip_admitted += u64::from(clip_admitted);
         }
