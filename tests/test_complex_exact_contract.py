@@ -736,6 +736,33 @@ def test_an_mnp_read_with_a_germline_deletion_near_the_block_keeps_its_call(tmp_
     assert (c.rd, c.ad) == (40, 40)
 
 
+@pytest.mark.parametrize("on_ref, expected", [(6, (20, 6, 6)), (20, (40, 6, 0))])
+def test_an_mnp_read_with_an_insertion_written_after_the_block(tmp_path, on_ref, expected):
+    """GC>TA beside REF reads carrying a 24-bp duplication of the right flank written as
+    an insertion right after the block: the block's window fits REF, as the inserted
+    bases repeat the flank. On 6 of 32 reads the insertion is another allele (RJ-7):
+    those reads are neither, with partial evidence. On 20 of 46 it is background (a
+    germline insertion, as the deletion above), and they count REF."""
+    left, ref = _flanked("ACGTCAGT" + "GC" + "TGCAGGTCATTGACCGTAGCTTAG", 7)
+    p = len(left) + 8
+    hap = ref[:p] + "TA" + ref[p + 2 :]
+    dup = ref[p + 2 : p + 26]
+    reads = []
+    for i, s in enumerate(range(p - 70, p - 50)):
+        reads.append(make_read(f"r{i}", ref[s : s + READ], s, ((0, READ),)))
+    for i, s in enumerate(range(p - 70, p - 64)):
+        reads.append(make_read(f"a{i}", hap[s : s + READ], s, ((0, READ),)))
+    for i in range(on_ref):
+        s = p - 70 + i
+        seq = (ref[s : p + 2] + dup + ref[p + 2 : s + READ])[:READ]
+        m = p + 2 - s
+        reads.append(make_read(f"i{i}", seq, s, ((0, m), (1, 24), (0, READ - m - 24))))
+    fa, bam = _files(tmp_path, ref, reads)
+    c = count_checked(bam, [_prepared(fa, "GC", "TA", pos=p)])[0]
+    _invariants(c)
+    assert (c.rd, c.ad, c.partial_alt) == expected
+
+
 def test_prep_holds_an_event_in_a_run_near_the_contig_end(tmp_path):
     """ACT>GG before a 100-base T run ending 10 bases from the contig end: prep's
     reference grows to the contig end instead of failing past it."""
