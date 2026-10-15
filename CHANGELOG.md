@@ -136,6 +136,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Pipelines that still call `build-gtf-cache` must drop that step before moving to
     6.7.0.
 
+### Fixed — a REF read carrying another indel inside an MNP's windows (#287)
+
+- C39's exact-carrier windows counted REF for reads carrying a 24-bp insertion
+  written right after an MNP's block: the inserted bases repeat the right flank, so
+  the block's windows fit REF and nothing past them was read (REF 439 -> 467 at one
+  gate row; 6.6.0 called them neither, as RJ-7 and RJ-21 require). A read whose own
+  alignment changes the length inside the windows with an indel that does not recur
+  as background is now judged by its bases read on to its end; where they show the
+  indel it is another allele (neither, partial evidence). A read whose bases still
+  fit REF stays REF, and a germline indel beside the event keeps its reads' call.
+  Found by the local interim 6.7.0 gate; on the full gate panel 3 rows change (RD
+  -37 in all), on the plan arms one panel, one WES and one HG002 row (RD -1 to -3),
+  normals and ACCESS none.
+
 ### Fixed — mFSD sizes an ALT fragment as the molecule carrying the ALT
 
 - A fragment's size is TLEN less the deletions (plus the insertions) its reads'

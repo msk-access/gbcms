@@ -305,7 +305,8 @@ pub(crate) fn classify(
         // A record stored without its bases (SEQ '*') shows nothing here.
         return Some(ClassifyResult::no_coverage(ClassifyPhase::MaskedCompare));
     }
-    let skips = rna::splice_junctions_in(record, win.span());
+    let span = win.span();
+    let skips = rna::splice_junctions_in(record, span);
     let (ev_lo, ev_hi) = win.event;
     // A junction that starts inside the event and runs past it (or ends inside it,
     // coming from before) leaves the read showing the event's first (last) bases
@@ -391,6 +392,18 @@ pub(crate) fn classify(
         ClassifyResult::neither(ClassifyPhase::MaskedCompare)
     } else if every((false, true)) {
         ClassifyResult::is_alt(qual, ClassifyPhase::MaskedCompare)
+    } else if every((true, false))
+        && foreign_indel(record, span, rules.guard.and_then(|g| g.get(variant)))
+        && bases_contradict_ref(record, &seq, quals, min_baseq, variant, span)
+    {
+        // Its bases fit REF over the windows, but its own alignment changes the length
+        // inside them with an indel no background recurs as, and its bases read on show
+        // it: another indel inside the window (RJ-7) the windows do not reach (an
+        // insertion whose first bases repeat the flank) - another allele, partial
+        // evidence. Bases decide: a read whose bases still fit REF (ending inside a
+        // run) stays REF.
+        trace!("carrier: fits REF but its bases read on show another indel inside the windows → neither, partial");
+        ClassifyResult::neither_with_nearby(qual, ClassifyPhase::MaskedCompare)
     } else if every((true, false)) {
         ClassifyResult::is_ref(qual, ClassifyPhase::MaskedCompare)
     } else if held.is_some() && mm_alt < mm_ref {
@@ -916,13 +929,44 @@ pub(crate) struct Guard {
     /// Fragments read: those showing one allele's core exactly between the flank
     /// bases.
     pub scanned: u32,
+    /// The indels the reads' own alignments write inside the windows' span that recur
+    /// as background (on [`GUARD_MIN_READS`] fragments and [`GUARD_MIN_SHARE`] of
+    /// those spanning the windows: a germline indel beside the event): its genome
+    /// position and length (insertion +, deletion -), as [`own_indels`] gives them.
+    pub indels: Vec<(i64, i64)>,
 }
 
 impl Guard {
     /// The guard found for `v`.
     pub(crate) fn new(v: &Variant, masked: Vec<i64>, larger: Option<ObservedAllele>, scanned: u32) -> Self {
-        Self { key: (v.pos, v.ref_allele.clone(), v.alt_allele.clone()), masked, larger, scanned }
+        Self { key: (v.pos, v.ref_allele.clone(), v.alt_allele.clone()), masked, larger, scanned, indels: Vec::new() }
     }
+}
+
+/// The insertions and deletions a read's own alignment writes inside `[lo, hi)`
+/// (genome): an insertion between two bases of the span at the position after it, a
+/// deletion overlapping it at its first deleted base, each with its length
+/// (insertion +, deletion -).
+fn own_indels(record: &Record, (lo, hi): (i64, i64)) -> Vec<(i64, i64)> {
+    let (mut rp, mut out) = (record.pos(), Vec::new());
+    for op in record.cigar().iter() {
+        match op {
+            Cigar::Match(n) | Cigar::Equal(n) | Cigar::Diff(n) | Cigar::RefSkip(n) => rp += *n as i64,
+            Cigar::Ins(n) => {
+                if rp > lo && rp < hi {
+                    out.push((rp, *n as i64));
+                }
+            }
+            Cigar::Del(n) => {
+                if rp < hi && rp + *n as i64 > lo {
+                    out.push((rp, -(*n as i64)));
+                }
+                rp += *n as i64;
+            }
+            Cigar::SoftClip(_) | Cigar::HardClip(_) | Cigar::Pad(_) => {}
+        }
+    }
+    out
 }
 
 /// A variant's [`Guard`], found from its reads on first use: only the exact-carrier
@@ -1118,14 +1162,90 @@ pub(crate) fn guard_for(
             given_carriers: given,
         })
     };
-    if masked.is_empty() && larger.is_none() {
+    // The indels the reads' own alignments write inside the windows' span, the event's
+    // own aside, per fragment, against the fragments spanning the windows: those
+    // recurring are background (a germline indel beside the event), every other one
+    // another allele.
+    let mut indels = Vec::new();
+    if let Some(span) = windows(v, &Layout::default()).map(|w| w.span()) {
+        let mut carrying: HashMap<(i64, i64), std::collections::HashSet<&[u8]>> = HashMap::new();
+        let mut spanning: std::collections::HashSet<&[u8]> = std::collections::HashSet::new();
+        for record in read_cache.iter().filter(|r| counted(r)) {
+            if record.pos() <= span.0 && crate::shared::bam_utils::ref_end(record) >= span.1 {
+                spanning.insert(record.qname());
+            }
+            // a read whose indels there change the length by the event's own change
+            // writes the event itself, however the aligner placed it: no indel beside it
+            let ops = own_indels(record, span);
+            if ops.iter().map(|o| o.1).sum::<i64>() == ev.d {
+                continue;
+            }
+            for o in ops {
+                carrying.entry(o).or_default().insert(record.qname());
+            }
+        }
+        let of = spanning.len() as u32;
+        indels = carrying
+            .into_iter()
+            .filter(|(_, f)| f.len() as u32 >= GUARD_MIN_READS && share(f.len() as u32, of) >= GUARD_MIN_SHARE)
+            .map(|(o, _)| o)
+            .collect();
+        indels.sort_unstable();
+    }
+    if masked.is_empty() && larger.is_none() && indels.is_empty() {
         return None;
     }
     trace!(
-        "carrier guard at {}:{} {}>{}: {} recurring changes beside the event masked, {} on the ALT reads alone",
+        "carrier guard at {}:{} {}>{}: {} recurring changes beside the event masked, {} on the ALT reads alone, {} \
+         recurring indels inside the windows",
         v.chrom, v.pos + 1, v.ref_allele, v.alt_allele, masked.len(), alt_only.iter().map(Vec::len).sum::<usize>(),
+        indels.len(),
     );
-    Some(Guard::new(v, masked, larger, scanned))
+    let mut guard = Guard::new(v, masked, larger, scanned);
+    guard.indels = indels;
+    Some(guard)
+}
+
+/// Whether a read's confident bases, read on without gaps from the windows' first
+/// base (genome `span.0`, where its own alignment places it) to its end or its next
+/// splice, contradict the prepared reference: two or more mismatches (an error is one).
+/// Nothing past the windows is otherwise read; this asks only whether an indel its own
+/// alignment writes inside them shows in its bases.
+fn bases_contradict_ref(record: &Record, seq: &[u8], quals: &[u8], min_baseq: u8, v: &Variant, span: (i64, i64)) -> bool {
+    let (Some((start, reference)), Some(q0)) = (prepared_reference(v), find_read_pos(record, span.0)) else {
+        return false;
+    };
+    let Ok(r0) = usize::try_from(span.0 - start) else { return false };
+    // the query position where the read's next splice starts, past which its bases
+    // follow another exon
+    let (mut qp, mut stop) = (0usize, seq.len());
+    for op in record.cigar().iter() {
+        match op {
+            Cigar::RefSkip(_) if qp > q0 => {
+                stop = qp;
+                break;
+            }
+            Cigar::Match(n) | Cigar::Equal(n) | Cigar::Diff(n) | Cigar::Ins(n) | Cigar::SoftClip(n) => qp += *n as usize,
+            _ => {}
+        }
+    }
+    let mismatches = (q0..stop.min(seq.len()))
+        .zip(r0..reference.len())
+        .filter(|&(q, r)| {
+            let b = seq[q].to_ascii_uppercase();
+            b != WILD && quals.get(q).is_some_and(|&x| x >= min_baseq) && b != reference[r]
+        })
+        .count();
+    mismatches >= 2
+}
+
+/// Whether a read's own alignment changes the length inside the windows' span
+/// (genome) with an indel the guard does not hold as background: another indel inside
+/// the window (RJ-7). An insertion and a deletion that cancel (a block written
+/// shifted, an insertion before it and a deletion after) change no length.
+fn foreign_indel(record: &Record, span: (i64, i64), guard: Option<&Guard>) -> bool {
+    let ops = own_indels(record, span);
+    ops.iter().map(|o| o.1).sum::<i64>() != 0 && ops.iter().any(|o| !guard.is_some_and(|g| g.indels.contains(o)))
 }
 
 /// The minimal differing interval of `a` (REF offsets) against `b`, trimming the
@@ -1600,6 +1720,24 @@ mod tests {
     }
 
     /// `n` copies of `rec`, each its own fragment (named `tag` and a number).
+    #[test]
+    fn a_reads_own_indels_inside_the_windows_are_another_unless_they_recur() {
+        let read = |cigar: Vec<Cigar>| aligned(&[b'A'; 40], cigar, 100);
+        let span = (110, 120);
+        let ins = read(vec![Cigar::Match(15), Cigar::Ins(5), Cigar::Match(20)]);
+        assert_eq!(own_indels(&ins, span), vec![(115, 5)], "an insertion inside");
+        let del = read(vec![Cigar::Match(18), Cigar::Del(4), Cigar::Match(22)]);
+        assert_eq!(own_indels(&del, span), vec![(118, -4)], "a deletion overlapping the end");
+        let before = read(vec![Cigar::Match(10), Cigar::Ins(3), Cigar::Match(27)]);
+        assert!(own_indels(&before, span).is_empty(), "an insertion at the span's first base is outside");
+        let shifted = read(vec![Cigar::Match(12), Cigar::Ins(1), Cigar::Match(2), Cigar::Del(1), Cigar::Match(25)]);
+        assert!(!foreign_indel(&shifted, span, None), "an insertion and a deletion that cancel");
+        assert!(foreign_indel(&ins, span, None), "no background: another indel");
+        let mut g = Guard::new(&var(&"A".repeat(200), 115, "A", "G"), vec![], None, 0);
+        g.indels = vec![(115, 5)];
+        assert!(!foreign_indel(&ins, span, Some(&g)), "background: a separate event");
+    }
+
     fn fragments(rec: &Record, n: usize, tag: &str) -> Vec<Record> {
         (0..n)
             .map(|i| {
