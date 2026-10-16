@@ -1316,3 +1316,35 @@ def test_a_change_at_a_base_the_event_changes_is_no_separate_event(tmp_path):
     (c,) = count_checked(bam, [v])
     _invariants(c)
     assert (c.rd, c.ad) == (20, 20)
+
+
+# ── #278: a germline change joining the run a pure indel slides through ───
+
+
+@pytest.mark.parametrize("n_alt", [0, 6])
+def test_a_germline_change_joining_a_deletions_run_to_the_next_keeps_ref_reads_ref(tmp_path, n_alt):
+    """CG>C, one G of GGG deleted before eight Cs, every molecule carrying a germline C at
+    the run's last G (GG then nine Cs): a REF molecule, the given REF with a change both
+    alleles carry, which inside the deletion's short windows reads as the ALT. The C is
+    background at a base the deletion keeps, masked at its place on each allele, and both
+    windows read on to where the Cs end: the REF molecules count REF, ALT molecules on
+    that background (G then nine Cs) ALT, and no REF molecule counts ALT."""
+    contig = list(_contig(seed=91))
+    contig[P - 4 : P + 16] = "ACAG" + "C" + "GGG" + "CCCCCCCC" + "AGGG"
+    contig = "".join(contig)
+    p = P  # the anchor C; the run is P+1..P+3, the Cs P+4..P+11
+    germ = contig[: p + 3] + "C" + contig[p + 4 :]  # GG then nine Cs
+    alt = germ[: p + 1] + germ[p + 2 :]  # one G deleted: G then nine Cs
+    reads = []
+    for i in range(40):
+        s = p - 60 + i
+        reads.append(make_read(f"ref{i}", germ[s : s + READ], s, ((0, READ),)))
+    for i in range(n_alt):
+        s = p - 60 + i
+        m = p + 1 - s
+        reads.append(make_read(f"alt{i}", alt[s : s + READ], s, ((0, m), (2, 1), (0, READ - m))))
+    fa, bam = write_contig(tmp_path, contig, reads)
+    (v,) = _prepared(fa, [(p, "CG", "C")])
+    (c,) = count_checked(bam, [v])
+    _invariants(c)
+    assert (c.rd, c.ad) == (40, n_alt)

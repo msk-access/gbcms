@@ -27,10 +27,20 @@ Test coverage:
   9. DEL singleton: single read with D-op → ALT (no conflict)
   10. INS + REF agree: both reads M-block at INS site → REF
   11. DEL + REF agree: both reads M-block at DEL site → REF
+
+These variants carry no prepared reference, so the CIGAR checks judge them. A
+prepared pure indel is judged by its reads' bases (#278), and its mates' conflicts
+resolve by quality, as every bases-judged call's do (D8, operator 2026-10-15):
+  12. Prepared DEL conflict at equal quality → discarded
+  13. Prepared DEL conflict, the carrier the better read → ALT; REF the better → REF
 """
 
-from helpers import build_bam, count_checked, make_read
+import random
 
+import pytest
+from helpers import build_bam, count_checked, make_read, write_contig
+
+from gbcms import _rs
 from gbcms._rs import Variant
 
 # ── Helpers ──────────────────────────────────────────────────────────────
@@ -464,3 +474,39 @@ def test_del_ref_agreement(tmp_path):
     _assert_invariants(counts, "del_ref_agree")
     assert counts.rdf == 1, f"Expected rdf=1 (both agree REF), got {counts.rdf}"
     assert counts.adf == 0, f"Expected adf=0, got {counts.adf}"
+
+
+# ── Tests 12-13: a prepared pure indel's mates resolve by quality (D8) ──────
+
+
+@pytest.mark.parametrize(
+    "ref_q, alt_q, want",
+    [(30, 30, (0, 0)), (25, 40, (0, 1)), (40, 25, (1, 0))],
+    ids=["tie discarded", "carrier the better read", "REF the better read"],
+)
+def test_prepared_deletion_mates_resolve_by_quality(tmp_path, ref_q, alt_q, want):
+    """A 3-base deletion in unique sequence, prepared against its FASTA: R1 reads
+    REF, R2 carries the deletion its CIGAR writes. Both are judged by their bases, so
+    neither is structural: the fragment is the better-read mate's allele, and a tie
+    within the quality margin is discarded (it stays in fragment depth)."""
+    rng = random.Random(278)
+    contig = "".join(rng.choice("ACGT") for _ in range(600))
+    p = 300  # the anchor
+    alt_hap = contig[: p + 1] + contig[p + 4 :]
+    s, n = p - 40, 100
+    r1 = _make_paired("f", contig[s : s + n], s, ((0, n),), True, False, quals=[ref_q] * n)
+    left = p + 1 - s
+    cig = ((0, left), (2, 3), (0, n - left))
+    r2 = _make_paired("f", alt_hap[s : s + n], s, cig, False, True, quals=[alt_q] * n)
+    for r in (r1, r2):
+        r.next_reference_start = s
+        r.template_length = 103 if r is r1 else -103
+    fa, bam = write_contig(tmp_path, contig, [r1, r2], "d8")
+    (pv,) = _rs.prepare_variants(
+        [_rs.Variant("1", p, contig[p : p + 4], contig[p], "DELETION")], fa, 5, False, 1, True
+    )
+    (c,) = count_checked(bam, [pv.variant])
+    _assert_invariants(c, "prepared_del_conflict")
+    assert (c.rd, c.ad) == (1, 1), "each mate is its allele at read level"
+    assert c.dpf == 1
+    assert (c.rdf, c.adf) == want

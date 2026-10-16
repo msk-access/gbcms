@@ -223,10 +223,11 @@ def test_a_large_deletion_with_a_small_insertion_at_its_far_junction_is_another_
     assert _count_reads(tmp_path, ref, ref[A : A + 58], ref[A], _ops(ref, events)) == (5, 0, 5)
 
 
-def test_soft_clipped_bases_behind_a_hard_clip_are_not_read(tmp_path):
-    """GA>G in G AAAAA T, carriers ending two bases into the run, the rest of the
-    read soft-clipped and then hard-clipped: the clipped bases are not read, so the
-    carriers fit both alleles and are uninformative."""
+def test_soft_clipped_bases_behind_a_hard_clip_are_read(tmp_path):
+    """GA>G in G AAAAA T, carriers aligned two bases into the run, the rest of the
+    read soft-clipped and then hard-clipped: the soft-clipped bases are the read's
+    own (RJ-13) and show the run one A short and the T after it, so the carriers are
+    ALT."""
 
     def carrier(s):
         left = A + 1 - s
@@ -234,14 +235,15 @@ def test_soft_clipped_bases_behind_a_hard_clip_are_not_read(tmp_path):
         return seq, ((0, left), (2, 1), (0, 2), (4, 6), (5, 3))
 
     c = _count_reads(tmp_path, HOMOPOLYMER, "GA", "G", carrier, full=True)
-    assert (c.rd, c.ad, c.partial_alt) == (5, 0, 0)
+    assert (c.rd, c.ad, c.partial_alt) == (5, 5, 0)
 
 
-def test_a_misplaced_deletion_ambiguous_at_a_masked_base_is_not_alt(tmp_path):
+def test_a_misplaced_deletion_ambiguous_at_a_masked_base_is_alt(tmp_path):
     """CG>C deletes a G of the run after C C. The carriers' CIGAR deletes the first
     C instead, and the base where "deleted a C" (C GGGGGGG) and "deleted a G"
-    (CC GGGGGG) differ is an N: their bases cannot tell the two alleles apart, so
-    not ALT (a real RC case)."""
+    (CC GGGGGG) differ is an N (a real RC case). Their bases show the ALT's length and
+    fit the ALT; "deleted a C" is no allele named at the locus, so it is no other
+    allele to tell the ALT from (RJ-25): ALT, wherever the CIGAR put the gap."""
 
     def carrier(s):
         left = A - 1 - s
@@ -249,8 +251,7 @@ def test_a_misplaced_deletion_ambiguous_at_a_masked_base_is_not_alt(tmp_path):
         seq = (hap[: left + 1] + "N" + hap[left + 2 :])[:READ]
         return seq, ((0, left), (2, 1), (0, READ - left))
 
-    rd, ad, partial = _count_reads(tmp_path, CCG7, "CG", "C", carrier)
-    assert ad == 0
+    assert _count_reads(tmp_path, CCG7, "CG", "C", carrier) == (5, 5, 0)
 
 
 def test_a_misplaced_deletion_whose_read_base_settles_it_is_alt(tmp_path):

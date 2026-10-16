@@ -286,14 +286,17 @@ def test_ins_unique_context_1bp_vs_2bp(tmp_path):
     assert (c.rd, c.ad, c.partial_alt) == (8, 0, 6)
 
 
-def test_ins_truncation_of_complex_insert_counts_alt(tmp_path):
-    """Regime 3: sequencing errors truncate long inserted sequences, producing
-    shorter I ops whose sequence is a prefix of the expected insert. Sign-out
-    counts these as the same event; so must we (containment rule)."""
+def test_ins_truncation_of_complex_insert_is_another_allele(tmp_path):
+    """Regime 3: reads whose insert is a prefix of the expected one, the reference
+    after it. Sign-out counts them as the same event (the CIGAR path's 90% identity
+    band, kept where the exact-carrier rule cannot judge); judged by their bases they
+    show an 11-base insertion, not the ALT's 19: another allele, partial evidence (D2,
+    operator 2026-10-16). Reads ending inside the insert, or written short with its
+    rest as mismatches, stay ALT by their bases."""
     ref = _mk_ref()
     bam = _bam(tmp_path, ref, _ref_reads(ref, 200) + _ins_reads(ref, 200, COMPLEX_INS[:11]))
     c = _count(bam, _ins_variant(ref, 200, COMPLEX_INS))
-    assert (c.rd, c.ad, c.partial_alt) == (8, 6, 0)
+    assert (c.rd, c.ad, c.partial_alt) == (8, 0, 6)
 
 
 def test_ins_unrelated_insert_stays_partial(tmp_path):

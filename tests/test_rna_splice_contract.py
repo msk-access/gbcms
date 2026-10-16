@@ -376,15 +376,14 @@ def test_insertion_after_junction_is_examined(tmp_path):
     bam = _bam(tmp_path, ref, carriers + refs)
     fasta = _fasta(tmp_path, ref)
     # Default RNA BAQ stacks splice + indel penalties on the inserted bases
-    # (they sit within 5bp of both the N and the I), so the sequence cannot
-    # be verified at >= min_baseq: honest outcome is partial evidence, never
-    # REF absorption. (With --gtf, boundary suppression restores the quals
-    # at annotated junctions.)
+    # (they sit within 5bp of both the N and the I), so they read below min_baseq:
+    # an unreadable insert of the ALT's length at its junction, ALT (RJ-20). The REF
+    # reads' bases at the junction are lowered too; read on into exon 2, their bases
+    # show REF. (With --gtf, boundary suppression restores the quals at annotated
+    # junctions.)
     r = _run(tmp_path, vcf, bam, fasta)[0]
-    assert (int(r["ref_count"]), int(r["alt_count"])) == (0, 0)
-    assert (
-        int(r["partial_alt"]) == 4
-    ), f"BAQ-unverifiable junction inserts must carry partial evidence, got {r['partial_alt']}"
+    assert (int(r["ref_count"]), int(r["alt_count"])) == (5, 4)
+    assert int(r["partial_alt"]) == 0
     # Without BAQ the inserted bases keep their real quality and the post-N
     # inspection confirms the exact-sequence match: full ALT, read and
     # fragment level.
@@ -521,8 +520,9 @@ def test_spliced_reads_count_the_same_under_any_bin_geometry(tmp_path):
     """N-CIGAR reads: the splice-skip exclusion, the post-N deletion reads (depth
     only: no aligned base flanks a deletion at the junction) and span-aligned REF
     testimony count the same with one variant per bin (count_checked compares
-    every field)."""
-    from helpers import build_bam
+    every field). Counted as the CLI's rna command counts, against the reference: the
+    junction reads are judged on the reference spliced along their junctions."""
+    from helpers import write_contig
 
     from gbcms._rs import Variant
 
@@ -548,7 +548,7 @@ def test_spliced_reads_count_the_same_under_any_bin_geometry(tmp_path):
     for i in range(3):  # pre-mRNA reads with aligned bases across the locus
         s = anchor - 50 + i
         reads.append(make_read(f"pm{i}", ref[s : s + rl], s, ((0, rl),)))
-    bam = build_bam(tmp_path, reads)
+    fa, bam = write_contig(tmp_path, ref, reads, chrom="chr1")
     pad = 8
     v = Variant(
         chrom="chr1",
@@ -559,7 +559,7 @@ def test_spliced_reads_count_the_same_under_any_bin_geometry(tmp_path):
         ref_context=ref[anchor - pad : p0 + 2 + pad],
         ref_context_start=anchor - pad,
     )
-    c = count_checked(bam, [v], min_mapq=0, min_baseq=0)[0]
+    c = count_checked(bam, [v], min_mapq=0, min_baseq=0, mode="rna", reference_fasta=fa)[0]
     assert c.dp >= c.rd + c.ad
     assert c.dpf >= c.rdf + c.adf
     assert c.rd == c.rd_fwd + c.rd_rev
@@ -794,11 +794,10 @@ def test_span_ref_testimony_yields_to_competing_indel(tmp_path):
 
 
 def test_span_ref_survives_zero_quality_consensus(tmp_path):
-    """Span-aligned REF is coverage evidence, not base-quality evidence: the
-    attributed qual is the first exon base after the junction, which BAQ
-    legitimately zeroes when the raw quality is ≤20. The fragment layer must
-    still resolve REF (rd>0 with rdf=0 was the exact ALT-side divergence
-    fixed earlier — this pins its REF mirror)."""
+    """Bases at min BQ decide (#278): junction reads whose every base is Q15, below
+    min BQ 20 before BAQ lowers any, show no allele: depth only, read and fragment
+    alike. The pre-mRNA reads count REF at both levels (rd>0 with rdf=0 was the
+    exact ALT-side divergence fixed earlier — this pins its REF mirror)."""
     ref = _mk_ref()
     intron_start, gap = 280, 40
     anchor = intron_start + gap - 1  # 319, spliced out; span [320, 322)
@@ -827,10 +826,8 @@ def test_span_ref_survives_zero_quality_consensus(tmp_path):
         _fasta(tmp_path, ref),
     )
     r = rows[0]
-    assert int(r["ref_count"]) == 5
-    assert (
-        int(r["ref_count_fragment"]) == 5
-    ), f"BAQ-zeroed span-REF must survive fragment consensus, got rdf={r['ref_count_fragment']}"
+    assert int(r["ref_count"]) == 2
+    assert int(r["ref_count_fragment"]) == 2, f"rd and rdf agree, got rdf={r['ref_count_fragment']}"
     assert int(r["total_count_fragment"]) == 5
 
 

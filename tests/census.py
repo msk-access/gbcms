@@ -20,8 +20,8 @@ How a read is judged:
   of each allele.
 - **Masking:** a base below `min_baseq`, or N, fits anything.
 - **Splices:** reading stops at a splice N, as if the read ended there.
-- **Soft clips:** for a pure indel, reading stops at a clip (the rule reads aligned
-  bases only); for other variants clipped bases are read where they sit.
+- **Soft clips:** clipped bases inside the fragment are the read's own and are read
+  where they sit (RJ-13).
 - **Fragment end:** a read ends at its fragment end. Bases past it (read-through
   into adapter, when the insert is shorter than the read) are not read, and the
   read's extent stops at its last aligned base inside the fragment, when those
@@ -30,17 +30,14 @@ How a read is judged:
 The tract is the census's own slide of the indel along the reference, not prep's
 `shift_region`, so a prep error cannot move the census with it.
 
-Four of the engine's decided rules are encoded here, because they are policy, not
+Three of the engine's decided rules are encoded here, because they are policy, not
 bases:
-- a REF verdict needs one base past the first base where the alleles differ (the
-  margin that guards CIGAR-only REF calls against a hidden terminal mismatch);
-- an ALT verdict needs only that base, read unmasked;
-- an insertion's ALT verdict needs one of the read's own inserted bases read: its
-  I-op bases in the stretch it reads must hold more unmasked bases than the
-  reference bases it deletes there (C35 #240). Length alone fits the ALT, but the
-  read then carries the insertion's length, not its sequence (UNREADABLE). This
-  rule reads the CIGAR, as the engine does: in a run, the aligner writes a masked
-  base as the insertion.
+- a pure indel's ALT verdict needs only the first base where the alleles differ,
+  read unmasked; a REF verdict needs the read to reach that base too, with no margin
+  past it: one base past the shorter allele's tract, or the longer allele's last tract
+  base (D1, #278);
+- an insertion whose inserted bases are unreadable shows its length, which fits the
+  ALT: ALT, where no other allele of that length is named (RJ-20, #278);
 - at a complex variant, an ALT verdict needs a base telling the ALT from each other
   allele of its length at the locus, and a REF verdict one telling REF from each of
   REF's length (RJ-25): a read whose bases fit its allele and another allele of that
@@ -108,7 +105,6 @@ class Verdict(Enum):
     CONTRADICTS_BOTH = "contradicts both"
     NOT_ANCHORED = "not anchored"
     SPLICED = "spliced"
-    UNREADABLE = "insert unread"
     FITS_OTHER = "fits another allele too"
 
 
@@ -287,10 +283,6 @@ def _fits(stretch: str, allele: str) -> bool:
     )
 
 
-def _first_difference(a: str, b: str) -> int | None:
-    return next((i for i, (x, y) in enumerate(zip(a, b, strict=False)) if x != y), None)
-
-
 def _alt_reading(stretch: str, ref: str, alt: str) -> bool | None:
     """The ALT side's reading from one anchor: True once a base where the alleles
     differ is read unmasked and fits the ALT, every unmasked base before it fitting
@@ -308,23 +300,21 @@ def _alt_reading(stretch: str, ref: str, alt: str) -> bool | None:
     return None
 
 
-def _one_side(stretch: str, ref: str, alt: str, margin: bool) -> tuple[bool, bool]:
+def _one_side(stretch: str, ref: str, alt: str, settle: bool) -> tuple[bool, bool]:
     """(fits ALT, fits REF) for a stretch read from one anchor, against the same
     length of each haplotype read from that anchor. For a pure indel, ALT is settled
-    at its first deciding base (the bases after it are not read), and REF needs one
-    base past the first difference."""
+    at its first deciding base (the bases after it are not read); REF is read over the
+    whole stretch, which decides once it reaches the first base where the alleles
+    differ: one base past the shorter allele's tract, or the longer allele's last tract
+    base (D1, #278: no margin past it)."""
     k = len(stretch)
     fits_alt, fits_ref = _fits(stretch, alt[:k]), _fits(stretch, ref[:k])
-    if margin:
+    if settle:
         reading = _alt_reading(stretch, ref, alt)
         if reading is not None:
             fits_alt = reading
             if reading:
                 return True, False
-    if margin and fits_ref and not fits_alt:
-        d = _first_difference(ref[:k], alt[:k])
-        if d is not None and k < d + 2:
-            return True, True  # ends on the deciding base: not decisive for REF
     return fits_alt, fits_ref
 
 
@@ -433,43 +423,6 @@ def _molecule(read) -> tuple[int, int, dict[int, int]]:
     return lo, hi, pairs
 
 
-def _insert_unread(read, bases: str, spans) -> bool:
-    """Whether the read's own inserted bases hold no more unmasked bases than the
-    reference bases it deletes beside them (a deleted anchor re-inserted with the
-    insert reads the anchor, not the insert). Its inserted bases are every I op
-    reaching into the query spans `[lo, hi)` the census reads, whole; its deletions
-    those inside the spans or adjacent to such an I op. False when it inserts
-    nothing there."""
-    ops, qp, at = read.cigartuples, 0, []
-    for op, n in ops:
-        at.append(qp)
-        if op in (0, 1, 4, 7, 8):
-            qp += n
-    inside = [
-        op == 1 and any(lo < at[i] + n and at[i] < hi for lo, hi in spans)
-        for i, (op, n) in enumerate(ops)
-    ]
-    if not any(inside):
-        return False
-    readable = sum(
-        bases[q] != "N"
-        for i, (_, n) in enumerate(ops)
-        if inside[i]
-        for q in range(at[i], at[i] + n)
-    )
-    deleted = sum(
-        n
-        for i, (op, n) in enumerate(ops)
-        if op == 2
-        and (
-            any(lo <= at[i] <= hi for lo, hi in spans)
-            or (i > 0 and inside[i - 1])
-            or (i + 1 < len(ops) and inside[i + 1])
-        )
-    )
-    return readable <= deleted
-
-
 def _one_base(q: int) -> float:
     """The evidence (log10) one base read at quality `q` gives for the base it shows
     over another: the engine's unit of placement evidence."""
@@ -566,10 +519,8 @@ def judge(read, window: Window | Junction, min_baseq: int = 20) -> Verdict:
         if qr is not None and window.right + 1 not in pairs and not reads_flank(qr, window.right):
             qr = None
     n = max(len(window.ref), len(window.alt))
-    # A pure indel's rules do not read soft-clipped bases (an aligner's clip of a
-    # pure indel's carrier is the clip-borne-carrier work, not this rule's).
-    lead, trail = _clips(read) if window.indel else (0, len(bases))
-    lead, trail = max(lead, frag_lo), min(trail, frag_hi)
+    # Soft-clipped bases inside the fragment are the read's own (RJ-13).
+    lead, trail = frag_lo, frag_hi
 
     def left_span():
         end = min([q for q in stops if q > ql] + [trail])
@@ -589,11 +540,6 @@ def judge(read, window: Window | Junction, min_baseq: int = 20) -> Verdict:
         lo, hi = right_span()
         stretch = bases[lo:hi]
         return _one_side(stretch[::-1], window.ref_left[::-1], window.alt_left[::-1], window.indel)
-
-    insertion = window.indel and len(window.alt) > len(window.ref)
-
-    def unread(spans) -> bool:
-        return insertion and _insert_unread(read, bases, spans)
 
     def fits_other(both_anchors: bool, alleles) -> bool:
         """Whether the read's bases fit another allele of its allele's length as they
@@ -618,32 +564,21 @@ def judge(read, window: Window | Junction, min_baseq: int = 20) -> Verdict:
     if ql is not None and qr is not None and not any(ql < q <= qr for q in stops):
         stretch = bases[ql + 1 : qr]
         fits_alt, fits_ref = _fits(stretch, window.alt), _fits(stretch, window.ref)
-        # REF needs one base past where the alleles first differ, read from either
-        # side: inside the tract for a deletion, beyond the far flank for an insertion.
-        if window.indel and fits_ref and not fits_alt:
-            if not any(r and not a for a, r in (from_left(), from_right())):
-                return Verdict.FITS_BOTH
         verdict = _verdict(fits_alt, fits_ref)
-        if verdict is Verdict.ALT and unread([(ql + 1, qr)]):
-            return Verdict.UNREADABLE
         if verdict is Verdict.ALT and fits_other(True, window.others):
             return Verdict.FITS_OTHER
         if verdict is Verdict.REF and not window.indel and fits_other(True, window.ref_others):
             return Verdict.FITS_OTHER
         return verdict
-    sides, spans = [], []
+    sides = []
     if ql is not None:
         sides.append(from_left())
-        spans.append(left_span())
     if qr is not None:
         sides.append(from_right())
-        spans.append(right_span())
     if not sides:
         covered = any(a <= window.left + 1 and b >= window.right for _, a, b in splices)
         return Verdict.SPLICED if covered else Verdict.NOT_ANCHORED
     verdict = _verdict(all(a for a, _ in sides), all(r for _, r in sides))
-    if verdict is Verdict.ALT and unread(spans):
-        return Verdict.UNREADABLE
     if verdict is Verdict.ALT and fits_other(False, window.others):
         return Verdict.FITS_OTHER
     if verdict is Verdict.REF and not window.indel and fits_other(False, window.ref_others):

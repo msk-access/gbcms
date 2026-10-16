@@ -297,9 +297,10 @@ def test_c28_a_read_deleting_the_anchor(tmp_path, events):
     _open_case(tmp_path, "u-8", events, "c28")
 
 
-def test_a_pure_indels_clipped_bases_decide_nothing(tmp_path):
-    """The rule reads aligned bases only: a REF-haplotype read aligned up to the run
-    and soft-clipped from it fits both alleles, as the engine counts it."""
+def test_a_pure_indels_clipped_bases_are_read(tmp_path):
+    """The rule reads the clipped bases too (RJ-13): a REF-haplotype read aligned up to
+    the run and soft-clipped from it shows the run's full length in its clip: REF, as
+    the engine counts it."""
     motif, ref, alt = ROWS["hp+A"]
     contig = _contig(motif)
     s = A - 50
@@ -308,7 +309,7 @@ def test_a_pure_indels_clipped_bases_decide_nothing(tmp_path):
     (pv,) = gbcms_rs.prepare_variants(
         [gbcms_rs.Variant("1", A, ref, alt, "X")], fa, 5, False, 1, True
     )
-    assert judge(make_read("c", seq, s, cigar), window_for(pv.variant, contig)) == Verdict.FITS_BOTH
+    assert judge(make_read("c", seq, s, cigar), window_for(pv.variant, contig)) == Verdict.REF
 
 
 def test_a_substitution_needs_no_margin(tmp_path):
