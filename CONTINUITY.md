@@ -3,9 +3,38 @@
 > Tactical state that must survive a closed laptop or a context summary.
 > Update the **Now** and **Next** sections as work progresses.
 
-_Last updated: 2026-10-14_
+_Last updated: 2026-10-16_
 
-## Now
+## Now — #278 (pure indels judged by their bases, groups B and C)
+Branch `feature/c43b-pure-indel-shapes` in worktree `.claude/worktrees/c43b` (scratch venv
+`scratchpad/venv_c43b`). Operator decisions 2026-10-15/16: D1 one flank base, D2 a
+truncated copy of a long insert is another allele (identity band measured, not adopted),
+D3 ALT + separate SNV, D4 recurring substitution in the event = another allele, D5 masked
+deletion ALT where its bases show the length, D6 fixtures carry the reference, D7
+deleted-base background, D8 mates by quality, growth only on the allele holding the bases,
+C4 an exact fit at the pre-read-on hold. Covered expectations with their evidence:
+`278_expectation_evidence.md` (local).
+- **Final candidate `plan670/src_c43py` (dc5bdb9d)**: the shift test (a fit on too few
+  bases fails where a shift of up to 8 explains the next 12 bases by 2+ confident bases
+  better) replaced the review fix's count threshold (that lost 516 oracle-ALT carriers of
+  a phased DNP); the RNA exon-start fix (an unspliced read starting within 5 of an exon
+  start that cuts the left flank reads the windows up to it).
+- Measured: full local gate 411/411; adjudication (1,062 rows) within oracle a sign-out
+  749, develop 838, c43py 867 (b: 794/921/968; 14 farther, 58 closer); HG002 vs the CIGAR
+  path: 10+ bp ins in band 110 -> 334, short ins 465 -> 552, dels 529 -> 563; normals vs
+  develop AD +3 (rows already carrying the allele), RD -138; normals/ACCESS vs c43y AD +3,
+  RD +171; RNA arm identical to c43ps. Docs: RJ-26/RJ-27 + evidence, CHANGELOG (c05a1eba).
+- Branch rebuilt as four commits on develop (rule, RNA fix, docs, continuity; tree
+  identical to the first cut, kept on local `archive/c43b-first-cut`). Lint gate at CI's
+  versions, clippy, cargo test 325, pytest 1679 pass. Next: #278 decision record and PR
+  body drafted (`278_decision_record.md`, `278_pr_body.md`, local); ask before posting,
+  pushing or opening the PR to develop.
+- Follow-ups: under BAQ a TG insertion exactly at an exon start leaves spliced reads
+  neither/partial (pre-existing); an other-length expansion in a repeat placed outside the
+  discrimination window counts REF; harness cleanup (`src_c43p*` builds, wt_d2band,
+  wt_c43pr, wt_c43ps, frozen_* worktrees).
+
+## Before — C43a
 6.7.0 (tracker #196): C39 (#272) and C40 (#281) merged; C43 #276 (pure indels judged by
 their bases) in 6.7.0 with one HPC gate for C39 + C40 + C43.
 - **C43a #277 done** on `feature/c43-indels-by-bases` (worktree `.claude/worktrees/c43`,
