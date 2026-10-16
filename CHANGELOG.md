@@ -45,7 +45,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   from the two-flank oracle, 58 closer). The strata the gate flags moved away from the
   sign-out, which the oracle shows is the least concordant of the three. Matched
   normals: AD +3 over three rows that already carry the allele, RD -138; the 1,402
-  normal and ACCESS rows of the local arms AD +3, RD +171.
+  normal and ACCESS rows of the local arms AD +3, RD +171. FORTE (RNA): 11 of the 25
+  pure-indel rows change, all deletions, RD -230, AD +225 (with the GTF; without it
+  RD -211, AD +226), most of the AD on a 12-bp deletion whose carriers STAR wrote as
+  soft clips (AD 2 -> 107; 175 reads carry its junction in their bases).
 - **Found and fixed on the way.** A tolerated error now costs both alleles alike; a
   read's own indel is placed by its bases only up to its next indel; a call whose held
   bases are all below `--min-baseq` takes the quality of the bases it read, so the

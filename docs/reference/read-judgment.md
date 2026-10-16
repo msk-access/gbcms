@@ -250,8 +250,9 @@ calls the oracle agrees with against 111 it does not: not adopted. An adversaria
 review's third-allele shapes (21, pinned) led to the confirmation past the windows: a
 count threshold lost 516 oracle-ALT panel reads (carriers of one row with a phased DNP
 eight bases on); the shift test keeps them and removes 91 oracle-disagreeing calls for
-36 correct ones. Normals and ACCESS: AD +3 against develop over 1,402 rows. RNA
-(#291): on insertions and deletions at both edges of an exon, spliced and exon
+36 correct ones. Normals and ACCESS: AD +3 against develop over 1,402 rows. FORTE:
+11 of 25 pure-indel rows (all deletions) RD -230, AD +225, most of the AD a 12-bp
+deletion STAR soft-clipped on 173 of its 175 carriers. RNA (#291): on insertions and deletions at both edges of an exon, spliced and exon
 reads, BAQ on and off, without a GTF, every spliced read counts for its allele once
 it reads on along its mRNA (before: spliced REF reads at indels two to four bases
 before an exon's end neither, partial under BAQ; develop lost the spliced ALT reads
