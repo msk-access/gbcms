@@ -31,7 +31,7 @@
             body[data-md-color-scheme="slate"] .gslide-title { color: var(--md-default-fg-color); }
             body[data-md-color-scheme="slate"] .gslide-desc { color: var(--md-default-fg-color); }
         </style><meta name="panzoom-theme" content="material">
-<meta name="panzoom-data" content='{"selectors": [".mermaid", ".d2"], "initial_zoom_level": 1.0}'> </head>
+<meta name="panzoom-data" content='{"selectors": [".d2", ".mermaid"], "initial_zoom_level": 1.0}'> </head>
 <body data-md-color-accent="custom" data-md-color-primary="custom" data-md-color-scheme="default" dir="ltr">
 <input autocomplete="off" class="md-toggle" data-md-toggle="drawer" id="__drawer" type="checkbox">
 <input autocomplete="off" class="md-toggle" data-md-toggle="search" id="__search" type="checkbox">
@@ -780,6 +780,71 @@
 <p>The format is based on <a href="https://keepachangelog.com/en/1.0.0/">Keep a Changelog</a>,
 and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semantic Versioning</a>.</p>
 <h2 id="unreleased">[Unreleased]<a class="headerlink" href="#unreleased" title="Permanent link">¶</a></h2>
+<h3 id="changed-pure-insertions-and-deletions-judged-by-their-bases-278">Changed — pure insertions and deletions judged by their bases (#278)<a class="headerlink" href="#changed-pure-insertions-and-deletions-judged-by-their-bases-278" title="Permanent link">¶</a></h3>
+<ul>
+<li><strong>The rule (RJ-26, RJ-27).</strong> A pure insertion or deletion under 50 bp is judged by
+  the exact-carrier rule, as complex events are: by the read's bases, not where the
+  aligner wrote the gap; the <abbr title="Compact Idiosyncratic Gapped Alignment Report - BAM alignment operation string">CIGAR</abbr> checks judge only what the rule cannot (no prepared
+  reference). Its windows are its tract (where REF and ALT differ over every
+  placement), grown through the repeat its change lengthens or shortens, with one base
+  each side (D1). A read's own indel is placed by its bases: inside the discrimination
+  window, of the ALT's length and spelling it, it is the ALT; another length or
+  sequence there is another allele (partial evidence); placed only outside, a separate
+  event. One substitution is an error, tolerated where the other allele mismatches the
+  same base, unless it recurs inside the event (another allele) or sits in the flank,
+  where it is a phased neighbour and the reads keep their call. Reads whose windows fit
+  both alleles, or neither alike, are read on past them; a fit resting on too few bases
+  is confirmed there (a read whose further bases fit the allele shifted by another
+  length is another allele).</li>
+<li><strong>Decisions (operator, 2026-10-15/16).</strong> One flank base (D1); a truncated copy of a
+  long insert is another allele (D2: the <abbr title="Compact Idiosyncratic Gapped Alignment Report - BAM alignment operation string">CIGAR</abbr> path's identity band was measured and
+  not adopted); the ALT written far off with an SNV in its flank is ALT (D3); a
+  substitution all carriers share inside the event is another allele (D4); a deletion
+  whose bases between its flanks are all masked is ALT where its confident flanks lie
+  the ALT's length apart (D5); a change the REF molecules carry inside a deletion's
+  deleted bases is background on REF (D7); mates that disagree resolve by quality
+  (D8); an unreadable insert of the ALT's length at its junction is the ALT (RJ-20,
+  superseding C35's partial); soft-clipped bases are read (RJ-13); a pure indel grows
+  only through repeats on the allele holding its bases.</li>
+<li><strong>Why.</strong> Develop's <abbr title="Compact Idiosyncratic Gapped Alignment Report - BAM alignment operation string">CIGAR</abbr> checks took the aligner's placement of the gap as the
+  allele, so reads carrying the ALT written elsewhere, or another allele written where
+  the ALT goes, were counted by where they were written. On HG002's het indels (truth
+  <abbr title="Variant Allele Frequency - Fraction of reads supporting the variant allele">VAF</abbr> 0.5) against develop's <abbr title="Compact Idiosyncratic Gapped Alignment Report - BAM alignment operation string">CIGAR</abbr> checks: insertions of 10+ bp in band (0.35-0.65)
+  110 -&gt; 334 of about 560 rows, median <abbr title="Variant Allele Frequency - Fraction of reads supporting the variant allele">VAF</abbr> 0.150 -&gt; 0.424; short insertions 465 -&gt; 552
+  (0.429 -&gt; 0.486); deletions 529 -&gt; 563 (0.455 -&gt; 0.500).</li>
+<li><strong>On real data.</strong> The full local gate (411 runs) changes 1,062 dna-arm rows of the
+  flagged strata against develop; within tolerance of a bases-only oracle (any
+  discriminating base): sign-out 749, develop 838, this release 867 (14 rows farther
+  from the two-flank oracle, 58 closer). The strata the gate flags moved away from the
+  sign-out, which the oracle shows is the least concordant of the three. Matched
+  normals: <abbr title="Alternate Depth - Reads supporting the alternate allele">AD</abbr> +3 over three rows that already carry the allele, <abbr title="Reference Depth - Reads supporting the reference allele">RD</abbr> -138; the 1,402
+  normal and ACCESS rows of the local arms <abbr title="Alternate Depth - Reads supporting the alternate allele">AD</abbr> +3, <abbr title="Reference Depth - Reads supporting the reference allele">RD</abbr> +171. FORTE (RNA): 11 of the 25
+  pure-indel rows change, all deletions, <abbr title="Reference Depth - Reads supporting the reference allele">RD</abbr> -230, <abbr title="Alternate Depth - Reads supporting the alternate allele">AD</abbr> +225 (with the GTF; without it
+  <abbr title="Reference Depth - Reads supporting the reference allele">RD</abbr> -211, <abbr title="Alternate Depth - Reads supporting the alternate allele">AD</abbr> +226), most of the <abbr title="Alternate Depth - Reads supporting the alternate allele">AD</abbr> on a 12-bp deletion whose carriers <abbr title="Spliced Transcripts Alignment to a Reference - RNA-seq aligner">STAR</abbr> wrote as
+  soft clips (<abbr title="Alternate Depth - Reads supporting the alternate allele">AD</abbr> 2 -&gt; 107; 175 reads carry its junction in their bases).</li>
+<li><strong>Found and fixed on the way.</strong> A tolerated error now costs both alleles alike; a
+  read's own indel is placed by its bases only up to its next indel; a call whose held
+  bases are all below <code>--min-baseq</code> takes the quality of the bases it read, so the
+  fragment layer counts it too; a read whose bases place no change is read on to
+  confirm the ALT; a read short of the masks' read-on is decided by its own bases
+  where they fit one allele exactly. An adversarial review found reads of a third
+  allele counted ALT or REF where one base past the tract was all the windows read (a
+  C&gt;CATT row took a +ATTC read as ALT); on its fuzz, other-allele reads counted REF
+  fall 315 -&gt; 52 and ALT 74 -&gt; 6 with no correct call lost.</li>
+<li><strong>RNA.</strong> A read spliced at the exon edge that cuts the left flank reads from the left
+  on its spliced reference; an unspliced read starting at that exon start, or within
+  the five bases of overhang an aligner writes into the intron, reads the windows up to
+  the edge, so REF and ALT molecules starting inside a run that crosses the junction
+  count alike (an ALT-only miscount at an exon-start A run, present on develop). A
+  read spliced just past the windows reads on along its own mRNA, not the intron:
+  spliced reads at pure indels two to four bases before an exon's end had lost their
+  call (REF reads neither, or partial under <abbr title="Base Alignment Quality - Heuristic quality downgrade near indels and splice junctions">BAQ</abbr>) where develop counted them, and with
+  <abbr title="Base Alignment Quality - Heuristic quality downgrade near indels and splice junctions">BAQ</abbr> masking the bases at a junction (the RNA default, without a GTF) spliced reads
+  beside an exon edge count as with <abbr title="Base Alignment Quality - Heuristic quality downgrade near indels and splice junctions">BAQ</abbr> off. The exon edges are typed: an exon end
+  where the event starts leaves its left flank whole (#291). On the FORTE slices one
+  row changes, with the GTF or without: <abbr title="Reference Depth - Reads supporting the reference allele">RD</abbr> +1, a spliced REF read the intron had left
+  undecided.</li>
+</ul>
 <h3 id="changed-reads-judged-beside-the-other-alleles-at-their-locus-277">Changed — reads judged beside the other alleles at their locus (#277)<a class="headerlink" href="#changed-reads-judged-beside-the-other-alleles-at-their-locus-277" title="Permanent link">¶</a></h3>
 <ul>
 <li><strong>The rule (RJ-25).</strong> A read that fits the ALT counts ALT only when, for every
