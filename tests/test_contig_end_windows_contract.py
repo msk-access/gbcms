@@ -165,7 +165,8 @@ def _clipped_carriers(ref, anchor):
 def test_depth_near_the_contig_end_counts_as_mid_contig(tmp_path, site):
     """Unaligned near the end, the deletion kept its right-shifted anchor, which the
     clipped carriers (aligned up to the G) do not reach: they fell out of depth
-    (DP 5 at the end, 10 mid-contig)."""
+    (DP 5 at the end, 10 mid-contig). Their clipped bases read the run one A short and
+    the T after it, so they are ALT (RJ-13), at the end as mid-contig."""
     counts = {}
     for label in (site, "mid-contig (guard)"):
         anchor = SITES[label]
@@ -176,7 +177,7 @@ def test_depth_near_the_contig_end_counts_as_mid_contig(tmp_path, site):
         (pv,) = gbcms_rs.prepare_variants([_right_shifted(ref, anchor)], fa, 5, False, 1, True)
         (c,) = count_checked(bam, [pv.variant])
         counts[label] = (c.dp, c.rd, c.ad)
-    assert counts[site] == counts["mid-contig (guard)"] == (10, 5, 0), counts
+    assert counts[site] == counts["mid-contig (guard)"] == (10, 5, 5), counts
 
 
 # Reads relative to the delins: ending inside the event grown through the repeat

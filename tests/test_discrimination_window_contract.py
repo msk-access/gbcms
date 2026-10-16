@@ -80,7 +80,11 @@ def _deletion_reads(ref):
         reads.append(
             make_read(f"alt_span{i}", alt[s : s + READ], s, ((0, left), (2, 1), (0, READ - left)))
         )
-    for i in range(10):  # REF reads ending inside the tract (last base 200..209)
+    # Reads ending inside the tract (last base 200..209). The last pair ends on base
+    # 209, one past the ALT's tract: the REF read reads a tenth A where the ALT has the
+    # G, the ALT read the G after nine A's. One base past the tract decides (D1): REF
+    # and ALT, the other nine pairs depth only.
+    for i in range(10):
         s = 101 + i
         reads.append(make_read(f"ref_part{i}", ref[s : s + READ], s, ((0, READ),)))
     for i in range(10):  # ALT carriers ending inside the tract: identical bases, no gap
@@ -95,8 +99,8 @@ def test_reads_ending_inside_a_homopolymer_deletion_are_uninformative(tmp_path):
     (v,) = _prepared(fa, [gbcms_rs.Variant("1", 199, "CA", "C", "DELETION")])
     c = count_checked(bam, [v])[0]
     _invariants(c)
-    assert (c.rd, c.ad) == (10, 10)
-    assert c.dp == 40  # the 20 uninformative reads stay in depth
+    assert (c.rd, c.ad) == (11, 11)
+    assert c.dp == 40  # the 18 uninformative reads stay in depth
 
 
 def test_reads_ending_inside_a_homopolymer_insertion_are_uninformative(tmp_path):
@@ -267,8 +271,8 @@ def test_uninformative_fragments_are_left_out_of_mfsd_classes(tmp_path):
     )
     assert c.dpf == 40
     assert (c.mfsd_ref_count, c.mfsd_alt_count, c.mfsd_nonref_count, c.mfsd_n_count) == (
-        10,
-        10,
+        11,
+        11,
         0,
         0,
     )

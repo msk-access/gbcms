@@ -165,10 +165,39 @@ def _pure_shapes(contig: str, ref: str, alt: str):
     # The discrimination window: the tract plus one base each side.
     w_lo, w_hi = lo - 1, hi + 1
 
-    def where(event) -> str:
+    def placements(event) -> list[int]:
+        """The positions of the event's equivalent placements: slid each way while
+        the haplotype stays the same (a read's own indel is placed by its bases)."""
         pos, op, x = event
-        inside = (w_lo < pos < w_hi) if op == "I" else (pos < w_hi and pos + x > w_lo)
-        return "inside" if inside else "outside"
+        out = [pos]
+        if op == "D":
+            p = pos
+            while contig[p - 1] == contig[p + x - 1]:
+                p -= 1
+                out.append(p)
+            p = pos
+            while contig[p] == contig[p + x]:
+                p += 1
+                out.append(p)
+        else:
+            p, s = pos, x
+            while contig[p - 1] == s[-1]:
+                p, s = p - 1, s[-1] + s[:-1]
+                out.append(p)
+            p, s = pos, x
+            while contig[p] == s[0]:
+                p, s = p + 1, s[1:] + s[0]
+                out.append(p)
+        return out
+
+    def where(event) -> str:
+        """Inside the window when one of its placements is (RJ-22)."""
+        _, op, x = event
+
+        def inside(p: int) -> bool:
+            return (w_lo < p < w_hi) if op == "I" else (p < w_hi and p + x > w_lo)
+
+        return "inside" if any(inside(p) for p in placements(event)) else "outside"
 
     def is_the_alt(event) -> bool:
         """The variant itself at another placement in its tract."""
@@ -1057,9 +1086,9 @@ DECISIONS = {
     "C39 one-sided windows": "decided: one pair of equal-length junction windows at one flank (C39 #253)",
     "C40 long deletions": "decided: 50+ bp deletions judged by their bases at the POS breakpoint (C40 #254)",
     "read inputs": "decided: a read contributes its molecule's bases, with qualities (C17 #176, C19 #182; C29 #207 a fix)",
-    "C35 unreadable inserts": "decided: an insertion's ALT needs one of the read's own inserted bases read (C35 #240)",
+    "C35 unreadable inserts": "decided: an unreadable insert of the ALT's length at its junction is the ALT (RJ-20 #278, superseding C35 #240)",
     "C36 inserts of other bases": "decided: a same-length insert of other bases is judged by its bases, never Phase 3 (C36 #243)",
-    "C37 inserts behind a substitution": "decided: the junction ALT stays; a carrier behind a substitution is another allele, not REF (C37 #245)",
+    "C37 inserts behind a substitution": "decided: a carrier behind a substitution is another allele, not REF (C37 #245); the junction ALT with a substitution stays ALT unless it recurs inside the event: another allele (D4 #278)",
     "C43 other alleles at the locus": "decided: ALT only where the read tells it from every other allele of its length at the locus (C43 #277)",
     "C43 background in the grown event": "decided: a change the REF molecules carry inside the grown event is background (C43 #277)",
 }
@@ -1102,7 +1131,7 @@ EXPECT = {
     "hp+A | another indel outside the window: D5 past the tract": (4, 0, 0),
     "hp+A | another indel outside the window: I1 past the tract": (4, 0, 0),
     "u-8 | REF read spanning the tract": (4, 0, 0),
-    "u-8 | REF read ending inside the tract": (0, 0, 0),
+    "u-8 | REF read ending inside the tract": (4, 0, 0),
     "u-8 | exact carrier": (0, 4, 0),
     "u-8 | carrier with another indel outside the window": (0, 4, 0),
     "u-8 | another indel inside the window: D1 near the anchor": (0, 0, 4),
@@ -1125,7 +1154,7 @@ EXPECT = {
     "u+10 | carrier with another indel outside the window": (0, 4, 0),
     "u+10 | another indel outside the window: D1 near the anchor": (4, 0, 0),
     "u+10 | another indel outside the window: I1 near the anchor": (4, 0, 0),
-    "u+10 | another indel outside the window: D2 after the anchor": (4, 0, 0),
+    "u+10 | another indel inside the window: D2 after the anchor": (0, 0, 4),
     "u+10 | another indel outside the window: D1 past the tract": (4, 0, 0),
     "u+10 | another indel outside the window: D5 past the tract": (4, 0, 0),
     "u+10 | another indel outside the window: I1 past the tract": (4, 0, 0),
@@ -1172,10 +1201,10 @@ EXPECT = {
     "C>TA run10 | anchor kept, one A more, ends inside the run": (0, 0, 0),
     "C>TA run10 | anchor kept, one A more, ends on the base after the run": (0, 0, 0),
     # one base from each allele (an A more than REF, C for ALT's T): neither (RJ-23)
-    "C>TA run10 | anchor kept, one A more, ends past the run": (0, 0, 0),
+    "C>TA run10 | anchor kept, one A more, ends past the run": (0, 0, 4),
     "C>TA run10 | anchor kept, one A fewer, ends inside the run": (0, 0, 0),
     "C>TA run10 | anchor kept, one A fewer, ends on the base after the run": (0, 0, 0),
-    "C>TA run10 | anchor kept, one A fewer, ends past the run": (0, 0, 0),
+    "C>TA run10 | anchor kept, one A fewer, ends past the run": (0, 0, 4),
     "C>TA run10 | exact carrier, ends inside the run": (0, 0, 0),
     # holds the REF window's 15 bases: the T, all eleven A's and the G after (RJ-23)
     "C>TA run10 | exact carrier, ends on the base after the run": (0, 4, 0),
@@ -1188,10 +1217,10 @@ EXPECT = {
     "C>TA run60 | substitution only, ends past the run": (0, 0, 0),
     "C>TA run60 | anchor kept, one A more, ends inside the run": (4, 0, 0),
     "C>TA run60 | anchor kept, one A more, ends on the base after the run": (0, 0, 0),
-    "C>TA run60 | anchor kept, one A more, ends past the run": (0, 0, 0),
+    "C>TA run60 | anchor kept, one A more, ends past the run": (0, 0, 4),
     "C>TA run60 | anchor kept, one A fewer, ends inside the run": (4, 0, 0),
     "C>TA run60 | anchor kept, one A fewer, ends on the base after the run": (0, 0, 0),
-    "C>TA run60 | anchor kept, one A fewer, ends past the run": (0, 0, 0),
+    "C>TA run60 | anchor kept, one A fewer, ends past the run": (0, 0, 4),
     "C>TA run60 | exact carrier, ends inside the run": (0, 4, 0),
     "C>TA run60 | exact carrier, ends on the base after the run": (0, 4, 0),
     "C>TA run60 | exact carrier, ends past the run": (0, 4, 0),
@@ -1203,7 +1232,7 @@ EXPECT = {
     "CA>T run60 | substitution only, ends past the run": (0, 0, 0),
     "CA>T run60 | anchor kept, one A more, ends inside the run": (4, 0, 0),
     "CA>T run60 | anchor kept, one A more, ends on the base after the run": (0, 0, 0),
-    "CA>T run60 | anchor kept, one A more, ends past the run": (0, 0, 0),
+    "CA>T run60 | anchor kept, one A more, ends past the run": (0, 0, 4),
     "CA>T run60 | anchor kept, one A fewer, ends inside the run": (4, 0, 0),
     "CA>T run60 | anchor kept, one A fewer, ends on the base after the run": (0, 0, 0),
     "CA>T run60 | anchor kept, one A fewer, ends past the run": (0, 0, 4),
@@ -1250,14 +1279,15 @@ EXPECT = {
         4,
         0,
     ),
-    # C35 #240: the read's own inserted bases unreadable (N at Q2, or letters at Q5).
-    "hp+A | an unreadable insert at the anchor (N)": (0, 0, 4),
-    "hp+A | an unreadable insert inside the run (N)": (0, 0, 4),
-    "hp+A | an insert below min BQ inside the run": (0, 0, 4),
-    "u+10 | an unreadable insert (N)": (0, 0, 4),
-    "u+10 | an insert below min BQ": (0, 0, 4),
+    # The read's own inserted bases unreadable (N at Q2, or letters at Q5): the
+    # insert's length at the ALT's junction is the ALT (RJ-20, superseding C35 #240).
+    "hp+A | an unreadable insert at the anchor (N)": (0, 4, 0),
+    "hp+A | an unreadable insert inside the run (N)": (0, 4, 0),
+    "hp+A | an insert below min BQ inside the run": (0, 4, 0),
+    "u+10 | an unreadable insert (N)": (0, 4, 0),
+    "u+10 | an insert below min BQ": (0, 4, 0),
     "u+10 | a partly masked insert": (0, 4, 0),
-    "u+10 | anchor deleted, the insert unreadable": (0, 0, 4),
+    "u+10 | anchor deleted, the insert unreadable": (0, 4, 0),
     # C36 #243: same-length inserts of other bases, judged by their bases.
     "u+10 | a same-length insert of other bases one junction left": (4, 0, 0),
     "u+10 | a same-length insert of other bases four junctions right": (4, 0, 0),
@@ -1268,9 +1298,10 @@ EXPECT = {
         4,
     ),
     "dup+8 | a same-length insert of other bases inside the tract": (0, 0, 4),
-    # C37 #245: the strict path keeps its junction ALT; a readable insert whose
-    # fewest-mismatch placement sits inside the window is another allele (RJ-22).
-    "hp+A | the ALT at the junction with a substitution in the run": (0, 4, 0),
+    # C37 #245: a readable insert whose fewest-mismatch placement sits inside the
+    # window is another allele (RJ-22); the junction ALT with a substitution in the
+    # run that all four reads carry is another allele too (D4: it recurs in the event).
+    "hp+A | the ALT at the junction with a substitution in the run": (0, 0, 4),
     "hp+A | the ALT with its anchor substituted, written one junction left": (0, 0, 4),
     "u+10 | the ALT with its anchor substituted, written one junction left": (0, 0, 4),
     "del 60 | exact D carrier, long flanks": (0, 4, 0),

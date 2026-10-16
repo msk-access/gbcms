@@ -8,11 +8,11 @@ expected anchor position are still correctly detected, using three safeguards:
   S3: The shifted placement gives the variant's haplotype (the same sequence
       elsewhere in a repeat; #189)
 
-Reference genome: chr1, 500 bases of 'A' (all A's for homopolymer tests).
-  - Insertion tests: pos 100, REF=A, ALT=AA (an A inserted into the A run: any
-    placement is the same haplotype) and ALT=AT (a T: each placement is its own
-    haplotype)
-  - Deletion tests:  pos 200, REF=AT, ALT=A (delete T after anchor A)
+The reference is each variant's ref_context (chr1, 500bp), and the reads carry its bases.
+  - Insertion tests: pos 100 in an A run, REF=A, ALT=AA (an A inserted into the A
+    run: any placement is the same haplotype) and ALT=AT (a T: each placement is its
+    own haplotype)
+  - Deletion tests:  pos 200, REF=AT, ALT=A (one T of the T run after anchor A)
 """
 
 from helpers import (
@@ -113,11 +113,22 @@ class TestInsertionWindowed:
         """Same-length insertion AT the anchor with a confidently wrong base
         ('G' at Q30 instead of expected 'T') is a third allele: neither REF
         (the read provably carries an insertion — rd must not absorb it) nor
-        the queried ALT, and it surfaces as partial evidence.
+        the queried ALT, and it surfaces as partial evidence. The read reads past
+        the A run to the C's after it, so its bases show the insertion: ending
+        inside the run, they would fit REF with a substitution as well.
         """
-        reads = [_make_read("r1", "AAAAAGAAAA", 96, ((0, 5), (1, 1), (0, 4)))]
+        variant = Variant(
+            chrom="chr1",
+            pos=100,
+            ref_allele="A",
+            alt_allele="AT",
+            variant_type="INSERTION",
+            ref_context="AAAAAAAAAACCCCC",  # [95, 110): the A run ends at 104
+            ref_context_start=95,
+        )
+        reads = [_make_read("r1", "AAAAAGAAAACC", 96, ((0, 5), (1, 1), (0, 6)))]
         bam = _build_bam(tmp_path, reads)
-        counts = _count_one(bam, INS_VARIANT)
+        counts = _count_one(bam, variant)
         assert counts.rd == 0, f"Expected rd=0 (third allele, not REF), got {counts.rd}"
         assert counts.ad == 0
         assert counts.partial_alt == 1, (
@@ -177,50 +188,23 @@ class TestInsertionHomopolymer:
 # Anchor base 'A' at pos 200. Delete 'T' at pos 201.
 # ==========================================================================
 
-# For deletion, ref_context covers [195, 210). In an all-A reference, the deleted
-# 'T' won't match at shifted positions. We need a ref_context with T's so S3 passes.
-# Let's use a realistic ref_context: "AAAAATATATAAA" covering [195, 208)
-# This has T at positions 200, 202, 204 (offsets 5, 7, 9)
-# Actually, let's keep it simpler. The expected deleted base is 'T' (REF[1:] = "T").
-# For windowed to pass S3, the ref base at the shifted deletion position must also be 'T'.
-# ref_context: "AAAAATTTTAAAAAA" covering [195, 210)
-# Positions: A(195) A(196) A(197) A(198) A(199) T(200) T(201) T(202) T(203) A(204) ...
-# Wait, the ref_allele is "AT", meaning pos 200 = 'A' (anchor) and pos 201 = 'T' (deleted).
-# In the all-A reference genome, pos 201 should NOT be 'T', so S3 would reject.
-# We need a custom ref_context that matches the biology.
-
+# The reference is the variant's ref_context, [195, 210): A at 195-200 (the anchor at
+# 200), a T run at 201-205, A at 206-209. The reads carry its bases.
+DEL_CONTEXT = "AAAAAATTTTTAAAA"
 DEL_VARIANT = Variant(
     chrom="chr1",
     pos=200,
     ref_allele="AT",
     alt_allele="A",
     variant_type="DELETION",
-    # ref_context covers [195, 210) — reference has T's at 201, 202, 203 so windowed shifts pass S3
-    ref_context="AAAAATTTTAAAAAA",  # A(195)..A(199) T(200)? No...
-    # Actually: pos 200=A (anchor), 201=T, 202=T, 203=T, 204=A...
-    # Re-derive: indices [195, 210) → 15 chars
-    # For the variant to have anchor 'A' at 200 and delete 'T' at 201,
-    # the reference must have 'A' at 200 and 'T' at 201.
-    # For windowed S3, shifted deletions at 202, 203 need 'T' there too.
-    # ref_context = "AAAAATTTTTAAAAA" → A(195..199) T(200..204) A(205..209)
-    # Wait, pos 200 should be 'A' (anchor)!
-    # ref_context = "AAAAAATTTTTAAAA" → A(195..200) T(201..205) A(206..209)
+    ref_context=DEL_CONTEXT,
     ref_context_start=195,
 )
 
-# Fix: rebuild DEL_VARIANT with correct ref_context
-# Positions 195-209: A A A A A A T T T T A A A A A
-#                    195         200 201 202 203 204
-# pos 200='A' (anchor), 201='T' (deleted), 202='T', 203='T'
-DEL_VARIANT = Variant(
-    chrom="chr1",
-    pos=200,
-    ref_allele="AT",
-    alt_allele="A",
-    variant_type="DELETION",
-    ref_context="AAAAAATTTTTAAAA",  # [195, 210): 6 A's + 5 T's + 4 A's = 15 chars
-    ref_context_start=195,
-)
+
+def _ctx(context: str, lo: int, hi: int, start: int = 195) -> str:
+    """The reference bases [lo, hi) of a context starting at `start`."""
+    return context[lo - start : hi - start]
 
 
 class TestDeletionStrict:
@@ -228,9 +212,10 @@ class TestDeletionStrict:
 
     def test_strict_match(self, tmp_path):
         """DEL immediately after anchor at pos 200 → ALT.
-        Read: 5M 1D 5M, starts at 196. Anchor at index 4 → pos 200.
+        Read: 5M 1D 5M from 196: the anchor, the T run one T short, its right flank A.
         """
-        reads = [_make_read("r1", "AAAAAAAAAA", 196, ((0, 5), (2, 1), (0, 5)))]
+        seq = _ctx(DEL_CONTEXT, 196, 201) + _ctx(DEL_CONTEXT, 202, 207)
+        reads = [_make_read("r1", seq, 196, ((0, 5), (2, 1), (0, 5)))]
         bam = _build_bam(tmp_path, reads)
         counts = _count_one(bam, DEL_VARIANT)
         assert counts.ad == 1, f"Expected ad=1 (strict ALT), got {counts.ad}"
@@ -242,7 +227,7 @@ class TestDeletionStrict:
         Covering the anchor alone is not enough: a read ending inside the run
         reads the same with or without one T, so it is uninformative.
         """
-        reads = [_make_read("r1", "AAAAAAAAAAA", 196, ((0, 11),))]
+        reads = [_make_read("r1", _ctx(DEL_CONTEXT, 196, 207), 196, ((0, 11),))]
         bam = _build_bam(tmp_path, reads)
         counts = _count_one(bam, DEL_VARIANT)
         assert counts.rd == 1, f"Expected rd=1 (REF), got {counts.rd}"
@@ -253,20 +238,12 @@ class TestDeletionWindowed:
     """Deletion shifted within ±5bp of the expected anchor position."""
 
     def test_shifted_right_1bp(self, tmp_path):
-        """DEL 1bp to the right → ALT (windowed).
-        Anchor at 200. Deletion at pos 203 instead of 201.
-        Read: 8M 1D 2M, starts at 196. Block end = 204.
-        Wait, let me recalculate. starts at 196, 8M → covers 196-203.
-        Block end = 204. Del at 204?  That's +3bp from 201.
-        Actually, deletion happens at block_end (204). Expected del at anchor+1 = 201.
-        del_ref_pos = 204, distance = |204 - 201| = 3.
-
-        Hmm, let me reconsider. We need deletion within ±5bp of anchor (200).
-        window is [195, 205]. del_ref_pos = 204 → within window.
-        S1: del_len = 1 = expected. ✓
-        S3: ref at 204 = ref_context[204-195] = ref_context[9] = 'T' (5th T). expected_del = 'T'. ✓
+        """DEL written at 204, the run's fourth T, instead of 201 → ALT (windowed).
+        Read: 8M 1D 2M from 196: the same bases as a deletion written at 201, the T run
+        one T short and its right flank A.
         """
-        reads = [_make_read("r1", "AAAAAAAAAA", 196, ((0, 8), (2, 1), (0, 2)))]
+        seq = _ctx(DEL_CONTEXT, 196, 204) + _ctx(DEL_CONTEXT, 205, 207)
+        reads = [_make_read("r1", seq, 196, ((0, 8), (2, 1), (0, 2)))]
         bam = _build_bam(tmp_path, reads)
         counts = _count_one(bam, DEL_VARIANT)
         assert counts.ad == 1, f"Expected ad=1 (windowed ALT), got {counts.ad}"
@@ -281,23 +258,22 @@ class TestDeletionWindowed:
         almost certainly spurious noise, so CIGAR remains definitive for them. A 1bp S3-rejected windowed
         Del does NOT trigger Phase 3; found_ref_coverage=True → REF.
         """
-        # ref_context: "AAAAAATGAAAAAAAA" covering [195, 210)
-        # pos 201='T', 202='G'. Deletion shifts to 203 → ref='A' but expected='T' → S3 reject.
+        # ref_context: T at 201, G at 202, an A run at 203-209
+        context = "AAAAAATGAAAAAAA"
         variant = Variant(
             chrom="chr1",
             pos=200,
             ref_allele="AT",
             alt_allele="A",
             variant_type="DELETION",
-            ref_context="AAAAAATGAAAAAAA",  # [195, 210): T at 201, G at 202
+            ref_context=context,
             ref_context_start=195,
         )
-        # Read with deletion at pos 203: 7M 1D 3M, starts at 196.
-        # Block end = 203. del_ref_pos = 203.
-        # ref_context[203-195] = ref_context[8] = 'A'. expected_del_seq = 'T'. 'A' ≠ 'T' → S3 reject.
-        # del_len_usize = 1 < 5 → has_nearby_length_match stays False.
-        # found_ref_coverage = True (M covers anchor at 200) → CIGAR definitive REF.
-        reads = [_make_read("r1", "AAAAAAAAAA", 196, ((0, 7), (2, 1), (0, 3)))]
+        # Read with deletion at pos 203: 7M 1D 3M from 196, one A of the A run deleted.
+        # It ends inside the run, so its bases read as the reference's: the T at 201
+        # is there → REF.
+        seq = _ctx(context, 196, 203) + _ctx(context, 204, 207)
+        reads = [_make_read("r1", seq, 196, ((0, 7), (2, 1), (0, 3)))]
         bam = _build_bam(tmp_path, reads)
         counts = _count_one(bam, variant)
         # CIGAR definitive: 1bp del, S3 reject, short del → REF

@@ -353,11 +353,25 @@ def _diag_flags(row):
 
 
 def test_clip_only_insertion_carriers_are_flagged(tmp_path):
+    """Carriers aligned only from past the anchor, the prefix and inserted copy
+    left-clipped: unpaired, no fragment admits their clip, so none is ALT, and the
+    locus is flagged."""
     ref = _itd_ref()
-    bam = _bam(tmp_path, ref, _clip_carriers(ref) + _wt(ref, ANCHOR, 10))
+    bam = _bam(tmp_path, ref, _clip_carriers(ref, 0, 3) + _wt(ref, ANCHOR, 10))
     (r,) = _run(tmp_path, _vcf(tmp_path, _itd_rows(ref)), bam, _fasta(tmp_path, ref))
     assert int(r["alt_count"]) == 0, "precondition: clip-only carriers are not ALT"
-    assert "CLIP_CANDIDATES(8)" in _diag_flags(r), r["gbcms_diagnostic"]
+    assert "CLIP_CANDIDATES(3)" in _diag_flags(r), r["gbcms_diagnostic"]
+
+
+def test_carriers_clipped_past_the_anchor_are_read_through_their_clip(tmp_path):
+    """Carriers aligned through the anchor and the first copy, clipped at the
+    duplication boundary: the clipped bases are the read's own (RJ-13) and hold the
+    second copy, so they are ALT, and a locus with ALT counted is not flagged."""
+    ref = _itd_ref()
+    bam = _bam(tmp_path, ref, _clip_carriers(ref, 5, 0) + _wt(ref, ANCHOR, 10))
+    (r,) = _run(tmp_path, _vcf(tmp_path, _itd_rows(ref)), bam, _fasta(tmp_path, ref))
+    assert (int(r["ref_count"]), int(r["alt_count"])) == (10, 5)
+    assert not any(f.startswith("CLIP_CANDIDATES") for f in _diag_flags(r)), r["gbcms_diagnostic"]
 
 
 def test_clip_candidates_agree_across_input_paths(tmp_path):

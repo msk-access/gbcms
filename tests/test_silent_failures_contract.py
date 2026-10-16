@@ -148,10 +148,11 @@ def test_an_unjudgeable_complex_variant_is_warned_once(tmp_path, caplog):
 
 def test_an_anchor_changing_insertion_in_a_long_run_judges_reads_by_their_bases(tmp_path):
     """C>TA before an A run: reads keeping the C with the inserted A show it only
-    once they reach the run's end. Before a 30bp run they do, and are neither;
-    before an 80bp run they end inside it, base for base the REF reads, and count
-    REF like them: bases decide, not the CIGAR's insertion (operator, 2026-10-01)."""
-    assert _ins_snv(tmp_path, 30, "run30") == (6, 6, 0)
+    once they reach the run's end. Before a 30bp run they do: another allele inside
+    the window, partial evidence (RJ-7, #278); before an 80bp run they end inside it,
+    base for base the REF reads, and count REF like them: bases decide, not the
+    CIGAR's insertion (operator, 2026-10-01)."""
+    assert _ins_snv(tmp_path, 30, "run30") == (6, 6, 6)
     assert _ins_snv(tmp_path, 80, "run80") == (12, 6, 0)
 
 
@@ -360,7 +361,8 @@ def test_each_route_to_the_exact_carrier_rule_is_named_per_read(tmp_path, caplog
 
 def test_why_an_alt_call_is_kept_is_traced(tmp_path, caplog):
     """An ALT call from a read spanning neither ALT-side window stands on its bases,
-    and the trace says so: carriers of GA>G in G A*40 T reading from the G to the T."""
+    and the trace says so: carriers of GA>G in G A*40 T reading from the G to the T,
+    judged by the exact-carrier rule (pure indels are judged by their bases, #278)."""
     ref = _flank(31) + "G" + "A" * 40 + "T" + _flank(32)
     seq = "G" + "A" * 39 + "T"
     reads = [make_read(f"k{i}", seq, A, ((0, 20), (2, 1), (0, 21))) for i in range(3)]
@@ -369,10 +371,10 @@ def test_why_an_alt_call_is_kept_is_traced(tmp_path, caplog):
     (c,), logs = _traces(caplog, lambda: count_bam_checked(bam, [v], [None], *ARGS))
     _invariants(c)
     assert c.ad == 3
-    kept = [m for m in logs if "ALT kept — its own bases tell the alleles apart" in m]
+    kept = [m for m in logs if "exact-carrier rule (a pure deletion)" in m and " alt=true" in m]
     assert kept and all(" read=k" in m for m in kept), kept
     totals = [m for m in logs if "depth reads by deciding rule" in m]
-    assert totals and all("ALT kept by its bases 3;" in m for m in totals), totals
+    assert totals and all("exact-carrier rule 3 judged" in m for m in totals), totals
 
 
 def test_a_row_with_an_empty_allele_counts_no_allele_and_is_warned(tmp_path, caplog):

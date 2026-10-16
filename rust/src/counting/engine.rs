@@ -1223,16 +1223,36 @@ fn count_bin_shared(
                 }
             })
         };
+        // The substitutions a variant's reads share are no errors: found from the
+        // reads the counts read, at the qualities they read them, on first use.
+        let tolerance_of = |v| {
+            carrier::Tolerance::new(v, move |each: &mut dyn FnMut(&Record, &[u8])| {
+                let (v_start, v_end) = window::read_window(v);
+                let use_baq = baq_applies(apply_baq, boundary_distance(v, annotation));
+                let spare = if use_baq { baq_own_span(v) } else { None };
+                for record in cache.iter() {
+                    if record.pos() >= v_end
+                        || ref_end(record) <= v_start
+                        || !counted_read(record, v, mode, enforce_strandedness, strandedness, min_mapq)
+                    {
+                        continue;
+                    }
+                    each(record, &effective_quals(record, use_baq, spare));
+                }
+            })
+        };
         let guard = guard_of(variant);
+        let tolerance = tolerance_of(variant);
         let rules = if mode == "rna" {
             carrier::ReadRules {
                 clip_edges: Some(&edges),
                 reference: far_reference,
                 spliced: Some(&spliced),
                 guard: Some(&guard),
+                tolerance: Some(&tolerance),
             }
         } else {
-            carrier::ReadRules { guard: Some(&guard), ..carrier::ReadRules::DNA }
+            carrier::ReadRules { guard: Some(&guard), tolerance: Some(&tolerance), ..carrier::ReadRules::DNA }
         };
 
         let (counts_orig, obs_orig) = count_variant_from_cache(
@@ -1254,6 +1274,7 @@ fn count_bin_shared(
         // would stay right while the export was wrong. Only the winner's rows survive.
         let (mut final_counts, final_obs) = if let Some(ref decomp) = decomposed[vi] {
             let decomp_guard = guard_of(decomp);
+            let decomp_tolerance = tolerance_of(decomp);
             let (counts_decomp, obs_decomp) = count_variant_from_cache(
                 &read_cache, decomp, siblings,
                 min_mapq, min_baseq,
@@ -1261,7 +1282,7 @@ fn count_bin_shared(
                 fragment_qual_threshold, backend,
                 apply_baq, umi_tag, mode, enforce_strandedness, strandedness, mfsd,
                 editing_sites, annotation, amplicon_mode,
-                emit_obs, vi as u32, &carrier::ReadRules { guard: Some(&decomp_guard), ..rules },
+                emit_obs, vi as u32, &carrier::ReadRules { guard: Some(&decomp_guard), tolerance: Some(&decomp_tolerance), ..rules },
             )?;
 
             if counts_decomp.ad > counts_orig.ad {
@@ -1486,12 +1507,8 @@ fn count_variant_from_cache(
     // boundary lies inside it, so an MNP reaching into an exon's last bases is as
     // close as its nearest base. Used for BAQ suppression and as an output column.
     // None when no GTF is provided.
-    let (span_first, span_last) = variant.boundary_span.unwrap_or_else(|| {
-        (variant.pos, variant.pos + variant.ref_allele.len().max(1) as i64 - 1)
-    });
-    let exon_boundary_dist: Option<i32> = annotation.as_ref().and_then(|annot| {
-        annot.nearest_splice_distance(&variant.chrom, span_first, span_last)
-    });
+    let (span_first, span_last) = boundary_span(variant);
+    let exon_boundary_dist = boundary_distance(variant, annotation);
     counts.exon_boundary_dist = exon_boundary_dist;
 
     // The allele the reads carry when it is not the given one: diagnostic only
@@ -2130,8 +2147,9 @@ fn ref_guard_siblings<'a>(variant: &Variant, siblings: &'a [Variant]) -> Vec<&'a
 }
 
 /// Whether a read classified REF for `variant` (or whose REF call was
-/// withdrawn as uninformative, or for another allele of REF's length) is ALT for a
-/// co-annotated sibling whose change lies where `variant`'s REF is read
+/// withdrawn as uninformative, or for another allele of REF's length, or that the
+/// exact-carrier rule calls neither) is ALT for a co-annotated sibling whose change
+/// lies where `variant`'s REF is read
 /// (`window_siblings`, from
 /// `ref_guard_siblings`). Such a read
 /// carries a different allele where this row's REF is read, so it is not REF
@@ -2153,7 +2171,10 @@ fn sibling_claims_ref<F: Fn(u8, u8) -> i32>(
     backend: &AlignmentBackend,
     rules: &carrier::ReadRules,
 ) -> bool {
-    if !result.is_ref && !result.uninformative && !result.ref_untold {
+    // the exact-carrier rule's neither reads too: a read whose bases show a sibling's
+    // event where this row's REF is read is that event's, partial evidence here (RJ-5,
+    // operator 2026-10-15)
+    if !result.is_ref && !result.uninformative && !result.ref_untold && (!result.carrier_judged || result.is_alt) {
         return false;
     }
     for sib in window_siblings {
@@ -2717,7 +2738,12 @@ fn check_allele_with_qual<F: Fn(u8, u8) -> i32>(
             }
         }
     } else if kind == AlleleKind::Insertion {
-        // Pure insertion: CIGAR-based fast paths, then backend-aware Phase 3 fallback
+        // A pure insertion is judged by its bases (the exact-carrier rule, RJ-27); where
+        // the rule cannot judge it (no prepared reference, or one without the event's
+        // flank), the CIGAR-based fast paths, then backend-aware Phase 3
+        if let Some(result) = by_bases(record, variant, "a pure insertion", quals, min_baseq, rules) {
+            return result;
+        }
         let result = check_insertion(record, variant, siblings, quals, min_baseq, alt_aligner, ref_aligner, backend);
         ref_needs_the_window(record, variant, alt_needs_the_window(record, variant, quals, min_baseq, result))
     } else if kind == AlleleKind::Deletion && junction::judges(variant) {
@@ -2742,7 +2768,11 @@ fn check_allele_with_qual<F: Fn(u8, u8) -> i32>(
         let result = check_deletion(record, variant, siblings, quals, min_baseq, alt_aligner, ref_aligner, backend);
         ref_needs_the_window(record, variant, alt_needs_the_window(record, variant, quals, min_baseq, result))
     } else if kind == AlleleKind::Deletion {
-        // Pure deletion: CIGAR-based fast paths, then backend-aware Phase 3 fallback
+        // A pure deletion under 50 bp is judged by its bases (RJ-27); where the rule
+        // cannot judge it, the CIGAR-based fast paths, then backend-aware Phase 3
+        if let Some(result) = by_bases(record, variant, "a pure deletion", quals, min_baseq, rules) {
+            return result;
+        }
         let result = check_deletion(record, variant, siblings, quals, min_baseq, alt_aligner, ref_aligner, backend);
         ref_needs_the_window(record, variant, alt_needs_the_window(record, variant, quals, min_baseq, result))
     } else {
@@ -2786,15 +2816,7 @@ fn classify_complex<F: Fn(u8, u8) -> i32>(
     backend: &AlignmentBackend,
     rules: &carrier::ReadRules,
 ) -> ClassifyResult {
-    if let Some(mut result) = carrier::classify(record, variant, quals, min_baseq, rules) {
-        result.carrier_judged = true;
-        trace!(
-            "{}:{} {}>{} read={}: exact-carrier rule ({}): ref={} alt={} nearby={} uninformative={} \
-             clip_admissible={} read_from_right={} mnp_confirmed={}",
-            variant.chrom, variant.pos + 1, variant.ref_allele, variant.alt_allele, read_name(record),
-            route, result.is_ref, result.is_alt, result.has_nearby_evidence, result.uninformative,
-            result.clip_admissible, result.read_from_right, result.mnp_confirmed,
-        );
+    if let Some(result) = by_bases(record, variant, route, quals, min_baseq, rules) {
         return result;
     }
     trace!(
@@ -2804,6 +2826,28 @@ fn classify_complex<F: Fn(u8, u8) -> i32>(
     let mut result = check_complex(record, variant, siblings, quals, min_baseq, alt_aligner, ref_aligner, backend);
     result.carrier_fallback = true;
     result
+}
+
+/// A read judged by the exact-carrier rule (`carrier`), or None when the rule cannot
+/// judge the variant. `route` names why the read came here, for the trace.
+fn by_bases(
+    record: &Record,
+    variant: &Variant,
+    route: &str,
+    quals: &[u8],
+    min_baseq: u8,
+    rules: &carrier::ReadRules,
+) -> Option<ClassifyResult> {
+    let mut result = carrier::classify(record, variant, quals, min_baseq, rules)?;
+    result.carrier_judged = true;
+    trace!(
+        "{}:{} {}>{} read={}: exact-carrier rule ({}): ref={} alt={} nearby={} uninformative={} \
+         clip_admissible={} read_from_right={} mnp_confirmed={}",
+        variant.chrom, variant.pos + 1, variant.ref_allele, variant.alt_allele, read_name(record),
+        route, result.is_ref, result.is_alt, result.has_nearby_evidence, result.uninformative,
+        result.clip_admissible, result.read_from_right, result.mnp_confirmed,
+    );
+    Some(result)
 }
 
 /// Smith-Waterman scoring for the read classifiers: an N in the read or the
@@ -3263,6 +3307,18 @@ fn baq_own_span(v: &Variant) -> Option<(i64, i64)> {
     }
     let (lo, hi) = carrier::grown_event(v).unwrap_or_else(|| window::discrimination_window(v));
     Some((lo - 2, hi + 2))
+}
+
+/// `variant`'s REF span, or the span it was given (`boundary_span`), first and last.
+fn boundary_span(variant: &Variant) -> (i64, i64) {
+    variant.boundary_span.unwrap_or_else(|| (variant.pos, variant.pos + variant.ref_allele.len().max(1) as i64 - 1))
+}
+
+/// The least distance from any base of `variant`'s [`boundary_span`] to an annotated
+/// exon boundary, 0 when one lies inside it; None without a GTF.
+fn boundary_distance(variant: &Variant, annotation: &Option<std::sync::Arc<AnnotationIndex>>) -> Option<i32> {
+    let (first, last) = boundary_span(variant);
+    annotation.as_ref().and_then(|annot| annot.nearest_splice_distance(&variant.chrom, first, last))
 }
 
 /// Whether heuristic BAQ applies at a variant. The one rule every view that
