@@ -99,6 +99,10 @@ pub struct AnnotationIndex {
     /// Derived in `new()` from `transcript_introns` + exon strands.
     intron_boundaries: HashMap<u32, Vec<(i32, char)>>,
 
+    /// Chromosome → sorted exon starts that follow an intron (each intron's
+    /// exclusive end, either strand): where the bases before are intronic.
+    exon_starts: HashMap<u32, Vec<i32>>,
+
     /// Chromosome → COITree of every transcript's span (first exon start to last
     /// exon end, introns included); metadata is the transcript's strand
     /// (`transcript_strands`). Derived in `new()` from `exons`.
@@ -191,6 +195,14 @@ impl AnnotationIndex {
         let n_exons = exons.len();
         let n_transcripts = transcript_introns.len();
         let intron_boundaries = derive_intron_boundaries(&exons, &transcript_introns);
+        let mut exon_starts: HashMap<u32, Vec<i32>> = HashMap::new();
+        for ti in transcript_introns.values() {
+            exon_starts.entry(ti.chrom_id).or_default().extend(ti.introns.iter().map(|&(_, b)| b));
+        }
+        for v in exon_starts.values_mut() {
+            v.sort_unstable();
+            v.dedup();
+        }
         let (transcript_trees, transcript_strands) = derive_transcript_trees(&exons);
         debug!(
             "AnnotationIndex built: {} chromosomes, {} exons, {} transcripts, {} intron boundaries",
@@ -205,6 +217,7 @@ impl AnnotationIndex {
             splice_sites,
             transcript_introns,
             intron_boundaries,
+            exon_starts,
             transcript_trees,
             transcript_strands,
             chrom_map,
@@ -271,6 +284,18 @@ impl AnnotationIndex {
         let mut out: Vec<i64> = sites[idx..].iter().take_while(|&&(p, _)| p <= hi).map(|&(p, _)| p as i64).collect();
         out.dedup();
         out
+    }
+
+    /// Every annotated exon start that follows an intron (an intron's exclusive end,
+    /// either strand) in `[lo, hi]`, ascending.
+    pub fn exon_starts_in(&self, chrom: &str, lo: i64, hi: i64) -> Vec<i64> {
+        let Some(sites) = self.chrom_map.get(chrom).and_then(|id| self.exon_starts.get(id)) else {
+            return Vec::new();
+        };
+        let lo = lo.clamp(i32::MIN as i64, i32::MAX as i64) as i32;
+        let hi = hi.clamp(i32::MIN as i64, i32::MAX as i64) as i32;
+        let idx = sites.partition_point(|&p| p < lo);
+        sites[idx..].iter().take_while(|&&p| p <= hi).map(|&p| p as i64).collect()
     }
 
     /// Whether an annotated intron boundary (a true donor/acceptor site —

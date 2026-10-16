@@ -2472,14 +2472,15 @@ fn warn_sw_fallback(variant: &Variant, n: u32) {
 
 /// The exon edges and junction ends near a variant, ascending: the annotated
 /// intron boundaries and the junctions the reads over its window splice at (an
-/// unannotated junction the data show is an edge too).
-fn clip_edges(variant: &Variant, read_cache: &[Record], annotation: &Option<std::sync::Arc<AnnotationIndex>>) -> Vec<i64> {
+/// unannotated junction the data show is an edge too); and the exon starts among
+/// them (intron ends).
+fn clip_edges(variant: &Variant, read_cache: &[Record], annotation: &Option<std::sync::Arc<AnnotationIndex>>) -> (Vec<i64>, Vec<i64>) {
     // Annotated boundaries this far from the read window cannot meet a clip.
     const REACH: i64 = 1000;
     let (v_start, v_end) = window::read_window(variant);
-    let mut edges = annotation.as_ref().map_or_else(Vec::new, |a| {
-        let chrom = crate::shared::contig::normalize_contig(&variant.chrom);
-        a.intron_boundaries_in(&chrom, v_start - REACH, v_end + REACH)
+    let chrom = crate::shared::contig::normalize_contig(&variant.chrom);
+    let (mut edges, mut starts) = annotation.as_ref().map_or_else(Default::default, |a| {
+        (a.intron_boundaries_in(&chrom, v_start - REACH, v_end + REACH), a.exon_starts_in(&chrom, v_start - REACH, v_end + REACH))
     });
     for record in read_cache {
         if record.pos() >= v_end || ref_end(record) <= v_start {
@@ -2488,11 +2489,14 @@ fn clip_edges(variant: &Variant, read_cache: &[Record], annotation: &Option<std:
         for (n0, n1) in rna::extract_splice_junctions(record) {
             edges.push(n0);
             edges.push(n1);
+            starts.push(n1);
         }
     }
-    edges.sort_unstable();
-    edges.dedup();
-    edges
+    for v in [&mut edges, &mut starts] {
+        v.sort_unstable();
+        v.dedup();
+    }
+    (edges, starts)
 }
 
 /// Whether the mapping rule admits a read to the counts: MAPQ at least

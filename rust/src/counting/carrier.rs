@@ -118,18 +118,24 @@ impl ReadRules<'static> {
 
 /// The exon edges and junction ends near a variant, found on first use: only the
 /// exact-carrier rule reads them, so an SNV or pure-indel row never pays for them.
+/// Every edge, ascending, and the exon starts among them (the ends of introns,
+/// where the bases before are intronic).
 pub(crate) struct ClipEdges<'a> {
-    edges: std::cell::OnceCell<Vec<i64>>,
-    find: Box<dyn Fn() -> Vec<i64> + 'a>,
+    edges: std::cell::OnceCell<(Vec<i64>, Vec<i64>)>,
+    find: Box<dyn Fn() -> (Vec<i64>, Vec<i64>) + 'a>,
 }
 
 impl<'a> ClipEdges<'a> {
-    pub(crate) fn new(find: impl Fn() -> Vec<i64> + 'a) -> Self {
+    pub(crate) fn new(find: impl Fn() -> (Vec<i64>, Vec<i64>) + 'a) -> Self {
         Self { edges: std::cell::OnceCell::new(), find: Box::new(find) }
     }
 
     fn get(&self) -> &[i64] {
-        self.edges.get_or_init(|| (self.find)())
+        &self.edges.get_or_init(|| (self.find)()).0
+    }
+
+    fn exon_starts(&self) -> &[i64] {
+        &self.edges.get_or_init(|| (self.find)()).1
     }
 }
 
@@ -650,9 +656,23 @@ fn judge(record: &Record, variant: &Variant, quals: &[u8], min_baseq: u8, rules:
     let spliced: Rc<SplicedWindows>;
     let cut;
     let separate;
+    let at_edge;
     let identity = SpliceMap::default();
     let mut map = &identity;
     let win = if skips.is_empty() {
+        // An unspliced read starting at an exon start that cuts the left flank, or
+        // within the overhang an aligner writes into the intron as mismatches
+        // (EDGE_SLACK), reads the windows from the right up to that edge, as a spliced
+        // read does: on its mRNA the bases before the edge are the previous exon's, so
+        // it reads from inside a run that crosses the junction. A pre-mRNA read through
+        // the intron reads its bases as they are.
+        let win = match layout.cut_left.filter(|&e| record.pos() >= e - EDGE_SLACK) {
+            Some(e) => {
+                at_edge = win.cut_at(&[(e, e)]);
+                &at_edge
+            }
+            None => &win,
+        };
         // Another indel outside the discrimination window is a separate event (RJ-8):
         // the read is judged as either allele carrying it, so it keeps its call.
         match &own {
@@ -662,9 +682,9 @@ fn judge(record: &Record, variant: &Variant, quals: &[u8], min_baseq: u8, rules:
                     separate = w;
                     &separate
                 }
-                None => &win,
+                None => win,
             },
-            _ => &win,
+            _ => win,
         }
     } else if let Some(sw) = rules.reference.and_then(|r| {
         spliced_windows(variant, &rna::extract_splice_junctions(record), win.event, r, rules.spliced, &layout)
@@ -1212,6 +1232,7 @@ fn spliced_windows(
             others: in_place(&layout.others),
             ref_others: in_place(&layout.ref_others),
             from_right: layout.from_right && !own_edge,
+            cut_left: layout.cut_left.filter(|_| !own_edge),
         };
         Some(Rc::new((windows(&on_spliced, &spliced_layout)?, map)))
     })();
@@ -1503,6 +1524,10 @@ fn event(start: i64, reference: &[u8], v: &Variant) -> Option<Event> {
 #[derive(Clone, Default)]
 struct Layout {
     from_right: bool,
+    /// The exon edge cutting the left flank when the windows read from the right: an
+    /// unspliced read's windows end there, as a spliced read's do (the bases before it
+    /// are the intron's, or on the mRNA the previous exon's).
+    cut_left: Option<i64>,
     masked: Vec<i64>,
     /// The masked positions that take only some bases (background inside the event's
     /// span: the reference's base and the change's), with those bases.
@@ -1521,16 +1546,19 @@ impl Layout {
             .and_then(|g| g.get(v))
             .map_or_else(Layout::default, |g| Layout {
                 from_right: false,
+                cut_left: None,
                 masked: g.masked.clone(),
                 background: g.background.clone(),
                 others: g.others.clone(),
                 ref_others: g.ref_others.clone(),
             });
-        if let (Some(edges), Some((lo, hi))) = (rules.clip_edges.map(ClipEdges::get), grown_event(v)) {
-            let flank = FLANK as i64;
+        if let (Some(clip), Some((lo, hi))) = (rules.clip_edges, grown_event(v)) {
+            let (edges, flank) = (clip.get(), FLANK as i64);
             if cuts_left_flank(edges.iter().copied(), lo) && !edges.iter().any(|&e| e > hi && e <= hi + flank) {
                 trace!("carrier: an exon edge cuts the left flank of {}:{} → windows read from the right", v.chrom, v.pos + 1);
                 layout.from_right = true;
+                // an exon start there: the bases before it are intronic
+                layout.cut_left = clip.exon_starts().iter().copied().filter(|&e| e > lo - flank && e <= lo).max();
             }
         }
         layout
@@ -3030,7 +3058,7 @@ mod tests {
     }
 
     fn readable(rec: &Record, edges: Option<Vec<i64>>) -> Option<(usize, usize)> {
-        let found = edges.map(|e| ClipEdges::new(move || e.clone()));
+        let found = edges.map(|e| ClipEdges::new(move || (e.clone(), Vec::new())));
         readable_range(rec, &ReadRules { clip_edges: found.as_ref(), reference: None, spliced: None, guard: None, tolerance: None })
     }
 
