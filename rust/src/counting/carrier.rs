@@ -160,11 +160,11 @@ impl<'a> ClipEdges<'a> {
         starts_cut_left(e.starts.iter().copied(), lo, flank) || e.ends.iter().any(|&n| n > lo - flank && n < lo)
     }
 
-    /// Whether an exon edge cuts the flank of `flank` bases from `hi`: an exon end in
-    /// it (from its first base on, the bases intronic), or an exon start inside it.
+    /// Whether an exon edge lies past `hi` within `flank` bases (the right flank's test
+    /// as it stood before the edges were typed: an event filling a short exon, both
+    /// flanks cut, keeps reading from the right).
     fn cut_right(&self, hi: i64, flank: i64) -> bool {
-        let e = self.edges();
-        e.ends.iter().any(|&n| n >= hi && n < hi + flank) || e.starts.iter().any(|&s| s > hi && s < hi + flank)
+        self.edges().all.iter().any(|&x| x > hi && x <= hi + flank)
     }
 }
 
