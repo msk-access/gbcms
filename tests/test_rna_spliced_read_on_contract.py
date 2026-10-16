@@ -45,8 +45,9 @@ def _hap(p: int, ref: str, alt: str) -> list:
     return out
 
 
-def _read(name: str, seg: list):
-    """A read of the haplotype slice `seg`, its CIGAR from the genome positions."""
+def _read(name: str, seg: list, ins_after_n: bool = False):
+    """A read of the haplotype slice `seg`, its CIGAR from the genome positions; an
+    insertion right before a splice is written after it with `ins_after_n`."""
     ops: list = []
     prev = None
     for _, g in seg:
@@ -59,17 +60,20 @@ def _read(name: str, seg: list):
         else:
             ops.append([op, 1])
         prev = g if g is not None else prev
+    for i in range(len(ops) - 1):
+        if ins_after_n and ops[i][0] == 1 and ops[i + 1][0] == 3:
+            ops[i], ops[i + 1] = ops[i + 1], ops[i]
     start = next(g for _, g in seg if g is not None)
     return make_read(name, "".join(b for b, _ in seg), start, tuple(map(tuple, ops)))
 
 
-def _count(p: int, ref: str, alt: str, apply_baq: bool, tmp_path):
+def _count(p: int, ref: str, alt: str, apply_baq: bool, tmp_path, ins_after_n=False):
     """Eight spliced REF and eight spliced ALT reads from exon 1 into exon 2."""
     assert CONTIG[p : p + len(ref)] == ref
     haps = {"R": _hap(p, ref, ref), "A": _hap(p, ref, alt)}
     j = next(i for i, (_, g) in enumerate(haps["R"]) if g == E)
     reads = [
-        _read(f"{k}{i}", h[j - 40 + 3 * i : j - 40 + 3 * i + RL])
+        _read(f"{k}{i}", h[j - 40 + 3 * i : j - 40 + 3 * i + RL], ins_after_n)
         for k, h in haps.items()
         for i in range(8)
     ]
@@ -137,3 +141,16 @@ def test_an_exon_end_at_the_event_leaves_its_left_flank_whole(shape, apply_baq, 
     junction, instead of from the right, where the alleles differ only there."""
     variant, counts = AT_EXON_END[shape]
     assert _count(*variant, apply_baq, tmp_path) == counts
+
+
+@pytest.mark.parametrize("apply_baq", [False, True], ids=["no-baq", "baq"])
+@pytest.mark.parametrize("written", ["before the N", "after the N"])
+def test_an_insertion_at_an_exon_end_counts_however_it_is_written_beside_the_splice(
+    written, apply_baq, tmp_path
+):
+    """TG after exon 1's last base sits between exon 1 and exon 2 on the mRNA whether the
+    aligner writes it before the splice or after: the same bases, the same counts. An
+    insertion written after the splice is the event on the spliced reference, not a
+    separate indel past the windows that would end their reading on."""
+    after = written == "after the N"
+    assert _count(I0 - 1, "C", "CTG", apply_baq, tmp_path, ins_after_n=after) == (8, 8, 0)

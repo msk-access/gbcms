@@ -866,8 +866,10 @@ fn judge(record: &Record, variant: &Variant, quals: &[u8], min_baseq: u8, rules:
     };
     // Read on past the windows only as far as the read's next own indel past them (one
     // written on their edge is the read's own event): its bases beyond are shifted by
-    // that separate event.
-    let on = (readable.0, next_indel_query(record, span.1 + 1).map_or(readable.1, |q| q.min(readable.1)));
+    // that separate event. Past them as the read is judged: on its spliced reference an
+    // indel written after the junction the windows run through is at the event.
+    let past_end = map.to_genome(win.span().1 - 1) + 1;
+    let on = (readable.0, next_indel_query(record, past_end.max(span.1 + 1)).map_or(readable.1, |q| q.min(readable.1)));
     let win = if undecided(&judged) {
         match win.read_on() {
             Some(w) => {
