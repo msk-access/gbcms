@@ -7,6 +7,61 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed — pure insertions and deletions judged by their bases (#278)
+
+- **The rule (RJ-26, RJ-27).** A pure insertion or deletion under 50 bp is judged by
+  the exact-carrier rule, as complex events are: by the read's bases, not where the
+  aligner wrote the gap; the CIGAR checks judge only what the rule cannot (no prepared
+  reference). Its windows are its tract (where REF and ALT differ over every
+  placement), grown through the repeat its change lengthens or shortens, with one base
+  each side (D1). A read's own indel is placed by its bases: inside the discrimination
+  window, of the ALT's length and spelling it, it is the ALT; another length or
+  sequence there is another allele (partial evidence); placed only outside, a separate
+  event. One substitution is an error, tolerated where the other allele mismatches the
+  same base, unless it recurs inside the event (another allele) or sits in the flank,
+  where it is a phased neighbour and the reads keep their call. Reads whose windows fit
+  both alleles, or neither alike, are read on past them; a fit resting on too few bases
+  is confirmed there (a read whose further bases fit the allele shifted by another
+  length is another allele).
+- **Decisions (operator, 2026-10-15/16).** One flank base (D1); a truncated copy of a
+  long insert is another allele (D2: the CIGAR path's identity band was measured and
+  not adopted); the ALT written far off with an SNV in its flank is ALT (D3); a
+  substitution all carriers share inside the event is another allele (D4); a deletion
+  whose bases between its flanks are all masked is ALT where its confident flanks lie
+  the ALT's length apart (D5); a change the REF molecules carry inside a deletion's
+  deleted bases is background on REF (D7); mates that disagree resolve by quality
+  (D8); an unreadable insert of the ALT's length at its junction is the ALT (RJ-20,
+  superseding C35's partial); soft-clipped bases are read (RJ-13); a pure indel grows
+  only through repeats on the allele holding its bases.
+- **Why.** Develop's CIGAR checks took the aligner's placement of the gap as the
+  allele, so reads carrying the ALT written elsewhere, or another allele written where
+  the ALT goes, were counted by where they were written. On HG002's het indels (truth
+  VAF 0.5) against develop's CIGAR checks: insertions of 10+ bp in band (0.35-0.65)
+  110 -> 334 of about 560 rows, median VAF 0.150 -> 0.424; short insertions 465 -> 552
+  (0.429 -> 0.486); deletions 529 -> 563 (0.455 -> 0.500).
+- **On real data.** The full local gate (411 runs) changes 1,062 dna-arm rows of the
+  flagged strata against develop; within tolerance of a bases-only oracle (any
+  discriminating base): sign-out 749, develop 838, this release 867 (14 rows farther
+  from the two-flank oracle, 58 closer). The strata the gate flags moved away from the
+  sign-out, which the oracle shows is the least concordant of the three. Matched
+  normals: AD +3 over three rows that already carry the allele, RD -138; the 1,402
+  normal and ACCESS rows of the local arms AD +3, RD +171.
+- **Found and fixed on the way.** A tolerated error now costs both alleles alike; a
+  read's own indel is placed by its bases only up to its next indel; a call whose held
+  bases are all below `--min-baseq` takes the quality of the bases it read, so the
+  fragment layer counts it too; a read whose bases place no change is read on to
+  confirm the ALT; a read short of the masks' read-on is decided by its own bases
+  where they fit one allele exactly. An adversarial review found reads of a third
+  allele counted ALT or REF where one base past the tract was all the windows read (a
+  C>CATT row took a +ATTC read as ALT); on its fuzz, other-allele reads counted REF
+  fall 315 -> 52 and ALT 74 -> 6 with no correct call lost.
+- **RNA.** A read spliced at the exon edge that cuts the left flank reads from the left
+  on its spliced reference; an unspliced read starting at that exon start, or within
+  the five bases of overhang an aligner writes into the intron, reads the windows up to
+  the edge, so REF and ALT molecules starting inside a run that crosses the junction
+  count alike (an ALT-only miscount at an exon-start A run, present on develop). No
+  FORTE gate row changes.
+
 ### Changed — reads judged beside the other alleles at their locus (#277)
 
 - **The rule (RJ-25).** A read that fits the ALT counts ALT only when, for every
