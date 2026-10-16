@@ -23,16 +23,16 @@ C4 an exact fit at the pre-read-on hold. Covered expectations with their evidenc
   749, develop 838, c43py 867 (b: 794/921/968; 14 farther, 58 closer); HG002 vs the CIGAR
   path: 10+ bp ins in band 110 -> 334, short ins 465 -> 552, dels 529 -> 563; normals vs
   develop AD +3 (rows already carrying the allele), RD -138; normals/ACCESS vs c43y AD +3,
-  RD +171; RNA arm identical to c43ps. Docs: RJ-26/RJ-27 + evidence, CHANGELOG (c05a1eba).
+  RD +171; RNA arm identical to c43ps. Docs: RJ-26/RJ-27 + evidence, CHANGELOG (f82d23b9).
 - Branch rebuilt as four commits on develop (rule, RNA fix, docs, continuity; tree
   identical to the first cut, kept on local `archive/c43b-first-cut`). Lint gate at CI's
-  versions, clippy, cargo test 325, pytest 1679 pass. Next: #278 decision record and PR
-  body drafted (`278_decision_record.md`, `278_pr_body.md`, local); ask before posting,
-  pushing or opening the PR to develop.
-- Follow-ups: under BAQ a TG insertion exactly at an exon start leaves spliced reads
-  neither/partial (pre-existing); an other-length expansion in a repeat placed outside the
-  discrimination window counts REF; harness cleanup (`src_c43p*` builds, wt_d2band,
-  wt_c43pr, wt_c43ps, frozen_* worktrees).
+  versions, clippy, cargo test 325, pytest 1679 pass. PR #289 open to develop; decision
+  record posted on #278 (aggregates).
+- Follow-ups (sub-issues of #276): #290 another length of the repeat written upstream of
+  a pure insertion's windows counts REF (develop alike); #291 RNA under BAQ, an insertion
+  one base into an exon: spliced ALT reads partial (develop too), spliced REF reads
+  neither on #289 (REF on develop) - operator to say fix before or after #289 merges.
+  Harness cleanup (`src_c43p*` builds, wt_d2band, wt_c43pr, wt_c43ps, frozen_* worktrees).
 
 ## Before — C43a
 6.7.0 (tracker #196): C39 (#272) and C40 (#281) merged; C43 #276 (pure indels judged by
