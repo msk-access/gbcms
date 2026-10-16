@@ -103,6 +103,10 @@ pub struct AnnotationIndex {
     /// exclusive end, either strand): where the bases before are intronic.
     exon_starts: HashMap<u32, Vec<i32>>,
 
+    /// Chromosome → sorted exon ends that precede an intron (each intron's first
+    /// base, either strand): where the bases from on are intronic.
+    exon_ends: HashMap<u32, Vec<i32>>,
+
     /// Chromosome → COITree of every transcript's span (first exon start to last
     /// exon end, introns included); metadata is the transcript's strand
     /// (`transcript_strands`). Derived in `new()` from `exons`.
@@ -156,6 +160,20 @@ fn derive_intron_boundaries(
     out
 }
 
+/// Per-chromosome sorted, deduplicated positions of one side of every annotated
+/// intron (`side` of its `[start, end)`), either strand.
+fn intron_sides(transcript_introns: &HashMap<String, TranscriptIntrons>, side: impl Fn(&(i32, i32)) -> i32) -> HashMap<u32, Vec<i32>> {
+    let mut out: HashMap<u32, Vec<i32>> = HashMap::new();
+    for ti in transcript_introns.values() {
+        out.entry(ti.chrom_id).or_default().extend(ti.introns.iter().map(&side));
+    }
+    for v in out.values_mut() {
+        v.sort_unstable();
+        v.dedup();
+    }
+    out
+}
+
 /// Per-chromosome trees of transcript spans (first exon start to last exon end,
 /// end-inclusive for COITree), with each span's strand in the returned list.
 /// A span is one transcript's exons on one chromosome and strand: an ID the GTF
@@ -195,14 +213,8 @@ impl AnnotationIndex {
         let n_exons = exons.len();
         let n_transcripts = transcript_introns.len();
         let intron_boundaries = derive_intron_boundaries(&exons, &transcript_introns);
-        let mut exon_starts: HashMap<u32, Vec<i32>> = HashMap::new();
-        for ti in transcript_introns.values() {
-            exon_starts.entry(ti.chrom_id).or_default().extend(ti.introns.iter().map(|&(_, b)| b));
-        }
-        for v in exon_starts.values_mut() {
-            v.sort_unstable();
-            v.dedup();
-        }
+        let exon_starts = intron_sides(&transcript_introns, |&(_, b)| b);
+        let exon_ends = intron_sides(&transcript_introns, |&(a, _)| a);
         let (transcript_trees, transcript_strands) = derive_transcript_trees(&exons);
         debug!(
             "AnnotationIndex built: {} chromosomes, {} exons, {} transcripts, {} intron boundaries",
@@ -218,6 +230,7 @@ impl AnnotationIndex {
             transcript_introns,
             intron_boundaries,
             exon_starts,
+            exon_ends,
             transcript_trees,
             transcript_strands,
             chrom_map,
@@ -272,24 +285,20 @@ impl AnnotationIndex {
         right.into_iter().chain(left).min()
     }
 
-    /// Every annotated intron boundary (an intron's first base or its exclusive
-    /// end, either strand) in `[lo, hi]`, ascending.
-    pub fn intron_boundaries_in(&self, chrom: &str, lo: i64, hi: i64) -> Vec<i64> {
-        let Some(sites) = self.chrom_map.get(chrom).and_then(|id| self.intron_boundaries.get(id)) else {
-            return Vec::new();
-        };
-        let lo = lo.clamp(i32::MIN as i64, i32::MAX as i64) as i32;
-        let hi = hi.clamp(i32::MIN as i64, i32::MAX as i64) as i32;
-        let idx = sites.partition_point(|&(p, _)| p < lo);
-        let mut out: Vec<i64> = sites[idx..].iter().take_while(|&&(p, _)| p <= hi).map(|&(p, _)| p as i64).collect();
-        out.dedup();
-        out
-    }
-
     /// Every annotated exon start that follows an intron (an intron's exclusive end,
     /// either strand) in `[lo, hi]`, ascending.
     pub fn exon_starts_in(&self, chrom: &str, lo: i64, hi: i64) -> Vec<i64> {
-        let Some(sites) = self.chrom_map.get(chrom).and_then(|id| self.exon_starts.get(id)) else {
+        self.sites_in(&self.exon_starts, chrom, lo, hi)
+    }
+
+    /// Every annotated exon end that precedes an intron (an intron's first base,
+    /// either strand) in `[lo, hi]`, ascending.
+    pub fn exon_ends_in(&self, chrom: &str, lo: i64, hi: i64) -> Vec<i64> {
+        self.sites_in(&self.exon_ends, chrom, lo, hi)
+    }
+
+    fn sites_in(&self, by_chrom: &HashMap<u32, Vec<i32>>, chrom: &str, lo: i64, hi: i64) -> Vec<i64> {
+        let Some(sites) = self.chrom_map.get(chrom).and_then(|id| by_chrom.get(id)) else {
             return Vec::new();
         };
         let lo = lo.clamp(i32::MIN as i64, i32::MAX as i64) as i32;
