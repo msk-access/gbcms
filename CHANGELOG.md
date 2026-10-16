@@ -59,8 +59,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   on its spliced reference; an unspliced read starting at that exon start, or within
   the five bases of overhang an aligner writes into the intron, reads the windows up to
   the edge, so REF and ALT molecules starting inside a run that crosses the junction
-  count alike (an ALT-only miscount at an exon-start A run, present on develop). No
-  FORTE gate row changes.
+  count alike (an ALT-only miscount at an exon-start A run, present on develop). A
+  read spliced just past the windows reads on along its own mRNA, not the intron:
+  spliced reads at pure indels two to four bases before an exon's end had lost their
+  call (REF reads neither, or partial under BAQ) where develop counted them, and with
+  BAQ masking the bases at a junction (the RNA default, without a GTF) spliced reads
+  beside an exon edge count as with BAQ off. The exon edges are typed: an exon end
+  where the event starts leaves its left flank whole (#291). On the FORTE slices one
+  row changes, with the GTF or without: RD +1, a spliced REF read the intron had left
+  undecided.
 
 ### Changed — reads judged beside the other alleles at their locus (#277)
 
