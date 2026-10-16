@@ -28,20 +28,21 @@ C4 an exact fit at the pre-read-on hold. Covered expectations with their evidenc
   identical to the first cut, kept on local `archive/c43b-first-cut`). Lint gate at CI's
   versions, clippy, cargo test 325, pytest 1679 pass. PR #289 open to develop; decision
   record posted on #278 (aggregates).
-- #291 fixed on the branch (local, not pushed yet): 8488e7f6 (a read spliced within the
-  windows' reading reach is judged on its spliced reference; typed left-flank edges),
-  f2934f0b (an insertion written after the splice no longer ends reading on; the review's
-  finding 1), d468e68f (develop's right-flank edge test kept: microexons). Frozen
-  `plan670/src_c43pz3`. Exon-edge matrix: every spliced read counts for its allele, BAQ on
-  or off; FORTE vs c43py one row RD +1 (a REF read verified by its bases); develop vs final
-  FORTE 11 of 25 pure-indel rows (deletions) RD -230 AD +225. Review fuzz (scratchpad
-  review_291, four builds): clean reads 0 wrong-allele calls, most right of all builds;
-  reads with an extra 1-bp indel near the event: wrong 63 (prev 52, develop 0), 53 under
-  BAQ (its junction penalty masks the bases; placement ties) - operator decision pending.
-- Follow-ups (sub-issues of #276): #290 another length of the repeat written upstream of a
-  pure insertion's windows counts REF (develop alike); a per-read reading flank in a short
-  exon (not filed yet). Harness cleanup (`src_c43p*` builds, wt_d2band, wt_c43pr,
-  wt_c43ps, frozen_* worktrees).
+- #291 fixed in #289 (pushed): 8488e7f6 (a read spliced within the windows' reading reach
+  is judged on its spliced reference; typed left-flank edges), f2934f0b (an insertion
+  written after the splice no longer ends reading on; the review's finding 1), d468e68f
+  (develop's right-flank edge test kept: microexons). Frozen `plan670/src_c43pz3`.
+  Exon-edge matrix: every spliced read counts for its allele, BAQ on or off; FORTE vs
+  c43py one row RD +1 (a REF read verified by its bases); develop vs final FORTE 11 of 25
+  pure-indel rows (deletions) RD -230 AD +225. Review fuzz (scratchpad review_291, four
+  builds): clean reads 0 wrong-allele calls; reads with an extra 1-bp indel: wrong 63
+  (prev 52, develop 0), 53 under BAQ -> #292 (operator: merge, follow up). #278 record
+  corrected (FORTE), PR body updated, #291 commented.
+- Next: CI on #289, then merge (operator). Follow-ups (sub-issues of #276): #290 another
+  length of the repeat written upstream counts REF (develop alike); #292 BAQ's junction
+  penalty for reads judged on their spliced reference; #293 a per-read reading flank in a
+  short exon. Harness cleanup (`src_c43p*` builds, wt_d2band, wt_c43pr, wt_c43ps,
+  frozen_* worktrees).
 
 ## Before — C43a
 6.7.0 (tracker #196): C39 (#272) and C40 (#281) merged; C43 #276 (pure indels judged by
