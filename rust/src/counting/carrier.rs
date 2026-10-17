@@ -1455,6 +1455,10 @@ pub(crate) fn unjudged_reason(v: &Variant) -> &'static str {
         Some((start, reference)) if event(start, &reference, v).is_none() => {
             "the prepared reference does not hold its REF allele"
         }
+        Some(_) if windows(v, &Layout::default()).is_some() => {
+            "the recurring changes masked beside it leave no base telling the alleles apart \
+             within the prepared reference"
+        }
         Some(_) => {
             "the prepared reference does not hold the event with its flank (a contig end, or a \
              repeat past the fetch cap)"
