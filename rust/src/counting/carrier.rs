@@ -50,7 +50,11 @@
 //!   allele's window placed from that flank at its own length, its confident bases
 //!   (at or above min BQ, not N) must favour one by at least one base read at min BQ.
 //!   It counts where that allele fits, else carries another allele; one placed
-//!   through aligned bases counts only where the allele fits.
+//!   through aligned bases counts only where the allele fits. A read aligned straight
+//!   across the windows that fits the shorter allele from its reading flank, while
+//!   read whole from the other flank its bases are the longer allele's, had that
+//!   allele's other copy written over the reading flank: the longer allele where it
+//!   holds that allele's window from there and reaches past it, else depth only.
 //! - **A change beside the event.** A change that recurs at a fixed distance from
 //!   the event is a separate event, as another indel outside the window is, masked
 //!   in both windows ([`guard_for`]) so a read carrying the given allele counts
@@ -271,6 +275,9 @@ fn class(set: Bases, x: u8) -> Bases {
         bit(x)
     }
 }
+/// Bases past the other flank a read's own bases must continue the reference over (one
+/// error aside) for its alignment there to anchor a placement from that flank.
+const OTHER_FLANK_CHECK: usize = 12;
 /// Bases past the event a read placed from the left flank must fit as its allele's
 /// (and, for a REF molecule, read): a read of the other length, shifted by the length
 /// change, does not fit that many by chance.
@@ -303,6 +310,11 @@ struct Window {
     /// The reference's bases past the window's right end, which both alleles continue
     /// with; none for windows read from the right or cut at an exon edge there.
     past: Vec<u8>,
+    /// The reference's bases beyond the window's reading-side end (before its left end,
+    /// or past its right end when `tail`), as many as the alleles' lengths differ, which
+    /// both alleles share: the shorter allele extended by them is read at the longer
+    /// one's length from the other flank. Cut at an exon edge there.
+    outer: Vec<u8>,
     /// The event grown through repeats, from the first base the input names (a pure
     /// indel's anchor), as window positions [start, end): the rest is flank, beside
     /// the event.
@@ -373,8 +385,15 @@ impl Windows {
                 Some((n0, r)) if n0 >= r => w.past[..usize::try_from(n0 - r).map_or(0, |k| k.min(w.past.len()))].to_vec(),
                 _ => w.past.clone(),
             };
+            let outer = match (w.tail, exon_start.zip(left), exon_end.zip(right)) {
+                (false, _, _) if dl > 0 => Vec::new(),
+                (true, _, _) if dr > 0 => Vec::new(),
+                (false, Some((n1, l)), _) if n1 <= l => w.outer[w.outer.len() - usize::try_from(l - n1).map_or(0, |k| k.min(w.outer.len()))..].to_vec(),
+                (true, _, Some((n0, r))) if n0 >= r => w.outer[..usize::try_from(n0 - r).map_or(0, |k| k.min(w.outer.len()))].to_vec(),
+                _ => w.outer.clone(),
+            };
             let event_at = (w.event_at.0.saturating_sub(dl).min(allele.len()), w.event_at.1.saturating_sub(dl).min(allele.len()));
-            (Window { allele, hold: w.hold, tail: w.tail, left, right, before, after, past, event_at }, dl, dr)
+            (Window { allele, hold: w.hold, tail: w.tail, left, right, before, after, past, outer, event_at }, dl, dr)
         };
         let ((mut r, dl, dr), (mut a, adl, adr)) = (cut(&self.pair.0), cut(&self.pair.1));
         let hold = r.hold.saturating_sub(if r.tail { dr } else { dl }).min(r.allele.len()).min(a.allele.len());
@@ -402,6 +421,7 @@ impl Windows {
             before: w.before,
             after: w.after + more.len(),
             past: Vec::new(),
+            outer: w.outer.clone(),
             event_at: w.event_at,
         };
         Some(Windows {
@@ -459,6 +479,7 @@ impl Windows {
             before: if right_of { w.before } else { usize::try_from(w.before as i64 + n).ok().unwrap_or(0) },
             after: if right_of { usize::try_from(w.after as i64 + n).ok().unwrap_or(0) } else { w.after },
             past: if past_end { Vec::new() } else { w.past.clone() },
+            outer: w.outer.clone(),
             event_at: if k <= w.event_at.0 {
                 let shift = |x: usize| usize::try_from(x as i64 + n).unwrap_or(0);
                 (shift(w.event_at.0), shift(w.event_at.1))
@@ -1438,6 +1459,10 @@ pub(crate) fn unjudged_reason(v: &Variant) -> &'static str {
         Some((start, reference)) if event(start, &reference, v).is_none() => {
             "the prepared reference does not hold its REF allele"
         }
+        Some(_) if windows(v, &Layout::default()).is_some() => {
+            "the recurring changes masked beside it leave no base telling the alleles apart \
+             within the prepared reference"
+        }
         Some(_) => {
             "the prepared reference does not hold the event with its flank (a contig end, or a \
              repeat past the fetch cap)"
@@ -1721,6 +1746,8 @@ fn windows(v: &Variant, layout: &Layout) -> Option<Windows> {
         }
     };
     let (ref_win, alt_win) = (&reference[lo..hi], &hap[lo..alt_hi]);
+    let n = ref_win.len().abs_diff(alt_win.len());
+    let outer = if tail { reference[hi..(hi + n).min(reference.len())].to_vec() } else { reference[lo.saturating_sub(n)..lo].to_vec() };
     let kept = |haps: &[Vec<u8>], win: &[u8], (a, b): (usize, usize)| -> Vec<Vec<u8>> {
         // an allele takes the window's mask where its base is one the mask takes
         let masked = |o: u8, w: u8| if takes(w).count_ones() > 1 && fits(o, w) { w } else { o };
@@ -1740,6 +1767,7 @@ fn windows(v: &Variant, layout: &Layout) -> Option<Windows> {
         before: c_lo - lo,
         after: hi - c_hi,
         past: if tail { Vec::new() } else { reference[hi..].to_vec() },
+        outer: outer.clone(),
         event_at: (ev.lo.min(named) - lo, ev_end - lo),
     };
     let pair = (window(ref_win, ev.hi), window(alt_win, (ev.hi as i64 + d) as usize));
@@ -2935,45 +2963,129 @@ fn read_pair(
         let start = |w: &Window| if tail { anchor - w.allele.len() as i64 } else { anchor };
         Some((read(rw, start(rw))?, read(aw, start(aw))?))
     };
-    match (tail, at_left, at_right) {
-        (false, Some(s), _) => return from(s).map(|(r, a)| (r, a, Placement::Flank)),
-        (true, _, Some(e)) => return from(e).map(|(r, a)| (r, a, Placement::Flank)),
-        _ => {}
+    // The allele confident bases favour by `evidence` (log10, ALT over REF): by at least
+    // `bases` bases read at min BQ, and more than none (at --min-baseq 0 a base weighs
+    // nothing); a tie favours neither.
+    let one = one_base_evidence(min_baseq);
+    let favoured = |evidence: f64, bases: f64| {
+        if evidence > 0.0 && evidence >= bases * one {
+            Some(true)
+        } else if evidence < 0.0 && evidence <= -bases * one {
+            Some(false)
+        } else {
+            None
+        }
+    };
+    // The read placed from the other flank's `anchor` as the allele `alt` names sits
+    // there: the reading flank's end base where that allele puts it.
+    let as_placed = |anchor: i64, alt: bool| -> Option<(Reading, Reading, Placement)> {
+        let w = if alt { aw } else { rw };
+        let s = if tail { anchor + w.allele.len() as i64 } else { anchor - w.allele.len() as i64 };
+        let (r, a) = from(s)?;
+        let (first, after) = aligned_query_range(record)?;
+        let flank_end = if tail { rw.right.map(|g| g - 1) } else { rw.left };
+        let deleted = flank_end.is_some_and(|g| deleted_anchor_query(record, map.to_genome(g)).is_some());
+        // Held: the flank's end base lies in the clip on the reading side, or under the
+        // read's own deletion; else it is aligned elsewhere.
+        let held = deleted || if tail { s > after as i64 } else { s < first as i64 };
+        let fits = if alt { fit(&a, &r, aw, rw, 1) } else { fit(&r, &a, rw, aw, 0) };
+        let placement = match (fits, held) {
+            (true, true) => Placement::OtherFlank,
+            (true, false) => Placement::ThroughAligned,
+            (false, true) => Placement::Unfit { alt },
+            (false, false) => return None,
+        };
+        Some((r, a, placement))
+    };
+    let other = if tail { at_left } else { at_right };
+    if let Some(s) = if tail { at_right } else { at_left } {
+        let (r, a) = from(s)?;
+        // Confirmed from the other flank, read whole. A fit of the shorter allele rests on
+        // its few bases at the reading flank (one past the tract decides, RJ-27): where
+        // the aligner wrote the longer allele's other copy over the reading flank (an
+        // insert, or a deleted sequence, whose end resembles the flank, aligned onto it
+        // as mismatches, the rest clipped), those bases fit the shorter allele and the
+        // read's bases before them are the longer allele's. Read from the other flank at
+        // the longer allele's length (the shorter extended on the reading side by the
+        // reference beyond it, which both share), its confident bases then favour the
+        // longer allele by two bases, as a shifted read must show. A read holding the
+        // longer allele's window from there and reaching past it, as one read from the
+        // reading flank does, is that allele; one starting inside the event shows only
+        // the other junction, which the shorter allele's molecules starting there have no
+        // counterpart of: depth only, never the shorter allele (RJ-23's one reading
+        // flank, operator 2026-10-16). Only a read aligned straight across the windows:
+        // a read whose own indel there placed them holds the other flank shifted by it.
+        // A fit of the longer allele reads its whole event and stands.
+        let fitted = (fit(&r, &a, rw, aw, 0), fit(&a, &r, aw, rw, 1));
+        let longer_alt = aw.allele.len() > rw.allele.len();
+        let (fits_longer, fits_shorter) = if longer_alt { (fitted.1, fitted.0) } else { (fitted.0, fitted.1) };
+        let straight = left.is_none()
+            && rw.left.zip(rw.right).is_some_and(|(lo, hi)| own_indels(record, (map.to_genome(lo), map.to_genome(hi - 1) + 1)).is_empty());
+        // ... and holding the other flank where its own bases say: past it they continue
+        // the reference as aligned (one error aside) and fit it shifted by the alleles'
+        // length difference worse, by two bases. A carrier the aligner wrote without its
+        // gap holds the other flank shifted; past it a repeat whose period divides the
+        // length change fits either way and anchors nothing.
+        let shift = rw.allele.len().abs_diff(aw.allele.len()) as i64;
+        let anchored = !tail
+            && other.and_then(|q| usize::try_from(q).ok()).is_some_and(|q| {
+                // confident bases compared and missed over the first OTHER_FLANK_CHECK
+                // reference bases past the other flank, the read's bases from `q + read`
+                // against the reference's from `past`
+                let misses = |read: usize, past: usize| {
+                    (0..OTHER_FLANK_CHECK)
+                        .filter_map(|i| Some((q + read + i, *rw.past.get(past + i)?)))
+                        .filter(|&(x, _)| x < readable.1 && quals[x] >= min_baseq && seq[x].to_ascii_uppercase() != WILD)
+                        .fold((0, 0), |(n, m), (x, h)| (n + 1, m + usize::from(!fits(seq[x].to_ascii_uppercase(), h))))
+                };
+                let (seen, missed) = misses(0, 0);
+                // the read's bases there shifted by the length change, either way, fit
+                // worse; a shift the read does not reach that far shows nothing
+                let d = usize::try_from(shift).unwrap_or(0);
+                let worse = |(n, m): (usize, usize)| n < OTHER_FLANK_CHECK / 2 || m >= missed + 2;
+                seen >= OTHER_FLANK_CHECK / 2 && missed <= 1 && worse(misses(0, d)) && worse(misses(d, 0))
+            });
+        let longest = rw.allele.len().max(aw.allele.len());
+        let whole = |w: &Window| -> Option<Vec<u8>> {
+            let n = longest - w.allele.len();
+            let outer = if tail { w.outer.get(..n)? } else { w.outer.get(w.outer.len().checked_sub(n)?..)? };
+            Some(if tail { [w.allele.as_slice(), outer].concat() } else { [outer, w.allele.as_slice()].concat() })
+        };
+        let longer_seen = straight
+            && anchored
+            && rw.allele.len() != aw.allele.len()
+            && !fits_longer
+            && other.zip(whole(rw)).zip(whole(aw)).is_some_and(|((anchor, rh), ah)| {
+                let start = if tail { anchor } else { anchor - longest as i64 };
+                let weight = |h: &[u8]| confident_weight(seq, quals, min_baseq, h, start, readable);
+                favoured(weight(&rh) - weight(&ah), 2.0) == Some(longer_alt)
+            });
+        if longer_seen {
+            match other.and_then(|anchor| as_placed(anchor, longer_alt)) {
+                Some(placed) if matches!(placed.2, Placement::OtherFlank | Placement::ThroughAligned) => {
+                    trace!("carrier: read whole from the other flank its bases are the longer allele's → placed from there");
+                    return Some(placed);
+                }
+                _ if fits_shorter => {
+                    trace!("carrier: it fits the shorter allele, but read whole from the other flank its bases are the longer allele's, whose window it does not hold → depth only");
+                    return None;
+                }
+                _ => {}
+            }
+        }
+        return Some((r, a, Placement::Flank));
     }
     // Placed from the other flank: each allele's window starts there (right reading)
     // or ends there (left reading), at its own length.
-    let anchor = if tail { at_left? } else { at_right? };
+    let anchor = other?;
     let start = |w: &Window| if tail { anchor } else { anchor - w.allele.len() as i64 };
     let weight = |w: &Window| confident_weight(seq, quals, min_baseq, &w.allele, start(w), readable);
     let evidence = weight(rw) - weight(aw);
-    // At least one base read at min BQ, and more than none (at --min-baseq 0 that
-    // base weighs nothing): a tie favours neither.
-    let one = one_base_evidence(min_baseq);
-    let (w, alt) = if evidence > 0.0 && evidence >= one {
-        (aw, true)
-    } else if evidence < 0.0 && evidence <= -one {
-        (rw, false)
-    } else {
+    let Some(alt) = favoured(evidence, 1.0) else {
         trace!("carrier: placed from the other flank, its confident bases favour neither allele ({:.2}) → depth only", evidence);
         return None;
     };
-    // The reading flank's end base where the favoured allele puts it.
-    let s = if tail { anchor + w.allele.len() as i64 } else { start(w) };
-    let (r, a) = from(s)?;
-    let (first, after) = aligned_query_range(record)?;
-    let flank_end = if tail { rw.right.map(|g| g - 1) } else { rw.left };
-    let deleted = flank_end.is_some_and(|g| deleted_anchor_query(record, map.to_genome(g)).is_some());
-    // Held: the flank's end base lies in the clip on the reading side, or under the
-    // read's own deletion; else it is aligned elsewhere.
-    let held = deleted || if tail { s > after as i64 } else { s < first as i64 };
-    let fits = if alt { fit(&a, &r, aw, rw, 1) } else { fit(&r, &a, rw, aw, 0) };
-    let placement = match (fits, held) {
-        (true, true) => Placement::OtherFlank,
-        (true, false) => Placement::ThroughAligned,
-        (false, true) => Placement::Unfit { alt },
-        (false, false) => return None,
-    };
-    Some((r, a, placement))
+    as_placed(anchor, alt)
 }
 
 /// The weight (log10) of the read's confident bases (at or above `min_baseq`, not
@@ -3683,7 +3795,7 @@ mod tests {
         assert_eq!(score(b"AGGT", &q, 20, b"ANGT", (0, 4)).mismatches, 0, "any base beside the event");
         assert!(confident_weight(b"AGGT", &q, 20, b"AYGT", 0, (0, 4)) > 0.0);
         // a read tells the allele from another only by a base fitting the one, not the other
-        let aw = Window { allele: b"AYGT".to_vec(), hold: 4, tail: false, left: None, right: None, before: 0, after: 0, past: Vec::new(), event_at: (0, 0) };
+        let aw = Window { allele: b"AYGT".to_vec(), hold: 4, tail: false, left: None, right: None, before: 0, after: 0, past: Vec::new(), outer: Vec::new(), event_at: (0, 0) };
         assert!(tells_others(b"ACGT", &q, 20, &aw, &[b"AGGT".to_vec()], 0, (0, 4)), "a third base is another allele's");
         assert!(!tells_others(b"ATGT", &q, 20, &aw, &[b"AYGT".to_vec()], 0, (0, 4)), "background tells nothing");
     }
@@ -3713,7 +3825,7 @@ mod tests {
 
     #[test]
     fn a_read_tells_the_alt_from_another_allele_only_by_a_base_it_reads() {
-        let aw = Window { allele: b"AACGT".to_vec(), hold: 5, tail: false, left: None, right: None, before: 0, after: 0, past: Vec::new(), event_at: (0, 0) };
+        let aw = Window { allele: b"AACGT".to_vec(), hold: 5, tail: false, left: None, right: None, before: 0, after: 0, past: Vec::new(), outer: Vec::new(), event_at: (0, 0) };
         let other = vec![b"AACTT".to_vec()];
         let (seq, good) = (b"AACGT", [30u8; 5]);
         assert!(tells_others(seq, &good, 20, &aw, &other, 0, (0, 5)), "the G read");

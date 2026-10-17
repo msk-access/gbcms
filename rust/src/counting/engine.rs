@@ -2438,11 +2438,15 @@ fn warn_unjudged(variant: &Variant, alt_unjudged: u64, carrier_fallback: u64) {
         );
     }
     if carrier_fallback > 0 {
+        let by = match window::allele_kind(&variant.ref_allele, &variant.alt_allele) {
+            Some(AlleleKind::Insertion | AlleleKind::Deletion) => "the CIGAR checks",
+            _ => "the previous complex classifier",
+        };
         warn!(
             "{}:{} {}>{}: {} read(s) could not be judged by the exact-carrier rule: {} — \
-             classified by the previous complex classifier",
+             classified by {}",
             variant.chrom, variant.pos + 1, variant.ref_allele, variant.alt_allele, carrier_fallback,
-            carrier::unjudged_reason(variant),
+            carrier::unjudged_reason(variant), by,
         );
     }
 }
@@ -2743,7 +2747,7 @@ fn check_allele_with_qual<F: Fn(u8, u8) -> i32>(
             return result;
         }
         let result = check_insertion(record, variant, siblings, quals, min_baseq, alt_aligner, ref_aligner, backend);
-        ref_needs_the_window(record, variant, alt_needs_the_window(record, variant, quals, min_baseq, result))
+        fell_back(record, variant, ref_needs_the_window(record, variant, alt_needs_the_window(record, variant, quals, min_baseq, result)))
     } else if kind == AlleleKind::Deletion && junction::judges(variant) {
         // A deletion of 50+ bp: judged by its bases at the POS breakpoint, however
         // the aligner wrote it (RJ-24); the CIGAR checks only when the prepared
@@ -2772,7 +2776,7 @@ fn check_allele_with_qual<F: Fn(u8, u8) -> i32>(
             return result;
         }
         let result = check_deletion(record, variant, siblings, quals, min_baseq, alt_aligner, ref_aligner, backend);
-        ref_needs_the_window(record, variant, alt_needs_the_window(record, variant, quals, min_baseq, result))
+        fell_back(record, variant, ref_needs_the_window(record, variant, alt_needs_the_window(record, variant, quals, min_baseq, result)))
     } else {
         // Complex, judged by its whole allele with the exact-carrier rule
         // (`classify_complex`), reaching check_complex only when the rule cannot
@@ -2822,6 +2826,18 @@ fn classify_complex<F: Fn(u8, u8) -> i32>(
         variant.chrom, variant.pos + 1, variant.ref_allele, variant.alt_allele, read_name(record), route,
     );
     let mut result = check_complex(record, variant, siblings, quals, min_baseq, alt_aligner, ref_aligner, backend);
+    result.carrier_fallback = true;
+    result
+}
+
+/// A pure indel's read the exact-carrier rule could not judge, classified by the
+/// CIGAR checks: counted and warned once per variant as the complex fallback is, so
+/// the route is never silent.
+fn fell_back(record: &Record, variant: &Variant, mut result: ClassifyResult) -> ClassifyResult {
+    trace!(
+        "{}:{} {}>{} read={}: the exact-carrier rule cannot judge it → CIGAR checks",
+        variant.chrom, variant.pos + 1, variant.ref_allele, variant.alt_allele, read_name(record),
+    );
     result.carrier_fallback = true;
     result
 }

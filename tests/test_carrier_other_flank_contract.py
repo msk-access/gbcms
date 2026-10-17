@@ -141,3 +141,122 @@ def test_a_long_event_read_from_the_right_counts_clip_written_carriers(tmp_path)
         counts[form] = (got.rd, got.ad)
     assert counts["gap"][1] > 0 and counts["gap"][0] == counts["gap"][1], counts
     assert counts["clip"] == counts["gap"], counts
+
+
+def _flank_like_insert(contig, k=20, subs=(3, 9, 15)):
+    """A 40-base insert after base A whose last `k` bases are the left flank's last `k`
+    (ending at the anchor) with substitutions: an insert whose end resembles the flank
+    (a repeat element beside its own kind, a near target-site duplication), as aligners
+    misplace."""
+    rng = random.Random(279)
+    head = "".join(rng.choice("ACG") for _ in range(40 - k))
+    tail = list(contig[A - k + 1 : A + 1])
+    for i in subs:
+        tail[i] = {"C": "A", "G": "A", "T": "A", "A": "C"}[tail[i]]
+    return head + "".join(tail)
+
+
+def _over_flank(name, ins, contig, k, flank, clip, right):
+    """A carrier as an aligner writes it when the insert's end resembles the left flank:
+    `flank` bases of the left flank and the insert's first bases soft-clipped (`clip`
+    of the insert's head), its last `k` aligned onto the flank's last `k` (as mismatches),
+    then the right flank."""
+    head = ins[40 - k - clip : 40 - k]
+    seq = contig[A + 1 - flank : A + 1] + head + ins[40 - k :] + contig[A + 1 : A + 1 + right]
+    return _pair(make_read(name, seq, A - k + 1, ((4, flank + clip), (0, k + right))))
+
+
+def _flank_like_row(contig, ins, carriers):
+    """Six REF reads and six carriers written with the insertion, besides `carriers`."""
+    hap = contig[: A + 1] + ins + contig[A + 1 :]
+    reads = list(carriers)
+    for i in range(6):
+        s = A - 60 - 3 * i
+        reads.append(_pair(make_read(f"ref{i}", contig[s : s + 150], s, ((0, 150),))))
+        n = A + 1 - s
+        cig = ((0, n), (1, 40), (0, 150 - n - 40))
+        reads.append(_pair(make_read(f"alt{i}", hap[s : s + 150], s, cig)))
+    return reads
+
+
+def test_a_carrier_reaching_past_an_insert_aligned_over_the_flank_is_alt(tmp_path):
+    """A carrier whose clip holds the left flank and the insert's head, its aligned bases
+    over the left flank the insert's end (it resembles the flank), fits neither allele
+    read from that flank. Read whole from the right flank, at the ALT's length, its
+    bases are the ALT's, and the read reaches past the insert's start, as a carrier read
+    from the left flank does: ALT (#279, operator 2026-10-16: spanning carriers only)."""
+    contig = _contig()
+    ins = _flank_like_insert(contig)
+    # their clips reach past the window's left flank (the tract grows four bases left,
+    # through the bases the insert's end shares with the flank)
+    carriers = [_over_flank(f"sp{i}", ins, contig, 20, 8 + i, 20, 60) for i in range(6)]
+    c = _count(tmp_path, contig, _flank_like_row(contig, ins, carriers), contig[A], contig[A] + ins)
+    assert (c.rd, c.ad, c.partial_alt) == (6, 12, 0)
+
+
+def test_a_carrier_starting_inside_the_insert_is_depth_only_never_ref(tmp_path):
+    """A carrier starting inside the insert, its end aligned over the left flank: its two
+    bases at the REF window happen to fit REF (the insert ends in the anchor's base), but
+    its bases before them are the insert's, which the ALT read from the right flank fits
+    and REF does not. It shows only the right junction, which a REF molecule starting
+    there has no counterpart of, so it is depth only (RJ-23's one reading flank), not
+    REF."""
+    contig = _contig()
+    ins = _flank_like_insert(contig)
+    carriers = [_over_flank(f"in{i}", ins, contig, 20, 0, 8 + 2 * i, 60) for i in range(6)]
+    c = _count(tmp_path, contig, _flank_like_row(contig, ins, carriers), contig[A], contig[A] + ins)
+    assert (c.rd, c.ad, c.partial_alt) == (6, 6, 0)
+
+
+def test_reads_of_another_insert_with_the_same_flank_like_end_are_not_alt(tmp_path):
+    """Guard: written the same way, but their clipped bases are another insert's: the
+    ALT placed from the right flank does not fit them, so none is ALT."""
+    contig = _contig()
+    ins = _flank_like_insert(contig)
+    other = "".join("T" if b != "T" else "C" for b in ins[:20]) + ins[20:]
+    reads = [_over_flank(f"o{i}", other, contig, 20, 8 + i, 20, 60) for i in range(6)]
+    c = _count(tmp_path, contig, reads, contig[A], contig[A] + ins)
+    assert c.ad == 0
+
+
+def test_ref_molecules_behind_a_poor_flank_are_not_placed_from_the_other_one(tmp_path):
+    """Guard: REF molecules whose bases over the left flank's end are random at Q12 and
+    whose clip is junk at Q12: their confident bases show nothing either way there, so
+    no placement from the right flank makes them ALT."""
+    contig = _contig()
+    ins = _flank_like_insert(contig)
+    rng = random.Random(7)
+    reads = []
+    for i in range(6):
+        clip = 12 + 2 * i
+        junk = "".join(rng.choice("ACGT") for _ in range(clip + 20))
+        seq = junk + contig[A + 1 : A + 61]
+        quals = [12] * (clip + 20) + [30] * 60
+        reads.append(_pair(make_read(f"p{i}", seq, A - 19, ((4, clip), (0, 80)), quals=quals)))
+    c = _count(tmp_path, contig, reads, contig[A], contig[A] + ins)
+    assert c.ad == 0
+
+
+def test_a_ref_molecule_starting_inside_a_deletion_whose_end_resembles_the_flank_is_not_alt(
+    tmp_path,
+):
+    """The mirror for deletions: 40 deleted bases whose end resembles the left flank. A
+    REF molecule starting inside them, their end aligned over the left flank as
+    mismatches, fits the ALT's two bases at the anchor; its bases before them are the
+    deleted sequence, which REF read from the right flank fits and the ALT does not. It
+    shows only REF's right junction: depth only, never ALT."""
+    base = _contig()
+    dele = _flank_like_insert(base)
+    contig = base[: A + 1] + dele + base[A + 1 :]  # REF holds the 40 bases
+    reads = []
+    for i in range(6):
+        s = A - 60 - 3 * i
+        reads.append(_pair(make_read(f"ref{i}", contig[s : s + 150], s, ((0, 150),))))
+        n = A + 1 - s
+        alt = contig[s : A + 1] + contig[A + 41 : A + 41 + 150 - n]
+        reads.append(_pair(make_read(f"alt{i}", alt, s, ((0, n), (2, 40), (0, 150 - n)))))
+        clip = 8 + 2 * i
+        seq = dele[20 - clip : 20] + dele[20:] + contig[A + 41 : A + 101]
+        reads.append(_pair(make_read(f"in{i}", seq, A - 19, ((4, clip), (0, 80)))))
+    c = _count(tmp_path, contig, reads, contig[A : A + 41], contig[A])
+    assert (c.rd, c.ad) == (6, 6)

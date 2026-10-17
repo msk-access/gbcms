@@ -7,6 +7,41 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed — a read aligned over its reading flank, confirmed from the other (#279)
+
+- **The rule (RJ-23, amended).** Some reads are aligned straight across a variant's
+  windows and fit the shorter allele read from their reading flank. Such a read is now
+  also read whole from the other flank, at the longer allele's length, wherever its own
+  bases place that flank unambiguously.
+  - Its bases may favour the longer allele there by two bases. That means the
+    aligner wrote the longer allele's other copy over the reading flank: an insert,
+    or a deleted sequence, whose end resembles the flank, aligned onto it as
+    mismatches with the rest clipped.
+  - If the read holds the longer allele's window from there and reaches past it, it
+    counts as that allele.
+  - If it starts inside the event, it is depth only, never the shorter allele.
+- **Why spanning carriers only (operator, 2026-10-16).** Counting carriers that start
+  inside the insert would give the longer allele read starts the shorter one cannot
+  have. On HG002's long insertions that pushed inserts of 50 bp or more to a median VAF
+  of 0.61–0.86.
+- **Measured against the build before it:**
+  - **HG002 insertions of 10+ bp in band:** 334 → 343. Mean |VAF − 0.5| goes 0.157 →
+    0.153; 57 rows move nearer 0.5 and 24 farther.
+  - **HG002 short insertions in band:** 552 → 555. Deletions are unchanged.
+  - **Gate panel's pure indels:** 7 insertion rows change (AD +10, RD −29). Against
+    the bases oracle, no ALT read is lost, and 39 REF reads move from partial
+    evidence to depth.
+  - **WES, normals and ACCESS, and FORTE:** unchanged.
+
+### Fixed — a pure indel the exact-carrier rule cannot judge is warned
+
+- A pure insertion or deletion the exact-carrier rule could not judge fell back to the
+  CIGAR checks with nothing logged.
+- Its reads now count in the fallback tally, and the variant is warned once with the
+  reason, as a complex variant's fallback is. One example is a VNTR whose recurring
+  masks leave no base telling the alleles apart (#294).
+- Counts are unchanged.
+
 ### Changed — pure insertions and deletions judged by their bases (#278)
 
 - **The rule (RJ-26, RJ-27).** A pure insertion or deletion under 50 bp is judged by

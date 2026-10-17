@@ -87,7 +87,13 @@ def test_an_alt_read_without_a_reference_to_read_is_depth_only_and_warned(tmp_pa
         (c,) = count_bam_checked(bam, [v], [None], *ARGS)
     _invariants(c)
     assert (c.ad, c.dp) == (0, 5)
-    warns = [r.getMessage() for r in caplog.records if "could not be judged" in r.getMessage()]
+    # the depth-only ALT reads' warning (the fallback to the CIGAR checks is warned too,
+    # #265: test_an_unjudgeable_pure_indel_is_warned_once)
+    warns = [
+        r.getMessage()
+        for r in caplog.records
+        if "span neither informative window" in r.getMessage()
+    ]
     assert len(warns) == 2 and "1:401" in warns[0], warns  # once per variant, per count
 
 
@@ -144,6 +150,29 @@ def test_an_unjudgeable_complex_variant_is_warned_once(tmp_path, caplog):
     warns = [r.getMessage() for r in caplog.records if "exact-carrier rule" in r.getMessage()]
     assert len(warns) == 2 and "1:401 C>TA: 4 read(s)" in warns[0], warns
     assert "no prepared reference" in warns[0], "the warning names why the rule could not judge"
+
+
+def test_an_unjudgeable_pure_indel_is_warned_once(tmp_path, caplog):
+    """A pure insertion the exact-carrier rule cannot judge (here, no prepared
+    reference) is classified by the CIGAR checks, as RJ-27 allows, and one warning per
+    count says so and why, as for a complex variant: the route is never silent."""
+    ref = _flank(13) + "C" + "A" * 10 + "G" + _flank(14)
+    reads = [
+        make_read(f"r{i}", ref[A - 40 + i : A + 60 + i], A - 40 + i, ((0, 100),)) for i in range(4)
+    ]
+    _, bam = write_contig(tmp_path, ref, reads, "bare")
+    v = _rs.Variant("1", A, "C", "CTT", "INS")  # not prepared
+    with caplog.at_level(logging.WARNING, logger=ENGINE_LOGGER):
+        _rs.reset_log_caching()
+        (c,) = count_bam_checked(bam, [v], [None], *ARGS)
+    _invariants(c)
+    warns = [
+        r.getMessage()
+        for r in caplog.records
+        if "could not be judged by the exact-carrier" in r.getMessage()
+    ]
+    assert len(warns) == 2 and "1:401 C>CTT: 4 read(s)" in warns[0], warns  # once per count
+    assert "no prepared reference" in warns[0] and "the CIGAR checks" in warns[0], warns
 
 
 def test_an_anchor_changing_insertion_in_a_long_run_judges_reads_by_their_bases(tmp_path):
