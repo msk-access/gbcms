@@ -50,7 +50,11 @@
 //!   allele's window placed from that flank at its own length, its confident bases
 //!   (at or above min BQ, not N) must favour one by at least one base read at min BQ.
 //!   It counts where that allele fits, else carries another allele; one placed
-//!   through aligned bases counts only where the allele fits.
+//!   through aligned bases counts only where the allele fits. A read aligned straight
+//!   across the windows that fits the shorter allele from its reading flank, while
+//!   read whole from the other flank its bases are the longer allele's, had that
+//!   allele's other copy written over the reading flank: the longer allele where it
+//!   holds that allele's window from there and reaches past it, else depth only.
 //! - **A change beside the event.** A change that recurs at a fixed distance from
 //!   the event is a separate event, as another indel outside the window is, masked
 //!   in both windows ([`guard_for`]) so a read carrying the given allele counts
