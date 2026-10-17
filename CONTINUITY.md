@@ -22,8 +22,19 @@ of ~4M read calls on every runnable arm; the release gate covers RC/FORTE probes
 - Filed: #294 (the guard masks the only base telling a VNTR unit insertion from REF).
 - Harness: every runner now traces with COLUMNS=60000 (3000 wrapped alleles > 2.9 kb;
   traces made before 2026-10-16 miss those lines on HG002 pri_ins / pri_del50).
-- Next: push #279 + PR (ask), then group 1's decisions (#285, #286, #282, #290, #292,
-  #293, #294, #144), group 2 (gate arms, D12, HPC gate when HPC is back).
+- **#279 is PR #295** (pushed 2026-10-16; CI 8/8 green, mergeable). When the operator
+  merges it, close #279 with a link (merges into develop do not auto-close).
+- **Group 1 decisions (walkthrough 2026-10-17; answers recorded below as they come):**
+  | # | Question | Evidence | Recommendation |
+  |:--|:--|:--|:--|
+  | #285 C40a | RJ-24's run clause reads a phased DNP 3-4 bp past a 61-bp deletion's junction as another breakpoint (ALT 49 -> 0, ZERO_ALT) | carriers match the right flank 40+ bp past the run; 0 of 444 non-carriers carry the DNP | a run is another breakpoint only when the bases after it keep mismatching the flank; a run that rejoins it is a neighbour (named); measure on the panel's 62 deletions of 50+ bp, HG002 50+ bp, WES, synthetic |
+  | #290 C43f | another length of the repeat a pure insertion lengthens, written upstream outside the windows, keeps REF (RJ-8 separate event); develop alike | HG002: 9 reads at one row; synthetic +15 upstream of a +33 counts REF on both builds | such a read is another allele (partial) wherever in that repeat (HipSTR judges the whole repeat length); measure on HG002 STR arms, panel repeat rows |
+  | #294 C43j | the guard masks the only base telling a VNTR unit insertion from REF; the rule cannot judge it (now warned) | HG002 28-bp VNTR insertion, 21 reads to the CIGAR checks | a mask that leaves no base telling the alleles apart is not applied (extends "the given allele's own bases are never masked"); alternative: read on past the masks |
+  | #282 C43e | Test 3 (older sibling claim) judges an unseen co-annotated sibling ambiguous; the guard's seen-share rule ignores it | delins test AD 10 via Test 3 alone; MNP component AD 14 unseen vs 10 seen | Test 3 follows the guard's seen share; measure every arm + synthetic at 1-10% sibling share first |
+  | #292 C43h | BAQ's junction penalty (-Q20, 5 bases each side) masks bases for reads judged on their spliced reference | review fuzz: 63 of 29,488 extra-indel reads wrong allele (develop 0), 53 under BAQ; samtools BAQ skips spliced reads, GATK clips only short mismatching overhangs | spare the junction penalty in the exact-carrier rule's spliced judgment (narrow; SNV path unchanged); measure FORTE, RNA synthetic, fuzz, BAQ on/off, GTF on/off |
+  | #286 C40b | right-clipped carriers ending before a long deletion's windows get no read call | 39 reads at one 172-bp deletion, 6-10 mismatches each, the deletion an exact intron (processed pseudogene / contaminating cDNA pattern); ~1 read/row elsewhere | close as measured (not admitting them is right in practice); no new flag |
+  | #144 C7 | clip-borne ITD carriers | after #289 (clips read, RJ-13): right-clipped carriers aligned through the anchor count ALT; left-clipped carriers starting past the anchor are not judged (read admission, as #286) | re-measure on the panel's ITD rows on develop, then decide admission together with #286's guard thinking |
+  | #293 C43i | per-read reading flank when an event fills a short exon | microexons 5-16 bp, a handful of fuzz reads; develop's flank test kept | defer to after the count-changing items above (rare) |
 
 ## Before — C43a
 6.7.0 (tracker #196): C39 (#272) and C40 (#281) merged; C43 #276 (pure indels judged by
