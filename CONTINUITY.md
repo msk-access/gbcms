@@ -24,7 +24,18 @@ of ~4M read calls on every runnable arm; the release gate covers RC/FORTE probes
   traces made before 2026-10-16 miss those lines on HG002 pri_ins / pri_del50).
 - **#279 is PR #295** (pushed 2026-10-16; CI 8/8 green, mergeable). When the operator
   merges it, close #279 with a link (merges into develop do not auto-close).
-- **Group 1 decisions (walkthrough 2026-10-17; answers recorded below as they come):**
+- **Group 1 decided (operator, 2026-10-17):** #285 yes, measure then land; #290 another
+  allele (partial) wherever in the repeat; #294 a mask leaving no telling base is not
+  applied; #282 Test 3 follows the guard's seen share, after measuring; #292 prototype
+  and measure all three options (narrow spare, samtools no-penalty, GATK overhang) then
+  decide; #286 closed as measured; #144 re-measure ITD rows on develop, then decide
+  admission; #293 after the others. **Order:** merge #295 (operator) -> close #279 ->
+  #285 -> #290 + #294 (carrier repeat handling, one branch) -> #282 (measure first) ->
+  #292 (three prototypes, measure) -> #144 (re-measure) -> #293. Each from develop,
+  red-first, measured on every arm (`gate_pi/run_c43c.sh` pattern: gate_pi + oracle,
+  HG002 three arms + right-junction, across, WES, FORTE). Group 2 (D9-D11 arms, D12,
+  HPC gate) when HPC is back.
+- **Group 1 walkthrough (2026-10-17), the questions as asked:**
   | # | Question | Evidence | Recommendation |
   |:--|:--|:--|:--|
   | #285 C40a | RJ-24's run clause reads a phased DNP 3-4 bp past a 61-bp deletion's junction as another breakpoint (ALT 49 -> 0, ZERO_ALT) | carriers match the right flank 40+ bp past the run; 0 of 444 non-carriers carry the DNP | a run is another breakpoint only when the bases after it keep mismatching the flank; a run that rejoins it is a neighbour (named); measure on the panel's 62 deletions of 50+ bp, HG002 50+ bp, WES, synthetic |
