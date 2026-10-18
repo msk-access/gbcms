@@ -3140,7 +3140,7 @@ fn read_at(
 
 /// Bases a shift past the windows may take ([`shifted_better`]): another allele's other
 /// length, a repeat unit or a few.
-const SHIFT_REACH: i64 = 8;
+pub(crate) const SHIFT_REACH: i64 = 8;
 /// Read bases a shift is scored over.
 const SHIFT_SPAN: usize = 12;
 

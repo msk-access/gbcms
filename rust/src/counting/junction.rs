@@ -9,9 +9,11 @@
 //!   allele's own continuation: the deleted bases for REF, the right flank for ALT.
 //!   A REF and an ALT molecule hold their windows from the same read starts, so
 //!   neither allele is favoured by where reads start.
-//! - **Nothing past the window is read**, for either allele: checking REF through
-//!   every deleted base it covers would expose it to errors the ALT reading never
-//!   meets (REJ-20261009-003).
+//! - **Nothing past the window is read to call a read**, for either allele: checking
+//!   REF through every deleted base it covers would expose it to errors the ALT
+//!   reading never meets (REJ-20261009-003). The neighbouring-change guard reads past
+//!   the windows only to tell a fragment's allele and whether a run of changes
+//!   rejoins its allele's continuation ([`guard_for`]).
 //!
 //! - **Placement.** A read is read from the query position of its aligned first
 //!   window base, so both windows start where the read's flank does. A read whose
@@ -45,7 +47,7 @@ use crate::types::Variant;
 
 use super::carrier::{
     aligned_query_range, confident_weight, one_base_evidence, readable_range, score, Guard, Placement, ReadRules,
-    Reading, GUARD_MIN_READS, GUARD_MIN_SHARE, GUARD_REF_SHARE, WILD,
+    Reading, GUARD_MIN_READS, GUARD_MIN_SHARE, GUARD_REF_SHARE, SHIFT_REACH, WILD,
 };
 use super::observed::{canonical, ObservedAllele};
 use super::utils::{find_read_pos, median_qual, ClassifyPhase, ClassifyResult};
@@ -303,9 +305,10 @@ const PAST: usize = 2 * REJOIN;
 /// over the junction windows): each fragment of the reads `counted` admits that holds
 /// the windows from a read's aligned first window base (its mates' bases merged, the
 /// better-quality one's where both read a base) is taken as the allele whose
-/// continuation it follows (the [`REJOIN`] bases past the windows, where it reads
-/// them, else its [`K`] bases past the microhomology, fit that allele to within one
-/// base and the other by two or more), and its confident changes are tallied per
+/// continuation it follows (as its bases past the windows place it, [`placed_past`];
+/// else as its [`K`] bases past the microhomology tell it: they fit that allele to
+/// within one base and the other by two or more), and its confident changes are
+/// tallied per
 /// window offset, on the base before the windows, and on [`PAST`] bases on along its
 /// allele past them (up to a splice). A change recurs on at least [`GUARD_MIN_READS`]
 /// fragments and [`GUARD_MIN_SHARE`] of that allele's reads. Masked at its offset in both windows are, in the flank and
@@ -389,9 +392,9 @@ pub(crate) fn guard_for(
         // The fragment's base at edged offset e, and whether it is read confidently.
         let read = |e: usize| fragment[e].map(|(b, bq, tie)| (b, !tie && b != WILD && bq >= min_baseq));
         let off = |w: &[Option<u8>], e: usize| matches!((read(e), w[e]), (Some((b, true)), Some(x)) if b != x);
-        // The allele whose continuation it follows: the REJOIN bases past the windows
-        // where it reads them and they tell it, else its K bases past the
-        // microhomology (a change among those may be the other allele's base there).
+        // The allele whose continuation it follows: as the bases past the windows place
+        // it, else as its K bases past the microhomology tell it (a change among those
+        // may be the other allele's base there).
         let told = |es: std::ops::RangeInclusive<usize>| {
             let misses = |w: &[Option<u8>]| es.clone().filter(|&e| off(w, e)).count();
             match (misses(&windows[0]), misses(&windows[1])) {
@@ -400,9 +403,7 @@ pub(crate) fn guard_for(
                 _ => None,
             }
         };
-        let past = n + 1..=n + REJOIN;
-        let read_on = past.clone().all(|e| read(e).is_some()).then(|| told(past)).flatten();
-        let Some(allele) = read_on.or_else(|| told(cont + 1..=n)) else {
+        let Some(allele) = placed_past(&read, &windows, n).or_else(|| told(cont + 1..=n)) else {
             continue;
         };
         scanned += 1;
@@ -510,6 +511,13 @@ pub(crate) fn guard_for(
             given_carriers: given,
         })
     });
+    let recurring = |a: usize| {
+        (0..m).filter(|&e| recurs(a, e)).map(|e| format!("{}:{}/{}", e, change[a][e], cover[a][e])).collect::<Vec<_>>().join(" ")
+    };
+    trace!(
+        "junction guard tallies at {}:{}: {} fragments; recurring changes (edged offset: changed/read) REF [{}] ALT [{}]",
+        v.chrom, v.pos + 1, scanned, recurring(0), recurring(1),
+    );
     if masked.is_empty() && larger.is_none() {
         return None;
     }
@@ -519,6 +527,40 @@ pub(crate) fn guard_for(
         neighbours[0].len() + neighbours[1].len(), scanned,
     );
     Some(Guard::new(v, masked, larger, scanned))
+}
+
+/// The allele a fragment's bases past the windows place it as (`read`: its base at an
+/// edged offset and whether it is read confidently; `windows`: each allele's edged
+/// bases; `n`: the windows' length), read on as RJ-27 reads a pure indel's: the
+/// [`REJOIN`] bases past them fit that allele to within one base and the other by two
+/// or more, and fit each allele shifted by up to [`SHIFT_REACH`] bases either way worse
+/// by two or more than they fit it (in a repeat a read of another length of either
+/// allele reads the same there); and every base it reads on along the allele, to
+/// [`PAST`] past the windows, fits it to within one base all told (a read of another
+/// allele whose bases past the windows happen to read the same goes on to differ).
+/// None where the fragment does not read the [`REJOIN`] bases, or they place it
+/// nowhere unambiguously.
+fn placed_past(read: &dyn Fn(usize) -> Option<(u8, bool)>, windows: &[Vec<Option<u8>>; 2], n: usize) -> Option<usize> {
+    let past = n + 1..=n + REJOIN;
+    if !past.clone().all(|e| read(e).is_some()) {
+        return None;
+    }
+    let misses = |a: usize, s: i64, es: std::ops::RangeInclusive<usize>| {
+        es.filter(|&e| {
+            let at = usize::try_from(e as i64 + s).ok().and_then(|i| windows[a].get(i).copied().flatten());
+            matches!((read(e), at), (Some((b, true)), Some(x)) if b != x)
+        })
+        .count()
+    };
+    let allele = match (misses(0, 0, past.clone()), misses(1, 0, past.clone())) {
+        (0..=1, 2..) => 0,
+        (2.., 0..=1) => 1,
+        _ => return None,
+    };
+    let fit = misses(allele, 0, past.clone());
+    let shifted = (1..=SHIFT_REACH).flat_map(|k| [k, -k]).any(|s| (0..2).any(|x| misses(x, s, past.clone()) < fit + 2));
+    let read_on = misses(allele, 0, n + 1..=n + PAST) <= 1;
+    (!shifted && read_on).then_some(allele)
 }
 
 /// Whether a run of an allele's own changes (edged offsets [e0, e1], `run`) is a phased
@@ -876,6 +918,31 @@ mod tests {
         let g = guard_for(&[clipped, refs].concat(), &v, &|_| true, 20).expect("a recurring change");
         let l = g.larger.expect("a larger allele");
         assert_eq!(l.ref_allele.len() - l.alt_allele.len(), 60, "{l:?}");
+    }
+
+    #[test]
+    fn the_bases_past_the_windows_place_a_read_only_unambiguously() {
+        // Edged windows of 8 bases with 24 past them; a read reading ALT's bases.
+        let seq = |seed: u32| -> Vec<Option<u8>> { cgt(33, seed).bytes().map(Some).collect() };
+        let (r, alt) = (seq(3), seq(5));
+        let reads = |w: &[Option<u8>]| {
+            let bases: Vec<u8> = w.iter().map(|b| b.unwrap()).collect();
+            move |e: usize| Some((bases[e], true))
+        };
+        let windows = [r.clone(), alt.clone()];
+        assert_eq!(placed_past(&reads(&alt), &windows, 8), Some(1));
+        assert_eq!(placed_past(&reads(&r), &windows, 8), Some(0));
+        // ALT's bases past the windows are REF's one base on (a repeat): a read of REF
+        // with one base deleted reads them too, so they place no read
+        let mut shifted = alt.clone();
+        shifted[9..32].copy_from_slice(&r[10..33]);
+        assert_eq!(placed_past(&reads(&shifted), &[r.clone(), shifted.clone()], 8), None);
+        // a read reading ALT's twelve bases past the windows, then two others of its own
+        let mut other = alt.clone();
+        for e in [23, 26] {
+            other[e] = Some(if alt[e] == Some(b'A') { b'C' } else { b'A' });
+        }
+        assert_eq!(placed_past(&reads(&other), &[r, alt], 8), None);
     }
 
     #[test]

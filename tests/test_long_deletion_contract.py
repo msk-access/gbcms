@@ -439,3 +439,51 @@ def test_a_fragment_reads_on_past_a_run_from_either_mate(tmp_path):
     )
     (got,) = count_checked(bam, [pv.variant])
     assert (got.rd, got.ad, got.partial_alt) == (4, 8, 0)
+
+
+def test_another_allele_reading_like_alt_past_the_windows_is_not_alt(tmp_path):
+    """REF's and ALT's continuations agree past their first two bases. Four reads of
+    another allele hold ALT's first continuation base, REF's second, a change two bases
+    before the junction, ALT's twelve bases past the windows, then one base deleted: their
+    four continuation bases miss each allele by one, their twelve bases past the windows
+    read as ALT's, and they go on to differ from it. They are not placed as carriers, so
+    their changes are not masked as neighbours: neither allele, beside four carriers and
+    four REF reads."""
+    n, mh = rj.LONG_DEL["del 60"]
+    c = list(rj._long_contig(n, mh))
+    c[A + 2], c[A + 3] = c[A + n + 2], c[A + n + 3]
+    if c[A + 1] == c[A + n + 1]:
+        c[A + 1] = next(b for b in "CGT" if b != c[A + n + 1])
+    contig = "".join(c)
+    assert contig[A] != contig[A + n] and contig[A - 1] != contig[A + n - 1]
+    hap = contig[:A] + contig[A + n :]
+    other = list(hap)
+    other[A - 2] = rj._other(other[A - 2])
+    other[A + 1] = contig[A + 1]
+    del other[A + 4 + 12 + 3]  # one base deleted three past the twelve
+    other = "".join(other)
+    reads = []
+    for i in range(4):
+        s = A - 50 - i
+        cig = ((0, A - s), (2, n), (0, 100 - (A - s)))
+        reads.append(make_read(f"d{i}", hap[s : s + 100], s, cig))
+        reads.append(make_read(f"x{i}", other[s : s + 100], s, cig))  # aligned as written
+        reads.append(make_read(f"r{i}", contig[s : s + 100], s, ((0, 100),)))
+    for r in reads:
+        r.flag = 0x1 | 0x2 | 0x20 | 0x40
+        r.next_reference_id, r.next_reference_start, r.template_length = (
+            0,
+            r.reference_start + 250,
+            400,
+        )
+    fa, bam = write_contig(tmp_path, contig, reads, "c")
+    (pv,) = _rs.prepare_variants(
+        [_rs.Variant("1", A - 1, contig[A - 1 : A + n], contig[A - 1], "DEL")],
+        fa,
+        5,
+        False,
+        1,
+        True,
+    )
+    (got,) = count_checked(bam, [pv.variant])
+    assert (got.rd, got.ad) == (4, 4)
