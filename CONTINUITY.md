@@ -3,46 +3,49 @@
 > Tactical state that must survive a closed laptop or a context summary.
 > Update the **Now** and **Next** sections as work progresses.
 
-_Last updated: 2026-10-16_
+_Last updated: 2026-10-16 (evening)_
 
-## Now — #278 (pure indels judged by their bases, groups B and C)
-Branch `feature/c43b-pure-indel-shapes` in worktree `.claude/worktrees/c43b` (scratch venv
-`scratchpad/venv_c43b`). Operator decisions 2026-10-15/16: D1 one flank base, D2 a
-truncated copy of a long insert is another allele (identity band measured, not adopted),
-D3 ALT + separate SNV, D4 recurring substitution in the event = another allele, D5 masked
-deletion ALT where its bases show the length, D6 fixtures carry the reference, D7
-deleted-base background, D8 mates by quality, growth only on the allele holding the bases,
-C4 an exact fit at the pre-read-on hold. Covered expectations with their evidence:
-`278_expectation_evidence.md` (local).
-- **Final candidate `plan670/src_c43py` (dc5bdb9d)**: the shift test (a fit on too few
-  bases fails where a shift of up to 8 explains the next 12 bases by 2+ confident bases
-  better) replaced the review fix's count threshold (that lost 516 oracle-ALT carriers of
-  a phased DNP); the RNA exon-start fix (an unspliced read starting within 5 of an exon
-  start that cuts the left flank reads the windows up to it).
-- Measured: full local gate 411/411; adjudication (1,062 rows) within oracle a sign-out
-  749, develop 838, c43py 867 (b: 794/921/968; 14 farther, 58 closer); HG002 vs the CIGAR
-  path: 10+ bp ins in band 110 -> 334, short ins 465 -> 552, dels 529 -> 563; normals vs
-  develop AD +3 (rows already carrying the allele), RD -138; normals/ACCESS vs c43y AD +3,
-  RD +171; RNA arm identical to c43ps. Docs: RJ-26/RJ-27 + evidence, CHANGELOG (f82d23b9).
-- Branch rebuilt as four commits on develop (rule, RNA fix, docs, continuity; tree
-  identical to the first cut, kept on local `archive/c43b-first-cut`). Lint gate at CI's
-  versions, clippy, cargo test 325, pytest 1679 pass. PR #289 open to develop; decision
-  record posted on #278 (aggregates).
-- #291 fixed in #289 (pushed): 8488e7f6 (a read spliced within the windows' reading reach
-  is judged on its spliced reference; typed left-flank edges), f2934f0b (an insertion
-  written after the splice no longer ends reading on; the review's finding 1), d468e68f
-  (develop's right-flank edge test kept: microexons). Frozen `plan670/src_c43pz3`.
-  Exon-edge matrix: every spliced read counts for its allele, BAQ on or off; FORTE vs
-  c43py one row RD +1 (a REF read verified by its bases); develop vs final FORTE 11 of 25
-  pure-indel rows (deletions) RD -230 AD +225. Review fuzz (scratchpad review_291, four
-  builds): clean reads 0 wrong-allele calls; reads with an extra 1-bp indel: wrong 63
-  (prev 52, develop 0), 53 under BAQ -> #292 (operator: merge, follow up). #278 record
-  corrected (FORTE), PR body updated, #291 commented.
-- Next: CI on #289, then merge (operator). Follow-ups (sub-issues of #276): #290 another
-  length of the repeat written upstream counts REF (develop alike); #292 BAQ's junction
-  penalty for reads judged on their spliced reference; #293 a per-read reading flank in a
-  short exon. Harness cleanup (`src_c43p*` builds, wt_d2band, wt_c43pr, wt_c43ps,
-  frozen_* worktrees).
+## Now — 6.7.0 after #289 (C43 tail)
+#289 merged 2026-10-16 (e56ed8e4). Closed: #278, #291, #287 (fixed by #288), #143
+(resolved by RJ-26/D2), #280 (measured: the bases rule counts 0 ALT for the 7
+collapsed-only ABRA2 events a scan found; no gate row affected), #265 (Phase 3 decides 0
+of ~4M read calls on every runnable arm; the release gate covers RC/FORTE probes).
+- **#279 on `feature/c43c-other-flank`** (worktree c43b, local, not pushed): A' decided
+  (operator 2026-10-16: spanning carriers only; counting every right-junction carrier
+  double-counts long inserts). Commits 9d7204f5 (the rule, with the unambiguous
+  other-flank anchor), e43f9084 (a pure indel the rule cannot judge is counted and
+  warned; test filter narrowed with operator approval), 0e53d1bb (docs). Frozen
+  `plan670/src_c43c4` (b4647ad0, the rule without the fallback warning). Measured
+  vs c43py: HG002 10+ bp ins in band 334 -> 343, short ins 552 -> 555, dels unchanged;
+  panel 7 ins rows (AD +10, RD -29), no oracle-ALT read lost; WES, normals/ACCESS, FORTE
+  unchanged. Harness: `gate_pi/run_c43c.sh` (L=label), `m279/right_junction.py`.
+- Filed: #294 (the guard masks the only base telling a VNTR unit insertion from REF).
+- Harness: every runner now traces with COLUMNS=60000 (3000 wrapped alleles > 2.9 kb;
+  traces made before 2026-10-16 miss those lines on HG002 pri_ins / pri_del50).
+- **#279 is PR #295** (pushed 2026-10-16; CI 8/8 green, mergeable). When the operator
+  merges it, close #279 with a link (merges into develop do not auto-close).
+- **Group 1 decided (operator, 2026-10-17):** #285 yes, measure then land; #290 another
+  allele (partial) wherever in the repeat; #294 a mask leaving no telling base is not
+  applied; #282 Test 3 follows the guard's seen share, after measuring; #292 prototype
+  and measure all three options (narrow spare, samtools no-penalty, GATK overhang) then
+  decide; #286 closed as measured; #144 re-measure ITD rows on develop, then decide
+  admission; #293 after the others. **Order:** merge #295 (operator) -> close #279 ->
+  #285 -> #290 + #294 (carrier repeat handling, one branch) -> #282 (measure first) ->
+  #292 (three prototypes, measure) -> #144 (re-measure) -> #293. Each from develop,
+  red-first, measured on every arm (`gate_pi/run_c43c.sh` pattern: gate_pi + oracle,
+  HG002 three arms + right-junction, across, WES, FORTE). Group 2 (D9-D11 arms, D12,
+  HPC gate) when HPC is back.
+- **Group 1 walkthrough (2026-10-17), the questions as asked:**
+  | # | Question | Evidence | Recommendation |
+  |:--|:--|:--|:--|
+  | #285 C40a | RJ-24's run clause reads a phased DNP 3-4 bp past a 61-bp deletion's junction as another breakpoint (ALT 49 -> 0, ZERO_ALT) | carriers match the right flank 40+ bp past the run; 0 of 444 non-carriers carry the DNP | a run is another breakpoint only when the bases after it keep mismatching the flank; a run that rejoins it is a neighbour (named); measure on the panel's 62 deletions of 50+ bp, HG002 50+ bp, WES, synthetic |
+  | #290 C43f | another length of the repeat a pure insertion lengthens, written upstream outside the windows, keeps REF (RJ-8 separate event); develop alike | HG002: 9 reads at one row; synthetic +15 upstream of a +33 counts REF on both builds | such a read is another allele (partial) wherever in that repeat (HipSTR judges the whole repeat length); measure on HG002 STR arms, panel repeat rows |
+  | #294 C43j | the guard masks the only base telling a VNTR unit insertion from REF; the rule cannot judge it (now warned) | HG002 28-bp VNTR insertion, 21 reads to the CIGAR checks | a mask that leaves no base telling the alleles apart is not applied (extends "the given allele's own bases are never masked"); alternative: read on past the masks |
+  | #282 C43e | Test 3 (older sibling claim) judges an unseen co-annotated sibling ambiguous; the guard's seen-share rule ignores it | delins test AD 10 via Test 3 alone; MNP component AD 14 unseen vs 10 seen | Test 3 follows the guard's seen share; measure every arm + synthetic at 1-10% sibling share first |
+  | #292 C43h | BAQ's junction penalty (-Q20, 5 bases each side) masks bases for reads judged on their spliced reference | review fuzz: 63 of 29,488 extra-indel reads wrong allele (develop 0), 53 under BAQ; samtools BAQ skips spliced reads, GATK clips only short mismatching overhangs | spare the junction penalty in the exact-carrier rule's spliced judgment (narrow; SNV path unchanged); measure FORTE, RNA synthetic, fuzz, BAQ on/off, GTF on/off |
+  | #286 C40b | right-clipped carriers ending before a long deletion's windows get no read call | 39 reads at one 172-bp deletion, 6-10 mismatches each, the deletion an exact intron (processed pseudogene / contaminating cDNA pattern); ~1 read/row elsewhere | close as measured (not admitting them is right in practice); no new flag |
+  | #144 C7 | clip-borne ITD carriers | after #289 (clips read, RJ-13): right-clipped carriers aligned through the anchor count ALT; left-clipped carriers starting past the anchor are not judged (read admission, as #286) | re-measure on the panel's ITD rows on develop, then decide admission together with #286's guard thinking |
+  | #293 C43i | per-read reading flank when an event fills a short exon | microexons 5-16 bp, a handful of fuzz reads; develop's flank test kept | defer to after the count-changing items above (rare) |
 
 ## Before — C43a
 6.7.0 (tracker #196): C39 (#272) and C40 (#281) merged; C43 #276 (pure indels judged by
