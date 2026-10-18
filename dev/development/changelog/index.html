@@ -780,6 +780,41 @@
 <p>The format is based on <a href="https://keepachangelog.com/en/1.0.0/">Keep a Changelog</a>,
 and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semantic Versioning</a>.</p>
 <h2 id="unreleased">[Unreleased]<a class="headerlink" href="#unreleased" title="Permanent link">¶</a></h2>
+<h3 id="changed-a-read-aligned-over-its-reading-flank-confirmed-from-the-other-279">Changed — a read aligned over its reading flank, confirmed from the other (#279)<a class="headerlink" href="#changed-a-read-aligned-over-its-reading-flank-confirmed-from-the-other-279" title="Permanent link">¶</a></h3>
+<ul>
+<li><strong>The rule (RJ-23, amended).</strong> Some reads are aligned straight across a variant's
+  windows and fit the shorter allele read from their reading flank. Such a read is now
+  also read whole from the other flank, at the longer allele's length, wherever its own
+  bases place that flank unambiguously.</li>
+<li>Its bases may favour the longer allele there by two bases. That means the
+    aligner wrote the longer allele's other copy over the reading flank: an insert,
+    or a deleted sequence, whose end resembles the flank, aligned onto it as
+    mismatches with the rest clipped.</li>
+<li>If the read holds the longer allele's window from there and reaches past it, it
+    counts as that allele.</li>
+<li>If it starts inside the event, it is depth only, never the shorter allele.</li>
+<li><strong>Why spanning carriers only (operator, 2026-10-16).</strong> Counting carriers that start
+  inside the insert would give the longer allele read starts the shorter one cannot
+  have. On HG002's long insertions that pushed inserts of 50 bp or more to a median <abbr title="Variant Allele Frequency - Fraction of reads supporting the variant allele">VAF</abbr>
+  of 0.61–0.86.</li>
+<li><strong>Measured against the build before it:</strong></li>
+<li><strong>HG002 insertions of 10+ bp in band:</strong> 334 → 343. Mean |<abbr title="Variant Allele Frequency - Fraction of reads supporting the variant allele">VAF</abbr> − 0.5| goes 0.157 →
+    0.153; 57 rows move nearer 0.5 and 24 farther.</li>
+<li><strong>HG002 short insertions in band:</strong> 552 → 555. Deletions are unchanged.</li>
+<li><strong>Gate panel's pure indels:</strong> 7 insertion rows change (<abbr title="Alternate Depth - Reads supporting the alternate allele">AD</abbr> +10, <abbr title="Reference Depth - Reads supporting the reference allele">RD</abbr> −29). Against
+    the bases oracle, no ALT read is lost, and 39 REF reads move from partial
+    evidence to depth.</li>
+<li><strong>WES, normals and ACCESS, and FORTE:</strong> unchanged.</li>
+</ul>
+<h3 id="fixed-a-pure-indel-the-exact-carrier-rule-cannot-judge-is-warned">Fixed — a pure indel the exact-carrier rule cannot judge is warned<a class="headerlink" href="#fixed-a-pure-indel-the-exact-carrier-rule-cannot-judge-is-warned" title="Permanent link">¶</a></h3>
+<ul>
+<li>A pure insertion or deletion the exact-carrier rule could not judge fell back to the
+  <abbr title="Compact Idiosyncratic Gapped Alignment Report - BAM alignment operation string">CIGAR</abbr> checks with nothing logged.</li>
+<li>Its reads now count in the fallback tally, and the variant is warned once with the
+  reason, as a complex variant's fallback is. One example is a VNTR whose recurring
+  masks leave no base telling the alleles apart (#294).</li>
+<li>Counts are unchanged.</li>
+</ul>
 <h3 id="changed-pure-insertions-and-deletions-judged-by-their-bases-278">Changed — pure insertions and deletions judged by their bases (#278)<a class="headerlink" href="#changed-pure-insertions-and-deletions-judged-by-their-bases-278" title="Permanent link">¶</a></h3>
 <ul>
 <li><strong>The rule (RJ-26, RJ-27).</strong> A pure insertion or deletion under 50 bp is judged by
