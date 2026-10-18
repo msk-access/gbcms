@@ -453,7 +453,8 @@ fn indel_shift_region(
 /// bases on each side (room to left-align the alleles reads carry there), and
 /// more where a complex variant's exact-carrier rule needs it: an event grown
 /// through a long repeat, with its flank and the reach of the neighbouring-change
-/// guard on each side. For the observed-allele
+/// guard on each side. Past a deletion of 50 bp or more it also holds as many bases
+/// as the deletion removes (`junction::reference_past`). For the observed-allele
 /// diagnostic and the exact-carrier rule; None when the fetch fails.
 fn event_core_ref(reader: &mut fasta::IndexedReader<File>, v: &Variant, tally: &PrepTally) -> Option<(i64, String)> {
     let (c_lo, c_hi) = window::change_interval(v);
@@ -462,7 +463,10 @@ fn event_core_ref(reader: &mut fasta::IndexedReader<File>, v: &Variant, tally: &
     // check compares the two stretches that far past the event on either side.
     let ins_len = (v.alt_allele.len() as i64 - v.ref_allele.len() as i64).max(0);
     let margin = EVENT_REF_MARGIN.max(ins_len + 3);
-    let (mut left, mut right) = (margin, margin);
+    // Past a long deletion, as many bases again as it deletes: its guard tests a
+    // deletion of up to twice the length as another breakpoint.
+    let past = (margin + crate::counting::junction::reference_past(v)).min(EVENT_REF_MAX_MARGIN.max(margin));
+    let (mut left, mut right) = (margin, past);
     loop {
         let lo = (from - left).max(0);
         let hi = to + right;

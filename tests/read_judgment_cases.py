@@ -653,6 +653,14 @@ def _long_del_reads(n: int, mh: int, shape: str) -> list:
             carrier(i, A - 50 - i, LONG_READ - 50 - i, subs=(A + n + mh + 1, A + n + mh + 2))
         elif shape == "carriers with a run from the window's last base on, mismatching on past it":
             carrier(i, A - 50 - i, LONG_READ - 50 - i, subs=tuple(A + n + k for k in keeps))
+        elif shape == "carriers with a DNP at the junction, its first base the deleted one's":
+            # the deletion shifted right by one or two bases differs from these by one
+            # base: only another breakpoint giving their bases exactly is one
+            s = A - 50 - i
+            seq = list(hap[s : s + LONG_READ])
+            seq[A + mh - s] = contig[A + mh]
+            seq[A + mh + 1 - s] = _other(seq[A + mh + 1 - s])
+            add(f"c{i}", "".join(seq), s, [(0, A - s), (2, n), (0, LONG_READ - (A - s))])
         elif shape == "carriers of the deletion two bases right":
             # the deleted bases' first two kept, as many right-flank bases deleted: a
             # run at the junction that continues the deleted bases, then the flank
@@ -713,6 +721,7 @@ _LONG_DEL_ALL = (
     "carriers with a phased DNP inside the window",
     "carriers with a run from the window's last base on, mismatching on past it",
     "carriers of the deletion two bases right",
+    "carriers with a DNP at the junction, its first base the deleted one's",
     "REF reads with a phased DNP inside the window",
     "REF reads with a run from the window's last base on, mismatching on past it",
 )
@@ -1409,6 +1418,10 @@ EXPECT = {
     # a run at the junction that continues the deleted bases, then the flank: the
     # deletion shifted right (another breakpoint), not the given one with a neighbour
     "del 60 | carriers of the deletion two bases right": (0, 0, 0),
+    # a DNP at the junction whose first base is the deleted base there: the deletion
+    # shifted right gives the reads' bases but one, a phased neighbour (#285: another
+    # breakpoint only where it gives them exactly)
+    "del 60 | carriers with a DNP at the junction, its first base the deleted one's": (0, 4, 0),
     # a run the REF reads carry too is background (a germline MNP), masked as a
     # germline SNP is: both alleles count
     "del 60 | REF reads with a run of changes in the flank": (4, 0, 0),

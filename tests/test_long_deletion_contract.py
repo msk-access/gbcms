@@ -31,6 +31,7 @@ CENSUS_LIMITS = {
     "carriers with a run of changes from the window's last base on",
     "carriers with a run of three from the window's last base on",
     "carriers with a phased DNP inside the window",
+    "carriers with a DNP at the junction, its first base the deleted one's",
     "REF reads with a recurring change inside the window",
     "REF reads with a run of changes from the window's last base on",
     "REF reads with a phased DNP inside the window",
@@ -335,3 +336,106 @@ def test_a_run_rejoins_the_flank_only_at_the_given_junction(tmp_path, carriers, 
     )
     (got,) = count_checked(bam, [pv.variant])
     assert (got.rd, got.ad, got.partial_alt) == counts
+
+
+@pytest.mark.parametrize(
+    "with_given, counts",
+    [
+        (False, (4, 0, 4)),
+        (True, (4, 4, 4)),
+    ],
+)
+def test_another_unit_count_of_a_vntr_is_another_breakpoint(tmp_path, with_given, counts):
+    """Three 60-bp units: the second is the first with its third base changed, the
+    third the second with its sixth and seventh changed. The given deletion removes one
+    unit; carriers removing two show the third unit where the given ALT has the second:
+    a DNP on the window's last base and the base past it, then the same unit on. The
+    deletion of two units gives their bases whole, past the 60 bases held beside an
+    event: another breakpoint, partial, beside carriers of the given one or alone."""
+    n, mh = rj.LONG_DEL["del 60"]
+    c = list(rj._long_contig(n, mh))
+    u1 = c[A : A + n]
+    u2 = list(u1)
+    u2[2] = rj._other(u1[2])
+    u3 = list(u2)
+    u3[5], u3[6] = rj._other(u2[5]), rj._other(u2[6])
+    c[A + n : A + 2 * n], c[A + 2 * n : A + 3 * n] = u2, u3
+    contig = "".join(c)
+    assert contig[A - 1] != contig[A + n - 1]
+    one, two = contig[:A] + contig[A + n :], contig[:A] + contig[A + 2 * n :]
+    reads = []
+    for i in range(4):
+        s = A - 50 - i
+        reads.append(make_read(f"r{i}", contig[s : s + 100], s, ((0, 100),)))
+        reads.append(
+            make_read(f"x{i}", two[s : s + 100], s, ((0, A - s), (2, 2 * n), (0, 100 - (A - s))))
+        )
+        if with_given:
+            reads.append(
+                make_read(f"d{i}", one[s : s + 100], s, ((0, A - s), (2, n), (0, 100 - (A - s))))
+            )
+    for r in reads:
+        r.flag = 0x1 | 0x2 | 0x20 | 0x40
+        r.next_reference_id, r.next_reference_start, r.template_length = (
+            0,
+            r.reference_start + 250,
+            400,
+        )
+    fa, bam = write_contig(tmp_path, contig, reads, "c")
+    (pv,) = _rs.prepare_variants(
+        [_rs.Variant("1", A - 1, contig[A - 1 : A + n], contig[A - 1], "DEL")],
+        fa,
+        5,
+        False,
+        1,
+        True,
+    )
+    (got,) = count_checked(bam, [pv.variant])
+    assert (got.rd, got.ad, got.partial_alt) == counts
+
+
+def test_a_fragment_reads_on_past_a_run_from_either_mate(tmp_path):
+    """Overlapping mates of four carriers with a phased DNP on the window's last base and
+    the base past it: the left mate ends 14 bases past the junction, inside the bases
+    the run must rejoin over; the right mate reads well past them. The fragment's bases
+    are read from whichever mate reads them, so the run rejoins and every mate counts
+    ALT, as the right mates alone do."""
+    n, mh = rj.LONG_DEL["del 60"]
+    contig = rj._long_contig(n, mh)
+    hap = list(contig[:A] + contig[A + n :])
+    hap[A + 3], hap[A + 4] = rj._other(hap[A + 3]), rj._other(hap[A + 4])
+    hap = "".join(hap)
+    reads = []
+    for i in range(4):
+        s = A - 50 - i
+        reads.append(make_read(f"r{i}", contig[s : s + 100], s, ((0, 100),)))
+        s1, s2 = A + 14 - 100, A - 10 - i
+        left = make_read(
+            f"f{i}", hap[s1 : s1 + 100], s1, ((0, A - s1), (2, n), (0, 100 - (A - s1)))
+        )
+        right = make_read(
+            f"f{i}", hap[s2 : s2 + 100], s2, ((0, A - s2), (2, n), (0, 100 - (A - s2)))
+        )
+        left.flag, right.flag = 0x1 | 0x2 | 0x20 | 0x40, 0x1 | 0x2 | 0x10 | 0x80
+        size = s2 + 100 + n - s1
+        left.next_reference_id, left.next_reference_start, left.template_length = 0, s2, size
+        right.next_reference_id, right.next_reference_start, right.template_length = 0, s1, -size
+        reads += [left, right]
+    for r in reads[0::3]:
+        r.flag = 0x1 | 0x2 | 0x20 | 0x40
+        r.next_reference_id, r.next_reference_start, r.template_length = (
+            0,
+            r.reference_start + 250,
+            400,
+        )
+    fa, bam = write_contig(tmp_path, contig, reads, "c")
+    (pv,) = _rs.prepare_variants(
+        [_rs.Variant("1", A - 1, contig[A - 1 : A + n], contig[A - 1], "DEL")],
+        fa,
+        5,
+        False,
+        1,
+        True,
+    )
+    (got,) = count_checked(bam, [pv.variant])
+    assert (got.rd, got.ad, got.partial_alt) == (4, 8, 0)

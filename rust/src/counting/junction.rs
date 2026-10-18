@@ -115,6 +115,20 @@ pub(crate) fn judges(v: &Variant) -> bool {
         && v.ref_allele.len() - v.alt_allele.len() >= LONG_DELETION
 }
 
+/// Reference bases prep holds past a deletion judged here, beyond its usual margin: as
+/// many as it deletes, so the guard can test a deletion up to twice its length as
+/// another breakpoint (one more unit of a repeat the deletion removes whole units of,
+/// #285). Zero for any other variant.
+pub(crate) fn reference_past(v: &Variant) -> i64 {
+    let deleted = v.ref_allele.len().saturating_sub(v.alt_allele.len());
+    let judged = allele_kind(&v.ref_allele, &v.alt_allele) == Some(AlleleKind::Deletion) && deleted >= LONG_DELETION;
+    if judged {
+        deleted as i64
+    } else {
+        0
+    }
+}
+
 /// The deletion's junction windows on its prepared reference. None when it is not
 /// judged here, or the reference does not hold the windows.
 pub(crate) fn junction(v: &Variant) -> Option<Junction> {
@@ -273,24 +287,28 @@ pub(crate) fn classify(
     Some(out)
 }
 
-/// Bases past the windows that tell a read's allele where the [`K`] bases past the
-/// microhomology do not (a run among them), and that the bases after a run must
-/// rejoin its allele's continuation over.
+/// A fragment's base at a guard offset: the base, its quality, and whether its mates
+/// disagree there at equal quality (then it is read, but not confidently).
+type FragmentBase = Option<(u8, u8, bool)>;
+
+/// Bases past the windows that tell a read's allele (the [`K`] bases past the
+/// microhomology may hold a run, whose bases may be the other allele's), and that the
+/// bases after a run must rejoin its allele's continuation over.
 const REJOIN: usize = 12;
 /// Bases past the windows the guard reads: a run running on past them, and the
 /// [`REJOIN`] after it.
 const PAST: usize = 2 * REJOIN;
 
 /// The neighbouring-change guard for a long deletion (the carrier rule's, RJ-23,
-/// over the junction windows): from the reads `counted` admits, once per fragment,
-/// each read holding the windows from its aligned first window base is taken as the
-/// allele whose continuation it follows (its [`K`] bases past the microhomology, or,
-/// where it reads them, the [`REJOIN`] bases past the windows, fit that allele to
-/// within one base and the other by two or more; the two disagreeing, neither), and
-/// its confident changes are tallied per window offset, on the base before the
-/// windows, and on [`PAST`] bases on along its allele past them (up to a splice). A
-/// change recurs on at least [`GUARD_MIN_READS`] fragments and [`GUARD_MIN_SHARE`] of
-/// that allele's reads. Masked at its offset in both windows are, in the flank and
+/// over the junction windows): each fragment of the reads `counted` admits that holds
+/// the windows from a read's aligned first window base (its mates' bases merged, the
+/// better-quality one's where both read a base) is taken as the allele whose
+/// continuation it follows (the [`REJOIN`] bases past the windows, where it reads
+/// them, else its [`K`] bases past the microhomology, fit that allele to within one
+/// base and the other by two or more), and its confident changes are tallied per
+/// window offset, on the base before the windows, and on [`PAST`] bases on along its
+/// allele past them (up to a splice). A change recurs on at least [`GUARD_MIN_READS`]
+/// fragments and [`GUARD_MIN_SHARE`] of that allele's reads. Masked at its offset in both windows are, in the flank and
 /// microhomology both alleles share, the changes the REF reads carry (a germline SNP
 /// or MNP, background on both haplotypes, runs included, on [`GUARD_MIN_READS`] REF
 /// reads or more); each isolated change of the ALT reads' own (no own change at
@@ -332,8 +350,11 @@ pub(crate) fn guard_for(
     // and the bases the changes show (A C G T).
     let (mut cover, mut change) = ([vec![0u32; m], vec![0u32; m]], [vec![0u32; m], vec![0u32; m]]);
     let mut shown = [vec![[0u32; 4]; m], vec![[0u32; 4]; m]];
-    let mut fragments: std::collections::HashSet<&[u8]> = std::collections::HashSet::new();
-    let mut scanned = 0u32;
+    // Each fragment's bases by edged offset, from the reads holding the windows from
+    // their aligned first window base. Where both mates read a base, the
+    // better-quality one's stands.
+    let mut order: Vec<&[u8]> = Vec::new();
+    let mut fragments: std::collections::HashMap<&[u8], Vec<FragmentBase>> = std::collections::HashMap::new();
     for record in read_cache {
         if !counted(record) {
             continue;
@@ -347,13 +368,30 @@ pub(crate) fn guard_for(
         // Past the windows a read is read up to its next splice: the next exon is not
         // its allele's continuation.
         let stop = splice_after(record, q).unwrap_or(bases.len());
-        // The read's base at edged offset e, and whether it is read confidently.
-        let read = |e: usize| -> Option<(u8, bool)> {
-            let i = (q + e).checked_sub(1).filter(|&i| e <= n || i < stop)?;
-            let b = bases.get(i)?.to_ascii_uppercase();
-            Some((b, b != WILD && *quals.get(i)? >= min_baseq))
-        };
+        let merged = fragments.entry(record.qname()).or_insert_with(|| {
+            order.push(record.qname());
+            vec![None; m]
+        });
+        for (e, slot) in merged.iter_mut().enumerate() {
+            let Some(i) = (q + e).checked_sub(1).filter(|&i| e <= n || i < stop) else { continue };
+            let (Some(&b), Some(&bq)) = (bases.get(i), quals.get(i)) else { continue };
+            let b = b.to_ascii_uppercase();
+            *slot = match *slot {
+                Some((x, xq, tie)) if x == b => Some((x, xq.max(bq), tie && bq <= xq)),
+                Some((x, xq, tie)) if xq >= bq => Some((x, xq, tie || xq == bq)),
+                _ => Some((b, bq, false)),
+            };
+        }
+    }
+    let mut scanned = 0u32;
+    for name in order {
+        let fragment = &fragments[name];
+        // The fragment's base at edged offset e, and whether it is read confidently.
+        let read = |e: usize| fragment[e].map(|(b, bq, tie)| (b, !tie && b != WILD && bq >= min_baseq));
         let off = |w: &[Option<u8>], e: usize| matches!((read(e), w[e]), (Some((b, true)), Some(x)) if b != x);
+        // The allele whose continuation it follows: the REJOIN bases past the windows
+        // where it reads them and they tell it, else its K bases past the
+        // microhomology (a change among those may be the other allele's base there).
         let told = |es: std::ops::RangeInclusive<usize>| {
             let misses = |w: &[Option<u8>]| es.clone().filter(|&e| off(w, e)).count();
             match (misses(&windows[0]), misses(&windows[1])) {
@@ -364,14 +402,9 @@ pub(crate) fn guard_for(
         };
         let past = n + 1..=n + REJOIN;
         let read_on = past.clone().all(|e| read(e).is_some()).then(|| told(past)).flatten();
-        let allele = match (told(cont + 1..=n), read_on) {
-            (Some(a), Some(b)) if a != b => continue,
-            (Some(a), _) | (None, Some(a)) => a,
-            (None, None) => continue,
-        };
-        if !fragments.insert(record.qname()) {
+        let Some(allele) = read_on.or_else(|| told(cont + 1..=n)) else {
             continue;
-        }
+        };
         scanned += 1;
         for e in 0..m {
             let (Some((b, _)), Some(_)) = (read(e), windows[allele][e]) else {
@@ -497,12 +530,15 @@ pub(crate) fn guard_for(
 ///   more, and no change recurs on any;
 /// - **at the given breakpoint only**: the allele as its reads show it (the run's
 ///   bases as most show them, each other recurring change not compared), from the
-///   windows' first base through those [`REJOIN`] bases, is within one base of no
-///   other breakpoint's: neither the reference with one deletion at another start or
-///   of another length, nor the allele with one more insertion or deletion from the
-///   junction through the run, within the reference held. A run at the junction whose
-///   bases are the deleted bases' own is the deletion shifted right; one before a
-///   repeat that a deletion of another length gives whole is that deletion.
+///   windows' first base through those [`REJOIN`] bases, is no other breakpoint's:
+///   neither the reference with one deletion at another start or of another length,
+///   nor the allele with one more insertion or deletion from the junction through the
+///   run, within the reference held (as many bases past the deletion as it deletes:
+///   [`reference_past`]). A run at the junction whose bases are the deleted bases' own
+///   is the deletion shifted right; one before a repeat that a deletion of another
+///   length gives whole (another unit count of a VNTR) is that deletion. The reads'
+///   bases are a consensus, so another breakpoint must give them exactly: one that
+///   differs at a base is the given deletion's with a neighbour as much as its own.
 #[allow(clippy::too_many_arguments)]
 fn neighbour(
     j: &Junction,
@@ -529,46 +565,34 @@ fn neighbour(
             _ => own(o),
         })
         .collect();
-    // Whether another breakpoint's bases (Some(None): an inserted base, any; None: off
-    // the reference) differ from the reads' at one base or none. The given allele
-    // differs at every base of the run.
-    let gives = |other: &dyn Fn(usize) -> Option<Option<u8>>| -> bool {
-        let mut differ = 0;
-        for (o, &shown) in shows.iter().enumerate() {
-            let Some(x) = other(o) else { return false };
-            if let (Some(s), Some(x)) = (shown, x) {
-                differ += usize::from(s != x);
-                if differ > 1 {
-                    return false;
-                }
-            }
-        }
-        true
-    };
-    let first = j.first();
-    let held = (0..).take_while(|&d| base(first + (span + d) as i64).is_some()).count();
-    // The reference with one deletion of d bases at genome x (none: d 0).
-    let deletion = (first..=first + span as i64).any(|x| {
-        (0..held).any(|d| {
-            gives(&|o: usize| {
-                let g = first + o as i64;
-                base(if g < x { g } else { g + d as i64 }).map(Some)
-            })
+    // Whether bases `at` gives (None: off the reference) are the reads' over window
+    // offsets `os`, each base read (an offset not compared fits).
+    let matches = |at: &dyn Fn(usize) -> Option<u8>, os: std::ops::Range<usize>| {
+        os.into_iter().all(|o| match (at(o), shows[o]) {
+            (None, _) => false,
+            (Some(x), Some(s)) => x == s,
+            (Some(_), None) => true,
         })
-    });
-    // The allele with one more deletion of k bases, or insertion of k inside the run,
-    // at window offset p from the junction through the run.
-    let indel = (cont..e1).any(|p| {
-        (1..held).any(|k| gives(&|o: usize| own(if o < p { o } else { o + k }).map(Some)))
-            || (1..=e1 - p).any(|k| {
-                gives(&|o: usize| match o {
-                    o if o < p => own(o).map(Some),
-                    o if o < p + k => Some(None),
-                    o => own(o - k).map(Some),
-                })
-            })
-    });
-    !deletion && !indel
+    };
+    // Every alternative leaves the bases before its breakpoint as they stand and shifts
+    // the rest, the bases after the run among them: the shifts that give those first,
+    // then each breakpoint up to where the unshifted bases stop being the reads'.
+    let tail = e1..span;
+    let reach = |at: &dyn Fn(usize) -> Option<u8>| (0..).take_while(|&d| at(span - 1 + d).is_some()).count();
+    let first = j.first();
+    let genome = |o: usize| base(first + o as i64);
+    let unshifted = (0..span).find(|&o| !matches(&genome, o..o + 1)).unwrap_or(span);
+    let deletion = (0..reach(&genome))
+        .filter(|&d| matches(&|o| genome(o + d), tail.clone()))
+        .any(|d| (0..=unshifted.min(e1)).any(|x| matches(&|o| genome(o + d), x..e1)));
+    // The allele with one more deletion, or an insertion inside the run, at an offset
+    // from the junction through the run.
+    let kept = (0..span).find(|&o| !matches(&own, o..o + 1)).unwrap_or(span).min(e1 - 1);
+    let more_deleted = (1..reach(&own))
+        .filter(|&k| matches(&|o| own(o + k), tail.clone()))
+        .any(|k| (cont..=kept).any(|p| matches(&|o| own(o + k), p..e1)));
+    let inserted = (cont..=kept).any(|p| (1..=e1 - p).any(|k| matches(&|o| own(o - k), p + k..span)));
+    !deletion && !more_deleted && !inserted
 }
 
 /// Query index of the read's first splice (N) after query index `q`, if any.
