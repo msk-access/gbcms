@@ -338,27 +338,31 @@ def test_a_run_rejoins_the_flank_only_at_the_given_junction(tmp_path, carriers, 
     assert (got.rd, got.ad, got.partial_alt) == counts
 
 
-@pytest.mark.parametrize(
-    "with_given, counts",
-    [
-        (False, (4, 0, 4)),
-        (True, (4, 4, 4)),
-    ],
-)
-def test_another_unit_count_of_a_vntr_is_another_breakpoint(tmp_path, with_given, counts):
+VNTR_CASES = [
+    pytest.param(False, (5, 6), (4, 0, 4), id="DNP-alone"),
+    pytest.param(True, (5, 6), (4, 4, 4), id="DNP-beside-the-given"),
+    pytest.param(False, (5,), (4, 0, 4), id="one-base-alone"),
+    pytest.param(True, (5,), (4, 4, 4), id="one-base-beside-the-given"),
+]
+
+
+@pytest.mark.parametrize("with_given, differ, counts", VNTR_CASES)
+def test_another_unit_count_of_a_vntr_is_another_breakpoint(tmp_path, with_given, differ, counts):
     """Three 60-bp units: the second is the first with its third base changed, the
-    third the second with its sixth and seventh changed. The given deletion removes one
-    unit; carriers removing two show the third unit where the given ALT has the second:
-    a DNP on the window's last base and the base past it, then the same unit on. The
-    deletion of two units gives their bases whole, past the 60 bases held beside an
-    event: another breakpoint, partial, beside carriers of the given one or alone."""
+    third the second with its sixth base changed (and its seventh, a DNP). The given
+    deletion removes one unit; carriers removing two show the third unit where the
+    given ALT has the second: a change on the window's last base (and the base past
+    it), then the same unit on. The deletion of two units gives their bases whole, past
+    the 60 bases held beside an event: another breakpoint, partial, beside carriers of
+    the given one or alone, whether the units differ at one base (#296) or two."""
     n, mh = rj.LONG_DEL["del 60"]
     c = list(rj._long_contig(n, mh))
     u1 = c[A : A + n]
     u2 = list(u1)
     u2[2] = rj._other(u1[2])
     u3 = list(u2)
-    u3[5], u3[6] = rj._other(u2[5]), rj._other(u2[6])
+    for k in differ:
+        u3[k] = rj._other(u2[k])
     c[A + n : A + 2 * n], c[A + 2 * n : A + 3 * n] = u2, u3
     contig = "".join(c)
     assert contig[A - 1] != contig[A + n - 1]
@@ -441,14 +445,19 @@ def test_a_fragment_reads_on_past_a_run_from_either_mate(tmp_path):
     assert (got.rd, got.ad, got.partial_alt) == (4, 8, 0)
 
 
-def test_another_allele_reading_like_alt_past_the_windows_is_not_alt(tmp_path):
+@pytest.mark.parametrize(
+    "short",
+    [0, 3],
+)
+def test_another_allele_reading_like_alt_past_the_windows_is_not_alt(tmp_path, short):
     """REF's and ALT's continuations agree past their first two bases. Four reads of
     another allele hold ALT's first continuation base, REF's second, a change two bases
     before the junction, ALT's twelve bases past the windows, then one base deleted: their
     four continuation bases miss each allele by one, their twelve bases past the windows
     read as ALT's, and they go on to differ from it. They are not placed as carriers, so
     their changes are not masked as neighbours: neither allele, beside four carriers and
-    four REF reads."""
+    four REF reads. Reads of it that end before they differ (13 to 15 bases past the
+    windows) do not read on far enough to place them either."""
     n, mh = rj.LONG_DEL["del 60"]
     c = list(rj._long_contig(n, mh))
     c[A + 2], c[A + 3] = c[A + n + 2], c[A + n + 3]
@@ -469,6 +478,10 @@ def test_another_allele_reading_like_alt_past_the_windows_is_not_alt(tmp_path):
         reads.append(make_read(f"d{i}", hap[s : s + 100], s, cig))
         reads.append(make_read(f"x{i}", other[s : s + 100], s, cig))  # aligned as written
         reads.append(make_read(f"r{i}", contig[s : s + 100], s, ((0, 100),)))
+    for i in range(short):
+        end = A + 4 + 13 + i  # ends 13 to 15 bases past the windows, on the other allele
+        s = end - 100
+        reads.append(make_read(f"y{i}", other[s:end], s, ((0, A - s), (2, n), (0, end - A))))
     for r in reads:
         r.flag = 0x1 | 0x2 | 0x20 | 0x40
         r.next_reference_id, r.next_reference_start, r.template_length = (
@@ -487,3 +500,60 @@ def test_another_allele_reading_like_alt_past_the_windows_is_not_alt(tmp_path):
     )
     (got,) = count_checked(bam, [pv.variant])
     assert (got.rd, got.ad) == (4, 4)
+
+
+@pytest.mark.parametrize(
+    "shift, same, given",
+    [
+        pytest.param(2, (1,), 0, id="two-right-alone"),
+        pytest.param(3, (1,), 0, id="three-right-alone"),
+        pytest.param(3, (1,), 2, id="three-right-beside-the-given"),
+        pytest.param(3, (1, 2), 0, id="three-right-one-change-alone"),
+    ],
+)
+def test_the_deletion_shifted_right_is_another_breakpoint(tmp_path, shift, same, given):
+    """Carriers of the same 60-bp deletion `shift` bases right, where the deleted bases
+    equal the right flank's at the offsets in `same`: past the junction they differ from
+    the given ALT only where the deleted bases and the flank differ before the shift,
+    at one base or at two apart. The deletion shifted right gives their bases whole:
+    another breakpoint, never ALT, alone or beside carriers of the given deletion."""
+    n, mh = rj.LONG_DEL["del 60"]
+    c = list(rj._long_contig(n, mh))
+    for i in range(1, 4):
+        if i in same:
+            c[A + i] = c[A + n + i]
+        elif c[A + i] == c[A + n + i]:
+            c[A + i] = next(b for b in "CGT" if b != c[A + n + i])
+    contig = "".join(c)
+    assert contig[A] != contig[A + n] and contig[A - 1] != contig[A + n - 1]
+    hap = contig[:A] + contig[A + n :]
+    moved = contig[: A + shift] + contig[A + shift + n :]
+    reads = []
+    for i in range(4):
+        s = A - 50 - i
+        reads.append(make_read(f"r{i}", contig[s : s + 100], s, ((0, 100),)))
+        k = A + shift - s
+        reads.append(make_read(f"y{i}", moved[s : s + 100], s, ((0, k), (2, n), (0, 100 - k))))
+    for i in range(given):
+        s = A - 45 - i
+        reads.append(
+            make_read(f"d{i}", hap[s : s + 100], s, ((0, A - s), (2, n), (0, 100 - (A - s))))
+        )
+    for r in reads:
+        r.flag = 0x1 | 0x2 | 0x20 | 0x40
+        r.next_reference_id, r.next_reference_start, r.template_length = (
+            0,
+            r.reference_start + 250,
+            400,
+        )
+    fa, bam = write_contig(tmp_path, contig, reads, "c")
+    (pv,) = _rs.prepare_variants(
+        [_rs.Variant("1", A - 1, contig[A - 1 : A + n], contig[A - 1], "DEL")],
+        fa,
+        5,
+        False,
+        1,
+        True,
+    )
+    (got,) = count_checked(bam, [pv.variant])
+    assert (got.rd, got.ad) == (4, given)

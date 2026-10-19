@@ -316,11 +316,12 @@ const PAST: usize = 2 * REJOIN;
 /// or MNP, background on both haplotypes, runs included, on [`GUARD_MIN_READS`] REF
 /// reads or more); each isolated change of the ALT reads' own (no own change at
 /// either neighbouring base); past the junction each isolated change on the REF
-/// reads; and each run past the junction, on either allele's reads, that is a
-/// phased neighbour ([`neighbour`]: the bases after it rejoin the allele's
-/// continuation, and no other breakpoint gives them). Any other run of the ALT reads'
-/// own changes is an indel at the junction, and any other run past it on reads
-/// fitting REF another breakpoint: another allele, not masked. Masks never take every
+/// reads; and each run past the junction, on either allele's reads, whose bases rejoin
+/// the allele's continuation after it ([`rejoins`]): a phased neighbour. Any other run
+/// of the ALT reads' own changes is an indel at the junction, and any other run past it
+/// on reads fitting REF another breakpoint: another allele, not masked. An allele's own
+/// changes are taken together first: where another breakpoint gives the reads' bases
+/// exactly ([`another_breakpoint`]), none of them is masked, isolated or run. Masks never take every
 /// offset where REF and ALT differ: those stay read, and a read changed there is
 /// neither allele. On the ALT reads alone (under [`GUARD_REF_SHARE`] of REF's)
 /// isolated recurring changes and phased runs also make the larger allele the
@@ -435,11 +436,28 @@ pub(crate) fn guard_for(
     let own = |e: usize| recurs(1, e) && !background(e);
     let isolated = |e: usize| !own(e - 1) && !own(e + 1);
     let ref_isolated = |e: usize| recurs(0, e) && !recurs(0, e - 1) && !recurs(0, e + 1);
-    // Each allele's runs reaching the windows (edged [first, last], two or more own
-    // changes side by side): the ALT reads' own, and past the junction the REF
-    // reads'. Those that are phased neighbours are masked; any other is another
-    // allele.
+    // Each allele's own changes: the ALT reads' (not background), and past the
+    // junction the REF reads'. Those in the windows, with any running on past them,
+    // taken together are another breakpoint's where one gives the reads' bases exactly:
+    // then none is masked, and the reads carrying them are another allele (#296).
     let own_of = |a: usize, e: usize| if a == 1 { own(e) } else { e > cont && recurs(0, e) };
+    let most = |a: usize, e: usize| b"ACGT"[(0..4).max_by_key(|&k| shown[a][e][k]).unwrap_or(0)];
+    let elsewhere: [bool; 2] = [0, 1].map(|a| {
+        // The changes in the windows, and on past them each within REJOIN bases of the
+        // last one taken.
+        let mut changed: Vec<usize> = (1..=n).filter(|&e| own_of(a, e)).collect();
+        while let Some(&last) = changed.last() {
+            match (last + 1..(last + 1 + REJOIN).min(m)).find(|&e| own_of(a, e)) {
+                Some(e) => changed.push(e),
+                None => break,
+            }
+        }
+        let compared = |e: usize| e < m && cover[a][e] >= GUARD_MIN_READS && (changed.contains(&e) || !recurs(a, e));
+        another_breakpoint(&j, &base, a == 1, &changed, &compared, &|e| most(a, e))
+    });
+    // Each allele's runs reaching the windows (edged [first, last], two or more own
+    // changes side by side). Those whose bases rejoin the allele's continuation are
+    // phased neighbours, masked; any other is another allele.
     let runs_of = |a: usize| -> Vec<(usize, usize)> {
         let mut out: Vec<(usize, usize)> = Vec::new();
         for e in (0..m).filter(|&e| own_of(a, e)) {
@@ -451,18 +469,17 @@ pub(crate) fn guard_for(
         out.retain(|&(e0, e1)| e1 > e0 && e0 <= n);
         out
     };
-    let phased = |a: usize, run: (usize, usize)| {
-        let most = |e: usize| b"ACGT"[(0..4).max_by_key(|&k| shown[a][e][k]).unwrap_or(0)];
-        neighbour(&j, &base, &windows[a], a == 1, run, &|e| cover[a][e], &|e| recurs(a, e), &most)
-    };
     let runs = [runs_of(0), runs_of(1)];
-    let neighbours: [Vec<(usize, usize)>; 2] = [0, 1].map(|a| runs[a].iter().copied().filter(|&r| phased(a, r)).collect());
+    let neighbours: [Vec<(usize, usize)>; 2] = [0, 1].map(|a| {
+        let phased = |&(e0, e1): &(usize, usize)| rejoins(&j, (e0, e1), m, &|e| cover[a][e], &|e| recurs(a, e));
+        runs[a].iter().copied().filter(|r| !elsewhere[a] && phased(r)).collect()
+    });
     let in_neighbour = |a: usize, e: usize| neighbours[a].iter().any(|&(e0, e1)| (e0..=e1).contains(&e));
     let mut offsets: Vec<usize> = (1..=n)
         .filter(|&e| {
             background(e)
-                || (own(e) && isolated(e))
-                || (e > cont && ref_isolated(e))
+                || (own(e) && isolated(e) && !elsewhere[1])
+                || (e > cont && ref_isolated(e) && !elsewhere[0])
                 || in_neighbour(0, e)
                 || in_neighbour(1, e)
         })
@@ -486,10 +503,10 @@ pub(crate) fn guard_for(
     // farthest change, and at least through the junction (a change in the flank is
     // carried with the deletion), each changed base as most ALT reads show it,
     // against the genome over the same span (the deleted bases included). Beside a
-    // run that is no phased neighbour, none: the tallies cannot spell another allele
-    // (an MNP at the junction, or an indel shifting the bases past it); the observed
-    // allele names it from the reads' alignments.
-    let run = runs[1].len() > neighbours[1].len();
+    // run that is no phased neighbour, or changes another breakpoint gives, none: the
+    // tallies cannot spell another allele (an MNP at the junction, or an indel shifting
+    // the bases past it); the observed allele names it from the reads' alignments.
+    let run = runs[1].len() > neighbours[1].len() || elsewhere[1];
     let larger = alt_only.iter().max().filter(|_| !run).and_then(|&far| {
         let far = (far - 1).max(K);
         let alt: Vec<u8> = (0..=far)
@@ -515,16 +532,16 @@ pub(crate) fn guard_for(
         (0..m).filter(|&e| recurs(a, e)).map(|e| format!("{}:{}/{}", e, change[a][e], cover[a][e])).collect::<Vec<_>>().join(" ")
     };
     trace!(
-        "junction guard tallies at {}:{}: {} fragments; recurring changes (edged offset: changed/read) REF [{}] ALT [{}]",
-        v.chrom, v.pos + 1, scanned, recurring(0), recurring(1),
+        "junction guard tallies at {}:{}: {} fragments; recurring changes (edged offset: changed/read) REF [{}] ALT [{}]; another breakpoint REF/ALT {}/{}",
+        v.chrom, v.pos + 1, scanned, recurring(0), recurring(1), elsewhere[0], elsewhere[1],
     );
     if masked.is_empty() && larger.is_none() {
         return None;
     }
     trace!(
-        "junction guard at {}:{} {}>{}: {} window offsets masked, {} on the ALT reads alone, {} phased runs ({} fragments read)",
+        "junction guard at {}:{} {}>{}: {} window offsets masked, {} on the ALT reads alone, {} phased runs, another breakpoint on REF/ALT reads {}/{} ({} fragments read)",
         v.chrom, v.pos + 1, v.ref_allele, v.alt_allele, offsets.len(), alt_only.len(),
-        neighbours[0].len() + neighbours[1].len(), scanned,
+        neighbours[0].len() + neighbours[1].len(), elsewhere[0], elsewhere[1], scanned,
     );
     Some(Guard::new(v, masked, larger, scanned))
 }
@@ -535,14 +552,14 @@ pub(crate) fn guard_for(
 /// [`REJOIN`] bases past them fit that allele to within one base and the other by two
 /// or more, and fit each allele shifted by up to [`SHIFT_REACH`] bases either way worse
 /// by two or more than they fit it (in a repeat a read of another length of either
-/// allele reads the same there); and every base it reads on along the allele, to
-/// [`PAST`] past the windows, fits it to within one base all told (a read of another
-/// allele whose bases past the windows happen to read the same goes on to differ).
-/// None where the fragment does not read the [`REJOIN`] bases, or they place it
-/// nowhere unambiguously.
+/// allele reads the same there); and the [`PAST`] bases it reads on along the allele
+/// fit it to within one base all told (a read of another allele whose bases past the
+/// windows happen to read the same goes on to differ). None where the fragment does not
+/// read all [`PAST`] of them (one ending sooner may end before it differs), or they
+/// place it nowhere unambiguously.
 fn placed_past(read: &dyn Fn(usize) -> Option<(u8, bool)>, windows: &[Vec<Option<u8>>; 2], n: usize) -> Option<usize> {
     let past = n + 1..=n + REJOIN;
-    if !past.clone().all(|e| read(e).is_some()) {
+    if !(n + 1..=n + PAST).all(|e| read(e).is_some()) {
         return None;
     }
     let misses = |a: usize, s: i64, es: std::ops::RangeInclusive<usize>| {
@@ -563,50 +580,54 @@ fn placed_past(read: &dyn Fn(usize) -> Option<(u8, bool)>, windows: &[Vec<Option
     (!shifted && read_on).then_some(allele)
 }
 
-/// Whether a run of an allele's own changes (edged offsets [e0, e1], `run`) is a phased
-/// neighbour of the deletion, not another breakpoint (#285). It lies past the junction
-/// (`windows` is the allele's edged bases, `cover` and `recurs` its reads' tallies,
-/// `most` the base most of them show at a changed offset), and:
-/// - **its bases rejoin the allele's continuation** after it: each of the [`REJOIN`]
-///   bases after its last is read by [`GUARD_MIN_READS`] of the allele's fragments or
-///   more, and no change recurs on any;
-/// - **at the given breakpoint only**: the allele as its reads show it (the run's
-///   bases as most show them, each other recurring change not compared), from the
-///   windows' first base through those [`REJOIN`] bases, is no other breakpoint's:
-///   neither the reference with one deletion at another start or of another length,
-///   nor the allele with one more insertion or deletion from the junction through the
-///   run, within the reference held (as many bases past the deletion as it deletes:
-///   [`reference_past`]). A run at the junction whose bases are the deleted bases' own
-///   is the deletion shifted right; one before a repeat that a deletion of another
-///   length gives whole (another unit count of a VNTR) is that deletion. The reads'
-///   bases are a consensus, so another breakpoint must give them exactly: one that
-///   differs at a base is the given deletion's with a neighbour as much as its own.
-#[allow(clippy::too_many_arguments)]
-fn neighbour(
+/// Whether a run of an allele's own changes (edged offsets [e0, e1]) lies past the
+/// junction and its bases rejoin the allele's continuation after it (#285): each of the
+/// [`REJOIN`] bases after its last is read by [`GUARD_MIN_READS`] of the allele's
+/// fragments or more (`cover`), and no change recurs on any (`recurs`); `m` is the
+/// guard's edged reach.
+fn rejoins(j: &Junction, (e0, e1): (usize, usize), m: usize, cover: &dyn Fn(usize) -> u32, recurs: &dyn Fn(usize) -> bool) -> bool {
+    let after = e1 + 1..=e1 + REJOIN;
+    e0 > K + j.mh && *after.end() < m && after.clone().all(|e| cover(e) >= GUARD_MIN_READS && !recurs(e))
+}
+
+/// Whether another breakpoint gives an allele's bases as its reads show them, exactly
+/// (#285, #296): the allele from the windows' first base through [`REJOIN`] bases past
+/// its last change, each change (`changed`, edged offsets, ascending) as most of its
+/// reads show it (`most`), each base `compared` does not take (another recurring change,
+/// or one too few fragments read) fitting any; the [`REJOIN`] bases after the last change
+/// must all be compared, or no breakpoint is established. The other breakpoints are the reference
+/// with one deletion at another start or of another length, and the allele with one more
+/// insertion or deletion from the junction through its last change, within the reference
+/// held (as many bases past the deletion as it deletes: [`reference_past`]). A run at the
+/// junction whose bases are the deleted bases' own is the deletion shifted right; a
+/// change or run before a repeat that a deletion of another length gives whole (another
+/// unit count of a VNTR) is that deletion. The reads' bases are a consensus, so another
+/// breakpoint must give them exactly: one that differs at a base is the given deletion's
+/// with a neighbour as much as its own.
+fn another_breakpoint(
     j: &Junction,
     base: &dyn Fn(i64) -> Option<u8>,
-    windows: &[Option<u8>],
     alt: bool,
-    (e0, e1): (usize, usize),
-    cover: &dyn Fn(usize) -> u32,
-    recurs: &dyn Fn(usize) -> bool,
+    changed: &[usize],
+    compared: &dyn Fn(usize) -> bool,
     most: &dyn Fn(usize) -> u8,
 ) -> bool {
+    let Some(&last) = changed.last() else { return false };
     let cont = K + j.mh;
-    let after = e1 + 1..=e1 + REJOIN;
-    if e0 <= cont || *after.end() >= windows.len() || !after.clone().all(|e| cover(e) >= GUARD_MIN_READS && !recurs(e)) {
-        return false;
-    }
     // The allele's base at window offset o, on along it past the windows.
     let own = |o: usize| base(j.genome(alt, o));
-    let span = e1 + REJOIN;
+    let span = last + REJOIN;
     let shows: Vec<Option<u8>> = (0..span)
         .map(|o| match o + 1 {
-            e if (e0..=e1).contains(&e) => Some(most(e)),
-            e if recurs(e) => None,
+            e if changed.contains(&e) => Some(most(e)),
+            e if !compared(e) => None,
             _ => own(o),
         })
         .collect();
+    if shows[last..].iter().any(Option::is_none) {
+        // The bases after the last change not all read: no breakpoint is established.
+        return false;
+    }
     // Whether bases `at` gives (None: off the reference) are the reads' over window
     // offsets `os`, each base read (an offset not compared fits).
     let matches = |at: &dyn Fn(usize) -> Option<u8>, os: std::ops::Range<usize>| {
@@ -617,24 +638,24 @@ fn neighbour(
         })
     };
     // Every alternative leaves the bases before its breakpoint as they stand and shifts
-    // the rest, the bases after the run among them: the shifts that give those first,
-    // then each breakpoint up to where the unshifted bases stop being the reads'.
-    let tail = e1..span;
+    // the rest, the bases after the last change among them: the shifts that give those
+    // first, then each breakpoint up to where the unshifted bases stop being the reads'.
+    let tail = last..span;
     let reach = |at: &dyn Fn(usize) -> Option<u8>| (0..).take_while(|&d| at(span - 1 + d).is_some()).count();
     let first = j.first();
     let genome = |o: usize| base(first + o as i64);
     let unshifted = (0..span).find(|&o| !matches(&genome, o..o + 1)).unwrap_or(span);
     let deletion = (0..reach(&genome))
         .filter(|&d| matches(&|o| genome(o + d), tail.clone()))
-        .any(|d| (0..=unshifted.min(e1)).any(|x| matches(&|o| genome(o + d), x..e1)));
-    // The allele with one more deletion, or an insertion inside the run, at an offset
-    // from the junction through the run.
-    let kept = (0..span).find(|&o| !matches(&own, o..o + 1)).unwrap_or(span).min(e1 - 1);
+        .any(|d| (0..=unshifted.min(last)).any(|x| matches(&|o| genome(o + d), x..last)));
+    // The allele with one more deletion, or an insertion among its changes, at an
+    // offset from the junction through its first change.
+    let kept = (0..span).find(|&o| !matches(&own, o..o + 1)).unwrap_or(span).min(last - 1);
     let more_deleted = (1..reach(&own))
         .filter(|&k| matches(&|o| own(o + k), tail.clone()))
-        .any(|k| (cont..=kept).any(|p| matches(&|o| own(o + k), p..e1)));
-    let inserted = (cont..=kept).any(|p| (1..=e1 - p).any(|k| matches(&|o| own(o - k), p + k..span)));
-    !deletion && !more_deleted && !inserted
+        .any(|k| (cont..=kept).any(|p| matches(&|o| own(o + k), p..last)));
+    let inserted = (cont..=kept).any(|p| (1..=last - p).any(|k| matches(&|o| own(o - k), p + k..span)));
+    deletion || more_deleted || inserted
 }
 
 /// Query index of the read's first splice (N) after query index `q`, if any.
