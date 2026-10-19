@@ -557,3 +557,87 @@ def test_the_deletion_shifted_right_is_another_breakpoint(tmp_path, shift, same,
     )
     (got,) = count_checked(bam, [pv.variant])
     assert (got.rd, got.ad) == (4, given)
+
+
+def _vntr(differ):
+    """The long-deletion contig with three 60-bp units after the junction: the second
+    the first with its third base changed, the third the second with the bases at
+    `differ` changed."""
+    n, mh = rj.LONG_DEL["del 60"]
+    c = list(rj._long_contig(n, mh))
+    u1 = c[A : A + n]
+    u2 = list(u1)
+    u2[2] = rj._other(u1[2])
+    u3 = list(u2)
+    for k in differ:
+        u3[k] = rj._other(u2[k])
+    c[A + n : A + 2 * n], c[A + 2 * n : A + 3 * n] = u2, u3
+    return "".join(c), n
+
+
+def test_prep_lists_the_substitution_rows_beside_a_long_deletion(tmp_path):
+    """Prep records on a deletion of 50 bp or more the input's other substitution rows
+    inside the reference it holds for it, and nothing on other rows: an indel row
+    beside it, and an SNV past that reference, are not listed."""
+    contig, n = _vntr((5,))
+    fa, _ = write_contig(tmp_path, contig, [], "c")
+    g = A + n + 5  # inside the second unit
+    far = A + 3 * n + 300
+    rows = [
+        _rs.Variant("1", A - 1, contig[A - 1 : A + n], contig[A - 1], "DEL"),
+        _rs.Variant("1", g, contig[g], rj._other(contig[g]), "SNP"),
+        _rs.Variant("1", g + 2, contig[g + 2 : g + 4], contig[g + 2], "DEL"),
+        _rs.Variant("1", far, contig[far], rj._other(contig[far]), "SNP"),
+    ]
+    prepared = [pv.variant for pv in _rs.prepare_variants(rows, fa, 5, False, 1, True)]
+    assert prepared[0].listed_neighbours == [(g, contig[g], rj._other(contig[g]))]
+    assert all(v.listed_neighbours == [] for v in prepared[1:])
+
+
+@pytest.mark.parametrize(
+    "listed, counts",
+    [
+        (None, (4, 0, 4)),
+        ("the change", (4, 4, 0)),
+        ("another base", (4, 0, 4)),
+    ],
+)
+def test_a_change_the_input_lists_beside_the_deletion_is_its_neighbour(tmp_path, listed, counts):
+    """The given deletion removes one unit; its carriers carry a phased change in the
+    second unit that makes it the third, so their bases are also those of a deletion
+    of two units (HG002's 90-bp deletion with its phased SNV, #285). Without the change
+    in the input they are another allele (the reads cannot tell); with it listed as a
+    row, the input says the change exists, and they carry the deletion with that
+    neighbour: ALT. A row listing another base there explains nothing."""
+    contig, n = _vntr((5,))
+    g = A + n + 5
+    one = contig[:A] + contig[A + n :]
+    carried = one[: g - n] + rj._other(one[g - n]) + one[g - n + 1 :]
+    # the same bases as two units deleted, over the next unit (the reads end before it)
+    assert carried[: A + n] == (contig[:A] + contig[A + 2 * n :])[: A + n]
+    reads = []
+    for i in range(4):
+        s = A - 50 - i
+        reads.append(make_read(f"r{i}", contig[s : s + 100], s, ((0, 100),)))
+        reads.append(
+            make_read(f"x{i}", carried[s : s + 100], s, ((0, A - s), (2, n), (0, 100 - (A - s))))
+        )
+    for r in reads:
+        r.flag = 0x1 | 0x2 | 0x20 | 0x40
+        r.next_reference_id, r.next_reference_start, r.template_length = (
+            0,
+            r.reference_start + 250,
+            400,
+        )
+    fa, bam = write_contig(tmp_path, contig, reads, "c")
+    rows = [_rs.Variant("1", A - 1, contig[A - 1 : A + n], contig[A - 1], "DEL")]
+    if listed is not None:
+        base = (
+            rj._other(contig[g])
+            if listed == "the change"
+            else "T" if rj._other(contig[g]) != "T" else "G"
+        )
+        rows.append(_rs.Variant("1", g, contig[g], base, "SNP"))
+    deletion = _rs.prepare_variants(rows, fa, 5, False, 1, True)[0].variant
+    (got,) = count_checked(bam, [deletion])
+    assert (got.rd, got.ad, got.partial_alt) == counts

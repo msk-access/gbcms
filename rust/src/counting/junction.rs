@@ -321,7 +321,9 @@ const PAST: usize = 2 * REJOIN;
 /// of the ALT reads' own changes is an indel at the junction, and any other run past it
 /// on reads fitting REF another breakpoint: another allele, not masked. An allele's own
 /// changes are taken together first: where another breakpoint gives the reads' bases
-/// exactly ([`another_breakpoint`]), none of them is masked, isolated or run. Masks never take every
+/// exactly ([`another_breakpoint`]), none of them is masked, isolated or run. A change
+/// on the ALT reads that another input row lists (`Variant::listed_neighbours`) is that
+/// row's allele, not one of their own: masked, never another breakpoint's, not named. Masks never take every
 /// offset where REF and ALT differ: those stay read, and a read changed there is
 /// neither allele. On the ALT reads alone (under [`GUARD_REF_SHARE`] of REF's)
 /// isolated recurring changes and phased runs also make the larger allele the
@@ -431,17 +433,31 @@ pub(crate) fn guard_for(
     let background = |e: usize| {
         e <= cont && (recurs(0, e) || (recurs(1, e) && change[0][e] >= GUARD_MIN_READS && on_ref(e)))
     };
+    let most = |a: usize, e: usize| b"ACGT"[(0..4).max_by_key(|&k| shown[a][e][k]).unwrap_or(0)];
+    // A change on the ALT reads that another input row lists (a substitution giving that
+    // base there) is that row's allele: the input is taken as correct, so the reads are
+    // the deletion with a listed neighbour. It is masked, never evidence of another
+    // breakpoint, and not named (#285).
+    let listed = |e: usize| {
+        e >= 1 && recurs(1, e) && {
+            let (g, b) = (j.genome(true, e - 1), most(1, e));
+            v.listed_neighbours.iter().any(|(p, r, a)| {
+                let i = usize::try_from(g - p).ok();
+                i.and_then(|i| Some((r.as_bytes().get(i)?, a.as_bytes().get(i)?)))
+                    .is_some_and(|(&x, &y)| y.to_ascii_uppercase() == b && x.to_ascii_uppercase() != b)
+            })
+        }
+    };
     // The ALT reads' own changes, isolated when no own change sits beside them; past
     // the junction a REF reads' change, when none recurs beside it on the REF reads.
-    let own = |e: usize| recurs(1, e) && !background(e);
+    let own = |e: usize| recurs(1, e) && !background(e) && !listed(e);
     let isolated = |e: usize| !own(e - 1) && !own(e + 1);
     let ref_isolated = |e: usize| recurs(0, e) && !recurs(0, e - 1) && !recurs(0, e + 1);
-    // Each allele's own changes: the ALT reads' (not background), and past the
-    // junction the REF reads'. Those in the windows, with any running on past them,
+    // Each allele's own changes: the ALT reads' (not background, not listed), and past
+    // the junction the REF reads'. Those in the windows, with any running on past them,
     // taken together are another breakpoint's where one gives the reads' bases exactly:
     // then none is masked, and the reads carrying them are another allele (#296).
     let own_of = |a: usize, e: usize| if a == 1 { own(e) } else { e > cont && recurs(0, e) };
-    let most = |a: usize, e: usize| b"ACGT"[(0..4).max_by_key(|&k| shown[a][e][k]).unwrap_or(0)];
     let elsewhere: [bool; 2] = [0, 1].map(|a| {
         // The changes in the windows, and on past them each within REJOIN bases of the
         // last one taken.
@@ -478,6 +494,7 @@ pub(crate) fn guard_for(
     let mut offsets: Vec<usize> = (1..=n)
         .filter(|&e| {
             background(e)
+                || listed(e)
                 || (own(e) && isolated(e) && !elsewhere[1])
                 || (e > cont && ref_isolated(e) && !elsewhere[0])
                 || in_neighbour(0, e)
@@ -490,7 +507,7 @@ pub(crate) fn guard_for(
         offsets.retain(|e| !tells(e));
     }
     let alt_only: Vec<usize> =
-        (1..m).filter(|&e| recurs(1, e) && !on_ref(e) && (e <= n || in_neighbour(1, e))).collect();
+        (1..m).filter(|&e| recurs(1, e) && !on_ref(e) && !listed(e) && (e <= n || in_neighbour(1, e))).collect();
     let mut masked = Vec::new();
     for &e in &offsets {
         for p in [j.genome(false, e - 1), j.genome(true, e - 1)] {

@@ -20,6 +20,10 @@ class Variant:
     # 0-based inclusive span the exon-boundary distance is measured over (None:
     # the variant's own REF span); MNP rescue sets it to the MNP's span.
     boundary_span: tuple[int, int] | None
+    # Prep's record, on a deletion of 50 bp or more, of the input's other substitution
+    # rows inside its prepared reference: (0-based POS, REF, ALT).
+    @property
+    def listed_neighbours(self) -> list[tuple[int, str, str]]: ...
     def __init__(
         self,
         chrom: str,
