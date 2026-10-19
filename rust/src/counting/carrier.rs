@@ -1439,6 +1439,24 @@ pub(crate) fn reference_short(start: i64, reference: &str, v: &Variant) -> Optio
             shared_past(&reference, &ev, (lo, hi, alt_hi), false).is_none(),
         );
     }
+    if !short.0 && !short.1 {
+        // Whatever the guard masks, the windows read on to a base telling the alleles
+        // apart: past every base it can mask in them, the reference holds one, on the
+        // side they read on to from either flank.
+        let reach = (start + ev.lo.saturating_sub(GUARD_REACH) as i64, start + (ev.hi + GUARD_REACH) as i64);
+        for from_right in [false, true] {
+            let plain = Layout { from_right, ..Layout::default() };
+            let Some(w) = windows_on(v, start, reference.clone(), &plain) else { continue };
+            let every = Layout { from_right, masked: (reach.0..reach.1).collect(), ..Layout::default() };
+            if windows_on(v, start, reference.clone(), &every).is_none() {
+                if w.pair.0.tail {
+                    short.0 = true;
+                } else {
+                    short.1 = true;
+                }
+            }
+        }
+    }
     (short.0 || short.1).then_some(short)
 }
 
@@ -1660,6 +1678,11 @@ fn starts_cut_left(mut starts: impl Iterator<Item = i64>, lo: i64, flank: i64) -
 /// reference that holds the event and its flank, or with an empty allele.
 fn windows(v: &Variant, layout: &Layout) -> Option<Windows> {
     let (start, reference) = prepared_reference(v)?;
+    windows_on(v, start, reference, layout)
+}
+
+/// [`windows`] on `reference`, fetched from `start`.
+fn windows_on(v: &Variant, start: i64, reference: Vec<u8>, layout: &Layout) -> Option<Windows> {
     let ev = event(start, &reference, v)?;
     if ev.lo < FLANK || ev.hi + FLANK > reference.len() {
         return None; // the reference does not hold the event's flank
