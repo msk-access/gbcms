@@ -29,7 +29,7 @@
             body[data-md-color-scheme="slate"] .gslide-title { color: var(--md-default-fg-color); }
             body[data-md-color-scheme="slate"] .gslide-desc { color: var(--md-default-fg-color); }
         </style><meta name="panzoom-theme" content="material">
-<meta name="panzoom-data" content='{"selectors": [".d2", ".mermaid"], "initial_zoom_level": 1.0}'> </head>
+<meta name="panzoom-data" content='{"selectors": [".mermaid", ".d2"], "initial_zoom_level": 1.0}'> </head>
 <body data-md-color-accent="custom" data-md-color-primary="custom" data-md-color-scheme="default" dir="ltr">
 <input autocomplete="off" class="md-toggle" data-md-toggle="drawer" id="__drawer" type="checkbox">
 <input autocomplete="off" class="md-toggle" data-md-toggle="search" id="__search" type="checkbox">
@@ -757,6 +757,15 @@
 </a>
 <nav aria-label="[Unreleased]" class="md-nav">
 <ul class="md-nav__list">
+<li class="md-nav__item">
+<a class="md-nav__link" href="#changed-a-run-beside-a-long-deletion-is-a-neighbour-where-its-bases-rejoin-the-flank-285-296">
+<span class="md-ellipsis">
+      
+        Changed — a run beside a long deletion is a neighbour where its bases rejoin the flank (#285, #296)
+      
+    </span>
+</a>
+</li>
 <li class="md-nav__item">
 <a class="md-nav__link" href="#changed-a-read-aligned-over-its-reading-flank-confirmed-from-the-other-279">
 <span class="md-ellipsis">
@@ -2825,6 +2834,50 @@
 <p>The format is based on <a href="https://keepachangelog.com/en/1.0.0/">Keep a Changelog</a>,
 and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semantic Versioning</a>.</p>
 <h2 id="unreleased">[Unreleased]<a class="headerlink" href="#unreleased" title="Permanent link">¶</a></h2>
+<h3 id="changed-a-run-beside-a-long-deletion-is-a-neighbour-where-its-bases-rejoin-the-flank-285-296">Changed — a run beside a long deletion is a neighbour where its bases rejoin the flank (#285, #296)<a class="headerlink" href="#changed-a-run-beside-a-long-deletion-is-a-neighbour-where-its-bases-rejoin-the-flank-285-296" title="Permanent link">¶</a></h3>
+<ul>
+<li><strong>The rule (RJ-24, amended).</strong> A run of changes past a long deletion's junction used
+  to be another allele. It is now a phased neighbour, masked like a single change,
+  when two things hold:</li>
+<li>its bases rejoin the allele's continuation after it;</li>
+<li>no other breakpoint gives the reads' bases exactly: neither the deletion at another
+    start or of another length, nor the allele with one more indel.</li>
+</ul>
+<p>This applies to the carriers, and to REF reads inside the deleted bases. It covers a
+  run inside the window as well as one running past it.
+  - A run that keeps mismatching after it is still another breakpoint.
+  - So is a run at the junction whose bases are the deleted bases' own: the deletion
+    shifted right.
+  - On the carriers alone, the diagnostic names the deletion with the run.
+- <strong>Single changes are checked the same way (#296, folded in).</strong> An allele's recurring
+  changes in the window are taken together. Where another breakpoint gives the reads'
+  bases exactly, none is masked and the reads count as another allele. Before this, a
+  same-length deletion 2–3 bp right of the given one, or another unit count of a VNTR
+  whose units differ at one base, could count ALT.
+- <strong>A change another input row lists is that row's allele (operator, 2026-10-19).</strong> Prep
+  records on each deletion of 50 bp or more the input's other substitution rows inside
+  the reference it holds (<code>Variant.listed_neighbours</code>). A carrier change one of them
+  lists is masked as a neighbour, never read as another breakpoint, and not named. With
+  the input taken as correct, HG002's 90-bp deletion reads <abbr title="Variant Allele Frequency - Fraction of reads supporting the variant allele">VAF</abbr> 0.11 with the deletion
+  alone in the input and 0.58 with its phased SNV row (truth 0.5). Its carriers there
+  read the same as another unit count of the repeat.
+- <strong>How the guard reads.</strong>
+  - Each fragment is read once, its mates merged base by base.
+  - It is taken as an allele by its bases past the windows, read on as RJ-27 reads (12
+    bases, a shift test, and on through 24), or else by its four continuation bases.
+  - Prep now holds as many reference bases past a long deletion as it deletes.
+- <strong>Measured against develop</strong>, on 587 local deletions of 50+ bp and every other arm:
+  - <strong>Panel:</strong> three rows change.
+    - The phased-DNP row: ALT 0 → 48 (sign-out 49).
+    - A 167-bp deletion: <abbr title="Reference Depth - Reads supporting the reference allele">RD</abbr> 117 → 319 and <abbr title="Alternate Depth - Reads supporting the alternate allele">AD</abbr> 293 → 284 (sign-out 352/291). Its REF
+      molecules carry a germline <abbr title="Single Nucleotide Polymorphism - Single base substitution">SNP</abbr> on the first deleted base.
+    - A 67-bp deletion beside its sibling 2 bp right: <abbr title="Alternate Depth - Reads supporting the alternate allele">AD</abbr> 47 → 46.
+  - <strong>Gate panel's pure indels:</strong> the same three rows. Normals and ACCESS, WES, HG002's
+    300 deletions, and FORTE are unchanged.
+  - <strong>Diagnostics:</strong> at three 1,023-bp panel rows the observed allele now names the
+    reads' 1,086–1,118 bp deletions.
+- <strong>Known limit (#297).</strong> A read of another unit count still counts ALT where the
+  repeat's units are identical as far as the read reaches.</p>
 <h3 id="changed-a-read-aligned-over-its-reading-flank-confirmed-from-the-other-279">Changed — a read aligned over its reading flank, confirmed from the other (#279)<a class="headerlink" href="#changed-a-read-aligned-over-its-reading-flank-confirmed-from-the-other-279" title="Permanent link">¶</a></h3>
 <ul>
 <li><strong>The rule (RJ-23, amended).</strong> Some reads are aligned straight across a variant's
