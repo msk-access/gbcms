@@ -128,6 +128,7 @@ pub fn prepare_variants(
         Ok(mut r) => {
             // Post-processing: assign multi-allelic group IDs
             assign_multi_allelic_groups(&mut r);
+            assign_listed_neighbours(&mut r);
 
             // Log summary
             let valid = r.iter().filter(|p| p.gbcms_status == "PASS").count();
@@ -196,6 +197,46 @@ fn grouping_reach(v: &Variant) -> (i64, i64, Option<(i64, i64)>) {
     let (lo, hi) = (v.pos, v.pos + v.ref_allele.len() as i64);
     let window = is_length_changing(v).then(|| (lo - window_pad(v), hi + window_pad(v)));
     (lo, hi, window)
+}
+
+/// Records on each deletion of 50 bp or more the input's other substitution rows
+/// (SNVs and MNPs that passed prep) inside the reference prep holds for it, as
+/// `Variant::listed_neighbours`. Its junction guard takes a change the carriers share
+/// that one of them lists as that row's allele: the input is taken as correct, so a
+/// read that is the deletion with a listed neighbour carries the deletion (#285).
+/// Siblings are not this list: a nearby SNV is never a co-annotation sibling, which
+/// would claim the deletion's REF reads.
+fn assign_listed_neighbours(variants: &mut [PreparedVariant]) {
+    let mut substitutions: std::collections::HashMap<String, Vec<(i64, String, String)>> =
+        std::collections::HashMap::new();
+    for p in variants.iter().filter(|p| p.gbcms_status == "PASS") {
+        let v = &p.variant;
+        if v.ref_allele.len() == v.alt_allele.len() && !v.ref_allele.eq_ignore_ascii_case(&v.alt_allele) {
+            substitutions.entry(v.chrom.clone()).or_default().push((
+                v.pos,
+                v.ref_allele.to_ascii_uppercase(),
+                v.alt_allele.to_ascii_uppercase(),
+            ));
+        }
+    }
+    for rows in substitutions.values_mut() {
+        rows.sort();
+        rows.dedup();
+    }
+    for p in variants.iter_mut().filter(|p| p.gbcms_status == "PASS") {
+        let v = &p.variant;
+        let (Some(rows), Some((start, seq))) = (substitutions.get(&v.chrom), v.event_ref.as_ref()) else {
+            continue;
+        };
+        if crate::counting::junction::reference_past(v) == 0 {
+            continue;
+        }
+        let end = start + seq.len() as i64;
+        let from = rows.partition_point(|r| r.0 < *start);
+        let listed: Vec<(i64, String, String)> =
+            rows[from..].iter().take_while(|r| r.0 < end).filter(|r| r.0 + r.1.len() as i64 <= end).cloned().collect();
+        p.variant.listed_neighbours = listed;
+    }
 }
 
 /// Assign group IDs to co-annotated variants so the engine can evaluate them
@@ -453,7 +494,8 @@ fn indel_shift_region(
 /// bases on each side (room to left-align the alleles reads carry there), and
 /// more where a complex variant's exact-carrier rule needs it: an event grown
 /// through a long repeat, with its flank and the reach of the neighbouring-change
-/// guard on each side. For the observed-allele
+/// guard on each side. Past a deletion of 50 bp or more it also holds as many bases
+/// as the deletion removes (`junction::reference_past`). For the observed-allele
 /// diagnostic and the exact-carrier rule; None when the fetch fails.
 fn event_core_ref(reader: &mut fasta::IndexedReader<File>, v: &Variant, tally: &PrepTally) -> Option<(i64, String)> {
     let (c_lo, c_hi) = window::change_interval(v);
@@ -462,7 +504,10 @@ fn event_core_ref(reader: &mut fasta::IndexedReader<File>, v: &Variant, tally: &
     // check compares the two stretches that far past the event on either side.
     let ins_len = (v.alt_allele.len() as i64 - v.ref_allele.len() as i64).max(0);
     let margin = EVENT_REF_MARGIN.max(ins_len + 3);
-    let (mut left, mut right) = (margin, margin);
+    // Past a long deletion, as many bases again as it deletes: its guard tests a
+    // deletion of up to twice the length as another breakpoint.
+    let past = (margin + crate::counting::junction::reference_past(v)).min(EVENT_REF_MAX_MARGIN.max(margin));
+    let (mut left, mut right) = (margin, past);
     loop {
         let lo = (from - left).max(0);
         let hi = to + right;
@@ -731,6 +776,7 @@ fn prepare_single_variant(
                 shift_region: None,
                 event_ref: None,
                 boundary_span: None,
+                listed_neighbours: Vec::new(),
             },
             gbcms_status: verdict,
             gbcms_status_reason: reason,
@@ -769,6 +815,7 @@ fn prepare_single_variant(
                 shift_region: None,
                 event_ref: None,
                 boundary_span: None,
+                listed_neighbours: Vec::new(),
             },
             gbcms_status: "FAIL".to_string(),
             gbcms_status_reason: "ALT_CONTAINS_N".to_string(),
@@ -983,6 +1030,7 @@ fn prepare_single_variant(
                     shift_region: None,
                     event_ref: None,
                     boundary_span: None,
+                    listed_neighbours: Vec::new(),
                 }
             })
         })
@@ -1028,6 +1076,7 @@ fn prepare_single_variant(
         shift_region,
         event_ref: None,
         boundary_span: None,
+        listed_neighbours: Vec::new(),
     };
     prepared.event_ref = event_core_ref(reader, &prepared, tally);
 

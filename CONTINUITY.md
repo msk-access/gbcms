@@ -3,34 +3,64 @@
 > Tactical state that must survive a closed laptop or a context summary.
 > Update the **Now** and **Next** sections as work progresses.
 
-_Last updated: 2026-10-16 (evening)_
+_Last updated: 2026-10-19_
 
 ## Now — 6.7.0 after #289 (C43 tail)
 #289 merged 2026-10-16 (e56ed8e4). Closed: #278, #291, #287 (fixed by #288), #143
 (resolved by RJ-26/D2), #280 (measured: the bases rule counts 0 ALT for the 7
 collapsed-only ABRA2 events a scan found; no gate row affected), #265 (Phase 3 decides 0
 of ~4M read calls on every runnable arm; the release gate covers RC/FORTE probes).
-- **#279 on `feature/c43c-other-flank`** (worktree c43b, local, not pushed): A' decided
-  (operator 2026-10-16: spanning carriers only; counting every right-junction carrier
-  double-counts long inserts). Commits 9d7204f5 (the rule, with the unambiguous
-  other-flank anchor), e43f9084 (a pure indel the rule cannot judge is counted and
-  warned; test filter narrowed with operator approval), 0e53d1bb (docs). Frozen
-  `plan670/src_c43c4` (b4647ad0, the rule without the fallback warning). Measured
-  vs c43py: HG002 10+ bp ins in band 334 -> 343, short ins 552 -> 555, dels unchanged;
-  panel 7 ins rows (AD +10, RD -29), no oracle-ALT read lost; WES, normals/ACCESS, FORTE
-  unchanged. Harness: `gate_pi/run_c43c.sh` (L=label), `m279/right_junction.py`.
-- Filed: #294 (the guard masks the only base telling a VNTR unit insertion from REF).
+- **#279 merged** (PR #295, 2026-10-18, 23b4ff50); #279 closed with a link.
+- **#285 (C40a) on `feature/c40a-run-rejoins-flank`** (worktree c43b, from develop
+  23b4ff50; local, not pushed). Decisions on #285 (2026-10-17/18): both alleles; runs
+  inside the window; rejoining at the given breakpoint only, exactly; **#296 folded in**
+  (an allele's changes checked together against other breakpoints). Commits c0fc4a85
+  (rule), 5ba518ae (review 1: wider prep reference, mates merged, tail-first search,
+  exact), 099072ca (read-on placement: 12 fit + shift test + 24 within one), 83b35de0
+  (review 2: joint breakpoint check over the change cluster touching the window, read-on
+  needs all 24 read). Builds `src_c40a0` (develop) .. `src_c40a4` (83b35de0); arms
+  `m285/run.sh` (LABELS=), diffs `m285/diff.py A B`, `m285/forte_diff.py A B`.
+  Row checks (`scratchpad/c40a/hg002_three.maf`, `r050_one.maf`, r049 rows.maf): r049 61 bp
+  AD 0 -> 48; r050 167 bp RD 117 -> 319 (sign-out 352); HG002 78 bp AD 4 (no false ALT);
+  HG002 90 bp VAF 0.11 = develop (the truth's phased SNV in a ~90-bp-unit VNTR reads as
+  another unit count over the guard's reach: the joint check withholds it; earlier
+  builds reached 0.58); HG002 52 bp = develop. **c40a4 arms vs develop (complete):**
+  panel 3 rows (r049 61 bp AD 0 -> 48; r050 167 bp RD 117 -> 319 AD 293 -> 284; r088 67 bp
+  AD 47 -> 46, a read of its sibling 2 bp right), gate_pi the same 3 of 4,606, across /
+  WES / HG002 600 / FORTE 0. Operator weighing A (current: exact check on every change;
+  matches GATK's uninformative reads and repeat genotypers' spanning-read rule) vs B
+  (singles checked only against a same-length shift: HG002 90 bp 0.58, but another unit
+  count in a sample counts ALT as on develop). **Decided 2026-10-19: A stands; fix 1
+  added** (9c213e8f: prep records on each 50+ bp deletion the input's substitution rows
+  inside its reference, `Variant.listed_neighbours`; a carrier change one lists is a
+  neighbour, never another breakpoint; HG002 90 bp: 0.11 deletion-only input, 0.58 with
+  the SNV row); **#297 filed** (identical units: reads that cannot see the unit count
+  still count ALT). Build `src_c40a5` (9c213e8f): **arms complete** — vs develop the
+  panel's 3 rows (r049, r050, r088) and the same 3 of gate_pi's 4,606; across / WES /
+  HG002 600 / FORTE 0; vs c40a4 no count change (r096's larger allele no longer named:
+  its neighbour is an input row). Diagnostics: three 1,023-bp panel rows now name the
+  reads' 1,086-1,118 bp deletions (wider prep reference). Evidence (RJ-24), CHANGELOG
+  and a REJ-20261013-001 "revisited in part" note written. Scratch venv
+  `scratchpad/venv_c40a`. **Next: push and open the PR (ask first), then #290 + #294.**
+- **6.7.0 scope (operator, 2026-10-19): keep the whole milestone in 6.7.0** (no
+  production use of a partial release). Order: gate tooling (D9-D12) on HPC (mounts
+  back 2026-10-19), count-changing items (Group 1, then the remaining A/B/D items),
+  output-only and no-change items in parallel worktrees, then one freeze + gate.
+  D12 settings on #275 (nucleo standard-BAM path for IMPACT too; bwa mem -K 1000000 -Y;
+  FORTE STAR 2.7.10a GRCh38; ABRA2 targets static BED since uncollapsed_bam_generation
+  8e270032 (2024-11-07), dynamic before and for collapsed BAMs — production nucleo
+  release to confirm). FORTE's fill-out still calls the C++ gbcms 1.2.5.
+- Filed: #294 (the guard masks the only base telling a VNTR unit insertion from REF);
+  #296 C40c (sub-issue of #258, 2026-10-18): folded into #285 (operator, 2026-10-18).
 - Harness: every runner now traces with COLUMNS=60000 (3000 wrapped alleles > 2.9 kb;
   traces made before 2026-10-16 miss those lines on HG002 pri_ins / pri_del50).
-- **#279 is PR #295** (pushed 2026-10-16; CI 8/8 green, mergeable). When the operator
-  merges it, close #279 with a link (merges into develop do not auto-close).
 - **Group 1 decided (operator, 2026-10-17):** #285 yes, measure then land; #290 another
   allele (partial) wherever in the repeat; #294 a mask leaving no telling base is not
   applied; #282 Test 3 follows the guard's seen share, after measuring; #292 prototype
   and measure all three options (narrow spare, samtools no-penalty, GATK overhang) then
   decide; #286 closed as measured; #144 re-measure ITD rows on develop, then decide
-  admission; #293 after the others. **Order:** merge #295 (operator) -> close #279 ->
-  #285 -> #290 + #294 (carrier repeat handling, one branch) -> #282 (measure first) ->
+  admission; #293 after the others. **Order:** merge #295 (done) -> close #279 (done) ->
+  #285 (in progress) -> #290 + #294 (carrier repeat handling, one branch) -> #282 (measure first) ->
   #292 (three prototypes, measure) -> #144 (re-measure) -> #293. Each from develop,
   red-first, measured on every arm (`gate_pi/run_c43c.sh` pattern: gate_pi + oracle,
   HG002 three arms + right-junction, across, WES, FORTE). Group 2 (D9-D11 arms, D12,

@@ -2971,6 +2971,7 @@ mod tests {
             shift_region: None,
             event_ref: None,
             boundary_span: None,
+            listed_neighbours: Vec::new(),
         }
     }
 

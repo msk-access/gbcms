@@ -65,6 +65,14 @@ pub struct Variant {
     /// row's rule and reports the row's distance.
     #[pyo3(get, set)]
     pub boundary_span: Option<(i64, i64)>,
+
+    /// The input's other substitution rows inside the reference prep holds for a
+    /// deletion of 50 bp or more (`event_ref`): 0-based POS, REF, ALT. A change its
+    /// carriers share that one of them lists is that row's allele, a neighbour, never
+    /// another breakpoint's (#285). Empty for any other variant, and for one prep did
+    /// not make.
+    #[pyo3(get)]
+    pub listed_neighbours: Vec<(i64, String, String)>,
 }
 
 #[pymethods]
@@ -99,6 +107,7 @@ impl Variant {
             shift_region,
             event_ref,
             boundary_span,
+            listed_neighbours: Vec::new(),
         }
     }
 }

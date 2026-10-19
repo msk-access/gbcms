@@ -523,11 +523,16 @@ def _long_del_reads(n: int, mh: int, shape: str) -> list:
             seq[k] = _other(seq[k])
         add(f"c{i}", "".join(seq), s, [(0, left), (2, n), (0, right)])
 
-    def ref_read(i, s, length, sub=None):
+    def ref_read(i, s, length, sub=None, subs=()):
         seq = list(contig[s : s + length])
-        if sub is not None:
-            seq[sub - s] = _other(seq[sub - s])
+        for g in (sub,) * (sub is not None) + tuple(subs):
+            seq[g - s] = _other(seq[g - s])
         add(f"r{i}", "".join(seq), s, [(0, length)])
+
+    # past the window's last base: a run that rejoins the flank, and one whose bases
+    # keep mismatching it (changes on two of every three bases for 14 on)
+    last = mh + 3
+    keeps = tuple(last + k for k in range(14) if k % 3 != 2)
 
     for i in range(N_READS):
         if shape == "exact D carrier, long flanks":
@@ -637,13 +642,44 @@ def _long_del_reads(n: int, mh: int, shape: str) -> list:
             carrier(i, A - 50 - i, LONG_READ - 50 - i, subs=(A + n + mh + 3,))
         elif shape == "carriers with a run of changes from the window's last base on":
             carrier(i, A - 50 - i, LONG_READ - 50 - i, subs=(A + n + mh + 3, A + n + mh + 4))
+        elif shape == "carriers with a run of three from the window's last base on":
+            carrier(
+                i,
+                A - 50 - i,
+                LONG_READ - 50 - i,
+                subs=(A + n + last, A + n + last + 1, A + n + last + 2),
+            )
+        elif shape == "carriers with a phased DNP inside the window":
+            carrier(i, A - 50 - i, LONG_READ - 50 - i, subs=(A + n + mh + 1, A + n + mh + 2))
+        elif shape == "carriers with a run from the window's last base on, mismatching on past it":
+            carrier(i, A - 50 - i, LONG_READ - 50 - i, subs=tuple(A + n + k for k in keeps))
+        elif shape == "carriers with a DNP at the junction, its first base the deleted one's":
+            # the deletion shifted right by one or two bases differs from these by one
+            # base: only another breakpoint giving their bases exactly is one
+            s = A - 50 - i
+            seq = list(hap[s : s + LONG_READ])
+            seq[A + mh - s] = contig[A + mh]
+            seq[A + mh + 1 - s] = _other(seq[A + mh + 1 - s])
+            add(f"c{i}", "".join(seq), s, [(0, A - s), (2, n), (0, LONG_READ - (A - s))])
+        elif shape == "carriers of the deletion two bases right":
+            # the deleted bases' first two kept, as many right-flank bases deleted: a
+            # run at the junction that continues the deleted bases, then the flank
+            s = A - 50 - i
+            other = contig[: A + 2] + contig[A + 2 + n :]
+            add(
+                f"c{i}",
+                other[s : s + LONG_READ],
+                s,
+                [(0, A + 2 - s), (2, n), (0, LONG_READ - (A + 2 - s))],
+            )
         elif shape == "REF reads with a recurring change inside the window":
             ref_read(i, A - 50 - i, LONG_READ, sub=A + mh + RECUR_PAST)
         elif shape == "REF reads with a run of changes from the window's last base on":
-            seq = list(contig[A - 50 - i : A - 50 - i + LONG_READ])
-            for g in (A + mh + 3, A + mh + 4):
-                seq[g - (A - 50 - i)] = _other(seq[g - (A - 50 - i)])
-            add(f"r{i}", "".join(seq), A - 50 - i, [(0, LONG_READ)])
+            ref_read(i, A - 50 - i, LONG_READ, subs=(A + mh + 3, A + mh + 4))
+        elif shape == "REF reads with a phased DNP inside the window":
+            ref_read(i, A - 50 - i, LONG_READ, subs=(A + mh + 1, A + mh + 2))
+        elif shape == "REF reads with a run from the window's last base on, mismatching on past it":
+            ref_read(i, A - 50 - i, LONG_READ, subs=tuple(A + k for k in keeps))
         else:
             raise KeyError(shape)
     return reads
@@ -681,6 +717,13 @@ _LONG_DEL_ALL = (
     "carriers with a recurring change on the window's last base",
     "carriers with a run of changes from the window's last base on",
     "carrier aligned over the deleted bases' end, no clip",
+    "carriers with a run of three from the window's last base on",
+    "carriers with a phased DNP inside the window",
+    "carriers with a run from the window's last base on, mismatching on past it",
+    "carriers of the deletion two bases right",
+    "carriers with a DNP at the junction, its first base the deleted one's",
+    "REF reads with a phased DNP inside the window",
+    "REF reads with a run from the window's last base on, mismatching on past it",
 )
 LONG_DEL_SHAPES = {
     "del 60": _LONG_DEL_ALL,
@@ -692,6 +735,9 @@ LONG_DEL_SHAPES = {
         "REF read, long flanks",
         "REF read, four deleted bases past the microhomology",
         "REF read, three deleted bases past the microhomology",
+        "carriers with a run of changes from the window's last base on",
+        "carriers with a phased DNP inside the window",
+        "REF reads with a run of changes from the window's last base on",
     ),
     "del 1000": (
         "exact D carrier, long flanks",
@@ -699,6 +745,7 @@ LONG_DEL_SHAPES = {
         "left-clipped carrier aligned from the right flank",
         "REF read, long flanks",
         "REF read starting inside the deletion",
+        "carriers with a run of changes from the window's last base on",
     ),
 }
 
@@ -1341,18 +1388,44 @@ EXPECT = {
     "del 60 | carriers with a recurring change in the flank": (0, 4, 0),
     "del 60 | right-clipped carriers with a recurring change in the flank": (0, 4, 0),
     "del 60 | carriers with a recurring change on the window's last base": (0, 4, 0),
-    # a run of changes is another allele (here nearer ALT): partial, whether it lies
-    # inside the window or runs on past its edge
+    # a run of changes in the flank is another allele (here nearer ALT): partial
     "del 60 | carriers with a run of changes in the flank": (0, 0, 4),
-    "del 60 | carriers with a run of changes from the window's last base on": (0, 0, 4),
+    # past the junction, a run whose bases after it rejoin the allele's continuation
+    # is a phased neighbour, masked as a recurring change is, on the carriers (named
+    # with the deletion) and on reads fitting REF (a germline MNP in the deleted
+    # bases) alike, wherever in the window it starts (#285)
+    "del 60 | carriers with a run of changes from the window's last base on": (0, 4, 0),
+    "del 60 | carriers with a run of three from the window's last base on": (0, 4, 0),
+    "del 60 | carriers with a phased DNP inside the window": (0, 4, 0),
+    "del 60 | REF reads with a run of changes from the window's last base on": (4, 0, 0),
+    "del 60 | REF reads with a phased DNP inside the window": (4, 0, 0),
+    "del 60 mh3 | carriers with a run of changes from the window's last base on": (0, 4, 0),
+    "del 60 mh3 | carriers with a phased DNP inside the window": (0, 4, 0),
+    "del 60 mh3 | REF reads with a run of changes from the window's last base on": (4, 0, 0),
+    "del 1000 | carriers with a run of changes from the window's last base on": (0, 4, 0),
+    # a run whose bases keep mismatching after it is another breakpoint: another
+    # allele, nearer ALT on the carriers (partial), neither on reads fitting REF
+    "del 60 | carriers with a run from the window's last base on, mismatching on past it": (
+        0,
+        0,
+        4,
+    ),
+    "del 60 | REF reads with a run from the window's last base on, mismatching on past it": (
+        0,
+        0,
+        0,
+    ),
+    # a run at the junction that continues the deleted bases, then the flank: the
+    # deletion shifted right (another breakpoint), not the given one with a neighbour
+    "del 60 | carriers of the deletion two bases right": (0, 0, 0),
+    # a DNP at the junction whose first base is the deleted base there: the deletion
+    # shifted right gives the reads' bases but one, a phased neighbour (#285: another
+    # breakpoint only where it gives them exactly)
+    "del 60 | carriers with a DNP at the junction, its first base the deleted one's": (0, 4, 0),
     # a run the REF reads carry too is background (a germline MNP), masked as a
     # germline SNP is: both alleles count
     "del 60 | REF reads with a run of changes in the flank": (4, 0, 0),
     "del 60 | carriers and REF reads with a run of changes in the flank": (4, 4, 0),
-    # a run past the junction, where the alleles differ, is another allele even on
-    # reads that fit REF elsewhere (a germline run is background only in the bases
-    # both alleles share): neither
-    "del 60 | REF reads with a run of changes from the window's last base on": (0, 0, 0),
     # placed from the right flank, its bases before the junction show the left flank,
     # not the deleted bases its alignment puts there: ALT, as a REF read from the
     # same start is REF

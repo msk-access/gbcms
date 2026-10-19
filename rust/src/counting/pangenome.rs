@@ -436,6 +436,7 @@ mod tests {
             shift_region: None,
             event_ref: None,
             boundary_span: None,
+            listed_neighbours: Vec::new(),
         }
     }
 
@@ -479,6 +480,7 @@ mod tests {
             shift_region: None,
             event_ref: None,
             boundary_span: None,
+            listed_neighbours: Vec::new(),
         };
         assert!(build_haplotype_matrix(&v, &[]).is_none());
     }
