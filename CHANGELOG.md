@@ -7,6 +7,51 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed — a run beside a long deletion is a neighbour where its bases rejoin the flank (#285, #296)
+
+- **The rule (RJ-24, amended).** A run of changes past a long deletion's junction used
+  to be another allele. It is now a phased neighbour, masked like a single change,
+  when two things hold:
+  - its bases rejoin the allele's continuation after it;
+  - no other breakpoint gives the reads' bases exactly: neither the deletion at another
+    start or of another length, nor the allele with one more indel.
+
+  This applies to the carriers, and to REF reads inside the deleted bases. It covers a
+  run inside the window as well as one running past it.
+  - A run that keeps mismatching after it is still another breakpoint.
+  - So is a run at the junction whose bases are the deleted bases' own: the deletion
+    shifted right.
+  - On the carriers alone, the diagnostic names the deletion with the run.
+- **Single changes are checked the same way (#296, folded in).** An allele's recurring
+  changes in the window are taken together. Where another breakpoint gives the reads'
+  bases exactly, none is masked and the reads count as another allele. Before this, a
+  same-length deletion 2–3 bp right of the given one, or another unit count of a VNTR
+  whose units differ at one base, could count ALT.
+- **A change another input row lists is that row's allele (operator, 2026-10-19).** Prep
+  records on each deletion of 50 bp or more the input's other substitution rows inside
+  the reference it holds (`Variant.listed_neighbours`). A carrier change one of them
+  lists is masked as a neighbour, never read as another breakpoint, and not named. With
+  the input taken as correct, HG002's 90-bp deletion reads VAF 0.11 with the deletion
+  alone in the input and 0.58 with its phased SNV row (truth 0.5). Its carriers there
+  read the same as another unit count of the repeat.
+- **How the guard reads.**
+  - Each fragment is read once, its mates merged base by base.
+  - It is taken as an allele by its bases past the windows, read on as RJ-27 reads (12
+    bases, a shift test, and on through 24), or else by its four continuation bases.
+  - Prep now holds as many reference bases past a long deletion as it deletes.
+- **Measured against develop**, on 587 local deletions of 50+ bp and every other arm:
+  - **Panel:** three rows change.
+    - The phased-DNP row: ALT 0 → 48 (sign-out 49).
+    - A 167-bp deletion: RD 117 → 319 and AD 293 → 284 (sign-out 352/291). Its REF
+      molecules carry a germline SNP on the first deleted base.
+    - A 67-bp deletion beside its sibling 2 bp right: AD 47 → 46.
+  - **Gate panel's pure indels:** the same three rows. Normals and ACCESS, WES, HG002's
+    300 deletions, and FORTE are unchanged.
+  - **Diagnostics:** at three 1,023-bp panel rows the observed allele now names the
+    reads' 1,086–1,118 bp deletions.
+- **Known limit (#297).** A read of another unit count still counts ALT where the
+  repeat's units are identical as far as the read reaches.
+
 ### Changed — a read aligned over its reading flank, confirmed from the other (#279)
 
 - **The rule (RJ-23, amended).** Some reads are aligned straight across a variant's

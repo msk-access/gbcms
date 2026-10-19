@@ -397,6 +397,30 @@ panel's 60 deletions of 50+ bp (IMPACT, ABRA2-realigned) and 300 HG002 het delet
   through REF's window, 378 reads at 2 rows, and 41 -> 45/60 rows within 10% of
   sign-out. A growing continuation and a guard reading on past the windows gained
   nothing on any arm (REJ-20261013-001).
+- Runs past the junction (2026-10-19, #285 with #296): of the 587 local deletions of
+  50+ bp (panel 60, normals and ACCESS 77, WES 150, HG002 300), one carries a run past
+  the junction whose bases rejoin the flank: a phased GG>AA 3-4 bp past a 61-bp
+  deletion on all 48 carriers (0 of 444 other reads), which the run clause made
+  partial (ALT 0; sign-out 49). Against develop the panel changes at three rows: that
+  one (ALT 0 -> 48, the larger allele named), a 167-bp deletion whose REF molecules
+  carry a germline SNP on the first deleted base where the ALT has the same base (RD
+  117 -> 319, AD 293 -> 284, sign-out 352/291: they tie on the four continuation bases
+  and are told by the bases past the windows, the guard reading on that
+  REJ-20261013-001 tried with a growing continuation, here without it), and a 67-bp
+  deletion beside its sibling two bases right (AD 47 -> 46); the gate panel's 4,606
+  pure indels change at the same three, and normals and ACCESS, WES, HG002's 300 and
+  FORTE not at all. The prepared reference now holds as many bases past the deletion
+  as it deletes, so at three 1,023-bp panel rows the observed allele names the reads'
+  1,086-1,118-bp deletions. Two adversarial reviews: a VNTR unit count, a same-length
+  deletion shifted 2-3 bp right (31 of 150 random contexts counted ALT before the
+  joint check; develop's 2-bp shift about 23%), mates read in the wrong order, and
+  short reads of another allele; each is a test. A phased DNP at the junction counts
+  ALT in 36 of 40 random contexts (the other four: the deletion shifted right exactly,
+  or a DNP on every base the windows tell the alleles by), elsewhere 40 of 40. HG002's
+  90-bp deletion, one unit of a VNTR of about 90-bp units whose carriers hold a phased
+  SNV equal to the next unit, reads VAF 0.11 with the deletion alone in the input and
+  0.58 with the SNV row (truth 0.5). The breakpoint search takes 0.1 s on a 1 Mb
+  deletion.
 
 Evidence behind RJ-23 (2026-10-08), measured for the 6.7.0 plan on the 6.6.0 gate
 panel's 137 delins rows (IMPACT, every read judged by its own bases beside the engine's

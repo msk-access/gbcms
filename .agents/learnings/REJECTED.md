@@ -50,6 +50,14 @@ Newest at the top.
   shortfall it aimed at was mostly the sibling guard reading the whole deleted span
   (fixed in C40, 5aaf76a4). Prototype builds `plan670/src_pj4`, `src_pj5`.
 - **Date:** 2026-10-13
+- **Revisited in part (2026-10-19, #285):** the guard now tells a fragment's allele by
+  the 12 bases past the windows (with a shift test, reading on through 24), for either
+  allele, without growing the continuation, and masks a run past the junction on
+  either allele's reads only where its bases rejoin the allele's continuation and no
+  other breakpoint gives them. Measured gain where this entry found none: a panel
+  167-bp deletion whose REF molecules carry a germline SNP on the first deleted base
+  went RD 117 -> 319 (sign-out 352). Decided by the operator as part of #285 (runs
+  inside the window); the continuation growth stays rejected.
 
 ## [REJ-20261009-003] Read-on for the longer allele at 50+ bp deletions (C40 option A, RJ-9 style)
 - **Target:** the C40 junction judge for 50+ bp pure deletions (RJ-24)
