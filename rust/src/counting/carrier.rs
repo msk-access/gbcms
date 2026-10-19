@@ -229,6 +229,10 @@ const ROOM: usize = FLANK + GUARD_REACH;
 /// must recur on before it is taken as part of the reads' haplotype.
 pub(crate) const GUARD_MIN_READS: u32 = 3;
 pub(crate) const GUARD_MIN_SHARE: f64 = 0.2;
+/// Fragments placed apart from the event that must read a change's base before its
+/// absence there shows it is not background: at this many, a change on
+/// [`GUARD_MIN_SHARE`] of them shows on [`GUARD_MIN_READS`].
+const GUARD_APART_READS: u32 = 15;
 /// Share of the REF reads on which a change is no longer the ALT's alone.
 pub(crate) const GUARD_REF_SHARE: f64 = 0.05;
 /// Longest tandem-repeat unit the event is grown through (besides the length change).
@@ -2081,6 +2085,37 @@ fn placed_reads<'a>(
 }
 
 /// A share, 0 of nothing.
+/// The fragments placed apart from the event that read `off`, and those showing `base`
+/// there: holding `off` and `tell` aligned with no length change between them, and the
+/// reference's base at `tell` (where an ALT read placed through the event would show
+/// its own), so no placement of the event shifts their base at `off`. One read per
+/// fragment.
+fn read_apart(
+    read_cache: &[Record],
+    counted: &dyn Fn(&Record) -> bool,
+    min_baseq: u8,
+    (start, reference): (i64, &[u8]),
+    (off, tell, base): (usize, usize, u8),
+) -> (u32, u32) {
+    let g = |o: usize| start + o as i64;
+    let mut fragments = std::collections::HashSet::new();
+    let (mut n, mut c) = (0, 0);
+    for record in read_cache.iter().filter(|r| counted(r)) {
+        let (Some(qo), Some(qt)) = (find_read_pos(record, g(off)), find_read_pos(record, g(tell))) else { continue };
+        let (seq, quals) = (record.seq().as_bytes(), record.qual());
+        let aligned = qt as i64 - qo as i64 == tell as i64 - off as i64;
+        if !aligned || quals.len() < seq.len() || quals[qo] < min_baseq || quals[qt] < min_baseq {
+            continue;
+        }
+        if seq[qt].to_ascii_uppercase() != reference[tell] || !fragments.insert(record.qname()) {
+            continue;
+        }
+        n += 1;
+        c += u32::from(seq[qo].to_ascii_uppercase() == base);
+    }
+    (n, c)
+}
+
 fn share(n: u32, of: u32) -> f64 {
     if of == 0 { 0.0 } else { n as f64 / of as f64 }
 }
@@ -2395,6 +2430,8 @@ pub(crate) fn guard_for(
     let mut change = cover.clone();
     // the bases the ALT reads show where they change, per side and distance (A C G T)
     let mut alt_bases = vec![vec![[0u32; 4]; GUARD_REACH]; 2];
+    // and the bases the REF fragments show where they change
+    let mut ref_bases = alt_bases.clone();
     // one tally per fragment: overlapping mates are one molecule's evidence
     let mut fragments: std::collections::HashSet<&[u8]> = std::collections::HashSet::new();
     for record in read_cache {
@@ -2446,8 +2483,9 @@ pub(crate) fn guard_for(
                 let b = seq[q].to_ascii_uppercase();
                 if b != WILD && quals[q] >= min_baseq && b != reference[off] {
                     change[allele][side][i] += 1;
-                    if let (1, Some(k)) = (allele, b"ACGT".iter().position(|&x| x == b)) {
-                        alt_bases[side][i][k] += 1;
+                    if let Some(k) = b"ACGT".iter().position(|&x| x == b) {
+                        let tally = if allele == 1 { &mut alt_bases } else { &mut ref_bases };
+                        tally[side][i][k] += 1;
                     }
                 }
             }
@@ -2477,6 +2515,26 @@ pub(crate) fn guard_for(
     // The bases the input names (a pure indel's anchor beside its tract) are the given
     // allele's own: never masked, as the event's never are.
     let named = usize::try_from(v.pos - start).map_or(0..0, |p| p..p + v.ref_allele.len());
+    // A change giving the reads the ALT's own base there, shifted onto them where the
+    // aligner wrote no length change (the base an ALT read placed from the event's far
+    // flank shows), is a germline change only where the reads placed apart from the
+    // event carry it: those holding it and the next base past it, away from the event,
+    // where the reference and that shifted ALT differ. Read there by enough of them and
+    // recurring on none, it is the ALT's own base on reads placed through the event,
+    // never masked. With too few of them, it is masked as background.
+    let alt_at = |side: usize, off: usize| {
+        if side == 1 { ev.hap.get(off).copied() } else { usize::try_from(off as i64 + ev.d).ok().and_then(|h| ev.hap.get(h).copied()) }
+    };
+    let shifted_own = |side: usize, i: usize, off: usize| {
+        let Some(base) = alt_at(side, off).filter(|&b| b != reference[off]) else { return false };
+        let shown = (0..4).max_by_key(|&k| ref_bases[side][i][k]).map(|k| b"ACGT"[k]);
+        let tells = |o: usize| alt_at(side, o).is_some_and(|b| b != reference[o]);
+        let tell = if side == 1 { (off + 1..reference.len()).find(|&o| tells(o)) } else { (0..off).rev().find(|&o| tells(o)) };
+        let (Some(tell), Some(true)) = (tell, shown.map(|b| b == base)) else { return false };
+        let (n, c) = read_apart(read_cache, counted, min_baseq, (start, &reference), (off, tell, base));
+        n >= GUARD_APART_READS && !(c >= GUARD_MIN_READS && share(c, n) >= GUARD_MIN_SHARE)
+    };
+    let mut shifted = 0usize;
     let (mut masked, mut alt_only, mut run) = (Vec::new(), [Vec::new(), Vec::new()], false);
     for (side, reach) in [(0usize, reach_l), (1usize, reach_r)] {
         for i in 0..reach {
@@ -2487,7 +2545,9 @@ pub(crate) fn guard_for(
             if recurs(1, side, i) && !on_ref(side, i) {
                 alt_only[side].push(i);
             }
-            if background(side, i) || (own(side, i) && isolated(side, i)) {
+            if background(side, i) && shifted_own(side, i, off) {
+                shifted += 1;
+            } else if background(side, i) || (own(side, i) && isolated(side, i)) {
                 masked.push(g(off));
             }
             run |= own(side, i) && !isolated(side, i);
@@ -2594,9 +2654,9 @@ pub(crate) fn guard_for(
     }
     trace!(
         "carrier guard at {}:{} {}>{}: {} recurring changes beside the event masked ({} inside the repeat it grew \
-         through), {} on the ALT reads alone, {} other alleles of its length, {} of REF's, {} recurring indels inside \
-         the windows",
-        v.chrom, v.pos + 1, v.ref_allele, v.alt_allele, masked.len(), grown.len(),
+         through), {} the ALT's own bases shifted onto reads placed through it (not masked), {} on the ALT reads \
+         alone, {} other alleles of its length, {} of REF's, {} recurring indels inside the windows",
+        v.chrom, v.pos + 1, v.ref_allele, v.alt_allele, masked.len(), grown.len(), shifted,
         alt_only.iter().map(Vec::len).sum::<usize>(), others.len(), ref_others.len(), indels.len(),
     );
     let mut guard = Guard::new(v, masked, larger, scanned);
