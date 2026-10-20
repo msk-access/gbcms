@@ -941,13 +941,30 @@ fn judge(record: &Record, variant: &Variant, quals: &[u8], min_baseq: u8, rules:
     // allele's windows and the other allele worse by two bases wherever it holds them.
     // The aligner placed it a unit off in a repeat and absorbed the units' differences
     // with its indels: it is that allele, judged by its bases.
-    let whole = match own {
-        OwnEvent::Inside if held != Some((false, true)) => whole_fit(variant, &seq, quals, min_baseq, readable, &layout),
-        _ => None,
-    };
-    if let Some(alt) = whole {
-        trace!("carrier: read whole without its own indels its bases fit {} → that allele", if alt { "the ALT" } else { "REF" });
-        held = Some((!alt, alt));
+    // ... and a read the aligner placed a whole unit or copy off in a repeat, ungapped:
+    // its bases fit an allele over the windows where it was written, and miss the
+    // reference beside them. Read whole wherever its alignment is not clean (indels the
+    // windows do not place, or, writing none, two confident changes from the reference),
+    // the allele its bases fit there decides. A read whose own bases place its indel
+    // outside the windows (a separate event, RJ-8), or the ALT's change inside them, keeps
+    // its judgment.
+    let unclean = matches!(own, OwnEvent::Inside)
+        || (matches!(own, OwnEvent::None) && aligned_changes(record, &seq, quals, min_baseq, variant) >= 2);
+    let whole = if unclean { whole_fit(variant, &seq, quals, min_baseq, readable, &layout) } else { None };
+    match whole {
+        Some(Some(alt)) => {
+            if held != Some((!alt, alt)) {
+                trace!("carrier: read whole, without its own alignment, its bases fit {} → that allele", if alt { "the ALT" } else { "REF" });
+            }
+            held = Some((!alt, alt));
+        }
+        Some(None) => {
+            // it fits both alike: as far as its bases go it starts inside the longer
+            // allele's event, showing only the other junction (RJ-23): depth only
+            trace!("carrier: read whole, without its own alignment, its bases fit both alleles alike → depth only");
+            held = None;
+        }
+        None => {}
     }
     let own = if whole.is_some() { OwnEvent::None } else { own };
 
@@ -3197,22 +3214,85 @@ fn read_pair(
     as_placed(anchor, alt)
 }
 
+/// The read's confident changes from the reference over its aligned bases inside the
+/// variant's prepared reference (its own indels each count as one): where it is two or
+/// more, the aligner's placement is no clean one.
+fn aligned_changes(record: &Record, seq: &[u8], quals: &[u8], min_baseq: u8, v: &Variant) -> usize {
+    let Some((start, reference)) = prepared_reference(v) else { return 0 };
+    let end = start + reference.len() as i64;
+    let (mut changes, mut g, mut q) = (0usize, record.pos(), 0usize);
+    for op in record.cigar().iter() {
+        match *op {
+            Cigar::Match(l) | Cigar::Equal(l) | Cigar::Diff(l) => {
+                for i in 0..l as usize {
+                    let at = g + i as i64;
+                    if at >= start && at < end {
+                        let (b, r) = (seq[q + i].to_ascii_uppercase(), reference[(at - start) as usize]);
+                        changes += usize::from(quals.get(q + i).is_some_and(|&x| x >= min_baseq) && b != WILD && b != r);
+                    }
+                }
+                g += l as i64;
+                q += l as usize;
+            }
+            Cigar::Ins(l) => {
+                changes += usize::from(g >= start && g < end);
+                q += l as usize;
+            }
+            Cigar::Del(l) | Cigar::RefSkip(l) => {
+                changes += usize::from(matches!(*op, Cigar::Del(_)) && g >= start && g < end);
+                g += l as i64;
+            }
+            Cigar::SoftClip(l) => q += l as usize,
+            Cigar::HardClip(_) | Cigar::Pad(_) => {}
+        }
+    }
+    changes
+}
+
 /// The allele a read's bases fit read whole (`readable`, without its own alignment's
 /// indels): placed ungapped on each allele's haplotype over the prepared reference, at
 /// every placement holding that allele's windows (event and flank), its confident
 /// mismatches (at or above `min_baseq`, not N) over the bases both hold. An allele fits
 /// at a placement reading its windows exactly (the flank bases anchor it there) and
-/// missing at most one base past them (an error, or a phased change); ALT (`Some(true)`)
+/// missing at most one base past them (an error, or a phased change); ALT (`Some(Some(true))`)
 /// or REF where one allele fits so and the other, and every other allele of either
-/// length at the locus, misses by at least two more wherever it holds its windows.
-/// None otherwise, or without a prepared reference.
-fn whole_fit(v: &Variant, seq: &[u8], quals: &[u8], min_baseq: u8, (first, after): (usize, usize), layout: &Layout) -> Option<bool> {
-    let (start, reference) = prepared_reference(v)?;
+/// length at the locus, misses by more wherever it holds as much of its windows as the
+/// shorter allele's (its event's bases open: a read must show the other's length or
+/// its bases past the event). `Some(None)`, neither, where read so both fit alike (but
+/// for one base); None otherwise, or without a prepared reference.
+fn whole_fit(v: &Variant, seq: &[u8], quals: &[u8], min_baseq: u8, (first, after): (usize, usize), layout: &Layout) -> Option<Option<bool>> {
+    let (start, mut reference) = prepared_reference(v)?;
     let ev = event(start, &reference, v)?;
     let flank = ev.flank();
     let (lo, hi) = (ev.lo.checked_sub(flank)?, ev.hi + flank);
     let alt_hi = usize::try_from(hi as i64 + ev.d).ok()?;
     let (read, q) = (seq.get(first..after)?, quals.get(first..after)?);
+    // the guard's masks, as the windows lay them: a masked base takes the bases its mask
+    // takes (any, beside the event; the reference's and the change's, inside the repeat
+    // it grew through), left of the given allele on both alleles' coordinates, right of
+    // it the ALT's shifted
+    let mut hap = ev.hap.clone();
+    let (o_lo, o_hi) = ev.own;
+    let mask = |b: u8, p: i64| IUPAC[(bit(b) | layout.background.iter().find(|&&(q, _)| q == p).map_or(ANY, |&(_, s)| s)) as usize];
+    for &p in &layout.masked {
+        let Ok(off) = usize::try_from(p - start) else { continue };
+        if off >= reference.len() {
+            continue;
+        }
+        let h = if off < o_lo { Some(off) } else if off >= o_hi { usize::try_from(off as i64 + ev.d).ok() } else { None };
+        reference[off] = mask(reference[off], p);
+        if let Some(h) = h.filter(|&h| h < hap.len()) {
+            hap[h] = mask(hap[h], p);
+        }
+    }
+    let ev = Event { hap, ..ev };
+    // An allele the read is weighed against takes any base inside its event (the bases
+    // its change slides through): a read showing only a substitution there is neither
+    // allele, so the read must show the other's length or its bases beyond the event.
+    let open = |hap: &[u8], (e0, e1): (usize, usize)| -> Vec<u8> {
+        hap.iter().enumerate().map(|(i, &b)| if i >= e0 && i < e1 { WILD } else { b }).collect()
+    };
+    let alt_ev_hi = usize::try_from(ev.hi as i64 + ev.d).ok()?;
     let n = read.len() as i64;
     // per placement holding [w0, w1): (mismatches, of which inside [e0, e1)); the fewest
     // overall, and the fewest where none lies inside (the windows read exactly)
@@ -3223,7 +3303,7 @@ fn whole_fit(v: &Variant, seq: &[u8], quals: &[u8], min_baseq: u8, (first, after
                     let Some(at) = usize::try_from(o + i as i64).ok() else { return (m, inside) };
                     let Some(&h) = hap.get(at) else { return (m, inside) };
                     let b = b.to_ascii_uppercase();
-                    let miss = usize::from(bq >= min_baseq && b != WILD && b != h);
+                    let miss = usize::from(bq >= min_baseq && b != WILD && h != WILD && !fits(b, h));
                     (m + miss, inside + if at >= e0 && at < e1 { miss } else { 0 })
                 })
             })
@@ -3231,18 +3311,39 @@ fn whole_fit(v: &Variant, seq: &[u8], quals: &[u8], min_baseq: u8, (first, after
         let any = all.iter().map(|x| x.0).min()?;
         Some((any, all.iter().filter(|x| x.1 == 0).map(|x| x.0).min()))
     };
-    let (r_any, r_clean) = best(&reference, (lo, hi), (lo, hi))?;
-    let (a_any, a_clean) = best(&ev.hap, (lo, alt_hi), (lo, alt_hi))?;
+    let (_, r_clean) = best(&reference, (lo, hi), (lo, hi))?;
+    let (_, a_clean) = best(&ev.hap, (lo, alt_hi), (lo, alt_hi))?;
+    // The other allele is weighed wherever the read holds as much of its windows as the
+    // shorter allele's, from either flank (as a read holding the windows must): a read
+    // too short to hold the longer allele's windows does not rule it out.
+    let short = (hi - lo).min(alt_hi - lo);
+    let weigh = |hap: &[u8], w1: usize, e: (usize, usize)| -> Option<usize> {
+        let o = open(hap, e);
+        let left = best(&o, (lo, lo + short), (lo, lo + short)).map(|x| x.0);
+        let right = best(&o, (w1 - short, w1), (w1 - short, w1)).map(|x| x.0);
+        left.into_iter().chain(right).min()
+    };
+    let r_any = weigh(&reference, hi, (ev.lo, ev.hi)).unwrap_or(usize::MAX);
+    let a_any = weigh(&ev.hap, alt_hi, (ev.lo, alt_ev_hi)).unwrap_or(usize::MAX);
     // the other alleles of each length at the locus, each over its own allele's windows
     let others = |list: &[OtherAllele], w: (usize, usize), e: (usize, usize)| -> usize {
         list.iter().filter_map(|o| o.on(start, &reference)).filter_map(|h| best(&h, w, e)).map(|x| x.0).min().unwrap_or(usize::MAX)
     };
     let rest = others(&layout.others, (lo, alt_hi), (lo, alt_hi)).min(others(&layout.ref_others, (lo, hi), (lo, hi)));
-    let fits = |clean: Option<usize>, other: usize| clean.is_some_and(|c| c <= 1 && other >= c + 2 && rest >= c + 2);
+    let fits = |clean: Option<usize>, other: usize| clean.is_some_and(|c| c <= 1 && other > c && rest > c);
+    // each allele exactly, wherever the read holds as much of its windows as the
+    // shorter allele's: a read fitting both alike shows neither
+    let alike = |hap: &[u8], w1: usize| -> Option<usize> {
+        let left = best(hap, (lo, lo + short), (lo, lo + short)).map(|x| x.0);
+        let right = best(hap, (w1 - short, w1), (w1 - short, w1)).map(|x| x.0);
+        left.into_iter().chain(right).min()
+    };
     if fits(a_clean, r_any) {
-        Some(true)
+        Some(Some(true))
     } else if fits(r_clean, a_any) {
-        Some(false)
+        Some(Some(false))
+    } else if let (Some(r), Some(a)) = (alike(&reference, hi), alike(&ev.hap, alt_hi)) {
+        (r == a && r <= 1).then_some(None)
     } else {
         None
     }
