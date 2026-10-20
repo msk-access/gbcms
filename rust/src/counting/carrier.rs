@@ -959,9 +959,9 @@ fn judge(record: &Record, variant: &Variant, quals: &[u8], min_baseq: u8, rules:
             held = Some((!alt, alt));
         }
         Some(None) => {
-            // it fits both alike: as far as its bases go it starts inside the longer
-            // allele's event, showing only the other junction (RJ-23): depth only
-            trace!("carrier: read whole, without its own alignment, its bases fit both alleles alike → depth only");
+            // as far as its bases go it starts inside the longer allele's event, showing
+            // only the other junction (RJ-23): depth only
+            trace!("carrier: read whole, without its own alignment, it fits the longer allele only from inside its event → depth only");
             held = None;
         }
         None => {}
@@ -3258,8 +3258,9 @@ fn aligned_changes(record: &Record, seq: &[u8], quals: &[u8], min_baseq: u8, v: 
 /// or REF where one allele fits so and the other, and every other allele of either
 /// length at the locus, misses by more wherever it holds as much of its windows as the
 /// shorter allele's (its event's bases open: a read must show the other's length or
-/// its bases past the event). `Some(None)`, neither, where read so both fit alike (but
-/// for one base); None otherwise, or without a prepared reference.
+/// its bases past the event). `Some(None)`, depth only, where it fits the shorter allele's
+/// windows exactly and the longer allele only from inside its event; None otherwise, or
+/// without a prepared reference.
 fn whole_fit(v: &Variant, seq: &[u8], quals: &[u8], min_baseq: u8, (first, after): (usize, usize), layout: &Layout) -> Option<Option<bool>> {
     let (start, mut reference) = prepared_reference(v)?;
     let ev = event(start, &reference, v)?;
@@ -3338,12 +3339,21 @@ fn whole_fit(v: &Variant, seq: &[u8], quals: &[u8], min_baseq: u8, (first, after
         let right = best(hap, (w1 - short, w1), (w1 - short, w1)).map(|x| x.0);
         left.into_iter().chain(right).min()
     };
+    // A read fitting the shorter allele's whole windows exactly as written, and the
+    // longer allele exactly only where it starts inside the longer allele's event (it
+    // holds not its whole windows), shows only the other junction: depth only, never
+    // the shorter allele (RJ-23).
+    let (shorter_whole, longer_whole, longer_part) = if hi - lo <= alt_hi - lo {
+        (r_clean, a_clean, alike(&ev.hap, alt_hi))
+    } else {
+        (a_clean, r_clean, alike(&reference, hi))
+    };
     if fits(a_clean, r_any) {
         Some(Some(true))
     } else if fits(r_clean, a_any) {
         Some(Some(false))
-    } else if let (Some(r), Some(a)) = (alike(&reference, hi), alike(&ev.hap, alt_hi)) {
-        (r == a && r <= 1).then_some(None)
+    } else if shorter_whole == Some(0) && longer_whole.is_none() && longer_part == Some(0) {
+        Some(None)
     } else {
         None
     }
