@@ -210,6 +210,10 @@ pub(crate) fn readable_range(record: &Record, rules: &ReadRules) -> Option<(usiz
 
 /// Reference bases required on each side of the event.
 const FLANK: usize = 2;
+/// Reference bases prep holds each side of an event this rule judges, for reading a
+/// read whole (`Variant::whole_ref`): a whole read's reach (2x250 and 2x300 runs
+/// included), so a read is read whole over all its bases, never the part held.
+pub(crate) const WHOLE_READ_REACH: i64 = 300;
 
 /// Reference bases a pure insertion's or deletion's windows hold each side of its
 /// tract: one base past it decides, as the base past a repeat does for the field's
@@ -1536,6 +1540,12 @@ pub(crate) fn unjudged_reason(v: &Variant) -> &'static str {
 /// widened reference when prep fetched one, else the reference context.
 fn prepared_reference(v: &Variant) -> Option<(i64, Vec<u8>)> {
     prepared(v).map(|(s, seq)| (s, upper(seq)))
+}
+
+/// The reference a whole read is read over: prep's whole-read reach, else the prepared
+/// reference.
+fn whole_reference(v: &Variant) -> Option<(i64, Vec<u8>)> {
+    v.whole_ref.as_ref().map(|(s, seq)| (*s, upper(seq))).or_else(|| prepared_reference(v))
 }
 
 /// The genome span `[start, end)` of the variant's prepared reference: as far as its
@@ -3218,7 +3228,7 @@ fn read_pair(
 /// variant's prepared reference (its own indels each count as one): where it is two or
 /// more, the aligner's placement is no clean one.
 fn aligned_changes(record: &Record, seq: &[u8], quals: &[u8], min_baseq: u8, v: &Variant) -> usize {
-    let Some((start, reference)) = prepared_reference(v) else { return 0 };
+    let Some((start, reference)) = whole_reference(v) else { return 0 };
     let end = start + reference.len() as i64;
     let (mut changes, mut g, mut q) = (0usize, record.pos(), 0usize);
     for op in record.cigar().iter() {
@@ -3262,7 +3272,7 @@ fn aligned_changes(record: &Record, seq: &[u8], quals: &[u8], min_baseq: u8, v: 
 /// windows exactly and the longer allele only from inside its event; None otherwise, or
 /// without a prepared reference.
 fn whole_fit(v: &Variant, seq: &[u8], quals: &[u8], min_baseq: u8, (first, after): (usize, usize), layout: &Layout) -> Option<Option<bool>> {
-    let (start, mut reference) = prepared_reference(v)?;
+    let (start, mut reference) = whole_reference(v)?;
     let ev = event(start, &reference, v)?;
     let flank = ev.flank();
     let (lo, hi) = (ev.lo.checked_sub(flank)?, ev.hi + flank);
@@ -3299,6 +3309,8 @@ fn whole_fit(v: &Variant, seq: &[u8], quals: &[u8], min_baseq: u8, (first, after
     // overall, and the fewest where none lies inside (the windows read exactly)
     let best = |hap: &[u8], (w0, w1): (usize, usize), (e0, e1): (usize, usize)| -> Option<(usize, Option<usize>)> {
         let all: Vec<(usize, usize)> = ((w1 as i64 - n)..=(w0 as i64))
+            // the whole read on the held reference: no base of it goes unread
+            .filter(|&o| o >= 0 && o + n <= hap.len() as i64)
             .map(|o| {
                 read.iter().zip(q).enumerate().fold((0, 0), |(m, inside), (i, (&b, &bq))| {
                     let Some(at) = usize::try_from(o + i as i64).ok() else { return (m, inside) };

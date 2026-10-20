@@ -3989,6 +3989,7 @@ mod tests {
             event_ref: None,
             boundary_span: None,
             listed_neighbours: Vec::new(),
+            whole_ref: None,
         }
     }
 
@@ -4709,6 +4710,7 @@ mod tests {
             event_ref: None,
             boundary_span: None,
             listed_neighbours: Vec::new(),
+            whole_ref: None,
         }
     }
 

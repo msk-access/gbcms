@@ -73,6 +73,11 @@ pub struct Variant {
     /// not make.
     #[pyo3(get)]
     pub listed_neighbours: Vec<(i64, String, String)>,
+
+    /// Reference bases a whole read reaches each side of an event the exact-carrier rule
+    /// judges, with their 0-based start (covering `event_ref`): a read the aligner placed
+    /// a unit off in a repeat is read whole over all its bases. Prep's; None otherwise.
+    pub whole_ref: Option<(i64, String)>,
 }
 
 #[pymethods]
@@ -108,6 +113,7 @@ impl Variant {
             event_ref,
             boundary_span,
             listed_neighbours: Vec::new(),
+            whole_ref: None,
         }
     }
 }
