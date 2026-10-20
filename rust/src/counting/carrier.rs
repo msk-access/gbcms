@@ -2534,7 +2534,7 @@ pub(crate) fn guard_for(
         let (n, c) = read_apart(read_cache, counted, min_baseq, (start, &reference), (off, tell, base));
         n >= GUARD_APART_READS && !(c >= GUARD_MIN_READS && share(c, n) >= GUARD_MIN_SHARE)
     };
-    let mut shifted = 0usize;
+    let mut shifted = Vec::new();
     let (mut masked, mut alt_only, mut run) = (Vec::new(), [Vec::new(), Vec::new()], false);
     for (side, reach) in [(0usize, reach_l), (1usize, reach_r)] {
         for i in 0..reach {
@@ -2546,7 +2546,7 @@ pub(crate) fn guard_for(
                 alt_only[side].push(i);
             }
             if background(side, i) && shifted_own(side, i, off) {
-                shifted += 1;
+                shifted.push(g(off));
             } else if background(side, i) || (own(side, i) && isolated(side, i)) {
                 masked.push(g(off));
             }
@@ -2607,8 +2607,11 @@ pub(crate) fn guard_for(
     }
     let masks: Vec<(i64, Bases)> =
         masked.iter().map(|&p| (p, background.iter().find(|&&(q, _)| q == p).map_or(ANY, |&(_, b)| b))).collect();
+    // The ALT's own bases shifted onto reads placed through the event spell no other
+    // allele of REF's length: those reads are the ALT's.
+    let apart: Vec<(i64, Bases)> = masks.iter().copied().chain(shifted.iter().map(|&p| (p, ANY))).collect();
     let others_of = |side| {
-        placed.as_ref().map_or_else(Vec::new, |p| other_alleles(p, (start, &reference), &ev, siblings, &masks, side))
+        placed.as_ref().map_or_else(Vec::new, |p| other_alleles(p, (start, &reference), &ev, siblings, &apart, side))
     };
     let (others, ref_others) = (others_of(Side::Alt), others_of(Side::Ref));
     // The indels the reads' own alignments write inside the windows' span, the event's
@@ -2656,7 +2659,7 @@ pub(crate) fn guard_for(
         "carrier guard at {}:{} {}>{}: {} recurring changes beside the event masked ({} inside the repeat it grew \
          through), {} the ALT's own bases shifted onto reads placed through it (not masked), {} on the ALT reads \
          alone, {} other alleles of its length, {} of REF's, {} recurring indels inside the windows",
-        v.chrom, v.pos + 1, v.ref_allele, v.alt_allele, masked.len(), grown.len(), shifted,
+        v.chrom, v.pos + 1, v.ref_allele, v.alt_allele, masked.len(), grown.len(), shifted.len(),
         alt_only.iter().map(Vec::len).sum::<usize>(), others.len(), ref_others.len(), indels.len(),
     );
     let mut guard = Guard::new(v, masked, larger, scanned);
