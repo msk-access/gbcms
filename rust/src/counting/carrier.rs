@@ -813,7 +813,14 @@ fn judge(record: &Record, variant: &Variant, quals: &[u8], min_baseq: u8, rules:
     let read = |w: &Windows, readable: (usize, usize)| {
         let placed = read_pair(record, &seq, quals, min_baseq, &w.pair.0, &w.pair.1, map, readable, &fit, left, unanchored.is_some());
         let (rw, aw) = &w.pair;
-        let held = placed.as_ref().map(|(r, a, _)| (fit(r, a, rw, aw, 0), fit(a, r, aw, rw, 1)));
+        // An error both readings show alike decides nothing: where they miss exactly the
+        // same bases (no confidently read base tells the alleles apart) and the read's own
+        // bases place no length change, the allele tolerating it for the length the read
+        // is written with (its alignment, not its bases) fits no better than the other.
+        let held = placed.as_ref().map(|(r, a, _)| match (fit(r, a, rw, aw, 0), fit(a, r, aw, rw, 1)) {
+            (f, g) if f != g && matches!(own, OwnEvent::None) && r.mismatches > 0 && r.misses == a.misses => (true, true),
+            fits => fits,
+        });
         (placed, held)
     };
     // Readings that fit both alleles, or miss both alike (masked bases, or the shorter
@@ -929,6 +936,20 @@ fn judge(record: &Record, variant: &Variant, quals: &[u8], min_baseq: u8, rules:
         // however little of it the REF window reaches.
         held = held.map(|(_, alt)| (false, alt));
     }
+    // A read whose own alignment writes indels inside the windows that its bases do not
+    // need: read whole, without them, it fits one allele at a placement holding that
+    // allele's windows and the other allele worse by two bases wherever it holds them.
+    // The aligner placed it a unit off in a repeat and absorbed the units' differences
+    // with its indels: it is that allele, judged by its bases.
+    let whole = match own {
+        OwnEvent::Inside if held != Some((false, true)) => whole_fit(variant, &seq, quals, min_baseq, readable, &layout),
+        _ => None,
+    };
+    if let Some(alt) = whole {
+        trace!("carrier: read whole without its own indels its bases fit {} → that allele", if alt { "the ALT" } else { "REF" });
+        held = Some((!alt, alt));
+    }
+    let own = if whole.is_some() { OwnEvent::None } else { own };
 
     let placement = placed.as_ref().map(|(_, _, p)| *p);
     let reading = placed.map(|(r, a, _)| (r, a));
@@ -984,13 +1005,14 @@ fn judge(record: &Record, variant: &Variant, quals: &[u8], min_baseq: u8, rules:
         } else {
             ClassifyResult::neither(ClassifyPhase::MaskedCompare)
         }
-    } else if every((false, true)) && evidence < one_base_evidence(min_baseq) {
+    } else if every((false, true)) && whole.is_none() && evidence < one_base_evidence(min_baseq) {
         // Its clearly read bases fit the ALT, but weighed by quality its bases do not
         // favour ALT over REF by as much as one base read at the minimum quality: a
         // REF molecule read poorly around the event, with one error fitting the ALT.
         trace!("carrier: fits the ALT but its evidence {:.2} is below one base's → neither", evidence);
         ClassifyResult::neither(ClassifyPhase::MaskedCompare)
     } else if every((false, true))
+        && whole.is_none()
         && !reading.as_ref().is_some_and(|(_, a)| tells_others(&seq, quals, min_baseq, aw, &win.others, a.start, readable))
     {
         // Another allele of the ALT's length is at the locus and the read reads no
@@ -1011,6 +1033,7 @@ fn judge(record: &Record, variant: &Variant, quals: &[u8], min_baseq: u8, rules:
         trace!("carrier: fits REF but its bases place another indel inside the windows → neither, partial");
         ClassifyResult::neither_with_nearby(qual, ClassifyPhase::MaskedCompare)
     } else if every((true, false))
+        && whole.is_none()
         && !reading.as_ref().is_some_and(|(r, _)| tells_others(&seq, quals, min_baseq, rw, &win.ref_others, r.start, readable))
     {
         // REF alike (RJ-25): another allele of REF's length is at the locus and the read
@@ -3172,6 +3195,57 @@ fn read_pair(
         return None;
     };
     as_placed(anchor, alt)
+}
+
+/// The allele a read's bases fit read whole (`readable`, without its own alignment's
+/// indels): placed ungapped on each allele's haplotype over the prepared reference, at
+/// every placement holding that allele's windows (event and flank), its confident
+/// mismatches (at or above `min_baseq`, not N) over the bases both hold. An allele fits
+/// at a placement reading its windows exactly (the flank bases anchor it there) and
+/// missing at most one base past them (an error, or a phased change); ALT (`Some(true)`)
+/// or REF where one allele fits so and the other, and every other allele of either
+/// length at the locus, misses by at least two more wherever it holds its windows.
+/// None otherwise, or without a prepared reference.
+fn whole_fit(v: &Variant, seq: &[u8], quals: &[u8], min_baseq: u8, (first, after): (usize, usize), layout: &Layout) -> Option<bool> {
+    let (start, reference) = prepared_reference(v)?;
+    let ev = event(start, &reference, v)?;
+    let flank = ev.flank();
+    let (lo, hi) = (ev.lo.checked_sub(flank)?, ev.hi + flank);
+    let alt_hi = usize::try_from(hi as i64 + ev.d).ok()?;
+    let (read, q) = (seq.get(first..after)?, quals.get(first..after)?);
+    let n = read.len() as i64;
+    // per placement holding [w0, w1): (mismatches, of which inside [e0, e1)); the fewest
+    // overall, and the fewest where none lies inside (the windows read exactly)
+    let best = |hap: &[u8], (w0, w1): (usize, usize), (e0, e1): (usize, usize)| -> Option<(usize, Option<usize>)> {
+        let all: Vec<(usize, usize)> = ((w1 as i64 - n)..=(w0 as i64))
+            .map(|o| {
+                read.iter().zip(q).enumerate().fold((0, 0), |(m, inside), (i, (&b, &bq))| {
+                    let Some(at) = usize::try_from(o + i as i64).ok() else { return (m, inside) };
+                    let Some(&h) = hap.get(at) else { return (m, inside) };
+                    let b = b.to_ascii_uppercase();
+                    let miss = usize::from(bq >= min_baseq && b != WILD && b != h);
+                    (m + miss, inside + if at >= e0 && at < e1 { miss } else { 0 })
+                })
+            })
+            .collect();
+        let any = all.iter().map(|x| x.0).min()?;
+        Some((any, all.iter().filter(|x| x.1 == 0).map(|x| x.0).min()))
+    };
+    let (r_any, r_clean) = best(&reference, (lo, hi), (lo, hi))?;
+    let (a_any, a_clean) = best(&ev.hap, (lo, alt_hi), (lo, alt_hi))?;
+    // the other alleles of each length at the locus, each over its own allele's windows
+    let others = |list: &[OtherAllele], w: (usize, usize), e: (usize, usize)| -> usize {
+        list.iter().filter_map(|o| o.on(start, &reference)).filter_map(|h| best(&h, w, e)).map(|x| x.0).min().unwrap_or(usize::MAX)
+    };
+    let rest = others(&layout.others, (lo, alt_hi), (lo, alt_hi)).min(others(&layout.ref_others, (lo, hi), (lo, hi)));
+    let fits = |clean: Option<usize>, other: usize| clean.is_some_and(|c| c <= 1 && other >= c + 2 && rest >= c + 2);
+    if fits(a_clean, r_any) {
+        Some(true)
+    } else if fits(r_clean, a_any) {
+        Some(false)
+    } else {
+        None
+    }
 }
 
 /// The weight (log10) of the read's confident bases (at or above `min_baseq`, not
