@@ -45,12 +45,14 @@ CALL = re.compile(
 IMPERFECT_REPEAT = "#290: windows anchor on the exact repeat's edge, inside an imperfect one"
 
 
-def _counted(tmp_path, caplog, name, thin=None, seed=0):
+def _counted(tmp_path, caplog, name, thin=None, seed=0, error=None):
     """The shape's counts, and each haplotype's read calls (REF, ALT, partial, depth only,
     other), from one call. `thin` (haplotype, share kept, whether the rest read as the
     reference) keeps that haplotype on a share of its fragments (drawn with `seed`), the
     others read as the reference (a third haplotype of its length, tallied as `ref`) or
-    dropped."""
+    dropped. `error` (haplotype, genome base, a later base, the base read, reads) gives that
+    many of the haplotype's reads holding both bases with no length change between them a
+    confident error at the first."""
     f = FIXTURE[name]
     swapped, as_ref = set(), False
     if thin:
@@ -66,6 +68,7 @@ def _counted(tmp_path, caplog, name, thin=None, seed=0):
     pysam.faidx(str(fa))
     header = {"HD": {"VN": "1.6", "SO": "coordinate"}, "SQ": [{"SN": "1", "LN": len(f["ref"])}]}
     raw, bam = tmp_path / f"{name}.raw.bam", tmp_path / f"{name}.bam"
+    erred = 0
     with pysam.AlignmentFile(str(raw), "wb", header=header) as out:
         for qname, flag, pos, cigar, mapq, hap, off, length, mate_pos, tlen in f["reads"]:
             if qname in swapped and not as_ref:
@@ -75,7 +78,13 @@ def _counted(tmp_path, caplog, name, thin=None, seed=0):
             a = pysam.AlignedSegment()
             a.query_name, a.flag, a.reference_id, a.reference_start = qname, flag, 0, pos
             a.cigarstring, a.mapping_quality = cigar, mapq
-            a.query_sequence = f[hap][off : off + length]
+            a.query_sequence = seq = f[hap][off : off + length]
+            if error and hap == error[0] and erred < error[4]:
+                at, tell, base = error[1], error[2], error[3]
+                q = {r: q for q, r in a.get_aligned_pairs(matches_only=True)}
+                if at in q and tell in q and q[tell] - q[at] == tell - at and seq[q[at]] != base:
+                    a.query_sequence = seq[: q[at]] + base + seq[q[at] + 1 :]
+                    erred += 1
             a.query_qualities = pysam.qualitystring_to_array("I" * length)
             a.next_reference_id, a.next_reference_start, a.template_length = 0, mate_pos, tlen
             out.write(a)
@@ -163,6 +172,20 @@ def test_a_minority_germline_snp_reading_as_the_insertion_never_counts_alt(tmp_p
     as the insertion over a short read, never count ALT (develop counted them)."""
     _, calls = _counted(tmp_path, caplog, "vntr28b_snp_alone", ("h1", 0.15, True), seed)
     assert calls[("h1", "ALT")] == 0, dict(calls)
+
+
+@pytest.mark.parametrize("errors", [1, 2])
+def test_an_error_at_the_shifted_base_leaves_the_insertion_counted(tmp_path, caplog, errors):
+    """The insertion alone, its reads error-free but for one or two REF reads placed apart
+    from the event with a confident error giving the ALT's shifted base (base 829, the C
+    an insertion read written without its gap shows past REF's tract; 900 the next base
+    telling them apart). Errors explain so few: still the ALT's own base, not masked, and
+    the insertion's reads count ALT as without the error (masked, every one was depth
+    only)."""
+    counts, calls = _counted(
+        tmp_path, caplog, "vntr28b_ins_alone", error=("h2", 829, 900, "C", errors)
+    )
+    assert (counts.rd, counts.ad) == (27, 34)
 
 
 @pytest.mark.parametrize(
@@ -310,6 +333,7 @@ def test_an_error_both_readings_share_spends_no_tolerance_past_the_windows(tmp_p
     (pv,) = _rs.prepare_variants([_rs.Variant("1", p - 1, "GA", "G", "DEL")], fa, 5, False, 1, True)
     (counts,) = count_checked(bam, [pv.variant])
     assert (counts.rd, counts.ad) == (21, 20)
+    assert counts.n_count == 0, "the error read as unread is no N of the read's"
 
 
 logging.getLogger(ENGINE_LOGGER)  # the logger the per-read trace comes through

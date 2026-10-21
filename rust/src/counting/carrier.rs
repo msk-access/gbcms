@@ -237,11 +237,14 @@ pub(crate) const GUARD_MIN_SHARE: f64 = 0.2;
 /// absence there shows it is not background: at this many, a haplotype carrying it on
 /// a fifth of them shows on three on average.
 const GUARD_APART_READS: u32 = 15;
-/// Share of the fragments placed apart from the event (or of the REF fragments) a
-/// change may show on as errors (none below a hundred: one there may be a haplotype's
-/// on a few molecules): on more, and on [`GUARD_MIN_READS`], a haplotype of their own
-/// carries it.
+/// Share of the REF fragments a change at the ALT's shifted base may show on as
+/// errors: on more, the fragments placed apart from the event are read for it.
 const GUARD_APART_ERRORS: f64 = 0.01;
+/// Share of the fragments placed apart from the event a change must show on, with
+/// [`GUARD_MIN_READS`] of them, to be a haplotype's of their own: above the errors at
+/// one base (random ones give a particular base on a third of 1% at Q20; a systematic
+/// one, oxoG or a sequence context, may give a few percent at depth).
+const GUARD_APART_SHARE: f64 = 0.03;
 /// Share of the REF reads on which a change is no longer the ALT's alone.
 pub(crate) const GUARD_REF_SHARE: f64 = 0.05;
 /// Longest tandem-repeat unit the event is grown through (besides the length change).
@@ -927,7 +930,19 @@ fn judge(record: &Record, variant: &Variant, quals: &[u8], min_baseq: u8, rules:
                 longer = w;
                 trace!("carrier: its readings do not tell the alleles apart → read on past the windows");
                 judged = match shared_unread(&judged) {
-                    Some(bases) => read_bases(&longer, on, &bases),
+                    Some(bases) => {
+                        let mut j = read_bases(&longer, on, &bases);
+                        // the bases set unread are the read's own, no N and not masked
+                        if let Some((r, a, _)) = j.0.as_mut() {
+                            for x in [r, a] {
+                                let (q0, q1) = x.read;
+                                let own = seq.get(q0..q1).unwrap_or_default();
+                                x.had_n = own.iter().any(|&b| b.to_ascii_uppercase() == WILD);
+                                x.masked = x.masked.saturating_sub((q0..q1).filter(|&q| bases[q] == WILD && seq[q].to_ascii_uppercase() != WILD).count());
+                            }
+                        }
+                        j
+                    }
                     None => read(&longer, on),
                 };
                 &longer
@@ -969,15 +984,14 @@ fn judge(record: &Record, variant: &Variant, quals: &[u8], min_baseq: u8, rules:
     // them, keeps its judgment; so does a read whose bases read whole decide nothing, and
     // a spliced read (its bases are not one stretch of the genome).
     let spliced = record.cigar().iter().any(|op| matches!(op, Cigar::RefSkip(_)));
-    let built;
-    let haps = if spliced || !matches!(own, OwnEvent::Inside | OwnEvent::None) {
+    let built = if spliced || !matches!(own, OwnEvent::Inside | OwnEvent::None) {
         None
     } else if let Some(cg) = rules.guard {
-        cg.whole(variant, || whole_haps(variant, &layout))
+        Some(cg.whole(variant, || whole_haps(variant, &layout)))
     } else {
-        built = whole_haps(variant, &layout);
-        built.as_ref()
+        Some(std::sync::Arc::new(whole_haps(variant, &layout)))
     };
+    let haps = built.as_deref().and_then(Option::as_ref);
     let unclean = haps.filter(|w| matches!(own, OwnEvent::Inside) || aligned_changes(record, &seq, quals, min_baseq, w) >= 2);
     let whole = unclean.and_then(|w| whole_fit(w, &seq, quals, min_baseq, readable));
     match whole {
@@ -1990,21 +2004,28 @@ fn own_indels(record: &Record, (lo, hi): (i64, i64)) -> Vec<(i64, i64)> {
 pub(crate) struct CarrierGuard<'a> {
     found: std::cell::OnceCell<Option<Guard>>,
     find: Box<dyn Fn() -> Option<Guard> + 'a>,
-    whole: std::cell::OnceCell<Option<WholeHaps>>,
+    /// Per variant judged under these rules (the row's, and its co-annotated siblings
+    /// judged for their claims), its alleles over the whole-read reach.
+    whole: std::cell::RefCell<Vec<std::sync::Arc<Option<WholeHaps>>>>,
 }
 
 impl<'a> CarrierGuard<'a> {
     pub(crate) fn new(find: impl Fn() -> Option<Guard> + 'a) -> Self {
-        Self { found: std::cell::OnceCell::new(), find: Box::new(find), whole: std::cell::OnceCell::new() }
+        Self { found: std::cell::OnceCell::new(), find: Box::new(find), whole: std::cell::RefCell::new(Vec::new()) }
     }
 
-    /// The variant's alleles over the whole-read reach, built by `build` on first use
-    /// (they depend on the variant and its guard alone).
-    fn whole(&self, v: &Variant, build: impl FnOnce() -> Option<WholeHaps>) -> Option<&WholeHaps> {
-        self.whole
-            .get_or_init(build)
-            .as_ref()
-            .filter(|w| w.key == (v.pos, v.ref_allele.clone(), v.alt_allele.clone()))
+    /// The variant's alleles over the whole-read reach, built by `build` on its first
+    /// use (they depend on the variant and its guard alone).
+    fn whole(&self, v: &Variant, build: impl FnOnce() -> Option<WholeHaps>) -> std::sync::Arc<Option<WholeHaps>> {
+        let of_v = |w: &WholeHaps| w.key.0 == v.pos && w.key.1 == v.ref_allele && w.key.2 == v.alt_allele;
+        if let Some(w) = self.whole.borrow().iter().find(|w| w.as_ref().as_ref().is_some_and(of_v)) {
+            return w.clone();
+        }
+        let w = std::sync::Arc::new(build());
+        if w.is_some() {
+            self.whole.borrow_mut().push(w.clone());
+        }
+        w
     }
 
     /// The guard when it was found for `v` (the dual-counted decomposed form of a
@@ -2206,15 +2227,13 @@ fn read_apart(
 
 /// What the fragments placed apart from the event tell of a change at a base where the
 /// ALT's own base would show shifted ([`read_apart`]: `n` read the base, `c` show the
-/// change): carried on a haplotype of their own (`Some(true)`) where more show it than
-/// errors would ([`GUARD_APART_ERRORS`]) and [`GUARD_MIN_READS`] do; the ALT's own base
-/// (`Some(false)`) where at least [`GUARD_APART_READS`] read it and no more show it than
-/// errors would; None between, or where too few read it to tell.
+/// change): carried on a haplotype of their own (`Some(true)`) where [`GUARD_MIN_READS`]
+/// and [`GUARD_APART_SHARE`] of them show it; else the ALT's own base (`Some(false)`)
+/// where at least [`GUARD_APART_READS`] read it; None where too few read it to tell.
 fn carried_apart(n: u32, c: u32) -> Option<bool> {
-    let errors = (n as f64 * GUARD_APART_ERRORS) as u32;
-    if c >= GUARD_MIN_READS && c > errors {
+    if c >= GUARD_MIN_READS && share(c, n) >= GUARD_APART_SHARE {
         Some(true)
-    } else if n >= GUARD_APART_READS && c <= errors {
+    } else if n >= GUARD_APART_READS {
         Some(false)
     } else {
         None
@@ -4353,16 +4372,28 @@ mod tests {
     #[test]
     fn reads_placed_apart_carry_a_change_beyond_an_error_or_leave_it_the_alts_own() {
         assert_eq!(carried_apart(14, 0), None, "too few read it");
-        assert_eq!(carried_apart(14, 1), None, "too few, one an error");
+        assert_eq!(carried_apart(14, 2), None, "too few, two errors");
         assert_eq!(carried_apart(15, 0), Some(false), "enough read it, none carries it");
-        assert_eq!(carried_apart(15, 1), None, "one below a hundred: an error or a haplotype's");
-        assert_eq!(carried_apart(100, 1), Some(false), "one in a hundred is an error");
-        assert_eq!(carried_apart(30, 2), None, "two: neither errors nor a haplotype's");
+        assert_eq!(carried_apart(73, 1), Some(false), "one is an error");
+        assert_eq!(carried_apart(73, 2), Some(false), "two are errors");
         assert_eq!(carried_apart(10, 3), Some(true), "three carry it, however few read it");
         assert_eq!(carried_apart(73, 3), Some(true), "a haplotype on a twentieth of them");
-        assert_eq!(carried_apart(75, 12), Some(true), "a minority haplotype");
-        assert_eq!(carried_apart(1000, 10), Some(false), "errors at depth");
-        assert_eq!(carried_apart(1000, 11), Some(true));
+        assert_eq!(carried_apart(247, 3), Some(false), "three errors at depth");
+        assert_eq!(carried_apart(2500, 60), Some(false), "a systematic error on 2.4% of them");
+        assert_eq!(carried_apart(2500, 75), Some(true), "a haplotype on 3% of them");
+    }
+
+    #[test]
+    fn the_whole_read_alleles_are_kept_per_variant() {
+        let ctx = format!("{}CGCACACATC{}", ag(40, 31), ag(40, 32));
+        let (v, sibling) = (var(&ctx, 41, "G", "TCA"), var(&ctx, 41, "G", "TA"));
+        let cg = CarrierGuard::new(|| None);
+        let a = cg.whole(&v, || whole_haps(&v, &Layout::default()));
+        let b = cg.whole(&sibling, || whole_haps(&sibling, &Layout::default()));
+        assert!(a.as_ref().as_ref().is_some_and(|x| x.key.2 == "TCA"));
+        assert!(b.as_ref().as_ref().is_some_and(|x| x.key.2 == "TA"), "a sibling judged under the row's rules: its own");
+        let again = cg.whole(&v, || panic!("built once per variant"));
+        assert!(std::sync::Arc::ptr_eq(&a, &again));
     }
 
     #[test]
