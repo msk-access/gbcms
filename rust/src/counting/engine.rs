@@ -261,12 +261,15 @@ fn build_genomic_bins(
         }
 
         // Pad by the widest member's read window (`window::read_window`), the
-        // filter each variant applies to the cached reads.
+        // filter each variant applies to the cached reads, and hold every member's
+        // guard window (`window::guard_window`), the reads its guard may read.
         let padding = window::pad_for_repeat_span(max_repeat_span);
+        let guards = indices.iter().map(|&k| window::guard_window(&variants[k]));
+        let (g_lo, g_hi) = guards.fold((i64::MAX, i64::MIN), |(lo, hi), (a, b)| (lo.min(a), hi.max(b)));
         bins.push(GenomicBin {
             tid,
-            start: (bin_start - padding).max(0),
-            end: bin_end.saturating_add(padding),
+            start: (bin_start - padding).max(0).min(g_lo),
+            end: bin_end.saturating_add(padding).max(g_hi),
             variant_indices: indices,
         });
 
@@ -4100,6 +4103,13 @@ mod tests {
                                 bin.start <= lo && bin.end >= hi,
                                 "window {window} cap {cap}: bin [{}, {}) misses variant at {} \
                                  (read window [{lo}, {hi}))",
+                                bin.start, bin.end, v.pos,
+                            );
+                            let (g_lo, g_hi) = window::guard_window(v);
+                            assert!(
+                                bin.start <= g_lo && bin.end >= g_hi,
+                                "window {window} cap {cap}: bin [{}, {}) misses the guard window of the variant at {} \
+                                 ([{g_lo}, {g_hi}))",
                                 bin.start, bin.end, v.pos,
                             );
                         }

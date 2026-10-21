@@ -2136,18 +2136,21 @@ fn placed_reads<'a>(
 /// there: holding `off` and `tell` aligned with no length change between them, and the
 /// reference's base at `tell` (where an ALT read placed through the event would show
 /// its own), so no placement of the event shifts their base at `off`. One read per
-/// fragment.
+/// fragment; only reads overlapping the variant's guard window (`window`), which every
+/// bin's fetch holds, so the tally is the same in any bin geometry.
 fn read_apart(
     read_cache: &[Record],
     counted: &dyn Fn(&Record) -> bool,
     min_baseq: u8,
     (start, reference): (i64, &[u8]),
     (off, tell, base): (usize, usize, u8),
+    (w_start, w_end): (i64, i64),
 ) -> (u32, u32) {
     let g = |o: usize| start + o as i64;
     let mut fragments = std::collections::HashSet::new();
     let (mut n, mut c) = (0, 0);
-    for record in read_cache.iter().filter(|r| counted(r)) {
+    let own = |r: &&Record| counted(r) && r.pos() < w_end && crate::shared::bam_utils::ref_end(r) > w_start;
+    for record in read_cache.iter().filter(own) {
         let (Some(qo), Some(qt)) = (find_read_pos(record, g(off)), find_read_pos(record, g(tell))) else { continue };
         let (seq, quals) = (record.seq().as_bytes(), record.qual());
         let aligned = qt as i64 - qo as i64 == tell as i64 - off as i64;
@@ -2584,7 +2587,7 @@ pub(crate) fn guard_for(
         let tells = |o: usize| alt_at(o).is_some_and(|b| b != wr[o]);
         let tell = if side == 1 { (off + 1..wr.len()).find(|&o| tells(o)) } else { (0..off).rev().find(|&o| tells(o)) };
         let (Some(tell), Some(true)) = (tell, shown.map(|b| b == base)) else { return false };
-        let (n, c) = read_apart(read_cache, counted, min_baseq, (*ws, wr), (off, tell, base));
+        let (n, c) = read_apart(read_cache, counted, min_baseq, (*ws, wr), (off, tell, base), super::window::guard_window(v));
         n >= GUARD_APART_READS && !(c >= GUARD_MIN_READS && share(c, n) >= GUARD_MIN_SHARE)
     };
     let mut shifted = Vec::new();
@@ -4175,5 +4178,35 @@ mod tests {
         let reads = [reads, fragments(&one, 1, "o")].concat();
         let g = guard_for(&reads, &v, &|_| true, 20, std::slice::from_ref(&other)).expect("the background");
         assert_eq!(g.others.len(), 1);
+    }
+
+    #[test]
+    fn a_read_is_read_whole_over_the_whole_read_reach_not_the_prepared_reference() {
+        // A 10-bp unit inserted in a two-unit repeat; prep's reference holds 60 bases each
+        // side of the event, as production's does, the whole-read reach the contig.
+        let (left, unit, right) = (ag(200, 51), "CTTGACTCGT", ag(200, 52));
+        let ctx = format!("{left}{unit}{unit}{right}");
+        let alt_hap = format!("{left}{unit}{unit}{unit}{right}");
+        let mut v = var(&ctx, 219, "T", &format!("T{unit}"));
+        v.event_ref = Some((140, ctx[140..280].to_owned()));
+        let wide = Variant { whole_ref: Some((0, ctx.clone())), ..v.clone() };
+        let ev = event(0, ctx.as_bytes(), &wide).unwrap();
+        let alt_hi = ev.hi + 10 + ev.flank();
+        let fit = |v: &Variant, seq: &[u8]| whole_fit(v, seq, &vec![30; seq.len()], 20, (0, seq.len()), &Layout::default());
+        // 150 bases from 120: the left flank, the three units and the right flank
+        let alt_read = alt_hap.as_bytes()[120..270].to_vec();
+        let ref_read = ctx.as_bytes()[120..270].to_vec();
+        assert_eq!(fit(&v, &alt_read), None, "longer than the prepared reference: never read in part");
+        assert_eq!(fit(&wide, &alt_read), Some(Some(true)));
+        assert_eq!(fit(&wide, &ref_read), Some(Some(false)));
+        // an error past the windows is tolerated, two are not, nor one on a window's base
+        let with = |at: &[usize]| {
+            let mut s = alt_read.clone();
+            at.iter().for_each(|&i| s[i] = b'T');
+            s
+        };
+        assert_eq!(fit(&wide, &with(&[10])), Some(Some(true)), "one error past the windows");
+        assert_eq!(fit(&wide, &with(&[10, 140])), None, "two errors");
+        assert_eq!(fit(&wide, &with(&[alt_hi - 1 - 120])), None, "the window's flank base misread");
     }
 }
