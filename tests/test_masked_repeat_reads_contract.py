@@ -46,7 +46,9 @@ CALL = re.compile(
 IMPERFECT_REPEAT = "#290: windows anchor on the exact repeat's edge, inside an imperfect one"
 
 
-def _counted(tmp_path, caplog, name, thin=None, seed=0, error=None, change=None):
+def _counted(
+    tmp_path, caplog, name, thin=None, seed=0, error=None, change=None, one_orientation=False
+):
     """The shape's counts, and each haplotype's read calls (REF, ALT, partial, depth only,
     other), from one call. `thin` (haplotype, share kept, whether the rest read as the
     reference) keeps that haplotype on a share of its fragments (drawn with `seed`), the
@@ -55,7 +57,9 @@ def _counted(tmp_path, caplog, name, thin=None, seed=0, error=None, change=None)
     only]) gives that many of the haplotype's reads holding both bases with no length
     change between them (of one pair orientation, read 1 forward or read 2 reverse, if so
     asked) a confident error at the first. `change` (haplotype, base, the base it reads) gives that
-    haplotype another change, its reads placed where they were."""
+    haplotype another change, its reads placed where they were. Half the fragments take
+    the other pair orientation, as a library's do, unless `one_orientation` (an amplicon
+    library's)."""
     f = dict(FIXTURE[name])
     if change:
         hap, at, base = change
@@ -81,7 +85,7 @@ def _counted(tmp_path, caplog, name, thin=None, seed=0, error=None, change=None)
                 continue
             if qname in swapped:
                 qname, hap = "ref" + qname[2:], "ref"
-            if zlib.crc32(qname[qname.index("_") :].encode()) & 1:
+            if not one_orientation and zlib.crc32(qname[qname.index("_") :].encode()) & 1:
                 flag ^= 0xC0  # half the fragments the other pair orientation, as a library holds
             a = pysam.AlignedSegment()
             a.query_name, a.flag, a.reference_id, a.reference_start = qname, flag, 0, pos
@@ -210,6 +214,14 @@ def test_an_error_at_the_shifted_base_leaves_the_insertion_counted(tmp_path, cap
     assert (counts.rd, counts.ad) == (27, 34)
     # unmasked though carried: named (POSSIBLE_MINORITY_HAPLOTYPE), the counts unchanged
     assert counts.possible_minority.startswith(f"830:T>C:{errors}/"), counts.possible_minority
+
+
+def test_a_germline_snp_in_a_one_orientation_library_never_counts_alt(tmp_path, caplog):
+    """The SNP alone, every fragment in one pair orientation (an amplicon library): its
+    carriers are all one-sided, as every read is, so orientation tells nothing and the
+    SNP is still a haplotype's change, masked; its reads never count ALT."""
+    counts, calls = _counted(tmp_path, caplog, "vntr28b_snp_alone", one_orientation=True)
+    assert counts.ad == 0 and calls[("h1", "ALT")] == 0, dict(calls)
 
 
 @pytest.mark.parametrize("artifacts", [8, 12])

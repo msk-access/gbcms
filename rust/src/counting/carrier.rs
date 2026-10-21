@@ -2240,8 +2240,9 @@ fn placed_reads<'a>(
 /// base more often than the shifted ALT's, so no placement of the event shifts their
 /// base at `off` (an ALT read placed through the event shows its own at them). One read
 /// per fragment; only reads overlapping the variant's guard window (`window`), which
-/// every bin's fetch holds, so the tally is the same in any bin geometry. With the
-/// carriers, those of the F1R2 pair orientation (read 1 forward, read 2 reverse).
+/// every bin's fetch holds, so the tally is the same in any bin geometry. With them,
+/// those of the F1R2 pair orientation (read 1 forward, read 2 reverse): of the
+/// carriers, and of all.
 fn read_apart(
     read_cache: &[Record],
     counted: &dyn Fn(&Record) -> bool,
@@ -2249,9 +2250,9 @@ fn read_apart(
     (start, reference): (i64, &[u8]),
     (off, tells, base): (usize, &[(usize, u8)], u8),
     (w_start, w_end): (i64, i64),
-) -> (u32, u32, u32) {
+) -> (u32, u32, u32, u32) {
     let mut fragments = std::collections::HashSet::new();
-    let (mut n, mut c, mut f1r2) = (0, 0, 0);
+    let (mut n, mut c, mut f1r2, mut n_f1r2) = (0, 0, 0, 0);
     let own = |r: &&Record| counted(r) && r.pos() < w_end && crate::shared::bam_utils::ref_end(r) > w_start;
     for record in read_cache.iter().filter(own) {
         let Some((lo, hi, q_lo)) = ungapped_block(record, start + off as i64) else { continue };
@@ -2270,11 +2271,12 @@ fn read_apart(
             continue;
         }
         n += 1;
-        let carries = seq[q(off)].to_ascii_uppercase() == base;
+        let (carries, oriented) = (seq[q(off)].to_ascii_uppercase() == base, record.is_reverse() == record.is_last_in_template());
         c += u32::from(carries);
-        f1r2 += u32::from(carries && record.is_reverse() == record.is_last_in_template());
+        f1r2 += u32::from(carries && oriented);
+        n_f1r2 += u32::from(oriented);
     }
-    (n, c, f1r2)
+    (n, c, f1r2, n_f1r2)
 }
 
 /// The genome span `[lo, hi)` a read aligns around genome position `at` with no length
@@ -2309,14 +2311,17 @@ fn ungapped_block(record: &Record, at: i64) -> Option<(i64, i64, usize)> {
 
 /// What the fragments placed apart from the event tell of a change at a base where the
 /// ALT's own base would show shifted ([`read_apart`]: `n` read the base, `c` show the
-/// change, `f1r2` of them in the F1R2 pair orientation): carried on a haplotype of their
-/// own (`Some(true)`) where [`GUARD_MIN_READS`] and [`GUARD_APART_SHARE`] of them show it,
-/// in both pair orientations (a haplotype's molecules are read in either; an oxoG or FFPE
-/// artifact sits in one: from [`GUARD_ORIENTED_READS`] carriers on, the lesser
-/// orientation must hold a fifth of them); else the ALT's own base (`Some(false)`) where
-/// at least [`GUARD_APART_READS`] read it; None where too few read it to tell.
-fn carried_apart(n: u32, c: u32, f1r2: u32) -> Option<bool> {
-    let one_sided = c >= GUARD_ORIENTED_READS && f1r2.min(c - f1r2) < (c / 5).max(1);
+/// change; `f1r2` of the carriers and `n_f1r2` of all in the F1R2 pair orientation):
+/// carried on a haplotype of their own (`Some(true)`) where [`GUARD_MIN_READS`] and
+/// [`GUARD_APART_SHARE`] of them show it, and in both pair orientations where the reads
+/// are (a haplotype's molecules are read in either; an oxoG or FFPE artifact sits in one:
+/// from [`GUARD_ORIENTED_READS`] carriers on, where the lesser orientation holds a fifth
+/// of all the reads, it must hold a fifth of the carriers; an amplicon library, read in
+/// one orientation, weighs none); else the ALT's own base (`Some(false)`) where at least
+/// [`GUARD_APART_READS`] read it; None where too few read it to tell.
+fn carried_apart(n: u32, c: u32, f1r2: u32, n_f1r2: u32) -> Option<bool> {
+    let both = n_f1r2.min(n - n_f1r2) >= (n / 5).max(1);
+    let one_sided = both && c >= GUARD_ORIENTED_READS && f1r2.min(c - f1r2) < (c / 5).max(1);
     if c >= GUARD_MIN_READS && share(c, n) >= GUARD_APART_SHARE && !one_sided {
         Some(true)
     } else if n >= GUARD_APART_READS {
@@ -2764,8 +2769,8 @@ pub(crate) fn guard_for(
         if tells.is_empty() {
             return None;
         }
-        let (n, c, f1r2) = read_apart(read_cache, counted, min_baseq, (*ws, wr), (off, &tells, base), super::window::guard_window(v));
-        Some((carried_apart(n, c, f1r2), n, c, wr[off], base))
+        let (n, c, f1r2, n_f1r2) = read_apart(read_cache, counted, min_baseq, (*ws, wr), (off, &tells, base), super::window::guard_window(v));
+        Some((carried_apart(n, c, f1r2, n_f1r2), n, c, wr[off], base))
     };
     let mut minority: Option<(i64, u8, u8, u32, u32)> = None;
     let mut shifted = Vec::new();
@@ -4474,20 +4479,22 @@ mod tests {
 
     #[test]
     fn reads_placed_apart_carry_a_change_beyond_an_error_or_leave_it_the_alts_own() {
-        assert_eq!(carried_apart(14, 0, 0), None, "too few read it");
-        assert_eq!(carried_apart(14, 2, 1), None, "too few, two errors");
-        assert_eq!(carried_apart(15, 0, 0), Some(false), "enough read it, none carries it");
-        assert_eq!(carried_apart(73, 1, 0), Some(false), "one is an error");
-        assert_eq!(carried_apart(73, 2, 1), Some(false), "two are errors");
-        assert_eq!(carried_apart(10, 3, 1), Some(true), "three carry it, however few read it");
-        assert_eq!(carried_apart(73, 3, 1), Some(true), "a haplotype on a twentieth of them");
-        assert_eq!(carried_apart(247, 3, 1), Some(false), "three errors at depth");
-        assert_eq!(carried_apart(2500, 60, 30), Some(false), "a systematic error on 2.4% of them");
-        assert_eq!(carried_apart(2500, 75, 37), Some(true), "a haplotype on 3% of them");
-        assert_eq!(carried_apart(2500, 75, 75), Some(false), "all in one pair orientation: an artifact");
-        assert_eq!(carried_apart(2500, 75, 14), Some(false), "under a fifth one way");
-        assert_eq!(carried_apart(2500, 75, 15), Some(true), "a fifth one way");
-        assert_eq!(carried_apart(73, 7, 7), Some(true), "under eight carriers, orientation unweighed");
+        assert_eq!(carried_apart(14, 0, 0, 7), None, "too few read it");
+        assert_eq!(carried_apart(14, 2, 1, 7), None, "too few, two errors");
+        assert_eq!(carried_apart(15, 0, 0, 7), Some(false), "enough read it, none carries it");
+        assert_eq!(carried_apart(73, 1, 0, 36), Some(false), "one is an error");
+        assert_eq!(carried_apart(73, 2, 1, 36), Some(false), "two are errors");
+        assert_eq!(carried_apart(10, 3, 1, 5), Some(true), "three carry it, however few read it");
+        assert_eq!(carried_apart(73, 3, 1, 36), Some(true), "a haplotype on a twentieth of them");
+        assert_eq!(carried_apart(247, 3, 1, 123), Some(false), "three errors at depth");
+        assert_eq!(carried_apart(2500, 60, 30, 1250), Some(false), "a systematic error on 2.4% of them");
+        assert_eq!(carried_apart(2500, 75, 37, 1250), Some(true), "a haplotype on 3% of them");
+        assert_eq!(carried_apart(2500, 75, 75, 1250), Some(false), "all in one pair orientation: an artifact");
+        assert_eq!(carried_apart(2500, 75, 14, 1250), Some(false), "under a fifth one way");
+        assert_eq!(carried_apart(2500, 75, 15, 1250), Some(true), "a fifth one way");
+        assert_eq!(carried_apart(73, 7, 7, 36), Some(true), "under eight carriers, orientation unweighed");
+        assert_eq!(carried_apart(2500, 75, 75, 2500), Some(true), "an amplicon library, read in one orientation: unweighed");
+        assert_eq!(carried_apart(2500, 75, 75, 2400), Some(true), "under a fifth of all the reads the other way");
     }
 
     #[test]
