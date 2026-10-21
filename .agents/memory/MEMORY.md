@@ -19,7 +19,7 @@ One line per memory. Full content lives in the linked file. Keep this index tigh
 - [Model per task](model-per-task.md) — set each subagent's model by the task: Fable/Opus for deep reasoning (reviews, rule design, decisions), Sonnet for surveys and routine work, Haiku for mechanical scans; suggest a session switch when the phase changes.
 - [External review: measure first](external-review-measure-first.md) — map an outside review to behaviour, tickets, REJECTED.md and old probes, and measure its value, before filing tickets.
 - [mFSD is graded evidence](mfsd-graded-evidence.md) — fragment size gives increased confidence toward CH or toward somatic (or none), never a hard origin call; don't over-interpret.
-- [Decisions with worked examples](decisions-worked-examples.md) — count-rule decisions come with a real row drawn out, the community standard, the RNA effect and a truth check.
+- [Decisions with worked examples](decisions-worked-examples.md) — count-rule decisions come with a real row drawn out, the community standard, the RNA effect, a truth check, and every option offered measured (not estimated).
 
 ## References
 - [Claudelicious harness](claudelicious-reference.md) — the upstream pattern this project's harness follows.

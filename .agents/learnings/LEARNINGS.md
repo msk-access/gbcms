@@ -17,6 +17,21 @@ regenerating a section.
 
 ---
 
+## [LRN-20261021-001] rule-body | every option offered for a decision is measured, not estimated
+- **Status:** resolved (rule promoted)
+- **Cause:** rule-body
+- **Summary:** On #294 three guard options were offered with only the current rule
+  measured; the others' failure rates were reasoned from thresholds. The operator asked
+  whether each was measured. Prototyping and running all of them on the same sets and
+  HG002 changed the picture: the simulators wrote every fragment in one pair
+  orientation (so the orientation option failed for an artifact of the data), option
+  2's low-depth risk had no test set, and the tolerance amendment, measured, reversed my
+  recommendation (then four existing contracts caught its false ALT on another allele's
+  reads, fixed by forgiving one-off errors only).
+- **Promotion target:** `.agents/memory/decisions-worked-examples.md`: every option
+  offered is prototyped and measured on the same sets and truth arm, the sets mirroring
+  a real library (both orientations, errors, low depth and depth). (Done.)
+
 ## [LRN-20261020-001] rule-body | a run's waiter watches its process, not a marker in its log
 - **Status:** resolved (rule promoted)
 - **Cause:** rule-body
