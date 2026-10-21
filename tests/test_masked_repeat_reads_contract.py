@@ -143,6 +143,7 @@ def test_the_insertion_alone_counts_where_the_aligner_wrote_no_gap(tmp_path, cap
     counts, calls = _counted(tmp_path, caplog, "vntr28b_ins_alone")
     assert (counts.rd, counts.ad) == (27, 34)
     assert calls[("h1", "REF")] == 0 and calls[("h2", "ALT")] == 0, dict(calls)
+    assert counts.possible_minority == "", "no read placed apart carries it"
 
 
 def test_a_germline_snp_reading_as_the_insertion_never_counts_alt(tmp_path, caplog):
@@ -152,6 +153,7 @@ def test_a_germline_snp_reading_as_the_insertion_never_counts_alt(tmp_path, capl
     counts, calls = _counted(tmp_path, caplog, "vntr28b_snp_alone")
     assert (counts.rd, counts.ad) == (34, 0)
     assert calls[("h1", "ALT")] == 0, dict(calls)
+    assert counts.possible_minority == "", "masked: a haplotype's"
 
 
 # A haplotype at a share of the molecules (a tumour's gain or loss, a subclone): reads placed
@@ -206,6 +208,8 @@ def test_an_error_at_the_shifted_base_leaves_the_insertion_counted(tmp_path, cap
         tmp_path, caplog, "vntr28b_ins_alone", error=("h2", 829, 900, "C", errors)
     )
     assert (counts.rd, counts.ad) == (27, 34)
+    # unmasked though carried: named (POSSIBLE_MINORITY_HAPLOTYPE), the counts unchanged
+    assert counts.possible_minority.startswith(f"830:T>C:{errors}/"), counts.possible_minority
 
 
 @pytest.mark.parametrize("artifacts", [8, 12])
@@ -220,6 +224,7 @@ def test_an_artifact_in_one_pair_orientation_leaves_the_insertion_counted(
     error = ("h2", 829, 900, "C", artifacts, "F1R2")
     counts, _ = _counted(tmp_path, caplog, "vntr28b_ins_alone", error=error)
     assert (counts.rd, counts.ad) == (27, 34)
+    assert counts.possible_minority.startswith(f"830:T>C:{artifacts}/"), counts.possible_minority
 
 
 @pytest.mark.parametrize(

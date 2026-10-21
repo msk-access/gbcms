@@ -1988,6 +1988,13 @@ pub(crate) struct Guard {
     /// those spanning the windows: a germline indel beside the event): its genome
     /// position and length (insertion +, deletion -), as [`own_indels`] gives them.
     pub indels: Vec<(i64, i64)>,
+    /// A change at the ALT's shifted base the reads placed apart from the event show
+    /// on too few of them, or in one pair orientation, to be a haplotype's, left
+    /// unmasked: a minority haplotype carrying it would count ALT where its reads read
+    /// as the ALT. Its genome position, the reference's base and the change's, and the
+    /// carriers among the reads placed apart (the most carried, where several are).
+    /// Diagnostic only (POSSIBLE_MINORITY_HAPLOTYPE).
+    pub minority: Option<(i64, u8, u8, u32, u32)>,
 }
 
 impl Guard {
@@ -2002,6 +2009,7 @@ impl Guard {
             others: Vec::new(),
             ref_others: Vec::new(),
             indels: Vec::new(),
+            minority: None,
         }
     }
 }
@@ -2731,7 +2739,9 @@ pub(crate) fn guard_for(
     // (read over the whole-read reach: the telling bases may lie past the prepared
     // reference, a repeat's unit or more away)
     let wide = whole_reference(v).and_then(|(ws, wr)| event(ws, &wr, v).map(|we| (ws, wr, we)));
-    let apart = |side: usize, i: usize, off: usize| -> Option<bool> {
+    // (the verdict, the reads placed apart, the carriers, the reference's base and the
+    // change's)
+    let apart = |side: usize, i: usize, off: usize| -> Option<(Option<bool>, u32, u32, u8, u8)> {
         let (ws, wr, we) = wide.as_ref()?;
         let off = usize::try_from(g(off) - ws).ok()?;
         let alt_at = |o: usize| {
@@ -2755,8 +2765,9 @@ pub(crate) fn guard_for(
             return None;
         }
         let (n, c, f1r2) = read_apart(read_cache, counted, min_baseq, (*ws, wr), (off, &tells, base), super::window::guard_window(v));
-        carried_apart(n, c, f1r2)
+        Some((carried_apart(n, c, f1r2), n, c, wr[off], base))
     };
+    let mut minority: Option<(i64, u8, u8, u32, u32)> = None;
     let mut shifted = Vec::new();
     let (mut masked, mut alt_only, mut run) = (Vec::new(), [Vec::new(), Vec::new()], false);
     for (side, reach) in [(0usize, reach_l), (1usize, reach_r)] {
@@ -2768,11 +2779,18 @@ pub(crate) fn guard_for(
             if recurs(1, side, i) && !on_ref(side, i) {
                 alt_only[side].push(i);
             }
-            let told = apart(side, i, off);
+            let found = apart(side, i, off);
+            let told = found.and_then(|f| f.0);
             if background(side, i) && told == Some(false) {
                 shifted.push(g(off));
             } else if background(side, i) || told == Some(true) || (own(side, i) && isolated(side, i)) {
                 masked.push(g(off));
+            }
+            // carriers too few (or one-sided) for a haplotype, the change left unmasked
+            if let Some((_, n, c, r, b)) = found.filter(|f| f.2 > 0 && f.0 != Some(true) && !masked.contains(&g(off))) {
+                if minority.is_none_or(|m| c > m.3) {
+                    minority = Some((g(off), r, b, c, n));
+                }
             }
             run |= own(side, i) && !isolated(side, i);
         }
@@ -2876,7 +2894,7 @@ pub(crate) fn guard_for(
             .collect();
         indels.sort_unstable();
     }
-    if masked.is_empty() && larger.is_none() && others.is_empty() && ref_others.is_empty() && indels.is_empty() {
+    if masked.is_empty() && larger.is_none() && others.is_empty() && ref_others.is_empty() && indels.is_empty() && minority.is_none() {
         return None;
     }
     trace!(
@@ -2891,6 +2909,7 @@ pub(crate) fn guard_for(
     guard.others = others;
     guard.ref_others = ref_others;
     guard.indels = indels;
+    guard.minority = minority;
     Some(guard)
 }
 

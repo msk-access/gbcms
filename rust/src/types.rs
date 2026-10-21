@@ -491,6 +491,13 @@ pub struct BaseCounts {
     /// OBSERVED_ALLELE's n/m).
     #[pyo3(get)]
     pub observed_given_reads: u32,
+    /// A change at the ALT's shifted base too few of the reads placed apart from the
+    /// event carry to be a haplotype's (or carried in one pair orientation), left
+    /// unmasked, as `POS:REF>ALT:c/n` (1-based POS; c carriers of n reads placed apart);
+    /// empty when none. Diagnostic only (feeds POSSIBLE_MINORITY_HAPLOTYPE); no count
+    /// changes.
+    #[pyo3(get)]
+    pub possible_minority: String,
     /// Reads processed with the requested `--umi-tag` present. Internal only
     /// (no Python getter): summed per BAM to warn when a requested UMI tag is
     /// never seen and fragment grouping silently fell back to QNAME.

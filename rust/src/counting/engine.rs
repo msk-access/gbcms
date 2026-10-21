@@ -1535,6 +1535,11 @@ fn count_variant_from_cache(
         counts.observed_reads = o.carriers;
         counts.observed_given_reads = o.given_carriers;
     }
+    // A change at the ALT's shifted base too few reads placed apart carry for a
+    // haplotype's, left unmasked: diagnostic only (POSSIBLE_MINORITY_HAPLOTYPE).
+    if let Some((pos, r, b, c, n)) = rules.guard.and_then(|g| g.get(variant)).and_then(|g| g.minority) {
+        counts.possible_minority = format!("{}:{}>{}:{c}/{n}", pos + 1, r as char, b as char);
+    }
     let use_baq = baq_applies(apply_baq, exon_boundary_dist);
     // The variant's own indel span that BAQ leaves alone, once per variant.
     let baq_spare = if use_baq { baq_own_span(variant) } else { None };

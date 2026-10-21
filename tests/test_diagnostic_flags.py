@@ -272,3 +272,19 @@ def test_non_discriminating_locus_flag():
     counts.non_discriminating_locus = True
     _make_pipeline()._compute_diagnostics([pv], [counts])
     assert "NON_DISCRIMINATING_LOCUS" in pv.gbcms_diagnostic
+
+
+def test_possible_minority_haplotype_flag():
+    """POSSIBLE_MINORITY_HAPLOTYPE names the change at the ALT's shifted base that too few
+    of the reads placed apart carry for a haplotype's (left unmasked), with c/n; absent
+    when the counts carry none (the field empty, or missing on a FAIL row's zero counts)."""
+    pv = _mock_prepared_variant(ref_allele="G", alt_allele="GC", variant_type="INSERTION")
+    counts = _mock_counts(ad=34)
+    counts.possible_minority = "830:T>C:2/75"
+    _make_pipeline()._compute_diagnostics([pv], [counts])
+    assert pv.gbcms_diagnostic == "POSSIBLE_MINORITY_HAPLOTYPE(chr1:830:T>C:2/75)"
+    pv = _mock_prepared_variant(ref_allele="G", alt_allele="GC", variant_type="INSERTION")
+    counts = _mock_counts(ad=34)
+    counts.possible_minority = ""
+    _make_pipeline()._compute_diagnostics([pv], [counts])
+    assert "POSSIBLE_MINORITY_HAPLOTYPE" not in pv.gbcms_diagnostic
