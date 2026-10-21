@@ -25,6 +25,7 @@ One line per memory. Full content lives in the linked file. Keep this index tigh
 - [Claudelicious harness](claudelicious-reference.md) — the upstream pattern this project's harness follows.
 - [Fragmentomics (Tsui et al., MSK)](fragmentomics-reference.md) — the prior for mFSD and the CH-vs-tumor question; cite for S1 #153 / S2 #154.
 - [Downstream org repos](downstream-org-containers-modules.md) — mskcc-omics-workflows containers image (6.3.1) and gbcmsrs modules; not a release step; the operator starts the switch when satisfied it's production-ready (2026-10-07).
+- [Production aligner settings](production-aligner-settings.md) — nucleo (ACCESS; IMPACT's stand-in) BWA+ABRA2, forte STAR 2.7.10a; FORTE's fill-out still calls the C++ gbcms 1.2.5; full flags on #275.
 
 ## Project facts (from the 2026-06-26 code review)
 - [Bin fetch-end must cover the anchor variant](bin-anchor-coverage.md) — CR-1; pinned by the bin property test and binning-invariance tests.
@@ -40,20 +41,21 @@ One line per memory. Full content lives in the linked file. Keep this index tigh
 ## Tooling / build
 - [pyproject is the dep source of truth](deps-pyproject-source-of-truth.md) — floors measured (CI floors leg), dev tools in PEP 735 groups, only the image installs a lock (hash-pinned + pip check); declare every directly-imported package.
 - [Lint-tool version skew (local vs CI)](black-version-skew-venv-vs-ci.md) — venv black 25.9 lags CI 26.5 (rustc caught up to 1.96 on 2026-09-23); run CI's versions before trusting a clean/drift result.
-- [Worktree tests need an isolated venv](worktree-tests-need-isolated-venv.md) — the shared .venv imports the MAIN checkout's gbcms; in a worktree build a scratch venv + maturin develop. Every review-agent prompt says `VIRTUAL_ENV=<scratch venv> maturin develop`, or maturin installs into the main .venv.
+- [Worktree tests need an isolated venv](worktree-tests-need-isolated-venv.md) — the shared .venv imports the MAIN checkout's gbcms; in a worktree build a scratch venv + maturin develop. Every review-agent prompt says `VIRTUAL_ENV=<scratch venv> maturin develop`, or maturin installs into the main .venv. Scratchpad venvs rot after ~3 days (macOS purges /private/tmp): rebuild, don't repair.
 - [maturin develop: repo root only](maturin-develop-repo-root-only.md) — `-m rust/Cargo.toml` bypasses [tool.maturin] and leaves a stale src/gbcms/_rs.so shadowing every rebuild.
 - [Harness cleanup after merge](harness-cleanup-after-merge.md) — delete the ticket's `src_*` builds (rebuildable from BUILT_FROM; patch prototypes first), gzip traces, `cargo clean` when rust/target bloats.
-- [Long runs visible](long-runs-visible.md) — pair every detached nohup harness run with a tracked background waiter; runs over a network mount go one at a time, grouped by file.
+- [Long runs visible](long-runs-visible.md) — launch long runs as the tracked background task itself; nohup only to outlive the session, then a waiter on the runner's PID (never a log marker); network-mount runs one at a time, grouped by file.
 - [HPC partitions](hpc-partitions.md) — never run on the head node (srun/salloc shell, check hostname); cmobic_short ≤3 h + priority QOS, cmobic_cpu (7-day) for longer.
 - [No `timeout` on this Mac](macos-no-timeout-command.md) — `timeout N cmd && ok || fail` always says fail; check SFTP mounts with a plain read.
 - [Pipes mask gate exit codes](pipe-masks-gate-exit.md) — `pytest | tail && git commit` commits on failure; capture `$?` or use pipefail.
 
 ## Validation / testing
 - [QC-fail flag absent from MSK data](qcfail-flag-absent-msk-data.md) — no pipeline stage sets 0x200; filter verified correct but inert in practice (contract test pins it).
-- [--trace output wraps](trace-output-wraps.md) — set COLUMNS=3000 before parsing `read call` lines; a read call is not a count (take totals from the MAF); match keys by haplotype.
+- [--trace output wraps](trace-output-wraps.md) — set COLUMNS=60000 (3000 wraps alleles over ~2.9 kb) before parsing `read call` lines; a read call is not a count (take totals from the MAF); match keys by haplotype.
 - [Census mirrors read inputs](census-mirrors-read-inputs.md) — the census shares read-input rules (fragment end, filters), so validate those against an oracle it doesn't share (the bases themselves, the mate's alignment, ITD rows first).
 - [VAF uses informative reads](vaf-informative-reads.md) — `vaf` = AD/(RD+AD); per-sample total_count (DP) includes unjudgeable reads; never advise AD/DP (repeat indels: reads ending inside the tract).
 - [pysam validation oracle](pysam-validation-oracle.md) — use fetch()+get_reference_positions (not pileup) to cross-check gbcms counts; RD/AD match exact, DP includes neither.
+- [Harness references](harness-references.md) — panel/ACCESS/WES slices are b37 (Homo_sapiens_assembly19 on OneDrive), HG002 and FORTE GRCh38 (~/Downloads/genome.fa); brief agents with the right one.
 - [Other tools on the slices](other-tools-harness.md) — the 10-tool comparison harness (plan670/tools): one container at a time, IMPACT/ACCESS slices have no proper-pair flag (bcftools -A), Delly/Mutect2/Paragraph quirks, decomposed delins.
 - [vcf2maf oracle](vcf2maf-oracle.md) — VCF↔MAF representation is defined as vcf2maf/maf2vcf output; how to run them locally and their quirks (dies on N, empty ALT for REF==ALT).
 - [GIAB truth arm](giab-truth-arm.md) — HG002 v5.0q hets on the DeepVariant 35x WGS BAM; fetch region slices with many parallel connections; run untraced.
