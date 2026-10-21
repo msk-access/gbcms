@@ -1,0 +1,224 @@
+"""Reads of repeats where the guard's masks take the base telling the alleles apart, and
+reads the aligner placed a unit or a copy off.
+
+In a repeat whose units differ at single bases, the base past REF's tract is often the
+only one telling a one-unit insertion from REF over a short read; a germline change there
+makes the other haplotype read as the insertion (HG002's 28-bp VNTR row). The guard masks
+a change the REF molecules carry, and then:
+
+- the windows read on to the next base telling the alleles apart, which prep holds past
+  every base the guard can mask; a read short of it shows neither allele;
+- a change giving the reads the ALT's own base, shifted onto them where the aligner wrote no
+  length change, is a germline change only where reads placed apart from the event carry
+  it; otherwise it is the ALT's own base, never masked, and spells no other allele;
+- an error both readings share decides nothing, however the read is written;
+- a read the aligner placed a unit or a copy off is read whole over all its bases (the
+  whole-read reach prep holds): the allele its bases fit decides, and one fitting the
+  longer allele only from inside its event is depth only.
+
+Every shape but the last is a reference and two haplotypes with paired reads simulated from
+each and placed by BWA-MEM 0.7.17 as production runs it (tests/testdata/README.md); each
+read's call is checked against the haplotype it came from (read from the per-read trace).
+"""
+
+import collections
+import json
+import logging
+import re
+from pathlib import Path
+
+import pysam
+import pytest
+from helpers import count_checked, make_read, write_contig
+
+from gbcms import _rs
+
+FIXTURE = json.loads((Path(__file__).parent / "testdata" / "masked_repeat_reads.json").read_text())
+ENGINE_LOGGER = "_rs.counting.engine"
+CALL = re.compile(
+    r"read call \S+ \S+ read=(h[12])_(\S+) mate=(\d) ref=(\w+) alt=(\w+) .*?partial=(\d+).*?uninformative=(\w+)"
+)
+# The #290 limit: a read lying inside an imperfect repeat, or read from a flank the repeat
+# runs on past, is placed by the aligner, not by its bases, until the windows anchor on the
+# repeat's true ends.
+IMPERFECT_REPEAT = "#290: windows anchor on the exact repeat's edge, inside an imperfect one"
+
+
+def _counted(tmp_path, caplog, name):
+    """The shape's counts, and each haplotype's read calls (REF, ALT, partial, depth only,
+    other), from one call."""
+    f = FIXTURE[name]
+    fa = tmp_path / f"{name}.fa"
+    fa.write_text(f">1\n{f['ref']}\n")
+    pysam.faidx(str(fa))
+    header = {"HD": {"VN": "1.6", "SO": "coordinate"}, "SQ": [{"SN": "1", "LN": len(f["ref"])}]}
+    raw, bam = tmp_path / f"{name}.raw.bam", tmp_path / f"{name}.bam"
+    with pysam.AlignmentFile(str(raw), "wb", header=header) as out:
+        for qname, flag, pos, cigar, mapq, hap, off, length, mate_pos, tlen in f["reads"]:
+            a = pysam.AlignedSegment()
+            a.query_name, a.flag, a.reference_id, a.reference_start = qname, flag, 0, pos
+            a.cigarstring, a.mapping_quality = cigar, mapq
+            a.query_sequence = f[hap][off : off + length]
+            a.query_qualities = pysam.qualitystring_to_array("I" * length)
+            a.next_reference_id, a.next_reference_start, a.template_length = 0, mate_pos, tlen
+            out.write(a)
+    pysam.sort("-o", str(bam), str(raw))
+    pysam.index(str(bam))
+    p = f["pos"]  # the base after the anchor (0-based): the insertion's junction
+    anchor = f["ref"][p - 1]
+    (pv,) = _rs.prepare_variants(
+        [_rs.Variant("1", p - 1, anchor, anchor + f["alt"], "INS")], str(fa), 5, False, 1, True
+    )
+    caplog.clear()
+    with caplog.at_level(5, logger=ENGINE_LOGGER):
+        _rs.reset_log_caching()
+        (counts,) = count_checked(str(bam), [pv.variant])
+    calls = {}
+    for record in caplog.records:
+        if m := CALL.search(record.getMessage()):
+            hap, read, mate, ref, alt, partial, depth = m.groups()
+            shown = {
+                "REF": ref == "true",
+                "ALT": alt == "true",
+                "partial": partial != "0",
+                "depth": depth == "true",
+            }
+            calls[(hap, read, mate)] = next((c for c, on in shown.items() if on), "other")
+    tally = collections.Counter((hap, call) for (hap, _, _), call in calls.items())
+    return counts, tally
+
+
+# ── The VNTR of HG002's 28-bp row: C and T units differing at one base ──────────────────
+def test_reads_of_two_haplotypes_reading_alike_are_neither(tmp_path, caplog):
+    """The insertion of a C unit on one haplotype, and on the other a germline SNP turning
+    the first T unit into a C unit: over 151 bp both read four C units and a T unit, first
+    telling apart 160 bases on. The guard masks the SNP (reads placed apart carry it), the
+    windows read on to that base, and no read reaches it: every read is depth only. Neither
+    the SNP's reads as ALT (un-applying the mask did), nor the insertion's as REF (the CIGAR
+    checks did, where the rule gave up)."""
+    counts, calls = _counted(tmp_path, caplog, "vntr28b_ins_and_snp")
+    assert (counts.rd, counts.ad) == (0, 0)
+    assert not any(c in ("REF", "ALT") for (_, c) in calls.elements()), dict(calls)
+
+
+def test_the_insertion_alone_counts_where_the_aligner_wrote_no_gap(tmp_path, caplog):
+    """The insertion alone, its reads written without the gap: the change it shifts onto
+    them past REF's tract is no germline change (reads placed apart from the event never
+    carry it), so it is not masked and the insertion's reads count ALT by their bases."""
+    counts, calls = _counted(tmp_path, caplog, "vntr28b_ins_alone")
+    assert (counts.rd, counts.ad) == (27, 34)
+    assert calls[("h1", "REF")] == 0 and calls[("h2", "ALT")] == 0, dict(calls)
+
+
+def test_a_germline_snp_reading_as_the_insertion_never_counts_alt(tmp_path, caplog):
+    """The SNP alone, no insertion: its haplotype reads as the insertion over a short read.
+    Reads placed apart carry the change, so it is masked; the SNP's reads show neither
+    allele and never count ALT (as un-applying the mask made them, at VAF 0.5)."""
+    counts, calls = _counted(tmp_path, caplog, "vntr28b_snp_alone")
+    assert (counts.rd, counts.ad) == (34, 0)
+    assert calls[("h1", "ALT")] == 0, dict(calls)
+
+
+@pytest.mark.parametrize(
+    "name",
+    [
+        "vntr28_ins_and_snp",
+        "vntr28_ins_and_snp_20x",
+        "vntr28_ins_and_snp_250",
+        "vntr28_ins_alone",
+        "vntr28_ins_alone_20x",
+    ],
+)
+@pytest.mark.xfail(strict=True, reason=IMPERFECT_REPEAT)
+def test_no_insertion_read_counts_ref_in_an_imperfect_repeat(tmp_path, caplog, name):
+    """Insertion reads lying inside the repeat, read from a flank the imperfect repeat runs
+    on past and placed there by the aligner a unit off: their bases fit REF as written."""
+    _, calls = _counted(tmp_path, caplog, name)
+    assert calls[("h1", "REF")] == 0, dict(calls)
+
+
+@pytest.mark.parametrize("name", ["vntr28_snp_alone", "vntr28_snp_alone_20x"])
+@pytest.mark.xfail(strict=True, reason=IMPERFECT_REPEAT)
+def test_no_snp_read_counts_alt_in_an_imperfect_repeat(tmp_path, caplog, name):
+    """SNP reads lying wholly inside the repeat, the aligner's tie placing them a unit off:
+    read from that flank they look like one more unit."""
+    _, calls = _counted(tmp_path, caplog, name)
+    assert calls[("h1", "ALT")] == 0, dict(calls)
+
+
+def test_the_repeat_without_either_change_counts_no_alt(tmp_path, caplog):
+    counts, calls = _counted(tmp_path, caplog, "vntr28_ref_only")
+    assert counts.ad == 0 and calls[("h1", "ALT")] + calls[("h2", "ALT")] == 0
+
+
+# ── Reads the aligner placed a unit or a copy off ──────────────────────────────────────
+def test_a_read_placed_a_unit_off_is_judged_whole(tmp_path, caplog):
+    """A VNTR of 40-bp units differing at single bases, a compound het: the given unit on
+    one haplotype, another unit upstream on the other (the same length). BWA writes the
+    insertion's reads ungapped a unit off, where they fit REF over the windows: read whole
+    over all their bases, they are the ALT."""
+    counts, calls = _counted(tmp_path, caplog, "vntr40_compound")
+    assert (counts.rd, counts.ad) == (66, 33)
+    assert calls[("h1", "ALT")] == 33 and calls[("h2", "ALT")] == 0, dict(calls)
+
+
+@pytest.mark.xfail(strict=True, reason=IMPERFECT_REPEAT)
+def test_no_insertion_read_placed_a_unit_off_counts_ref(tmp_path, caplog):
+    """Those whose bases, read whole, reach no unique sequence on either side."""
+    _, calls = _counted(tmp_path, caplog, "vntr40_compound")
+    assert calls[("h1", "REF")] == 0, dict(calls)
+
+
+@pytest.mark.parametrize(
+    ("name", "rd", "ad"), [("grch38_dup100", 18, 17), ("grch38_dup100_20x", 7, 5)]
+)
+def test_a_tandem_duplication_written_without_its_gap_counts_alt(tmp_path, caplog, name, rd, ad):
+    """A 100-bp tandem duplication (a GRCh38 segment): the copy's bases the aligner shifts
+    onto reads written without the gap are the ALT's own, never masked."""
+    counts, calls = _counted(tmp_path, caplog, name)
+    assert (counts.rd, counts.ad) == (rd, ad)
+    assert calls[("h1", "REF")] == 0 and calls[("h2", "ALT")] == 0, dict(calls)
+
+
+def test_shifted_alt_bases_spell_no_other_allele_of_refs_length(tmp_path, caplog):
+    """A 23-bp tandem duplication in a CT-rich repeat (a GRCh38 segment): the ALT's bases
+    shifted onto reads written without the gap are not masked, and they spell no other
+    allele of REF's length (reads placed through the event carrying them are the ALT's):
+    the REF haplotype's reads stay REF."""
+    counts, calls = _counted(tmp_path, caplog, "grch38_dup23_20x")
+    assert (counts.rd, counts.ad) == (25, 29)
+    assert calls[("h2", "REF")] == 24 and calls[("h2", "other")] == 0, dict(calls)
+
+
+def test_a_plain_insertion_is_unchanged(tmp_path, caplog):
+    counts, calls = _counted(tmp_path, caplog, "plain_insertion")
+    assert (counts.rd, counts.ad) == (83, 70)
+    assert calls[("h1", "REF")] + calls[("h2", "ALT")] == 0
+
+
+# ── An error both readings share ───────────────────────────────────────────────────────
+def test_an_error_both_readings_share_decides_nothing(tmp_path):
+    """A REF read ending on the base telling a 1-bp insertion from REF, that base unreadable
+    (Q5) and a confident error on the anchor: both readings miss the anchor alone. Written
+    without an indel, REF used to tolerate the error and count it; its bases tell nothing,
+    so it is neither allele."""
+    rng = __import__("random").Random(5)
+    contig = list("".join(rng.choice("ACGT") for _ in range(400)))
+    a = 200  # the insertion's junction; the anchor at a - 1
+    contig[a - 1], contig[a] = "G", "C"
+    contig = "".join(contig)
+    reads = []
+    for i in range(5):
+        s = a - 90 + i
+        seq, quals = list(contig[s : a + 1]), [30] * (a + 1 - s)
+        if i == 0:
+            seq[a - 1 - s] = "T"
+            quals[a - s] = 5
+        reads.append(make_read(f"r{i}", "".join(seq), s, ((0, len(seq)),), quals=quals))
+    fa, bam = write_contig(tmp_path, contig, reads, "c")
+    (pv,) = _rs.prepare_variants([_rs.Variant("1", a - 1, "G", "GT", "INS")], fa, 5, False, 1, True)
+    (counts,) = count_checked(bam, [pv.variant])
+    assert (counts.rd, counts.ad) == (4, 0)
+
+
+logging.getLogger(ENGINE_LOGGER)  # the logger the per-read trace comes through

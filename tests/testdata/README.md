@@ -8,6 +8,12 @@ This directory contains real genomic data files for integration testing of gbcms
 - **integration_test_variants.vcf**: 155 real variants from the same region
 - **sample1_integration_test.bam**: 41,556 alignments from Sample1 in the region (0.96 MB)
 - **sample2_integration_test.bam**: 2,762 alignments from Sample2 in the region (0.11 MB)
+- **masked_repeat_reads.json**: repeat shapes for `test_masked_repeat_reads_contract.py`.
+  Each is a reference and two haplotypes (synthetic VNTRs and tandem duplications, and two
+  GRCh38 reference segments), with paired reads simulated from each haplotype and placed
+  by BWA-MEM 0.7.17 as production runs it (`-K 1000000 -Y`). A read is stored as where BWA
+  wrote it (flag, position, CIGAR, MAPQ, mate) and its haplotype offset; its bases are the
+  haplotype's from there. No sample data.
 
 ## Usage
 
