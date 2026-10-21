@@ -2572,16 +2572,21 @@ pub(crate) fn guard_for(
     // where the reference and that shifted ALT differ. Read there by enough of them and
     // recurring on none, it is the ALT's own base on reads placed through the event,
     // never masked. With too few of them, it is masked as background.
-    let alt_at = |side: usize, off: usize| {
-        if side == 1 { ev.hap.get(off).copied() } else { usize::try_from(off as i64 + ev.d).ok().and_then(|h| ev.hap.get(h).copied()) }
-    };
+    // (read over the whole-read reach: the next base telling them apart may lie past
+    // the prepared reference, a repeat's unit or more away)
+    let wide = whole_reference(v).and_then(|(ws, wr)| event(ws, &wr, v).map(|we| (ws, wr, we)));
     let shifted_own = |side: usize, i: usize, off: usize| {
-        let Some(base) = alt_at(side, off).filter(|&b| b != reference[off]) else { return false };
+        let Some((ws, wr, we)) = wide.as_ref() else { return false };
+        let Ok(off) = usize::try_from(g(off) - ws) else { return false };
+        let alt_at = |o: usize| {
+            if side == 1 { we.hap.get(o).copied() } else { usize::try_from(o as i64 + we.d).ok().and_then(|h| we.hap.get(h).copied()) }
+        };
+        let Some(base) = alt_at(off).filter(|&b| wr.get(off).is_some_and(|&r| b != r)) else { return false };
         let shown = (0..4).max_by_key(|&k| ref_bases[side][i][k]).map(|k| b"ACGT"[k]);
-        let tells = |o: usize| alt_at(side, o).is_some_and(|b| b != reference[o]);
-        let tell = if side == 1 { (off + 1..reference.len()).find(|&o| tells(o)) } else { (0..off).rev().find(|&o| tells(o)) };
+        let tells = |o: usize| alt_at(o).is_some_and(|b| b != wr[o]);
+        let tell = if side == 1 { (off + 1..wr.len()).find(|&o| tells(o)) } else { (0..off).rev().find(|&o| tells(o)) };
         let (Some(tell), Some(true)) = (tell, shown.map(|b| b == base)) else { return false };
-        let (n, c) = read_apart(read_cache, counted, min_baseq, (start, &reference), (off, tell, base));
+        let (n, c) = read_apart(read_cache, counted, min_baseq, (*ws, wr), (off, tell, base));
         n >= GUARD_APART_READS && !(c >= GUARD_MIN_READS && share(c, n) >= GUARD_MIN_SHARE)
     };
     let mut shifted = Vec::new();
