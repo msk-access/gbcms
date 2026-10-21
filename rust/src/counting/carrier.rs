@@ -2680,15 +2680,15 @@ pub(crate) fn guard_for(
     // A change giving the reads the ALT's own base there, shifted onto them where the
     // aligner wrote no length change (the base an ALT read placed from the event's far
     // flank shows; a germline change may give the same base), is told by the fragments
-    // placed apart from the event: those holding it and the next base past it, away from
-    // the event, where the reference and that shifted ALT differ. Where more of them
-    // carry it than errors would, a haplotype holds it, read as the ALT over a short
-    // read: masked as background, whatever its share of the REF fragments. Read there by
-    // enough of them and carried by no more, it is the ALT's own base on reads placed
-    // through the event, never masked. With too few of them, it is masked where it is
-    // background.
-    // (read over the whole-read reach: the next base telling them apart may lie past
-    // the prepared reference, a repeat's unit or more away)
+    // placed apart from the event ([`read_apart`]: by the bases past it, away from the
+    // event, where the reference and that shifted ALT differ). Carried by enough of them
+    // ([`carried_apart`]), a haplotype holds it, read as the ALT over a short read:
+    // masked as background, whatever its share of the REF fragments. Otherwise, read there
+    // by enough of them, a background change is the ALT's own base on reads placed
+    // through the event: not masked, and spelling no other allele. With too few of them,
+    // it is masked where it is background.
+    // (read over the whole-read reach: the telling bases may lie past the prepared
+    // reference, a repeat's unit or more away)
     let wide = whole_reference(v).and_then(|(ws, wr)| event(ws, &wr, v).map(|we| (ws, wr, we)));
     let apart = |side: usize, i: usize, off: usize| -> Option<bool> {
         let (ws, wr, we) = wide.as_ref()?;
