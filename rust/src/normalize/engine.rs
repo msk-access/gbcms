@@ -616,10 +616,11 @@ impl PrepTally {
 /// 3. Left-alignment for indels and delins (not MNPs).
 /// 4. `ref_context` fetch for indels and delins, adaptively padded in repeats.
 /// 5. The homopolymer twin (`decomposed_variant`), only with
-///    `rescue_homopolymer`, with its own `event_ref`.
+///    `rescue_homopolymer`, with its own `event_ref` and `whole_ref`.
 ///
 /// Then `repeat_span` (scanned at the first changed base), the shift region
-/// (`indel_shift_region`) and `event_ref` (`event_core_ref`).
+/// (`indel_shift_region`), `event_ref` (`event_core_ref`) and `whole_ref`
+/// (`whole_read_ref`).
 fn prepare_single_variant(
     reader_result: &mut Result<fasta::IndexedReader<File>, anyhow::Error>,
     variant: &Variant,
@@ -1063,6 +1064,7 @@ fn prepare_single_variant(
     // back in a long run).
     let decomposed_variant = decomposed_variant.map(|mut twin| {
         twin.event_ref = event_core_ref(reader, &twin, tally);
+        twin.whole_ref = whole_read_ref(reader, &twin);
         twin
     });
 

@@ -24,6 +24,7 @@ read's call is checked against the haplotype it came from (read from the per-rea
 import collections
 import json
 import logging
+import random
 import re
 from pathlib import Path
 
@@ -36,7 +37,7 @@ from gbcms import _rs
 FIXTURE = json.loads((Path(__file__).parent / "testdata" / "masked_repeat_reads.json").read_text())
 ENGINE_LOGGER = "_rs.counting.engine"
 CALL = re.compile(
-    r"read call \S+ \S+ read=(h[12])_(\S+) mate=(\d) ref=(\w+) alt=(\w+) .*?partial=(\d+).*?uninformative=(\w+)"
+    r"read call \S+ \S+ read=(h[12]|ref)_(\S+) mate=(\d) ref=(\w+) alt=(\w+) .*?partial=(\d+).*?uninformative=(\w+)"
 )
 # The #290 limit: a read lying inside an imperfect repeat, or read from a flank the repeat
 # runs on past, is placed by the aligner, not by its bases, until the windows anchor on the
@@ -44,10 +45,22 @@ CALL = re.compile(
 IMPERFECT_REPEAT = "#290: windows anchor on the exact repeat's edge, inside an imperfect one"
 
 
-def _counted(tmp_path, caplog, name):
+def _counted(tmp_path, caplog, name, thin=None, seed=0):
     """The shape's counts, and each haplotype's read calls (REF, ALT, partial, depth only,
-    other), from one call."""
+    other), from one call. `thin` (haplotype, share kept, whether the rest read as the
+    reference) keeps that haplotype on a share of its fragments (drawn with `seed`), the
+    others read as the reference (a third haplotype of its length, tallied as `ref`) or
+    dropped."""
     f = FIXTURE[name]
+    swapped, as_ref = set(), False
+    if thin:
+        hap, keep, as_ref = thin
+        rng = random.Random(seed)
+        swapped = {
+            q
+            for q in dict.fromkeys(r[0] for r in f["reads"] if r[5] == hap)
+            if rng.random() >= keep
+        }
     fa = tmp_path / f"{name}.fa"
     fa.write_text(f">1\n{f['ref']}\n")
     pysam.faidx(str(fa))
@@ -55,6 +68,10 @@ def _counted(tmp_path, caplog, name):
     raw, bam = tmp_path / f"{name}.raw.bam", tmp_path / f"{name}.bam"
     with pysam.AlignmentFile(str(raw), "wb", header=header) as out:
         for qname, flag, pos, cigar, mapq, hap, off, length, mate_pos, tlen in f["reads"]:
+            if qname in swapped and not as_ref:
+                continue
+            if qname in swapped:
+                qname, hap = "ref" + qname[2:], "ref"
             a = pysam.AlignedSegment()
             a.query_name, a.flag, a.reference_id, a.reference_start = qname, flag, 0, pos
             a.cigarstring, a.mapping_quality = cigar, mapq
@@ -116,6 +133,35 @@ def test_a_germline_snp_reading_as_the_insertion_never_counts_alt(tmp_path, capl
     allele and never count ALT (as un-applying the mask made them, at VAF 0.5)."""
     counts, calls = _counted(tmp_path, caplog, "vntr28b_snp_alone")
     assert (counts.rd, counts.ad) == (34, 0)
+    assert calls[("h1", "ALT")] == 0, dict(calls)
+
+
+# A haplotype at a share of the molecules (a tumour's gain or loss, a subclone): reads placed
+# apart from the event carry its change beyond an error, however small its share of them.
+@pytest.mark.parametrize("seed", range(3))
+def test_a_minority_snp_haplotype_in_trans_never_counts_alt(tmp_path, caplog, seed):
+    """The insertion on half the molecules, the SNP on a quarter of the others, the
+    reference on the rest: reads placed apart carry the SNP on under a fifth of them (the
+    insertion's own read the reference's base there), yet a haplotype carries it. Masked,
+    the SNP's reads never count ALT."""
+    _, calls = _counted(tmp_path, caplog, "vntr28b_ins_and_snp", ("h2", 0.25, True), seed)
+    assert calls[("h2", "ALT")] == 0, dict(calls)
+
+
+@pytest.mark.parametrize("seed", range(3))
+def test_the_snp_haplotype_beside_a_gained_insertion_never_counts_alt(tmp_path, caplog, seed):
+    """No reference haplotype: the insertion's gained, the SNP's on a quarter as many
+    molecules."""
+    _, calls = _counted(tmp_path, caplog, "vntr28b_ins_and_snp", ("h2", 0.25, False), seed)
+    assert calls[("h2", "ALT")] == 0, dict(calls)
+
+
+@pytest.mark.parametrize("seed", range(3))
+def test_a_minority_germline_snp_reading_as_the_insertion_never_counts_alt(tmp_path, caplog, seed):
+    """The SNP alone, on 15% of the molecules: too few of the REF fragments carry it for
+    background, but reads placed apart carry it, so it is masked and its reads, reading
+    as the insertion over a short read, never count ALT (develop counted them)."""
+    _, calls = _counted(tmp_path, caplog, "vntr28b_snp_alone", ("h1", 0.15, True), seed)
     assert calls[("h1", "ALT")] == 0, dict(calls)
 
 
@@ -219,6 +265,51 @@ def test_an_error_both_readings_share_decides_nothing(tmp_path):
     (pv,) = _rs.prepare_variants([_rs.Variant("1", a - 1, "G", "GT", "INS")], fa, 5, False, 1, True)
     (counts,) = count_checked(bam, [pv.variant])
     assert (counts.rd, counts.ad) == (4, 0)
+
+
+# Read on past the windows, an allele tolerates one error the other's reading shares
+# (operator, 2026-10-15); one giving the other allele's base there, shifted by the
+# deletion, is a base telling the alleles apart, though every other base there fits REF.
+UNSHARED_PAST = (
+    "an error past the windows giving the other allele's base: tolerance there is to decide"
+)
+
+
+@pytest.mark.parametrize(
+    "second",
+    [
+        pytest.param(5, marks=pytest.mark.xfail(strict=True, reason=UNSHARED_PAST)),
+        pytest.param(20, marks=pytest.mark.xfail(strict=True, reason=UNSHARED_PAST)),
+        40,
+    ],
+)
+def test_an_error_both_readings_share_spends_no_tolerance_past_the_windows(tmp_path, second):
+    """A REF read of a 1-bp deletion in an A10 run, its last A misread as T (both readings
+    miss it alone) and one more error `second` bases past the run: read on past the
+    windows with the shared error unread, its bases there fit REF but for that one error,
+    so it counts REF as the twenty clean REF reads do."""
+    rng = __import__("random").Random(3)
+    left = "".join(rng.choice("ACGT") for _ in range(300))[:-1] + "G"
+    right = "C" + "".join(rng.choice("ACGT") for _ in range(299))
+    contig = left + "A" * 10 + right
+    p = len(left)  # the run's first A
+    alt = contig[:p] + contig[p + 1 :]
+    reads = []
+    for i in range(20):
+        s = p - 100 + i
+        reads.append(make_read(f"ref{i}", contig[s : s + 151], s, ((0, 151),)))
+        k = p - s
+        reads.append(make_read(f"alt{i}", alt[s : s + 150], s, ((0, k), (2, 1), (0, 150 - k))))
+    s = p - 60
+    seq = list(contig[s : s + 151])
+    seq[p + 9 - s] = "T"
+    q = p + 10 + second - s
+    seq[q] = "A" if seq[q] != "A" else "C"
+    reads.append(make_read("probe", "".join(seq), s, ((0, 151),)))
+    fa, bam = write_contig(tmp_path, contig, reads, "c")
+    (pv,) = _rs.prepare_variants([_rs.Variant("1", p - 1, "GA", "G", "DEL")], fa, 5, False, 1, True)
+    (counts,) = count_checked(bam, [pv.variant])
+    assert (counts.rd, counts.ad) == (21, 20)
 
 
 logging.getLogger(ENGINE_LOGGER)  # the logger the per-read trace comes through
