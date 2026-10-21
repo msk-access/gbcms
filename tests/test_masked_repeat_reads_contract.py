@@ -45,15 +45,19 @@ CALL = re.compile(
 IMPERFECT_REPEAT = "#290: windows anchor on the exact repeat's edge, inside an imperfect one"
 
 
-def _counted(tmp_path, caplog, name, thin=None, seed=0, error=None):
+def _counted(tmp_path, caplog, name, thin=None, seed=0, error=None, change=None):
     """The shape's counts, and each haplotype's read calls (REF, ALT, partial, depth only,
     other), from one call. `thin` (haplotype, share kept, whether the rest read as the
     reference) keeps that haplotype on a share of its fragments (drawn with `seed`), the
     others read as the reference (a third haplotype of its length, tallied as `ref`) or
     dropped. `error` (haplotype, genome base, a later base, the base read, reads) gives that
     many of the haplotype's reads holding both bases with no length change between them a
-    confident error at the first."""
-    f = FIXTURE[name]
+    confident error at the first. `change` (haplotype, base, the base it reads) gives that
+    haplotype another change, its reads placed where they were."""
+    f = dict(FIXTURE[name])
+    if change:
+        hap, at, base = change
+        f[hap] = f[hap][:at] + base + f[hap][at + 1 :]
     swapped, as_ref = set(), False
     if thin:
         hap, keep, as_ref = thin
@@ -172,6 +176,17 @@ def test_a_minority_germline_snp_reading_as_the_insertion_never_counts_alt(tmp_p
     as the insertion over a short read, never count ALT (develop counted them)."""
     _, calls = _counted(tmp_path, caplog, "vntr28b_snp_alone", ("h1", 0.15, True), seed)
     assert calls[("h1", "ALT")] == 0, dict(calls)
+
+
+def test_a_germline_haplotype_reading_as_the_alt_at_the_next_telling_base_never_counts_alt(
+    tmp_path, caplog
+):
+    """The SNP alone, its haplotype also carrying the shifted ALT's base at the next base
+    telling them apart (G900T): its reads never show the reference there, but they do at
+    the bases past it, so they are placed apart and carry the change; masked, the
+    haplotype's reads never count ALT (with no insertion in the sample)."""
+    counts, calls = _counted(tmp_path, caplog, "vntr28b_snp_alone", change=("h1", 900, "T"))
+    assert counts.ad == 0 and calls[("h1", "ALT")] == 0, dict(calls)
 
 
 @pytest.mark.parametrize("errors", [1, 2])

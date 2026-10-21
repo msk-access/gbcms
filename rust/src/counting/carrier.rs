@@ -2192,37 +2192,74 @@ fn placed_reads<'a>(
 }
 
 /// The fragments placed apart from the event that read `off`, and those showing `base`
-/// there: holding `off` and `tell` aligned with no length change between them, and the
-/// reference's base at `tell` (where an ALT read placed through the event would show
-/// its own), so no placement of the event shifts their base at `off`. One read per
-/// fragment; only reads overlapping the variant's guard window (`window`), which every
-/// bin's fetch holds, so the tally is the same in any bin geometry.
+/// there: among the bases where the reference and the ALT shifted onto reads written
+/// without its gap differ (`tells`, each with that ALT's base, all on one side of `off`),
+/// those they hold aligned with `off` (no length change between) show the reference's
+/// base more often than the shifted ALT's, so no placement of the event shifts their
+/// base at `off` (an ALT read placed through the event shows its own at them). One read
+/// per fragment; only reads overlapping the variant's guard window (`window`), which
+/// every bin's fetch holds, so the tally is the same in any bin geometry.
 fn read_apart(
     read_cache: &[Record],
     counted: &dyn Fn(&Record) -> bool,
     min_baseq: u8,
     (start, reference): (i64, &[u8]),
-    (off, tell, base): (usize, usize, u8),
+    (off, tells, base): (usize, &[(usize, u8)], u8),
     (w_start, w_end): (i64, i64),
 ) -> (u32, u32) {
-    let g = |o: usize| start + o as i64;
     let mut fragments = std::collections::HashSet::new();
     let (mut n, mut c) = (0, 0);
     let own = |r: &&Record| counted(r) && r.pos() < w_end && crate::shared::bam_utils::ref_end(r) > w_start;
     for record in read_cache.iter().filter(own) {
-        let (Some(qo), Some(qt)) = (find_read_pos(record, g(off)), find_read_pos(record, g(tell))) else { continue };
+        let Some((lo, hi, q_lo)) = ungapped_block(record, start + off as i64) else { continue };
         let (seq, quals) = (record.seq().as_bytes(), record.qual());
-        let aligned = qt as i64 - qo as i64 == tell as i64 - off as i64;
-        if !aligned || quals.len() < seq.len() || quals[qo] < min_baseq || quals[qt] < min_baseq {
+        let q = |o: usize| q_lo + (start + o as i64 - lo) as usize;
+        let read = |o: usize| quals.get(q(o)).is_some_and(|&x| x >= min_baseq);
+        if quals.len() < seq.len() || !read(off) {
             continue;
         }
-        if seq[qt].to_ascii_uppercase() != reference[tell] || !fragments.insert(record.qname()) {
+        let held = tells.iter().filter(|&&(o, _)| start + o as i64 >= lo && (start + o as i64) < hi && read(o));
+        let (on_ref, on_alt) = held.fold((0u32, 0u32), |(r, a), &(o, alt)| {
+            let b = seq[q(o)].to_ascii_uppercase();
+            (r + u32::from(b == reference[o]), a + u32::from(b == alt))
+        });
+        if on_ref <= on_alt || !fragments.insert(record.qname()) {
             continue;
         }
         n += 1;
-        c += u32::from(seq[qo].to_ascii_uppercase() == base);
+        c += u32::from(seq[q(off)].to_ascii_uppercase() == base);
     }
     (n, c)
+}
+
+/// The genome span `[lo, hi)` a read aligns around genome position `at` with no length
+/// change (no insertion, deletion, splice or clip inside it), and the query position of
+/// its first base. None where the read does not align `at`.
+fn ungapped_block(record: &Record, at: i64) -> Option<(i64, i64, usize)> {
+    let (mut g, mut q, mut block) = (record.pos(), 0usize, None::<(i64, usize)>);
+    let holds = |block: Option<(i64, usize)>, g: i64| block.filter(|&(s, _)| at >= s && at < g).map(|(s, sq)| (s, g, sq));
+    for op in record.cigar().iter() {
+        match *op {
+            Cigar::Match(l) | Cigar::Equal(l) | Cigar::Diff(l) => {
+                block = block.or(Some((g, q)));
+                g += l as i64;
+                q += l as usize;
+                continue;
+            }
+            Cigar::HardClip(_) | Cigar::Pad(_) => continue,
+            _ => {}
+        }
+        if let Some(found) = holds(block, g) {
+            return Some(found);
+        }
+        block = None;
+        match *op {
+            Cigar::Ins(l) | Cigar::SoftClip(l) => q += l as usize,
+            Cigar::Del(l) | Cigar::RefSkip(l) => g += l as i64,
+            _ => {}
+        }
+    }
+    holds(block, g)
 }
 
 /// What the fragments placed apart from the event tell of a change at a base where the
@@ -2668,9 +2705,15 @@ pub(crate) fn guard_for(
         if !most || !(background(side, i) || (shown > 0 && share(shown, of) > GUARD_APART_ERRORS)) {
             return None;
         }
-        let tells = |o: usize| alt_at(o).is_some_and(|b| b != wr[o]);
-        let tell = if side == 1 { (off + 1..wr.len()).find(|&o| tells(o)) } else { (0..off).rev().find(|&o| tells(o)) }?;
-        let (n, c) = read_apart(read_cache, counted, min_baseq, (*ws, wr), (off, tell, base), super::window::guard_window(v));
+        // the bases past it, away from the event, where the reference and that shifted
+        // ALT differ, with the ALT's base there
+        let tell = |o: usize| alt_at(o).filter(|&b| b != wr[o]).map(|b| (o, b));
+        let tells: Vec<(usize, u8)> =
+            if side == 1 { (off + 1..wr.len()).filter_map(tell).collect() } else { (0..off).filter_map(tell).collect() };
+        if tells.is_empty() {
+            return None;
+        }
+        let (n, c) = read_apart(read_cache, counted, min_baseq, (*ws, wr), (off, &tells, base), super::window::guard_window(v));
         carried_apart(n, c)
     };
     let mut shifted = Vec::new();
@@ -4381,6 +4424,24 @@ mod tests {
         assert_eq!(carried_apart(247, 3), Some(false), "three errors at depth");
         assert_eq!(carried_apart(2500, 60), Some(false), "a systematic error on 2.4% of them");
         assert_eq!(carried_apart(2500, 75), Some(true), "a haplotype on 3% of them");
+    }
+
+    #[test]
+    fn a_reads_ungapped_block_ends_at_its_indels_splices_and_clips() {
+        let read = |cigar: Vec<Cigar>| aligned(&[b'A'; 40], cigar, 100);
+        let ins = read(vec![Cigar::Match(10), Cigar::Ins(2), Cigar::Match(10), Cigar::SoftClip(18)]);
+        assert_eq!(ungapped_block(&ins, 105), Some((100, 110, 0)));
+        assert_eq!(ungapped_block(&ins, 112), Some((110, 120, 12)));
+        assert_eq!(ungapped_block(&ins, 99), None);
+        assert_eq!(ungapped_block(&ins, 120), None, "past the aligned bases");
+        let del = read(vec![Cigar::SoftClip(5), Cigar::Match(10), Cigar::Del(2), Cigar::Match(25)]);
+        assert_eq!(ungapped_block(&del, 105), Some((100, 110, 5)));
+        assert_eq!(ungapped_block(&del, 110), None, "a deleted base");
+        assert_eq!(ungapped_block(&del, 112), Some((112, 137, 15)));
+        let spliced = read(vec![Cigar::Match(10), Cigar::RefSkip(5), Cigar::Match(30)]);
+        assert_eq!(ungapped_block(&spliced, 116), Some((115, 145, 10)));
+        let split = read(vec![Cigar::Match(10), Cigar::Equal(10), Cigar::Diff(20)]);
+        assert_eq!(ungapped_block(&split, 125), Some((100, 140, 0)), "match ops of one kind or another, no gap");
     }
 
     #[test]
