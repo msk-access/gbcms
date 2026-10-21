@@ -245,10 +245,9 @@ const GUARD_APART_ERRORS: f64 = 0.01;
 /// one base (random ones give a particular base on a third of 1% at Q20; a systematic
 /// one, oxoG or a sequence context, may give a few percent at depth).
 const GUARD_APART_SHARE: f64 = 0.03;
-/// Carriers placed apart from which their pair orientations are weighed: a haplotype's
-/// carriers split under a fifth one way at most 2% of the time (at ten), under 1% from
-/// fifteen.
-const GUARD_ORIENTED_READS: u32 = 8;
+/// Chance below which the carriers' pair orientations, against the reads placed apart's
+/// own balance, are no haplotype's (read in both as the library is) but an artifact's.
+const GUARD_ORIENTATION_ALPHA: f64 = 1e-3;
 /// Share of the REF reads on which a change is no longer the ALT's alone.
 pub(crate) const GUARD_REF_SHARE: f64 = 0.05;
 /// Longest tandem-repeat unit the event is grown through (besides the length change).
@@ -575,8 +574,8 @@ fn tolerated(seq: &[u8], own: &Reading, other: &Reading, w: &Window, wo: &Window
 
 /// The substitution `own`'s one confident mismatch makes, keyed as [`tolerated`] keys
 /// one, whether or not the other allele's reading shares it: read on past the windows,
-/// [`judge`] forgives it where the other reading misses three or more and it recurs on
-/// no other fragment.
+/// [`judge`] forgives it there where the other reading misses three or more, the read
+/// writes the allele's length, and it recurs on no other fragment.
 fn forgiven(seq: &[u8], own: &Reading, w: &Window, side: u8) -> Option<Tolerated> {
     let &[q] = own.misses.as_slice() else { return None };
     let i = q as i64 - own.start;
@@ -963,19 +962,24 @@ fn judge(record: &Record, variant: &Variant, quals: &[u8], min_baseq: u8, rules:
                     None => read(&longer, on),
                 };
                 // Past the windows the alleles differ at most bases (the other allele is
-                // shifted by its length): one error the other allele's reading does not share
-                // is forgiven where that reading misses three or more and it is an error, a
-                // one-off (recurring, it is another allele's base, [`ERROR_RECURS_AT`]).
+                // shifted by its length): one error there the other allele's reading does not
+                // share is forgiven where that reading misses three or more, the read writes
+                // the allele's length (as within them), and it is an error, a one-off
+                // (recurring, it is another allele's base, [`ERROR_RECURS_AT`]). Within the
+                // windows only a shared error is tolerated: there one base may be all that
+                // tells another allele of the same length.
                 if let (Some((r, a, _)), Some((false, false))) = (&judged.0, judged.1) {
-                    let forgive = |own: &Reading, other: &Reading, w: &Window, side: u8| {
-                        (own.mismatches == 1 && other.mismatches >= 3)
+                    let forgive = |own: &Reading, other: &Reading, w: &Window, held: usize, side: u8| {
+                        let &[q] = own.misses.as_slice() else { return None };
+                        let past = usize::try_from(q as i64 - own.start).is_ok_and(|i| i >= held);
+                        (past && tolerate(side) && other.mismatches >= 3)
                             .then(|| forgiven(&seq, own, w, side))
                             .flatten()
                             .filter(|k| !rules.tolerance.is_some_and(|t| t.recurs(variant, min_baseq, rules, k)))
                     };
-                    if let Some(k) = forgive(r, a, &longer.pair.0, 0) {
+                    if let Some(k) = forgive(r, a, &longer.pair.0, win.pair.0.allele.len(), 0) {
                         (judged.1, past_error) = (Some((true, false)), Some(k));
-                    } else if let Some(k) = forgive(a, r, &longer.pair.1, 1) {
+                    } else if let Some(k) = forgive(a, r, &longer.pair.1, win.pair.1.allele.len(), 1) {
                         (judged.1, past_error) = (Some((false, true)), Some(k));
                     }
                 }
@@ -2313,15 +2317,17 @@ fn ungapped_block(record: &Record, at: i64) -> Option<(i64, i64, usize)> {
 /// ALT's own base would show shifted ([`read_apart`]: `n` read the base, `c` show the
 /// change; `f1r2` of the carriers and `n_f1r2` of all in the F1R2 pair orientation):
 /// carried on a haplotype of their own (`Some(true)`) where [`GUARD_MIN_READS`] and
-/// [`GUARD_APART_SHARE`] of them show it, and in both pair orientations where the reads
-/// are (a haplotype's molecules are read in either; an oxoG or FFPE artifact sits in one:
-/// from [`GUARD_ORIENTED_READS`] carriers on, where the lesser orientation holds a fifth
-/// of all the reads, it must hold a fifth of the carriers; an amplicon library, read in
-/// one orientation, weighs none); else the ALT's own base (`Some(false)`) where at least
-/// [`GUARD_APART_READS`] read it; None where too few read it to tell.
+/// [`GUARD_APART_SHARE`] of them show it, in the pair orientations the reads are read in
+/// (a haplotype's molecules are read in either; an oxoG or FFPE artifact sits in one: where
+/// a fifth of all the reads placed apart lie in each orientation, carriers split one way
+/// with a chance under [`GUARD_ORIENTATION_ALPHA`] against that balance are an artifact's;
+/// an amplicon library, read in one orientation, weighs none); else the ALT's own base
+/// (`Some(false)`) where at least [`GUARD_APART_READS`] read it; None where too few read it
+/// to tell.
 fn carried_apart(n: u32, c: u32, f1r2: u32, n_f1r2: u32) -> Option<bool> {
-    let both = n_f1r2.min(n - n_f1r2) >= (n / 5).max(1);
-    let one_sided = both && c >= GUARD_ORIENTED_READS && f1r2.min(c - f1r2) < (c / 5).max(1);
+    let both = n_f1r2.min(n - n_f1r2) * 5 >= n.max(1);
+    let p = n_f1r2 as f64 / n.max(1) as f64;
+    let one_sided = both && binomial_cdf(f1r2, c, p).min(binomial_cdf(c - f1r2, c, 1.0 - p)) < GUARD_ORIENTATION_ALPHA;
     if c >= GUARD_MIN_READS && share(c, n) >= GUARD_APART_SHARE && !one_sided {
         Some(true)
     } else if n >= GUARD_APART_READS {
@@ -2329,6 +2335,26 @@ fn carried_apart(n: u32, c: u32, f1r2: u32, n_f1r2: u32) -> Option<bool> {
     } else {
         None
     }
+}
+
+/// The chance of `x` or fewer successes in `n` trials at chance `p` each (summed in logs:
+/// no term overflows at any depth).
+fn binomial_cdf(x: u32, n: u32, p: f64) -> f64 {
+    if x >= n || p <= 0.0 {
+        return 1.0;
+    }
+    if p >= 1.0 {
+        return 0.0;
+    }
+    let (lp, lq) = (p.ln(), (1.0 - p).ln());
+    let (mut ln_c, mut sum) = (0.0f64, 0.0f64);
+    for k in 0..=x {
+        if k > 0 {
+            ln_c += ((n - k + 1) as f64).ln() - (k as f64).ln();
+        }
+        sum += (ln_c + k as f64 * lp + (n - k) as f64 * lq).exp();
+    }
+    sum.min(1.0)
 }
 
 /// A share, 0 of nothing.
@@ -2791,8 +2817,10 @@ pub(crate) fn guard_for(
             } else if background(side, i) || told == Some(true) || (own(side, i) && isolated(side, i)) {
                 masked.push(g(off));
             }
-            // carriers too few (or one-sided) for a haplotype, the change left unmasked
-            if let Some((_, n, c, r, b)) = found.filter(|f| f.2 > 0 && f.0 != Some(true) && !masked.contains(&g(off))) {
+            // carriers too few (or one-sided) for a haplotype, the change left unmasked:
+            // from two of them, above the errors' share (one is an error's)
+            let named = |f: &(Option<bool>, u32, u32, u8, u8)| f.2 >= 2 && share(f.2, f.1) > GUARD_APART_ERRORS;
+            if let Some((_, n, c, r, b)) = found.filter(|f| named(f) && f.0 != Some(true) && !masked.contains(&g(off))) {
                 if minority.is_none_or(|m| c > m.3) {
                     minority = Some((g(off), r, b, c, n));
                 }
@@ -4490,11 +4518,16 @@ mod tests {
         assert_eq!(carried_apart(2500, 60, 30, 1250), Some(false), "a systematic error on 2.4% of them");
         assert_eq!(carried_apart(2500, 75, 37, 1250), Some(true), "a haplotype on 3% of them");
         assert_eq!(carried_apart(2500, 75, 75, 1250), Some(false), "all in one pair orientation: an artifact");
-        assert_eq!(carried_apart(2500, 75, 14, 1250), Some(false), "under a fifth one way");
-        assert_eq!(carried_apart(2500, 75, 15, 1250), Some(true), "a fifth one way");
-        assert_eq!(carried_apart(73, 7, 7, 36), Some(true), "under eight carriers, orientation unweighed");
+        assert_eq!(carried_apart(2500, 75, 15, 1250), Some(false), "a fifth one way: too unlikely for a haplotype");
+        assert_eq!(carried_apart(2500, 75, 30, 1250), Some(true), "two fifths one way: a haplotype's chance");
+        assert_eq!(carried_apart(78, 8, 8, 39), Some(true), "eight carriers all one way: a haplotype's chance (0.4%)");
+        assert_eq!(carried_apart(200, 12, 12, 100), Some(false), "twelve all one way: an artifact (0.02%)");
         assert_eq!(carried_apart(2500, 75, 75, 2500), Some(true), "an amplicon library, read in one orientation: unweighed");
         assert_eq!(carried_apart(2500, 75, 75, 2400), Some(true), "under a fifth of all the reads the other way");
+        assert!((binomial_cdf(0, 10, 0.5) - 0.000977).abs() < 1e-6);
+        assert!((binomial_cdf(5, 10, 0.5) - 0.623047).abs() < 1e-6);
+        assert_eq!(binomial_cdf(10, 10, 0.3), 1.0);
+        assert!(binomial_cdf(3, 5000, 0.5) < 1e-300, "deep: no term overflows");
     }
 
     #[test]

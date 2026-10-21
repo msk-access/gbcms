@@ -212,8 +212,10 @@ def test_an_error_at_the_shifted_base_leaves_the_insertion_counted(tmp_path, cap
         tmp_path, caplog, "vntr28b_ins_alone", error=("h2", 829, 900, "C", errors)
     )
     assert (counts.rd, counts.ad) == (27, 34)
-    # unmasked though carried: named (POSSIBLE_MINORITY_HAPLOTYPE), the counts unchanged
-    assert counts.possible_minority.startswith(f"830:T>C:{errors}/"), counts.possible_minority
+    # unmasked though carried: named from two carriers (POSSIBLE_MINORITY_HAPLOTYPE; one
+    # is an error's), the counts unchanged
+    named = counts.possible_minority.startswith(f"830:T>C:{errors}/")
+    assert named == (errors >= 2), counts.possible_minority
 
 
 def test_a_germline_snp_in_a_one_orientation_library_never_counts_alt(tmp_path, caplog):
@@ -224,15 +226,17 @@ def test_a_germline_snp_in_a_one_orientation_library_never_counts_alt(tmp_path, 
     assert counts.ad == 0 and calls[("h1", "ALT")] == 0, dict(calls)
 
 
-@pytest.mark.parametrize("artifacts", [8, 12])
+@pytest.mark.parametrize("artifacts", [12, 20])
 def test_an_artifact_in_one_pair_orientation_leaves_the_insertion_counted(
     tmp_path, caplog, artifacts
 ):
-    """The insertion alone, with 8 or 12 REF reads placed apart giving the shifted ALT
+    """The insertion alone, with 12 or 20 REF reads placed apart giving the shifted ALT
     base, all of one pair orientation (an oxoG or FFPE artifact sits in one): over 3% of
-    the reads placed apart, but a haplotype's molecules are read in both orientations, so
-    it is no haplotype's change, stays the ALT's own base, and the insertion's reads count
-    ALT as without it."""
+    the reads placed apart, but a haplotype's molecules are read in both orientations, and
+    so many carriers falling one way is too unlikely for a haplotype's (under 0.1% against
+    the library's balance): no haplotype's change, it stays the ALT's own base, and the
+    insertion's reads count ALT as without it. Eight carriers all one way are a
+    haplotype's chance (0.4%), so they are masked."""
     error = ("h2", 829, 900, "C", artifacts, "F1R2")
     counts, _ = _counted(tmp_path, caplog, "vntr28b_ins_alone", error=error)
     assert (counts.rd, counts.ad) == (27, 34)
@@ -373,6 +377,67 @@ def test_an_error_both_readings_share_spends_no_tolerance_past_the_windows(tmp_p
     (counts,) = count_checked(bam, [pv.variant])
     assert (counts.rd, counts.ad) == (21, 20)
     assert counts.n_count == 0, "the error read as unread is no N of the read's"
+
+
+def test_one_read_of_another_insertion_of_the_alts_length_is_not_alt(tmp_path):
+    """+CA in (CA)6, beside 12 REF and 12 ALT reads, one read of another 2-bp insertion
+    (its seventh unit reads CC), every base Q30, written with its gap: its one mismatch from
+    the ALT lies inside the event, where only an error both readings share is tolerated
+    (2026-10-15). It is another allele (partial evidence), never the ALT, however few
+    fragments carry it: one error forgiven is one past the windows (2026-10-21)."""
+    rng = __import__("random").Random(11)
+    left = "".join(rng.choice("ACGT") for _ in range(300))[:-1] + "G"
+    right = "T" + "".join(rng.choice("ACGT") for _ in range(300))[1:]
+    contig = left + "CA" * 6 + right
+    p = len(left)
+    alt = contig[:p] + "CA" + contig[p:]
+    other = contig[: p + 12] + "CC" + contig[p + 12 :]
+    reads = []
+    for i in range(12):
+        s = p - 100 + 3 * i
+        reads.append(make_read(f"ref{i}", contig[s : s + 151], s, ((0, 151),)))
+        reads.append(
+            make_read(f"alt{i}", alt[s : s + 151], s, ((0, p - s), (1, 2), (0, 149 - (p - s))))
+        )
+    s = p - 60
+    reads.append(make_read("other", other[s : s + 151], s, ((0, 72), (1, 2), (0, 77))))
+    fa, bam = write_contig(tmp_path, contig, reads, "c")
+    (pv,) = _rs.prepare_variants(
+        [_rs.Variant("1", p - 1, "G", "GCA", "INS")], fa, 5, False, 1, True
+    )
+    (counts,) = count_checked(bam, [pv.variant])
+    assert (counts.rd, counts.ad, counts.partial_alt) == (12, 12, 1)
+
+
+def test_a_ref_read_with_its_own_deletion_past_the_run_is_not_alt(tmp_path):
+    """A 1-bp deletion in an A10 run, beside 20 REF and 20 ALT reads; a REF read whose
+    last A is misread (both readings miss it, so it is read on) and which carries its own
+    1-bp deletion of the second base past the run, written without its gap. Past the
+    windows its bases are shifted one base, as the ALT's are, and miss the ALT at one base
+    alone; but the read writes no length change, and an allele forgives an error only
+    where the read writes its length (2026-10-15): it is no ALT."""
+    rng = __import__("random").Random(3)
+    left = "".join(rng.choice("ACGT") for _ in range(300))[:-1] + "G"
+    right = "C" + "".join(rng.choice("ACGT") for _ in range(299))
+    contig = left + "A" * 10 + right
+    p = len(left)  # the run's first A
+    assert contig[p + 10] != contig[p + 11], "the ALT misses the read at one base past the run"
+    alt = contig[:p] + contig[p + 1 :]
+    reads = []
+    for i in range(20):
+        s = p - 100 + i
+        reads.append(make_read(f"ref{i}", contig[s : s + 151], s, ((0, 151),)))
+        k = p - s
+        reads.append(make_read(f"alt{i}", alt[s : s + 150], s, ((0, k), (2, 1), (0, 150 - k))))
+    s = p - 60
+    own = contig[: p + 11] + contig[p + 12 :]  # its own deletion of the second base past the run
+    seq = list(own[s : s + 151])
+    seq[p + 9 - s] = "T"
+    reads.append(make_read("own_del", "".join(seq), s, ((0, 151),)))
+    fa, bam = write_contig(tmp_path, contig, reads, "c")
+    (pv,) = _rs.prepare_variants([_rs.Variant("1", p - 1, "GA", "G", "DEL")], fa, 5, False, 1, True)
+    (counts,) = count_checked(bam, [pv.variant])
+    assert counts.ad == 20
 
 
 logging.getLogger(ENGINE_LOGGER)  # the logger the per-read trace comes through
