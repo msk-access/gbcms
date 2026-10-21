@@ -26,6 +26,7 @@ import json
 import logging
 import random
 import re
+import zlib
 from pathlib import Path
 
 import pysam
@@ -50,9 +51,10 @@ def _counted(tmp_path, caplog, name, thin=None, seed=0, error=None, change=None)
     other), from one call. `thin` (haplotype, share kept, whether the rest read as the
     reference) keeps that haplotype on a share of its fragments (drawn with `seed`), the
     others read as the reference (a third haplotype of its length, tallied as `ref`) or
-    dropped. `error` (haplotype, genome base, a later base, the base read, reads) gives that
-    many of the haplotype's reads holding both bases with no length change between them a
-    confident error at the first. `change` (haplotype, base, the base it reads) gives that
+    dropped. `error` (haplotype, genome base, a later base, the base read, reads[, F1R2
+    only]) gives that many of the haplotype's reads holding both bases with no length
+    change between them (of one pair orientation, read 1 forward or read 2 reverse, if so
+    asked) a confident error at the first. `change` (haplotype, base, the base it reads) gives that
     haplotype another change, its reads placed where they were."""
     f = dict(FIXTURE[name])
     if change:
@@ -79,11 +81,14 @@ def _counted(tmp_path, caplog, name, thin=None, seed=0, error=None, change=None)
                 continue
             if qname in swapped:
                 qname, hap = "ref" + qname[2:], "ref"
+            if zlib.crc32(qname[qname.index("_") :].encode()) & 1:
+                flag ^= 0xC0  # half the fragments the other pair orientation, as a library holds
             a = pysam.AlignedSegment()
             a.query_name, a.flag, a.reference_id, a.reference_start = qname, flag, 0, pos
             a.cigarstring, a.mapping_quality = cigar, mapq
             a.query_sequence = seq = f[hap][off : off + length]
-            if error and hap == error[0] and erred < error[4]:
+            f1r2 = bool(a.flag & 0x10) == bool(a.flag & 0x80)
+            if error and hap == error[0] and erred < error[4] and (len(error) < 6 or f1r2):
                 at, tell, base = error[1], error[2], error[3]
                 q = {r: q for q, r in a.get_aligned_pairs(matches_only=True)}
                 if at in q and tell in q and q[tell] - q[at] == tell - at and seq[q[at]] != base:
@@ -203,6 +208,20 @@ def test_an_error_at_the_shifted_base_leaves_the_insertion_counted(tmp_path, cap
     assert (counts.rd, counts.ad) == (27, 34)
 
 
+@pytest.mark.parametrize("artifacts", [8, 12])
+def test_an_artifact_in_one_pair_orientation_leaves_the_insertion_counted(
+    tmp_path, caplog, artifacts
+):
+    """The insertion alone, with 8 or 12 REF reads placed apart giving the shifted ALT
+    base, all of one pair orientation (an oxoG or FFPE artifact sits in one): over 3% of
+    the reads placed apart, but a haplotype's molecules are read in both orientations, so
+    it is no haplotype's change, stays the ALT's own base, and the insertion's reads count
+    ALT as without it."""
+    error = ("h2", 829, 900, "C", artifacts, "F1R2")
+    counts, _ = _counted(tmp_path, caplog, "vntr28b_ins_alone", error=error)
+    assert (counts.rd, counts.ad) == (27, 34)
+
+
 @pytest.mark.parametrize(
     "name",
     [
@@ -305,27 +324,15 @@ def test_an_error_both_readings_share_decides_nothing(tmp_path):
     assert (counts.rd, counts.ad) == (4, 0)
 
 
-# Read on past the windows, an allele tolerates one error the other's reading shares
-# (operator, 2026-10-15); one giving the other allele's base there, shifted by the
-# deletion, is a base telling the alleles apart, though every other base there fits REF.
-UNSHARED_PAST = (
-    "an error past the windows giving the other allele's base: tolerance there is to decide"
-)
-
-
-@pytest.mark.parametrize(
-    "second",
-    [
-        pytest.param(5, marks=pytest.mark.xfail(strict=True, reason=UNSHARED_PAST)),
-        pytest.param(20, marks=pytest.mark.xfail(strict=True, reason=UNSHARED_PAST)),
-        40,
-    ],
-)
+@pytest.mark.parametrize("second", [5, 20, 40])
 def test_an_error_both_readings_share_spends_no_tolerance_past_the_windows(tmp_path, second):
     """A REF read of a 1-bp deletion in an A10 run, its last A misread as T (both readings
     miss it alone) and one more error `second` bases past the run: read on past the
     windows with the shared error unread, its bases there fit REF but for that one error,
-    so it counts REF as the twenty clean REF reads do."""
+    so it counts REF as the twenty clean REF reads do. At 5 and 20 bases the error gives
+    the ALT's base there (the ALT shifted by its length): past the windows one error the
+    other allele's reading does not share is forgiven where that reading misses three or
+    more (2026-10-21)."""
     rng = __import__("random").Random(3)
     left = "".join(rng.choice("ACGT") for _ in range(300))[:-1] + "G"
     right = "C" + "".join(rng.choice("ACGT") for _ in range(299))
