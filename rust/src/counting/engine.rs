@@ -1689,7 +1689,7 @@ fn count_variant_from_cache(
         // read still counts toward DP/DPF and is recorded as
         // partial_alt/any_alt below.
         let claimed_by_sibling = sibling_claims_alt(
-            record, variant, &result, sibling_variants, effective_quals, min_baseq,
+            record, variant, &result, sibling_variants, effective_quals, min_baseq, rules,
         );
         let is_alt = result.is_alt && !claimed_by_sibling;
         // ── MULTI-ALLELIC REF GUARD: a REF read that is ALT for a sibling
@@ -2223,7 +2223,12 @@ fn sibling_claims_ref<F: Fn(u8, u8) -> i32>(
 ///    variant's genomic context, the read's reconstruction must explain
 ///    strictly better with the row's ALT haplotype than its REF haplotype
 ///    (Levenshtein). A read carrying only an event in the flanks ties or
-///    favors REF → demote.
+///    favors REF → demote. Not for an exact-carrier call: its bases already
+///    weighed REF against ALT wherever the read could lie, and the aligned
+///    slice of a carrier written a unit off reads as REF. Its contest with
+///    the siblings is judged by its bases placed whole
+///    ([`carrier::sibling_by_bases`]); Tests 2 and 3 only where no allele
+///    places it.
 /// 2. **Probabilistic pure indel** (unannotated ladders): an
 ///    Alignment-phase (Phase 3) ALT on a *pure* indel row carries no
 ///    matching structural op at any position — in a contested tract that
@@ -2247,12 +2252,22 @@ fn sibling_claims_alt(
     sibling_variants: &[Variant],
     quals: &[u8],
     min_baseq: u8,
+    rules: &carrier::ReadRules,
 ) -> bool {
     if !result.is_alt || sibling_variants.is_empty() {
         return false;
     }
     if result.phase == ClassifyPhase::Structural {
         return false;
+    }
+    // The exact-carrier rule weighed REF against ALT by the read's bases wherever it could
+    // lie: the sibling contest is judged by its bases too, and the aligned REF test (Test
+    // 1) is not run for it. A read no allele places whole is left to Tests 2 and 3.
+    let by_bases = result.carrier_judged;
+    if by_bases {
+        if let Some(claimed) = carrier::sibling_by_bases(record, variant, sibling_variants, quals, min_baseq, rules) {
+            return claimed;
+        }
     }
 
     let read_lo = record.pos();
@@ -2275,7 +2290,7 @@ fn sibling_claims_alt(
     mask_low_qual(&mut recon.seq, &recon_quals, min_baseq);
     let cost_alt = levenshtein(&recon.seq, &alt_hap);
     let cost_ref = levenshtein(&recon.seq, &ref_hap);
-    if cost_alt >= cost_ref {
+    if !by_bases && cost_alt >= cost_ref {
         trace!(
             "AD-claiming guard: read={} ALT for {}>{} at {}:{} not favored over REF \
              (ALT cost {} vs REF cost {}) — partial_alt, not ad",
@@ -3120,7 +3135,7 @@ fn count_per_transcript(
             // fragment evidence.
             // Both still count tx_dp.
             let claimed_by_sibling = sibling_claims_alt(
-                record, variant, &result, sibling_variants, effective_quals, min_baseq,
+                record, variant, &result, sibling_variants, effective_quals, min_baseq, rules,
             );
             let is_alt = result.is_alt && !claimed_by_sibling;
             let is_ref = result.is_ref

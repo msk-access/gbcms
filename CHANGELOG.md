@@ -7,6 +7,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed — a co-annotated sibling contests an exact-carrier ALT read by its bases (#300)
+
+- The AD-claiming sibling guard re-tested every non-anchor ALT call against REF on the
+  read's aligned slice of the variant's context, whenever a sibling was listed. An
+  exact-carrier call had already weighed REF against ALT by its bases wherever the read
+  could lie; where the aligner wrote carriers a unit off (a VNTR) that slice read as REF
+  and every carrier was demoted. Listing a sibling zeroed the row's AD, even with no
+  read of the sibling.
+- Such a read is now placed whole on this row's ALT and each sibling's: the sibling
+  claims it where it fits with as few confident mismatches or fewer (a tie is neither
+  row's AD, partial evidence at both); a read placed on no allele keeps the aligned
+  tests; other calls keep the guard as it was (operator, 2026-10-22).
+- Measured against #294's final build:
+  - Synthetic same-site 40-bp VNTR compound hets, BWA-placed: AD 0/0 to each row's
+    count alone (41/48).
+  - HG002 (public): 6 insertion rows gain 41 AD (a VNTR compound het 0/0 to 6/6). On
+    250 compound hets (500 rows) the summed distance of AD from a per-read oracle falls
+    from 1127 to 831; reads counted ALT at both rows of a site from 17 to 5, and
+    other-allele reads counted ALT from 13 to 0.
+  - Local arms (aggregates): IMPACT panel 11 rows, AD −267; the gate set 41 rows, AD
+    −232; ACCESS 1 row, AD +1; WES and FORTE unchanged. Against every allele of the
+    cluster (an independent BWA check of REF, the row's ALT and each sibling's ALT), 556
+    of the ALT calls removed were a sibling's molecules or ties counted at both rows; 51
+    of the calls gained are the row's, 17 are not; 126 changed calls stay unresolved.
+
 ### Changed — reads of repeats whose telling base the guard masks, and reads placed a unit off (#294)
 
 - **The problem.** In a repeat whose units differ at single bases, the guard can mask
