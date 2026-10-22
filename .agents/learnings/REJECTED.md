@@ -206,6 +206,12 @@ Newest at the top.
   not a code change. (HI-4 clamp and ME-5 `prob_emit_y=1.0` were the real fixes in the
   bundle.)
 - **Date:** 2026-06-27
+- **Amended 2026-10-22 (operator):** the premise was measured on a flankless G run, through
+  a helper scoring with the read's end gaps free (the PairHMM's orientation then). With
+  flank bases, as prep's contexts have, an N at the deleted base of a REF-length read leans
+  REF by its length (LLR about -7.1, before and after the read was aligned whole): a base
+  the deletion has none of. That stands; the veto stands (stripping the N gives +8.6, ALT).
+  The test now asserts both on the production path.
 
 ## [REJ-20260626-001] Adopt the infra-bound harness layers now (agents, fleet, second brain, multi-provider, crons)
 - **Target:** the harness as a whole (`docs/harness/00-plan.md`)

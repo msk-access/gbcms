@@ -854,33 +854,36 @@ mod tests {
         );
     }
 
-    /// Helper: marginalized LLR (alt − ref) of a read against a REF/ALT haplotype pair.
+    /// Helper: marginalized LLR (alt − ref) of a read against a REF/ALT haplotype pair,
+    /// the read aligned whole as `classify_by_marginalized_pairhmm` aligns it.
     fn marginalized_llr(read: &[u8], quals: &[u8], ref_hap: &[u8], alt_hap: &[u8]) -> f64 {
         let gap = ConfigurableGapParams::standard(1e-4, 0.1);
         let mut hmm = PairHMM::new(&gap);
         let lr = *hmm.prob_related(
-            &BQEmission { read_seq: read, read_quals: quals, haplotype: ref_hap },
+            &ReadInHaplotype(BQEmission { read_seq: read, read_quals: quals, haplotype: ref_hap }),
             &SemiglobalMode, None);
         let la = *hmm.prob_related(
-            &BQEmission { read_seq: read, read_quals: quals, haplotype: alt_hap },
+            &ReadInHaplotype(BQEmission { read_seq: read, read_quals: quals, haplotype: alt_hap }),
             &SemiglobalMode, None);
         la - lr
     }
 
     #[test]
-    fn test_n_base_neutral_at_snp_and_indel() {
-        // An N at a discriminating locus carries no allele evidence, so it must not
-        // drive a confident call. For a SNP the 0.25 emission cancels exactly under
-        // both haplotypes (LLR == 0). For a deletion the marginalized forward sum
-        // leaves only a small residual (~0.4), far below the decision threshold (2.3),
-        // so the read stays ambiguous. NOTE: stripping the N instead would make the
-        // read mimic the deletion haplotype and over-call ALT (LLR ≈ 8.3) — see
-        // REJECTED.md; this test guards against that "fix".
+    fn test_n_base_neutral_at_snp_but_its_base_counts_at_a_deletion() {
+        // An N carries no base, so at a SNP the 0.25 emission cancels exactly under both
+        // haplotypes (LLR == 0). At a deletion it is still a base the read holds where the
+        // deleted allele has none: a read of REF's length with an N at the deleted base
+        // leans REF by its length (about -7), flanked as prep's contexts are. Stripping
+        // the N instead makes the read the deletion's and over-calls ALT (about +8.6;
+        // REJECTED.md REJ-20260627-001). Operator, 2026-10-22: the length counts.
         let snp = marginalized_llr(b"GGGGNCGGGG", &[35; 10], b"GGGGACGGGG", b"GGGGTCGGGG");
         assert!(snp.abs() < 1e-9, "N at a SNP locus must be exactly neutral, got {snp}");
 
-        let del = marginalized_llr(b"GGGGNGGGG", &[35; 9], b"GGGGCGGGG", b"GGGGGGGG");
-        assert!(del.abs() < 1.0, "N at a deletion locus must stay near-neutral, got {del}");
+        let (ref_hap, alt_hap) = (b"GATCAGGGGCGGGGTTGAC", b"GATCAGGGGGGGGTTGAC");
+        let del = marginalized_llr(b"GATCAGGGGNGGGGTTGAC", &[35; 19], ref_hap, alt_hap);
+        assert!(del < -2.3, "N at the deleted base of a REF-length read leans REF by length, got {del}");
+        let stripped = marginalized_llr(b"GATCAGGGGGGGGTTGAC", &[35; 18], ref_hap, alt_hap);
+        assert!(stripped > 2.3, "the N stripped, the read is the deletion's, got {stripped}");
     }
 
     #[test]
