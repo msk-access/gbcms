@@ -1059,11 +1059,11 @@ fn judge(record: &Record, variant: &Variant, quals: &[u8], min_baseq: u8, rules:
     // confident bases than the called allele does: otherwise depth only.
     if let (true, None, Some(w), Some((r, a))) = (past_windows, whole, haps, held) {
         let (first, after) = readable;
-        let fewest = |h: &[u8]| Some(fewest_anywhere(h, seq.get(first..after)?, quals.get(first..after)?, min_baseq)).flatten();
-        let (called, other) = if a { (fewest(&w.hap), fewest(&w.reference)) } else { (fewest(&w.reference), fewest(&w.hap)) };
-        if r != a && other.is_some_and(|o| o < WHOLE_CAP && called.is_some_and(|c| o <= c)) {
-            trace!("carrier: decided past the windows, but read whole its bases fit {} as well placed elsewhere → depth only", if a { "REF" } else { "the ALT" });
-            held = None;
+        if let (true, Some(read), Some(q)) = (r != a, seq.get(first..after), quals.get(first..after)) {
+            if other_fits_as_well(w, read, q, min_baseq, a) {
+                trace!("carrier: decided past the windows, but read whole its bases fit {} as well placed elsewhere → depth only", if a { "REF" } else { "the ALT" });
+                held = None;
+            }
         }
     }
 
@@ -3475,6 +3475,8 @@ pub(crate) struct WholeHaps {
     start: i64,
     /// The reference as fetched: a read's changes from it ([`aligned_changes`]).
     plain: Vec<u8>,
+    /// The ALT spelled on the reference as fetched, no mask laid.
+    plain_hap: Vec<u8>,
     /// REF and the ALT, the guard's masks laid as the windows lay them.
     reference: Vec<u8>,
     hap: Vec<u8>,
@@ -3546,7 +3548,8 @@ fn whole_haps(v: &Variant, layout: &Layout) -> Option<WholeHaps> {
     };
     let (others, ref_others) = (kept(&layout.others, &hap), kept(&layout.ref_others, &reference));
     let key = (v.pos, v.ref_allele.clone(), v.alt_allele.clone());
-    Some(WholeHaps { key, start, plain, reference, hap, open_ref, open_hap, lo, hi, alt_hi, others, ref_others })
+    let plain_hap = ev.hap;
+    Some(WholeHaps { key, start, plain, plain_hap, reference, hap, open_ref, open_hap, lo, hi, alt_hi, others, ref_others })
 }
 
 /// The read's confident changes from the reference over its aligned bases inside the
@@ -3587,6 +3590,18 @@ fn aligned_changes(record: &Record, seq: &[u8], quals: &[u8], min_baseq: u8, w: 
 /// Mismatches counted per placement when a read is read whole: only none, one, or
 /// more decide ([`whole_fit`]).
 const WHOLE_CAP: usize = 2;
+
+/// Whether the other allele (REF where the call is the ALT's) fits a read decided past the
+/// windows as well as the called allele does, the whole read placed ungapped anywhere on
+/// each as the reference spells it: it misses at most one confident base and no more than
+/// the called allele. No mask is laid: a base the guard masks beside the event may be the
+/// other allele's own, shifted onto the reads written through it (a run's junction), and
+/// would let that allele fit them.
+fn other_fits_as_well(w: &WholeHaps, read: &[u8], q: &[u8], min_baseq: u8, alt: bool) -> bool {
+    let fewest = |h: &[u8]| fewest_anywhere(h, read, q, min_baseq);
+    let (called, other) = if alt { (fewest(&w.plain_hap), fewest(&w.plain)) } else { (fewest(&w.plain), fewest(&w.plain_hap)) };
+    other.is_some_and(|o| o < WHOLE_CAP && called.is_some_and(|c| o <= c))
+}
 
 /// The fewest confident mismatches (at or above `min_baseq`, not N; up to [`WHOLE_CAP`])
 /// of a read's bases placed ungapped anywhere on a haplotype, the whole read on it. None
@@ -4650,5 +4665,27 @@ mod tests {
         masked[4] = IUPAC[(bit(b'T') | bit(unit.as_bytes()[4])) as usize];
         assert_eq!(fewest_anywhere(&masked, &read, &q, 20), Some(0), "a mask takes either base");
         assert_eq!(fewest_anywhere(&hap[..20], &read, &q, 20), None, "a read longer than the haplotype");
+    }
+
+    #[test]
+    fn a_carrier_written_through_a_masked_junction_keeps_its_call() {
+        // a TC run meeting an AT run, two TC units inserted at the run's end: a carrier
+        // written through without its gap shows TC where REF turns to AT, changes the
+        // guard masks beside the event (the ALT's own bases shifted onto such reads)
+        let (left, right) = ("GATCAGTTCAGGACTTAGCAGGTCA", "GCCTTAGGACCATGA");
+        let (tc, at) = ("TC".repeat(6), "AT".repeat(8));
+        let ctx = format!("{left}{tc}{at}{right}");
+        let anchor = left.len() + tc.len() - 1;
+        let v = var(&ctx, anchor as i64, "C", "CTCTC");
+        let junction: Vec<i64> = (0..4).map(|k| (anchor + 1 + k) as i64).collect();
+        let w = whole_haps(&v, &Layout { masked: junction, ..Layout::default() }).expect("alleles");
+        let alt = format!("{left}{}{at}{right}", "TC".repeat(8));
+        let carrier = &alt[5..left.len() + 16 + 10];
+        let q = vec![30u8; carrier.len()];
+        assert!(!other_fits_as_well(&w, carrier.as_bytes(), &q, 20, true), "REF misses the junction's bases");
+        // a read lying wholly in the runs fits either allele placed a unit over
+        let inside = &ctx[left.len()..left.len() + 12 + 8];
+        let q = vec![30u8; inside.len()];
+        assert!(other_fits_as_well(&w, inside.as_bytes(), &q, 20, false), "either allele: depth only");
     }
 }
