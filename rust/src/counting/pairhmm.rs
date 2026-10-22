@@ -260,22 +260,50 @@ pub fn dynamic_gap_extend(repeat_span: usize, p_base: f64, p_max: f64) -> f64 {
 }
 
 
-/// Semiglobal alignment mode for read-vs-haplotype comparison.
-///
-/// Allows free start/end gaps in x (the read) so the haplotype can
-/// be "slid" along — matching the SW semiglobal behavior where the
-/// read is the pattern and the haplotype is the text.
+/// Semiglobal alignment mode for read-vs-haplotype comparison: free start and end gaps
+/// in x. The library's alignment may start and end anywhere in x and must use y whole,
+/// so x is the haplotype (the text) and y the read (the pattern), as Smith-Waterman's
+/// semiglobal mode aligns them ([`ReadInHaplotype`]).
 pub struct SemiglobalMode;
 
 impl StartEndGapParameters for SemiglobalMode {
-    /// Allow free start gaps in x (read can begin anywhere in haplotype).
+    /// The alignment may start anywhere in x (the haplotype).
     fn free_start_gap_x(&self) -> bool {
         true
     }
 
-    /// Allow free end gaps in x (read can end anywhere in haplotype).
+    /// The alignment may end anywhere in x (the haplotype).
     fn free_end_gap_x(&self) -> bool {
         true
+    }
+}
+
+/// [`BQEmission`] with the read as the library's y, aligned whole, and the haplotype as
+/// its x, free at both ends under [`SemiglobalMode`]: every read base is explained, and
+/// haplotype bases the read does not reach cost nothing.
+pub struct ReadInHaplotype<'a>(pub BQEmission<'a>);
+
+impl EmissionParameters for ReadInHaplotype<'_> {
+    fn prob_emit_xy(&self, i: usize, j: usize) -> XYEmission {
+        self.0.prob_emit_xy(j, i)
+    }
+
+    /// A haplotype base the read skips (a deletion in the read).
+    fn prob_emit_x(&self, i: usize) -> LogProb {
+        self.0.prob_emit_y(i)
+    }
+
+    /// A read base no haplotype base takes (an insertion in the read).
+    fn prob_emit_y(&self, j: usize) -> LogProb {
+        self.0.prob_emit_x(j)
+    }
+
+    fn len_x(&self) -> usize {
+        self.0.len_y()
+    }
+
+    fn len_y(&self) -> usize {
+        self.0.len_x()
     }
 }
 
@@ -344,7 +372,7 @@ pub fn classify_by_pairhmm(
         read_quals,
         haplotype: &alt_hap,
     };
-    let ll_alt = pairhmm.prob_related(&emission_alt, &SemiglobalMode, None);
+    let ll_alt = pairhmm.prob_related(&ReadInHaplotype(emission_alt), &SemiglobalMode, None);
 
     // Compute log-likelihood under REF haplotype
     let emission_ref = BQEmission {
@@ -352,7 +380,7 @@ pub fn classify_by_pairhmm(
         read_quals,
         haplotype: &ref_hap,
     };
-    let ll_ref = pairhmm.prob_related(&emission_ref, &SemiglobalMode, None);
+    let ll_ref = pairhmm.prob_related(&ReadInHaplotype(emission_ref), &SemiglobalMode, None);
 
     // Log-likelihood ratio: positive favors ALT, negative favors REF
     let llr = *ll_alt - *ll_ref;
@@ -459,7 +487,7 @@ pub fn classify_by_marginalized_pairhmm(
             read_quals: adjusted_quals,
             haplotype,
         };
-        let ll = pairhmm.prob_related(&emission, &SemiglobalMode, None);
+        let ll = pairhmm.prob_related(&ReadInHaplotype(emission), &SemiglobalMode, None);
 
         trace!(
             "marginalized_pairhmm: hap[{}] ({}) ll={:.3} len={}",
@@ -889,5 +917,86 @@ mod tests {
             !r.is_alt || r.is_ref,
             "N at variant position should NOT be classified as confident ALT"
         );
+    }
+
+    // ── Reads whose window does not hold every base of an allele ─────────────────────
+    // A read's window is its bases over the variant's reference context, the span the
+    // haplotypes cover; a read may end inside it, or carry another allele's bases past
+    // the reference it was written on. The read is aligned whole and a haplotype's bases
+    // the read does not reach cost nothing, so neither allele gains by its length.
+
+    const LEFT: &str = "GATCA";
+    const RIGHT: &str = "TTGAC";
+    const INS10: &str = "AGGTCCATGA";
+    const INS30: &str = "AGGTCCATGATTCGGACTAGCATTGCAACG";
+
+    /// The marginalized call for `window` against a variant's own haplotypes.
+    fn called(variant: &Variant, window: &str) -> ClassifyResult {
+        let matrix = super::super::pangenome::build_haplotype_matrix(variant, &[]).expect("haplotypes");
+        let quals = vec![35u8; window.len()];
+        let gap = ConfigurableGapParams::standard(1e-4, 0.1);
+        classify_by_marginalized_pairhmm(window.as_bytes(), &quals, &matrix, 20, &gap, 2.3)
+    }
+
+    /// An insertion after the anchor C, its context five bases each side.
+    fn insertion(ins: &str) -> Variant {
+        make_variant(5, "C", &format!("C{ins}"), &format!("{LEFT}C{RIGHT}"), 0)
+    }
+
+    #[test]
+    fn a_read_ending_at_an_insertions_anchor_is_neither() {
+        let r = called(&insertion(INS10), &format!("{LEFT}C"));
+        assert!(!r.is_ref && !r.is_alt, "it shows neither allele: ref={} alt={}", r.is_ref, r.is_alt);
+    }
+
+    #[test]
+    fn a_read_clipped_four_bases_into_an_insertion_counts_alt() {
+        let r = called(&insertion(INS10), &format!("{LEFT}C{}", &INS10[..4]));
+        assert!(r.is_alt && !r.is_ref, "its clipped bases are the insertion's: ref={} alt={}", r.is_ref, r.is_alt);
+    }
+
+    #[test]
+    fn a_long_insertion_written_through_counts_alt() {
+        // written on the reference without its gap: its window holds the insertion's first
+        // five bases where REF has its right flank
+        let r = called(&insertion(INS30), &format!("{LEFT}C{}", &INS30[..5]));
+        assert!(r.is_alt && !r.is_ref, "ref={} alt={}", r.is_ref, r.is_alt);
+    }
+
+    #[test]
+    fn a_read_holding_an_insertion_and_a_ref_read_keep_their_calls() {
+        let alt = called(&insertion(INS10), &format!("{LEFT}C{INS10}{RIGHT}"));
+        assert!(alt.is_alt && !alt.is_ref);
+        let r = called(&insertion(INS10), &format!("{LEFT}C{RIGHT}"));
+        assert!(r.is_ref && !r.is_alt);
+    }
+
+    #[test]
+    fn a_deletion_written_through_counts_alt() {
+        // CTTGAC deleted to C; written without its gap the read holds five bases past the
+        // context where the ALT continues
+        let ctx = format!("{LEFT}CAGTCA{RIGHT}");
+        let v = make_variant(5, "CAGTCA", "C", &ctx, 0);
+        let with_gap = called(&v, &format!("{LEFT}C{RIGHT}"));
+        assert!(with_gap.is_alt && !with_gap.is_ref);
+        let through = called(&v, &format!("{LEFT}C{RIGHT}GTACG"));
+        assert!(through.is_alt && !through.is_ref, "ref={} alt={}", through.is_ref, through.is_alt);
+        let r = called(&v, &ctx);
+        assert!(r.is_ref && !r.is_alt);
+    }
+
+    #[test]
+    fn one_base_indels_in_a_run_are_told_by_the_runs_length() {
+        // a run of six Gs after the anchor, the context holding it and five flank bases
+        // each side (as prep's adaptive context does)
+        let ctx = format!("{LEFT}CGGGGGG{RIGHT}");
+        let del = make_variant(5, "CG", "C", &ctx, 0);
+        assert!(called(&del, &ctx).is_ref);
+        assert!(called(&del, &format!("{LEFT}CGGGGG{RIGHT}")).is_alt);
+        let ins = make_variant(5, "C", "CG", &ctx, 0);
+        assert!(called(&ins, &ctx).is_ref);
+        assert!(called(&ins, &format!("{LEFT}CGGGGGGG{RIGHT}")).is_alt);
+        let short = called(&ins, &format!("{LEFT}CGGG"));
+        assert!(!short.is_ref && !short.is_alt, "a read ending in the run shows neither");
     }
 }
