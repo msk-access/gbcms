@@ -47,7 +47,15 @@ IMPERFECT_REPEAT = "#290: windows anchor on the exact repeat's edge, inside an i
 
 
 def _counted(
-    tmp_path, caplog, name, thin=None, seed=0, error=None, change=None, one_orientation=False
+    tmp_path,
+    caplog,
+    name,
+    thin=None,
+    seed=0,
+    error=None,
+    change=None,
+    one_orientation=False,
+    lowq=None,
 ):
     """The shape's counts, and each haplotype's read calls (REF, ALT, partial, depth only,
     other), from one call. `thin` (haplotype, share kept, whether the rest read as the
@@ -56,7 +64,9 @@ def _counted(
     dropped. `error` (haplotype, genome base, a later base, the base read, reads[, F1R2
     only]) gives that many of the haplotype's reads holding both bases with no length
     change between them (of one pair orientation, read 1 forward or read 2 reverse, if so
-    asked) a confident error at the first. `change` (haplotype, base, the base it reads) gives that
+    asked) a confident error at the first. `lowq` (haplotype, genome base, reads) has that
+    many of the haplotype's reads that read another base than the reference's there read
+    it at quality 2. `change` (haplotype, base, the base it reads) gives that
     haplotype another change, its reads placed where they were. Half the fragments take
     the other pair orientation, as a library's do, unless `one_orientation` (an amplicon
     library's)."""
@@ -78,7 +88,7 @@ def _counted(
     pysam.faidx(str(fa))
     header = {"HD": {"VN": "1.6", "SO": "coordinate"}, "SQ": [{"SN": "1", "LN": len(f["ref"])}]}
     raw, bam = tmp_path / f"{name}.raw.bam", tmp_path / f"{name}.bam"
-    erred = 0
+    erred = lowered = 0
     with pysam.AlignmentFile(str(raw), "wb", header=header) as out:
         for qname, flag, pos, cigar, mapq, hap, off, length, mate_pos, tlen in f["reads"]:
             if qname in swapped and not as_ref:
@@ -98,7 +108,14 @@ def _counted(
                 if at in q and tell in q and q[tell] - q[at] == tell - at and seq[q[at]] != base:
                     a.query_sequence = seq[: q[at]] + base + seq[q[at] + 1 :]
                     erred += 1
-            a.query_qualities = pysam.qualitystring_to_array("I" * length)
+            quals = "I" * length
+            if lowq and hap == lowq[0] and lowered < lowq[2]:
+                q = {r: q for q, r in a.get_aligned_pairs(matches_only=True)}
+                at = lowq[1]
+                if at in q and a.query_sequence[q[at]] != f["ref"][at]:
+                    quals = quals[: q[at]] + "#" + quals[q[at] + 1 :]
+                    lowered += 1
+            a.query_qualities = pysam.qualitystring_to_array(quals)
             a.next_reference_id, a.next_reference_start, a.template_length = 0, mate_pos, tlen
             out.write(a)
     pysam.sort("-o", str(bam), str(raw))
@@ -246,17 +263,16 @@ def test_an_artifact_in_one_pair_orientation_leaves_the_insertion_counted(
 @pytest.mark.parametrize(
     "name",
     [
-        "vntr28_ins_and_snp",
-        "vntr28_ins_and_snp_20x",
-        "vntr28_ins_and_snp_250",
-        "vntr28_ins_alone",
-        "vntr28_ins_alone_20x",
-    ],
+        pytest.param(n, marks=pytest.mark.xfail(strict=True, reason=IMPERFECT_REPEAT))
+        for n in ("vntr28_ins_and_snp", "vntr28_ins_and_snp_20x")
+    ]
+    + ["vntr28_ins_and_snp_250", "vntr28_ins_alone", "vntr28_ins_alone_20x"],
 )
-@pytest.mark.xfail(strict=True, reason=IMPERFECT_REPEAT)
 def test_no_insertion_read_counts_ref_in_an_imperfect_repeat(tmp_path, caplog, name):
     """Insertion reads lying inside the repeat, read from a flank the imperfect repeat runs
-    on past and placed there by the aligner a unit off: their bases fit REF as written."""
+    on past and placed there by the aligner a unit off: their bases fit REF as written.
+    Decided past the windows, the ALT placed a unit over fits them as well: depth only.
+    Those decided within the windows still count REF (#290)."""
     _, calls = _counted(tmp_path, caplog, name)
     assert calls[("h1", "REF")] == 0, dict(calls)
 
@@ -302,6 +318,27 @@ def test_a_tandem_duplication_written_without_its_gap_counts_alt(tmp_path, caplo
     counts, calls = _counted(tmp_path, caplog, name)
     assert (counts.rd, counts.ad) == (rd, ad)
     assert calls[("h1", "REF")] == 0 and calls[("h2", "ALT")] == 0, dict(calls)
+
+
+@pytest.mark.parametrize(
+    ("name", "ref_reads"), [("grch38_dup89_cis", 32), ("grch38_dup89_cis_20x", 16)]
+)
+def test_no_insertion_read_counts_ref_where_it_fits_the_alt_a_copy_over(
+    tmp_path, caplog, name, ref_reads
+):
+    """HG002's chr21 89-bp duplication (a GRCh38 segment): the inserted copy differs from
+    the next 89 bases only at its last, where a germline SNP in cis gives that copy the
+    same base. The guard masks the SNP (reads placed apart carry it) and the windows read
+    on past it where the aligner wrote each read. The insertion's reads written through
+    the copy then miss REF only at the anchor, the ALT's own last base shifted onto it;
+    read there at low quality, they fit REF where they were written and the ALT exactly
+    a copy over. A call decided past the windows stands only where the other allele,
+    the whole read placed anywhere on it, misses more: those reads are depth only (HG002
+    at this row: 2 counted REF). The REF haplotype's reads keep their calls."""
+    f = FIXTURE[name]
+    _, calls = _counted(tmp_path, caplog, name, lowq=("h1", f["pos"] - 1, len(f["reads"])))
+    assert calls[("h1", "REF")] == 0 and calls[("h2", "ALT")] == 0, dict(calls)
+    assert calls[("h2", "REF")] == ref_reads, dict(calls)
 
 
 def test_shifted_alt_bases_spell_no_other_allele_of_refs_length(tmp_path, caplog):

@@ -907,6 +907,9 @@ fn judge(record: &Record, variant: &Variant, quals: &[u8], min_baseq: u8, rules:
     let longer;
     let mut past_error = None;
     let mut judged = read(win, readable);
+    // Whether the call rests on bases past the windows: windows the masks made read on,
+    // held whole, or a read read on past readings that tell nothing.
+    let mut past_windows = win.masked_hold.is_some() && judged.1.is_some();
     // A read short of the base the masks made both windows read on to is still decided
     // by its own bases where, held as far as before, they fit one allele alone (a REF
     // read showing the reference's base where the masks take either): the masks leave
@@ -944,6 +947,7 @@ fn judge(record: &Record, variant: &Variant, quals: &[u8], min_baseq: u8, rules:
         match win.read_on() {
             Some(w) => {
                 longer = w;
+                past_windows = true;
                 trace!("carrier: its readings do not tell the alleles apart → read on past the windows");
                 judged = match shared_unread(&judged) {
                     Some(bases) => {
@@ -1049,6 +1053,19 @@ fn judge(record: &Record, variant: &Variant, quals: &[u8], min_baseq: u8, rules:
     }
     // a verdict read whole stands for the read's own indels too
     let own = if whole.is_some() { OwnEvent::None } else { own };
+    // Past the windows a read is read where the aligner wrote it, and in a repeat the
+    // other allele may hold the same bases a copy over. A call decided there stands only
+    // where the other allele, the whole read placed ungapped anywhere on it, misses more
+    // confident bases than the called allele does: otherwise depth only.
+    if let (true, None, Some(w), Some((r, a))) = (past_windows, whole, haps, held) {
+        let (first, after) = readable;
+        let fewest = |h: &[u8]| Some(fewest_anywhere(h, seq.get(first..after)?, quals.get(first..after)?, min_baseq)).flatten();
+        let (called, other) = if a { (fewest(&w.hap), fewest(&w.reference)) } else { (fewest(&w.reference), fewest(&w.hap)) };
+        if r != a && other.is_some_and(|o| o < WHOLE_CAP && called.is_some_and(|c| o <= c)) {
+            trace!("carrier: decided past the windows, but read whole its bases fit {} as well placed elsewhere → depth only", if a { "REF" } else { "the ALT" });
+            held = None;
+        }
+    }
 
     let placement = placed.as_ref().map(|(_, _, p)| *p);
     let reading = placed.map(|(r, a, _)| (r, a));
@@ -3571,6 +3588,34 @@ fn aligned_changes(record: &Record, seq: &[u8], quals: &[u8], min_baseq: u8, w: 
 /// more decide ([`whole_fit`]).
 const WHOLE_CAP: usize = 2;
 
+/// The fewest confident mismatches (at or above `min_baseq`, not N; up to [`WHOLE_CAP`])
+/// of a read's bases placed ungapped anywhere on a haplotype, the whole read on it. None
+/// where the read is longer than the haplotype.
+fn fewest_anywhere(hap: &[u8], read: &[u8], q: &[u8], min_baseq: u8) -> Option<usize> {
+    let n = read.len();
+    if n == 0 || n > hap.len() || q.len() < n {
+        return None;
+    }
+    let mut fewest = WHOLE_CAP;
+    for o in 0..=hap.len() - n {
+        let mut m = 0;
+        for i in 0..n {
+            let b = read[i].to_ascii_uppercase();
+            if q[i] >= min_baseq && b != WILD && !fits(b, hap[o + i]) {
+                m += 1;
+                if m >= fewest {
+                    break;
+                }
+            }
+        }
+        fewest = fewest.min(m);
+        if fewest == 0 {
+            break;
+        }
+    }
+    Some(fewest)
+}
+
 /// The allele a read's bases fit read whole (`readable`, without its own alignment's
 /// indels): placed ungapped on each allele's haplotype over the whole-read reach, the
 /// whole read on it, at every placement holding that allele's windows (event and flank),
@@ -4582,5 +4627,28 @@ mod tests {
         assert_eq!(fit(vec![], 5), None, "the T unread: the ALT or the other allele");
         assert_eq!(fit(vec![(p + 4) as i64], 5), None, "a mask inside the other allele's REF span");
         assert_eq!(fit(vec![(p + 4) as i64], 30), Some(Some(true)), "the T read: the ALT");
+    }
+
+    #[test]
+    fn a_read_is_placed_anywhere_on_a_haplotype_by_its_confident_mismatches() {
+        // a 30-base read copied from a 90-base haplotype's middle copy of a 30-base unit
+        // differing at one base per copy: it fits that copy exactly and the others by one
+        let unit = ag(30, 7);
+        let other = |i: usize, b: u8| -> Vec<u8> { let mut u = unit.as_bytes().to_vec(); u[i] = b; u };
+        let hap: Vec<u8> = [other(4, b'T'), unit.as_bytes().to_vec(), other(20, b'C')].concat();
+        let read = unit.as_bytes().to_vec();
+        let q = vec![30u8; read.len()];
+        assert_eq!(fewest_anywhere(&hap, &read, &q, 20), Some(0), "its own copy");
+        assert_eq!(fewest_anywhere(&hap[..30], &read, &q, 20), Some(1), "only the first copy: one base off");
+        let mut erred = read.clone();
+        erred[10] = if erred[10] == b'A' { b'C' } else { b'A' };
+        assert_eq!(fewest_anywhere(&hap[..30], &erred, &q, 20), Some(WHOLE_CAP), "two off, counted to the cap");
+        let mut low = q.clone();
+        low[10] = 5;
+        assert_eq!(fewest_anywhere(&hap[..30], &erred, &low, 20), Some(1), "a base below the minimum quality is unread");
+        let mut masked = hap[..30].to_vec();
+        masked[4] = IUPAC[(bit(b'T') | bit(unit.as_bytes()[4])) as usize];
+        assert_eq!(fewest_anywhere(&masked, &read, &q, 20), Some(0), "a mask takes either base");
+        assert_eq!(fewest_anywhere(&hap[..20], &read, &q, 20), None, "a read longer than the haplotype");
     }
 }
