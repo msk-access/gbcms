@@ -36,3 +36,13 @@ happens, rerun `maturin develop` from the main checkout root and check
 `gbcms.pth`. It recurred on 2026-10-05 (the group 5 review agent ran
 `.rv/bin/maturin develop` with no `VIRTUAL_ENV`): the warning sat in this file,
 not in the index line read every session, which now carries it.
+
+**A scratchpad venv rots after a few days** (2026-10-19): the scratchpad lives under
+`/private/tmp`, which macOS purges of files not opened for about three days. A
+week-old venv lost `polars-*.dist-info/METADATA`, and `maturin develop` then failed
+with "externally-managed-environment" (pip) or "Failed to read metadata" (`--uv`).
+Don't repair it; build a fresh one: `uv venv -p <cpython 3.12> $SP/venv_new`,
+`VIRTUAL_ENV=$SP/venv_new maturin develop --release --uv`, then
+`uv pip install --python $SP/venv_new/bin/python --group test`. Frozen measurement
+builds under `~/test` are not affected.
+

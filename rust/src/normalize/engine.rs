@@ -542,6 +542,23 @@ fn event_core_ref(reader: &mut fasta::IndexedReader<File>, v: &Variant, tally: &
     }
 }
 
+/// The reference a whole read reaches each side of an event the exact-carrier rule
+/// judges (`Variant::whole_ref`): its change interval plus
+/// [`carrier::WHOLE_READ_REACH`] each side, and at least the event reference. None for
+/// any other variant, or when the fetch fails.
+fn whole_read_ref(reader: &mut fasta::IndexedReader<File>, v: &Variant) -> Option<(i64, String)> {
+    if !carrier::judges(v) {
+        return None;
+    }
+    let (c_lo, c_hi) = window::change_interval(v);
+    let (mut lo, mut hi) = ((c_lo.min(v.pos) - carrier::WHOLE_READ_REACH).max(0), c_hi.max(v.pos + v.ref_allele.len() as i64) + carrier::WHOLE_READ_REACH);
+    if let Some((s, seq)) = &v.event_ref {
+        (lo, hi) = (lo.min(*s), hi.max(s + seq.len() as i64));
+    }
+    let seq = fetch_window(reader, &v.chrom, lo as u64, hi as u64).ok().filter(|s| !s.is_empty())?;
+    Some((lo, String::from_utf8_lossy(&seq).to_ascii_uppercase()))
+}
+
 /// Reference margin kept around each event (`Variant::event_ref`).
 const EVENT_REF_MARGIN: i64 = 60;
 /// Widest margin fetched for an event grown through a repeat.
@@ -599,10 +616,11 @@ impl PrepTally {
 /// 3. Left-alignment for indels and delins (not MNPs).
 /// 4. `ref_context` fetch for indels and delins, adaptively padded in repeats.
 /// 5. The homopolymer twin (`decomposed_variant`), only with
-///    `rescue_homopolymer`, with its own `event_ref`.
+///    `rescue_homopolymer`, with its own `event_ref` and `whole_ref`.
 ///
 /// Then `repeat_span` (scanned at the first changed base), the shift region
-/// (`indel_shift_region`) and `event_ref` (`event_core_ref`).
+/// (`indel_shift_region`), `event_ref` (`event_core_ref`) and `whole_ref`
+/// (`whole_read_ref`).
 fn prepare_single_variant(
     reader_result: &mut Result<fasta::IndexedReader<File>, anyhow::Error>,
     variant: &Variant,
@@ -777,6 +795,7 @@ fn prepare_single_variant(
                 event_ref: None,
                 boundary_span: None,
                 listed_neighbours: Vec::new(),
+                whole_ref: None,
             },
             gbcms_status: verdict,
             gbcms_status_reason: reason,
@@ -816,6 +835,7 @@ fn prepare_single_variant(
                 event_ref: None,
                 boundary_span: None,
                 listed_neighbours: Vec::new(),
+                whole_ref: None,
             },
             gbcms_status: "FAIL".to_string(),
             gbcms_status_reason: "ALT_CONTAINS_N".to_string(),
@@ -1031,6 +1051,7 @@ fn prepare_single_variant(
                     event_ref: None,
                     boundary_span: None,
                     listed_neighbours: Vec::new(),
+                    whole_ref: None,
                 }
             })
         })
@@ -1043,6 +1064,7 @@ fn prepare_single_variant(
     // back in a long run).
     let decomposed_variant = decomposed_variant.map(|mut twin| {
         twin.event_ref = event_core_ref(reader, &twin, tally);
+        twin.whole_ref = whole_read_ref(reader, &twin);
         twin
     });
 
@@ -1077,8 +1099,10 @@ fn prepare_single_variant(
         event_ref: None,
         boundary_span: None,
         listed_neighbours: Vec::new(),
+        whole_ref: None,
     };
     prepared.event_ref = event_core_ref(reader, &prepared, tally);
+    prepared.whole_ref = whole_read_ref(reader, &prepared);
 
     Ok(PreparedVariant {
         variant: prepared,

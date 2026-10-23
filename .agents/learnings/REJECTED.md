@@ -10,6 +10,38 @@ Newest at the top.
 
 ---
 
+## [REJ-20261020-001] Leave a guard mask unapplied where it would leave no base telling the alleles apart (#294 option 1)
+- **Target:** the exact-carrier rule's neighbouring-change guard (RJ-23, RJ-27) at a
+  one-unit insertion in a VNTR whose units differ at single bases
+- **Proposed:** a mask that would leave the windows no base telling the alleles apart is
+  not applied: the change is part of what tells them apart (decided 2026-10-17 on #294,
+  extending "the given allele's own bases are never masked").
+- **Reason vetoed:** it counts a germline SNP's haplotype as the insertion (operator,
+  2026-10-20, replaced by G3: the windows read on, the placed-apart check, reads read
+  whole). Where the SNP turns the next unit into the inserted one, both haplotypes read
+  alike over a short read, so un-masking credits the SNP's reads as ALT. HG002's 28-bp
+  VNTR insertion (SNV in trans): RD/AD 10/0 → 1/8, both phased ALT reads from the SNV's
+  haplotype (G3: 0/0, no read reaches the telling base). BWA-placed synthetic VNTR (28-bp
+  units): the SNP alone, no insertion, 68/0 → 34/31 (all 31 ALT false; G3 34/0); the
+  insertion and the SNP in trans 73/0 → 0/67 (G3 0/0); the insertion alone 68/0 → 27/34
+  (G3 the same). Frozen build `plan670/src_c44u`; shapes pinned by
+  `tests/test_masked_repeat_reads_contract.py`. Breaks invariant 7.
+- **Date:** 2026-10-20
+
+## [REJ-20261019-001] Count a read carrying the given repeat-unit change plus more units as ALT (and partial)
+- **Target:** pure indels in repeats: a read of another unit count than the given one
+  (today partial_alt only, never AD; option A of #285)
+- **Proposed:** where the read's bases carry the given unit change and further units of
+  the same repeat, count it in AD and also in partial_alt (conservative: no ALT read lost).
+- **Reason vetoed:** keep AD exact (operator, 2026-10-19). On HG002 truth hets it gains
+  almost nothing (upper bound, every partial read added: mean |VAF−0.5| STR deletions
+  0.090 → 0.092, STR insertions 0.093 → 0.094, 20+ bp insertions 0.159 → 0.151); it
+  credits ALT in every sample carrying another length of the repeat (germline STR lengths
+  in normals at fill-out; #294's SNV-only VNTR shape); "that exact unit" is undefined in a
+  perfect repeat; STR genotypers (HipSTR, GangSTR, DRAGstr) weigh ±1-unit reads in a
+  stutter model, not in the allele's count. Breaks invariant 7.
+- **Date:** 2026-10-19
+
 ## [REJ-20261014-001] An unreadable ALT core always carries only the length (#277 first cut, and its own-base variants)
 - **Target:** the exact-carrier rule's reading of an ALT core whose bases are below min BQ
   (RJ-20), and the MNP check's partly read reads

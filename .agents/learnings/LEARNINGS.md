@@ -17,6 +17,35 @@ regenerating a section.
 
 ---
 
+## [LRN-20261021-001] rule-body | every option offered for a decision is measured, not estimated
+- **Status:** resolved (rule promoted)
+- **Cause:** rule-body
+- **Summary:** On #294 three guard options were offered with only the current rule
+  measured; the others' failure rates were reasoned from thresholds. The operator asked
+  whether each was measured. Prototyping and running all of them on the same sets and
+  HG002 changed the picture: the simulators wrote every fragment in one pair
+  orientation (so the orientation option failed for an artifact of the data), option
+  2's low-depth risk had no test set, and the tolerance amendment, measured, reversed my
+  recommendation (then four existing contracts caught its false ALT on another allele's
+  reads, fixed by forgiving one-off errors only).
+- **Promotion target:** `.agents/memory/decisions-worked-examples.md`: every option
+  offered is prototyped and measured on the same sets and truth arm, the sets mirroring
+  a real library (both orientations, errors, low depth and depth). (Done.)
+
+## [LRN-20261020-001] rule-body | a run's waiter watches its process, not a marker in its log
+- **Status:** resolved (rule promoted)
+- **Cause:** rule-body
+- **Summary:** On #294 two background waiters polled a run's log for its closing
+  marker. A restart reused the log name and overwrote it, and a killed run never wrote
+  its marker, so both waiters hung until killed by hand; the operator asked whether the
+  tasks were still running and said the waiting was launched wrongly.
+  The operator then asked why only the waiter showed: the runs were launched detached
+  on a stale premise (a 30-minute tracked-task limit; tracked tasks ran 6+ hours).
+- **Promotion target:** `.agents/memory/long-runs-visible.md` "How to apply": launch the
+  run itself as the tracked background task (tee a log); `nohup` only to outlive the
+  session, then a waiter looping on `kill -0 <runner pid>`; one runner per log name; a
+  run and its waiter stop together; clear partial outputs before a restart. (Done.)
+
 ## [LRN-20261014-001] rule-body | the best route holds in the analysis and in the implementation
 - **Status:** resolved (rule promoted)
 - **Cause:** rule-body

@@ -102,12 +102,15 @@ threads, or extra rows that move where bins start. The Benjamini-Hochberg q-valu
 (`mfsd_qval_alt_ref`, `asjd_qval`) are computed over the rows of a call, so they are
 excepted when the set of rows changes. It follows that every bin's fetch must hold
 each member's read window `[pos − pad, pos + ref_len + pad)`, `pad = max(5,
-repeat_span + 2)`, the anchor's included.
+repeat_span + 2)`, the anchor's included, and its guard window
+(`window::guard_window`): for a variant the exact-carrier rule judges, a whole read's
+reach (300 bases) each side of its REF span, the fragments the guard's placed-apart
+check reads.
 
 **How it is checked.**
 - `build_genomic_bins` property test (Rust): every variant in exactly one bin whose
-  fetch holds its window, over random clusters × window {1, 7, 100, 10k} × cap
-  {1, 2, 3, 200}.
+  fetch holds its read window and its guard window, over random clusters × window
+  {1, 7, 100, 10k} × cap {1, 2, 3, 200}.
 - `tests/test_binning_invariance.py`: the geometries above on synthetic DNA pairs
   (plain; BAQ + UMI + mFSD; siblings, a decomposed twin, overlapping mates), clip
   carriers aligned past a long anchor (the one read shape in which an under-fetched

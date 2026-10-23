@@ -73,6 +73,11 @@ pub struct Variant {
     /// not make.
     #[pyo3(get)]
     pub listed_neighbours: Vec<(i64, String, String)>,
+
+    /// Reference bases a whole read reaches each side of an event the exact-carrier rule
+    /// judges, with their 0-based start (covering `event_ref`): a read the aligner placed
+    /// a unit off in a repeat is read whole over all its bases. Prep's; None otherwise.
+    pub whole_ref: Option<(i64, String)>,
 }
 
 #[pymethods]
@@ -108,6 +113,7 @@ impl Variant {
             event_ref,
             boundary_span,
             listed_neighbours: Vec::new(),
+            whole_ref: None,
         }
     }
 }
@@ -485,6 +491,13 @@ pub struct BaseCounts {
     /// OBSERVED_ALLELE's n/m).
     #[pyo3(get)]
     pub observed_given_reads: u32,
+    /// A change at the ALT's shifted base too few of the reads placed apart from the
+    /// event carry to be a haplotype's (or carried in one pair orientation), left
+    /// unmasked, as `POS:REF>ALT:c/n` (1-based POS; c carriers of n reads placed apart);
+    /// empty when none. Diagnostic only (feeds POSSIBLE_MINORITY_HAPLOTYPE); no count
+    /// changes.
+    #[pyo3(get)]
+    pub possible_minority: String,
     /// Reads processed with the requested `--umi-tag` present. Internal only
     /// (no Python getter): summed per BAM to warn when a requested UMI tag is
     /// never seen and fragment grouping silently fell back to QNAME.
