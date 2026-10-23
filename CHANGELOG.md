@@ -7,6 +7,99 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed — reads of repeats whose telling base the guard masks, and reads placed a unit off (#294)
+
+- **The problem.** In a repeat whose units differ at single bases, the guard can mask
+  the only base telling a one-unit insertion from REF: a germline SNP that turns the
+  next unit into the inserted one makes both haplotypes read alike over a short read.
+  The rule then gave up and the CIGAR checks counted the reads. The fix decided on
+  2026-10-17, leaving such a mask unapplied, counted the SNP's haplotype as the
+  insertion (HG002's 28-bp VNTR row: RD/AD 10/0 → 1/8, both phased ALT reads from the
+  SNP's haplotype); it is rejected (REJ-20261020-001).
+- **The rule (RJ-27, amended; every event the exact-carrier rule judges).**
+  - **The windows read on past the masks** to the next base telling the alleles apart.
+    Prep fetches reference until, with every base the guard could mask masked, the
+    windows reach one. A read short of it is depth only unless its own bases fit one
+    allele alone and exactly.
+  - **Reads placed apart from the event tell a germline change from the ALT's own
+    base.** An ALT read written without its gap shows the ALT's base past REF's tract,
+    which looks like a change on the REF reads; a germline SNP can give the same base.
+    The fragments placed apart from the event (whose bases at the telling bases past it
+    fit the reference more often than the shifted ALT) decide:
+    - carried by three or more of them and 3%: a haplotype's change, masked at any
+      share of the REF reads (an SNP haplotype at a minority of molecules, after a
+      tumour's gain or loss, never counts as the insertion), unless its carriers are
+      too one-sided in pair orientation against the locus's own balance for a
+      haplotype's (binomial chance under 0.1%): an oxoG or FFPE artifact, not masked
+      (an amplicon library, read in one orientation, weighs none);
+    - otherwise, read by 15 or more: the ALT's own base, never masked and never another
+      allele; with fewer, masked where it is background.
+  - **An error both readings share decides nothing.** A read placing no length change
+    whose REF and ALT readings miss exactly the same bases is read on with those bases
+    unread, not counted for whichever allele tolerates the error at the length the
+    aligner wrote.
+  - **One error forgiven past the windows (operator, 2026-10-21).** Read on past the
+    windows, one confident error the other allele's reading does not share is forgiven
+    where that reading misses three or more, the read writes that allele's length, and
+    the error is a one-off (recurring on two fragments and 5% of those fitting the
+    allele, it is another allele's base). Within the windows only a shared error is
+    tolerated (2026-10-15).
+  - **Reads placed a unit or a copy off are read whole.** A read whose alignment is not
+    clean (another event of its own in the window, or two or more confident changes
+    from the reference) and that is not spliced is placed ungapped on each allele over
+    300 bases of reference past the change (`Variant.whole_ref`, fetched by prep). The
+    allele whose windows it reads exactly, with at most one mismatch elsewhere, is its
+    call where every other allele misses by more. A read fitting the longer allele only
+    from inside its event is depth only.
+  - **A call decided past the windows must hold wherever the read could lie (operator,
+    2026-10-22).** Past the windows a read is read where the aligner wrote it; in a repeat
+    the other allele may hold the same bases a copy over. The call stands only where the
+    other allele, the whole read placed ungapped anywhere on it, misses more confident
+    bases than the called allele; otherwise the read is depth only. HG002's chr21 89-bp
+    duplication, whose cis SNP sits where the inserted copy's last base shows: 2 of its
+    insertion reads, written through the copy, counted REF. The read is placed on the
+    alleles as the reference spells them, no mask laid: a base the guard masks beside the
+    event may be the other allele's own shifted onto the reads written through it (HG002's
+    16-bp TC insertion where the run meets an AT run lost 6 true carriers on the masked
+    alleles). A read left depth only so still counts in the census of recurring
+    substitutions: its bases were read (leaving two reads out moved a substitution on 5% of
+    a FORTE row's REF fragments across that line, flipping 36 other reads).
+- **New diagnostic: `POSSIBLE_MINORITY_HAPLOTYPE(chrom:pos:REF>ALT:c/n)`.** A change at
+  the ALT's shifted base that two or more of the reads placed apart carry (over 1%),
+  too few or too one-sided for a haplotype's, left unmasked: a minority haplotype
+  carrying it would count ALT. Counts unchanged (`BaseCounts.possible_minority`).
+- **Binning.** The guard reads fragments within 300 bases of the variant, so every bin's
+  fetch now holds each member's guard window (`window::guard_window`).
+- **Cost.** One indel with 17k reads: 0.22 s against develop's 0.21 s at 0.1% error,
+  0.48 s against 0.21 s under a 1% error stress.
+- **Measured against develop** (final build), rows changed and RD/AD:
+  - HG002 (public): insertions 96 of 1440 rows (RD −64, AD +137); small insertions 50 of
+    1560 (RD −17, AD +47); small deletions 41 of 1560 (RD +2, AD +32); delins 19 of 800
+    (RD −1, AD +51); deletions of 50 bp or more none of 600.
+  - Local arms (aggregates): IMPACT panel 8 of 1170 rows (RD +2, AD +19); ACCESS and
+    normals 6 of 1402 (RD +4); WES 9 of 686 (RD −5, AD +13); the gate set 151 of 4606
+    (RD +21, AD +47); FORTE RNA 1 of 94 rows (RD −1), with the GTF and without.
+  - The past-windows check alone (against the build before it): REF calls only, never
+    AD. HG002: 27 REF calls left depth only, on 13 reads whose bases favour ALT, 13 that
+    tie and 1 favouring REF (scored against the truth haplotypes). Local arms: 101, every
+    one on a read an independent BWA check of REF against ALT calls ambiguous (83) or ALT
+    (18).
+- **Known limits.**
+  - In an imperfect repeat the windows anchor on the exact repeat's edge (#290), so a
+    read lying inside it, or read from a flank the repeat runs on past, is still placed
+    by the aligner where the windows decide it. Pinned as strict xfails.
+  - Insertion reads the aligner soft-clipped over a long duplication, or wrote through it
+    as REF with mismatches, are depth only though their bases show the insertion (13 of
+    20 such reads at HG002's chr21 and chr22 rows; #290).
+  - A haplotype showing on fewer than three, or under 3%, of the reads placed apart is
+    taken for errors and its reads count ALT where they read as the ALT (with 30 to 45
+    of them, an SNP haplotype on 5–10% of the molecules in about a third of runs; at
+    depth, any under 3% of the molecules); such rows are named by the diagnostic.
+  - A position-specific error giving that base on 3% of the reads placed apart in both
+    orientations, or a one-orientation artifact on fewer carriers than tell it from a
+    haplotype (about ten), masks it: the ALT's reads short of the next telling base are
+    depth only.
+
 ### Changed — a run beside a long deletion is a neighbour where its bases rejoin the flank (#285, #296)
 
 - **The rule (RJ-24, amended).** A run of changes past a long deletion's junction used
