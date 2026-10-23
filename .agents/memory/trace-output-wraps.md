@@ -1,6 +1,6 @@
 ---
 name: trace-output-wraps
-description: "gbcms --trace read-call lines: set COLUMNS=3000 (Rich wraps them); a read call is not a count (uncounted reads are logged too); the key is the prepared variant, so match rows by haplotype."
+description: "gbcms --trace read-call lines: set COLUMNS=60000 (Rich wraps them; 3000 still wraps alleles over ~2.9 kb); a read call is not a count (uncounted reads are logged too); the key is the prepared variant, so match rows by haplotype."
 metadata:
   node_type: memory
   type: reference
@@ -11,8 +11,9 @@ metadata:
 `gbcms dna|rna --trace` logs through a Rich console handler that wraps each line at
 the terminal width, so a subprocess capture splits every `read call CHR:POS REF>ALT
 read=… mate=… ref=… alt=… phase=… partial=N …` line and a regex over it silently
-matches nothing (every read looks "not traced"). Run it with `COLUMNS=3000` in the
-environment. `partial=` is a count (positions matching ALT), not a bool; `mate` is
+matches nothing (every read looks "not traced"). Run it with `COLUMNS=60000` in the
+environment: `COLUMNS=3000` still wraps lines whose alleles pass ~2.9 kb (it dropped 3,226
+calls on the HG002 pri_ins and pri_del50 arms, #265 measurement, 2026-10-16). `partial=` is a count (positions matching ALT), not a bool; `mate` is
 1 for first-in-template, else 2.
 
 **How to apply:** any per-read adjudication harness that diffs two builds' trace

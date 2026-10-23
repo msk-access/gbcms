@@ -144,6 +144,10 @@ class BaseCounts:
     observed_alt: str
     observed_reads: int
     observed_given_reads: int
+    # A change at the ALT's shifted base too few reads placed apart carry for a
+    # haplotype's, left unmasked, as POS:REF>ALT:c/n (1-based POS); empty when none.
+    # Diagnostic only (POSSIBLE_MINORITY_HAPLOTYPE flag).
+    possible_minority: str
     # GTF-informed annotation (None when no GTF)
     exon_boundary_dist: int | None
     # Per-transcript counts (empty string when no GTF or no overlap)

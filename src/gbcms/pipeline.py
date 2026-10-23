@@ -1020,6 +1020,12 @@ class Pipeline:
                 they were scored by Smith-Waterman where it can run, otherwise
                 left NEITHER, so counts here came partly from a different scorer
                 or are missing reads.
+            POSSIBLE_MINORITY_HAPLOTYPE(chrom:pos:REF>ALT:c/n): a change at the base
+                where the ALT's reads written without their gap show the ALT's own
+                base, carried by c of the n reads placed apart from the event: too
+                few (or in one pair orientation) for a haplotype's, so it was left
+                unmasked; a minority haplotype carrying it would count ALT where its
+                reads read as the ALT. Counts stand.
         """
         flags: list[str] = []
 
@@ -1092,6 +1098,13 @@ class Pipeline:
                 f"{name}({variant.chrom}:{counts.observed_pos}:"
                 f"{counts.observed_ref}>{counts.observed_alt}:{observed}/{given})"
             )
+
+        # A change at the ALT's shifted base the reads placed apart show on too few of
+        # them (or in one pair orientation) for a haplotype's, left unmasked: a minority
+        # haplotype carrying it would count ALT. The counts stand; the flag names it.
+        minority = getattr(counts, "possible_minority", "")
+        if minority:
+            flags.append(f"POSSIBLE_MINORITY_HAPLOTYPE({variant.chrom}:{minority})")
 
         return flags
 

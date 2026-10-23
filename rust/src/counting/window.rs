@@ -167,6 +167,20 @@ pub(crate) fn read_window(variant: &Variant) -> (i64, i64) {
     ((variant.pos - pad).max(0), variant.pos + variant.ref_allele.len() as i64 + pad)
 }
 
+/// The variant's guard window `[start, end)`: the reads its neighbouring-change guard
+/// may read, wider than its read window for a variant the exact-carrier rule judges (a
+/// whole read's reach each side of its REF span: reads placed apart from the event, past
+/// the next base telling the alleles apart, are its). Each bin's fetch holds it for every
+/// member (`build_genomic_bins`), so the guard reads the same reads in any bin geometry.
+pub(crate) fn guard_window(variant: &Variant) -> (i64, i64) {
+    let (lo, hi) = read_window(variant);
+    if !super::carrier::judges(variant) {
+        return (lo, hi);
+    }
+    let reach = super::carrier::WHOLE_READ_REACH;
+    ((variant.pos - reach).max(0).min(lo), (variant.pos + variant.ref_allele.len() as i64 + reach).max(hi))
+}
+
 /// The windowed indel scan's reference range `[start, end]` (inclusive): `window`
 /// bases each side of the anchor, widened to reach every placement of the variant
 /// in its shift region `[lo, hi)`: every junction `lo..=hi` of an insertion, every
