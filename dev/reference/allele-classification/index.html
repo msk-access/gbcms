@@ -31,7 +31,7 @@
             body[data-md-color-scheme="slate"] .gslide-title { color: var(--md-default-fg-color); }
             body[data-md-color-scheme="slate"] .gslide-desc { color: var(--md-default-fg-color); }
         </style><meta name="panzoom-theme" content="material">
-<meta name="panzoom-data" content='{"selectors": [".mermaid", ".d2"], "initial_zoom_level": 1.0}'> </head>
+<meta name="panzoom-data" content='{"selectors": [".d2", ".mermaid"], "initial_zoom_level": 1.0}'> </head>
 <body data-md-color-accent="custom" data-md-color-primary="custom" data-md-color-scheme="default" dir="ltr">
 <input autocomplete="off" class="md-toggle" data-md-toggle="drawer" id="__drawer" type="checkbox">
 <input autocomplete="off" class="md-toggle" data-md-toggle="search" id="__search" type="checkbox">
@@ -3211,7 +3211,8 @@ Use mouse to pan and zoom
 <ol>
 <li><strong>Pangenomic haplotype matrix</strong> — build <code>REF_hap</code> and <code>ALT_hap</code> extended with flanking context</li>
 <li><strong><abbr title="Wavefront Alignment - Edit-distance alignment algorithm used as Phase 3 fast-path triage (wfa2lib-rs); resolves ~70-80% of reads before PairHMM escalation">WFA</abbr> fast-path triage</strong> (<code>wfa2lib-rs</code>) — edit-distance alignment resolves ~70-80% of reads instantly at O(s²) cost; if the edit-distance gap between REF and ALT is unambiguous, the read is classified immediately</li>
-<li><strong>Marginalized <abbr title="Pair Hidden Markov Model - Probabilistic alignment using base quality scores">PairHMM</abbr></strong> (escalated only when <abbr title="Wavefront Alignment - Edit-distance alignment algorithm used as Phase 3 fast-path triage (wfa2lib-rs); resolves ~70-80% of reads before PairHMM escalation">WFA</abbr> is ambiguous) — integrates per-base quality probabilities into alignment scoring, producing a Log-Likelihood Ratio (<abbr title="Log-Likelihood Ratio - Confidence metric for PairHMM alignment">LLR</abbr>) confidence score; default threshold 2.3 ≈ ln(10)</li>
+<li><strong>Marginalized <abbr title="Pair Hidden Markov Model - Probabilistic alignment using base quality scores">PairHMM</abbr></strong> (escalated only when <abbr title="Wavefront Alignment - Edit-distance alignment algorithm used as Phase 3 fast-path triage (wfa2lib-rs); resolves ~70-80% of reads before PairHMM escalation">WFA</abbr> is ambiguous) — integrates per-base quality probabilities into alignment scoring, producing a Log-Likelihood Ratio (<abbr title="Log-Likelihood Ratio - Confidence metric for PairHMM alignment">LLR</abbr>) confidence score; default threshold 2.3 ≈ ln(10)
+   — the read is aligned whole against each haplotype, whose ends are free, as the <code>sw</code> backend's semiglobal alignment does: every read base is explained, and haplotype bases the read does not reach cost nothing</li>
 </ol>
 <p><strong>Alternative backend: <code>sw</code></strong></p>
 <p>Runs Smith-Waterman directly on every Phase 3 read (no <abbr title="Wavefront Alignment - Edit-distance alignment algorithm used as Phase 3 fast-path triage (wfa2lib-rs); resolves ~70-80% of reads before PairHMM escalation">WFA</abbr> pre-filter):</p>
