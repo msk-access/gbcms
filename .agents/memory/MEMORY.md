@@ -55,6 +55,7 @@ One line per memory. Full content lives in the linked file. Keep this index tigh
 - [Census mirrors read inputs](census-mirrors-read-inputs.md) — the census shares read-input rules (fragment end, filters), so validate those against an oracle it doesn't share (the bases themselves, the mate's alignment, ITD rows first).
 - [VAF uses informative reads](vaf-informative-reads.md) — `vaf` = AD/(RD+AD); per-sample total_count (DP) includes unjudgeable reads; never advise AD/DP (repeat indels: reads ending inside the tract).
 - [pysam validation oracle](pysam-validation-oracle.md) — use fetch()+get_reference_positions (not pileup) to cross-check gbcms counts; RD/AD match exact, DP includes neither.
+- [Cluster-aware oracle](cluster-aware-oracle.md) — score changes at co-annotated rows against every allele of the cluster (`m294/oracle_sibling.py`); REF-vs-ALT checks call removed sibling molecules "lost".
 - [Harness references](harness-references.md) — panel/ACCESS/WES slices are b37 (Homo_sapiens_assembly19 on OneDrive), HG002 and FORTE GRCh38 (~/Downloads/genome.fa); brief agents with the right one.
 - [Other tools on the slices](other-tools-harness.md) — the 10-tool comparison harness (plan670/tools): one container at a time, IMPACT/ACCESS slices have no proper-pair flag (bcftools -A), Delly/Mutect2/Paragraph quirks, decomposed delins.
 - [vcf2maf oracle](vcf2maf-oracle.md) — VCF↔MAF representation is defined as vcf2maf/maf2vcf output; how to run them locally and their quirks (dies on N, empty ALT for REF==ALT).

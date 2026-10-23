@@ -3,9 +3,97 @@
 > Tactical state that must survive a closed laptop or a context summary.
 > Update the **Now** and **Next** sections as work progresses.
 
-_Last updated: 2026-10-19_
+_Last updated: 2026-10-23_
 
-## Now — 6.7.0 after #289 (C43 tail)
+## Now — 6.7.0 after #302, #303 and #299 (C43: repeats, siblings, PairHMM)
+Merged into develop on 2026-10-23; #294 and #300 closed:
+- **#302 (#294, C43j).** RJ-27 amended:
+  - the windows read on past the guard's masks to a base that tells the alleles apart;
+  - reads placed apart from the event tell a germline change from the ALT's shifted base
+    (carried by 3 and 3%, with a binomial one-orientation veto);
+  - a shared error decides nothing, and one past the windows may be forgiven;
+  - reads placed a unit off are read whole;
+  - a call decided past the windows stands only where the other allele, placed anywhere
+    on the unmasked alleles, fits the read worse, and such a read stays in the error census;
+  - `POSSIBLE_MINORITY_HAPLOTYPE`.
+- **#303 (#300, C43k).** A co-annotated sibling contests an exact-carrier ALT read by its
+  bases placed whole (a tie is neither row's AD); RJ-5 amended.
+- **#299.** PairHMM aligns the read whole, with the haplotype's ends free.
+
+**Measured** (final builds; aggregates only; full numbers in the CHANGELOG and #294's decision record):
+- **#294 against develop:**
+  - HG002 insertions 96 of 1440 rows (AD +137), small insertions 50 (AD +47), small
+    deletions 41 (AD +32), delins 19 (AD +51), deletions of 50 bp or more 0.
+  - Panel 8 rows (AD +19), ACCESS 6, WES 9 (AD +13), gate 151 (AD +47), FORTE 1 (RD −1).
+  - The past-windows check alone changes REF calls only. HG002: 26 of 27 were wrong or
+    unsupported. Local arms: 101 of 101 were ambiguous or ALT by the BWA check.
+- **#300:**
+  - HG002: 6 rows gain 41 AD. Compound-het arm: Σ|AD − oracle| 1127 → 831.
+  - Panel AD −267 (11 rows), gate AD −232 (41 rows). The cluster-aware check finds 556
+    removals were a sibling's molecules or ties; 17 of 68 gains are wrong.
+- **PairHMM:** no read reaches Phase 3 on any arm, so it changes no count.
+
+**Filed (sub-issues of #276):**
+- #301 (C43l): a co-located deletion's reads.
+- #304 (C43m): a whole-read haplotype judge. In 6.7.0, decided inside package 2 (operator, 2026-10-23).
+- #305 (C43n): AD above the oracle after #300.
+- #306 (C43o): the error census's 5% cliff.
+
+**Measurement comments** on #144 (13 of 20 clear carriers lost at two HG002 duplications,
+clipped on both sides), #273 (name the ties) and #290 (what remains after #302).
+
+**Audit of the open tickets (2026-10-23):**
+- **#173 closed as done:** its RNA part by #217; its DNA parts by #278 (clipped pure-indel
+  carriers read and admitted), #254 and RJ-23's other-flank placement.
+- **#282 closed as superseded:** #300's decision that a tie is neither row's AD, seen or not,
+  replaces Test 3's seen share for every exact-carrier call.
+- **#264 narrowed to its documentation.** HG002 small het insertions went from median VAF
+  0.429 to 0.500 since #278, and small deletions from 0.455 to 0.500. Long insertions (0.441)
+  move to package 2.
+
+**Study page** (private artifact): https://claude.ai/artifact/DGLKH2nuK4N47rfguEcY6Q. It
+covers what short reads can tell at three HG002 rows, the field's approaches and the
+PairHMM probe. The source is `m294/study_page/`.
+
+**Harness** (`plan670/`, local, PHI):
+- Builds kept: `src_c40a5` (the old develop) and `src_c44k3` (develop's counts now).
+- The rejected #294 prototype: `m294/prototypes/`.
+- Runners: `m294/run_g3*.sh`, `m294/run_c44k*.sh`.
+- Checks: `m294/diff.py`, `m294/oracle_changed.py`, `m294/oracle_sibling.py` (against
+  every allele of a co-annotated cluster), `m294/phase_reads.py`.
+- HG002 per-read truth scripts: `m294/truth_scripts/` (`truth_lib.py`, `changed_rows.py`).
+- The HG002 compound-het arm and its oracle: `sib294/hg002/` (`run_ch.sh`, `vs_oracle.py`).
+
+**Main checkout:** still on the merged `feature/c40-long-deletions`, with stale uncommitted
+`.agents` copies that develop now holds. Switch it to develop once the docs PR merges.
+
+## Next — 6.7.0 work packages (operator, 2026-10-23: the recommended order; #304 in 6.7.0)
+Tickets that answer the same question, or share code paths and measurements, land together.
+- **Count-changing packages** run one at a time. Each starts from develop on its own branch,
+  goes red-first, gets an adversarial review, and is measured on every arm with the checks
+  above.
+- **Output-only and hygiene items** run alongside in their own worktrees.
+- **Then** D9–D12 on HPC, and one 6.7.0 freeze and gate.
+
+| # | Package | Tickets | Why together | First step |
+|:--|:--|:--|:--|:--|
+| 1 | Co-annotated alleles | #305, #246 | the AD-claiming guard and RJ-5/RJ-25; one measurement set: the cluster-aware check, the compound-het arm, the panel and gate clusters | #305 read by read on the data in hand; then #246, whose SNV sibling still claims the read through its own uncontested call |
+| 2 | Repeats: unit counts and placement | #290, #301, #297, #144, #304; #264 (docs) | one question, in four code paths: which length of a repeat a read carries when the aligner placed it elsewhere. One acceptance metric: VAF at germline hets in repeats (long insertions 0.441 on HG002) | decide the architecture first. Measure #304 (a whole-read haplotype judge) on every arm as a prototype against targeted fixes, then build; #264's documentation with it |
+| 3 | RNA read judgment | #292, #293, #178 | the spliced-read path; FORTE | #292's three prototypes, measured (decided 2026-10-17) |
+| 4 | Evidence outside the aligned bases | #177, #212, #179 | read admission and clipped bases (RJ-10, RJ-13); WES and HG002 without realignment | #212 first: the fragment end bounds what a clip may hold |
+| 5 | Guard statistics and artifacts | #306, #180 | telling a recurring change from an error or an artifact (fragment shares, pair orientation; #302 added the binomial orientation veto) | count the rows near the 5% line; decide #180's form |
+| 6 | Homopolymer twin and decomposition | #111, #112 (#145, #146), #128 | the opt-in `--rescue-homopolymer` path | decide fix or retire (#111); retiring closes #112, #145 and #146 |
+| 7 | Complex-event read-on | #274 | RJ-9 for delins | measure in the engine, then decide |
+| P | Output and reporting (parallel) | #273, #227, #132, #127 | no count change | #273, then #227 (it feeds the QC summary); close #127 unless a pipeline needs it |
+| H | Hygiene (parallel) | #284, #216, #219, #138, #150, #195 | no count change | #195's fallback path is one Phase 3 never reaches: fix it or retire it |
+| D7 | Platforms (parallel) | #232 (#233–#237) | infrastructure | as planned |
+| G | Truth arms and the gate | #266, #267, #268, #275 | the HPC gate | the D12 settings on #275; HPC when available |
+
+**Order (operator, 2026-10-23):** 1 → 2 (decision, then build) → 3 → 4 → 5 → 6 → 7, with P,
+H and D7 alongside; then G, the freeze and the gate. The packages are recorded on #196;
+the A–F parents stay as they are.
+
+## Before — #285 (C40a) and the Group 1 decisions (2026-10-17 to 2026-10-19)
 #289 merged 2026-10-16 (e56ed8e4). Closed: #278, #291, #287 (fixed by #288), #143
 (resolved by RJ-26/D2), #280 (measured: the bases rule counts 0 ALT for the 7
 collapsed-only ABRA2 events a scan found; no gate row affected), #265 (Phase 3 decides 0
@@ -148,7 +236,7 @@ genotyper, not a caller), mount runs one at a time, and community practice as a
 floor, not a ceiling. The mskcc-omics-workflows containers and gbcmsrs modules are not
 a release step: the operator starts that switch when satisfied it is production-ready.
 
-## Next → 6.7.0
+## Before — the 6.7.0 plan as first drafted (2026-10-08)
 Tracker #196 and the 6.7.0 milestone hold the work. From the 6.6.0 gate:
 - #253 long delins under the discrimination window (spanning 20+ bp: 59% -> 6%
   agreement with sign-out; short-anchored exact carriers withdrawn by design);
