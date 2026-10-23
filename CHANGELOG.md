@@ -125,6 +125,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     haplotype (about ten), masks it: the ALT's reads short of the next telling base are
     depth only.
 
+### Fixed — PairHMM aligned the haplotype whole and the read's ends free
+
+- The PairHMM fallback gave the library the read as its free-ended sequence: the read's
+  ends went unaligned at no cost and every haplotype base it did not reach was charged
+  as a gap, the reverse of the semiglobal alignment the `sw` backend uses. An insertion
+  read whose window held only part of the insert (a read ending at the anchor, clipped
+  a few bases in, or a long insertion written without its gap) scored as REF (LLR -20 to
+  -59); a read ending inside a repeat run leaned REF. The read is now aligned whole and
+  the haplotype's ends are free: such reads are neither or ALT as their bases show, and
+  calls on reads holding every base of both alleles are unchanged (red-first unit tests
+  on each shape).
+- Measured: no read reached the PairHMM, or the WFA triage before it, on the IMPACT
+  panel, ACCESS and normals, WES, the gate set, any HG002 arm (develop and the #294
+  builds) or the FORTE RNA slices (develop, with and without the GTF), so no count there
+  changes.
+- An N at the deleted base of a REF-length read leans REF by its length (operator,
+  2026-10-22): the regression test that held it near-neutral scored a flankless run with
+  the old orientation; with flanks the PairHMM gave the same REF lean before this fix.
+
 ### Changed — a run beside a long deletion is a neighbour where its bases rejoin the flank (#285, #296)
 
 - **The rule (RJ-24, amended).** A run of changes past a long deletion's junction used

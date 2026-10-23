@@ -990,6 +990,7 @@ When Phase 2 and Phase 2.5 both fail, the engine expands to the full `ref_contex
 1. **Pangenomic haplotype matrix** — build `REF_hap` and `ALT_hap` extended with flanking context
 2. **WFA fast-path triage** (`wfa2lib-rs`) — edit-distance alignment resolves ~70-80% of reads instantly at O(s²) cost; if the edit-distance gap between REF and ALT is unambiguous, the read is classified immediately
 3. **Marginalized PairHMM** (escalated only when WFA is ambiguous) — integrates per-base quality probabilities into alignment scoring, producing a Log-Likelihood Ratio (LLR) confidence score; default threshold 2.3 ≈ ln(10)
+   — the read is aligned whole against each haplotype, whose ends are free, as the `sw` backend's semiglobal alignment does: every read base is explained, and haplotype bases the read does not reach cost nothing
 
 **Alternative backend: `sw`**
 
