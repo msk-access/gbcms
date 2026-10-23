@@ -1057,6 +1057,11 @@ fn judge(record: &Record, variant: &Variant, quals: &[u8], min_baseq: u8, rules:
     // other allele may hold the same bases a copy over. A call decided there stands only
     // where the other allele, the whole read placed ungapped anywhere on it, misses more
     // confident bases than the called allele does: otherwise depth only.
+    // The census of recurring substitutions (`Tolerance`) takes the read as its bases
+    // read where they are held, before this check: a read left depth only for where it
+    // could lie still read those bases, and leaving it out moves another read's
+    // substitution across the share that makes it another allele's base.
+    let census = held;
     if let (true, None, Some(w), Some((r, a))) = (past_windows, whole, haps, held) {
         let (first, after) = readable;
         if let (true, Some(read), Some(q)) = (r != a, seq.get(first..after), quals.get(first..after)) {
@@ -1069,11 +1074,13 @@ fn judge(record: &Record, variant: &Variant, quals: &[u8], min_baseq: u8, rules:
 
     let placement = placed.as_ref().map(|(_, _, p)| *p);
     let reading = placed.map(|(r, a, _)| (r, a));
-    let leaned = reading.as_ref().and_then(|(r, a)| match held {
+    let lean = |held: Option<(bool, bool)>| reading.as_ref().and_then(|(r, a)| match held {
         Some((true, false)) if r.mismatches > 0 => kept(r, a, rw, aw, 0),
         Some((false, true)) if a.mismatches > 0 => kept(a, r, aw, rw, 1),
         _ => None,
     });
+    let leaned = lean(held);
+    let census_leaned = lean(census);
     let (mm_ref, mm_alt) = reading.as_ref().map_or((0, 0), |(r, a)| (r.mismatches, a.mismatches));
     let alt_masked = reading.as_ref().map_or(0, |(_, a)| a.masked);
     let had_n = reading.as_ref().is_some_and(|(r, a)| r.had_n || a.had_n);
@@ -1213,7 +1220,7 @@ fn judge(record: &Record, variant: &Variant, quals: &[u8], min_baseq: u8, rules:
     // span it: it counts as that one would.
     result.read_from_right =
         (result.is_ref || result.is_alt) && (rw.reads_from_right() || placement == Some(Placement::ThroughAligned));
-    Some(Judged { result, held, tolerated: leaned.or(past_error) })
+    Some(Judged { result, held: census, tolerated: census_leaned.or(past_error) })
 }
 
 /// Whether the read, with an allele's window `w` starting at query position `start`,

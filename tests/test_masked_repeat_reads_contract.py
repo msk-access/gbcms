@@ -235,6 +235,22 @@ def test_an_error_at_the_shifted_base_leaves_the_insertion_counted(tmp_path, cap
     assert named == (errors >= 2), counts.possible_minority
 
 
+def test_reads_left_depth_only_for_their_placement_stay_in_the_error_census(tmp_path, caplog):
+    """The 250-bp VNTR shape, eight of its SNP haplotype's reads with one confident error
+    inside the repeat: eight of the fragments reading REF's bases there, under 5%, an
+    error. Reads decided past the windows that the ALT fits as well a unit over are depth
+    only, but they read REF's bases all the same: they stay in the census of recurring
+    substitutions, so the error stays an error and its reads count REF (left out, the
+    eight crossed 5% and six read as another allele)."""
+    f = FIXTURE["vntr28_ins_and_snp_250"]
+    at = f["pos"] + 20
+    base = {"A": "G", "C": "T", "G": "A", "T": "C"}[f["h2"][at]]
+    counts, calls = _counted(
+        tmp_path, caplog, "vntr28_ins_and_snp_250", error=("h2", at, at + 60, base, 8)
+    )
+    assert calls[("h2", "other")] == 0 and counts.rd == 63, (counts.rd, dict(calls))
+
+
 def test_a_germline_snp_in_a_one_orientation_library_never_counts_alt(tmp_path, caplog):
     """The SNP alone, every fragment in one pair orientation (an amplicon library): its
     carriers are all one-sided, as every read is, so orientation tells nothing and the
