@@ -34,6 +34,7 @@ import pytest
 from helpers import count_checked, make_read, write_contig
 
 from gbcms import _rs
+from gbcms.pipeline import sibling_lists
 
 FIXTURE = json.loads((Path(__file__).parent / "testdata" / "masked_repeat_reads.json").read_text())
 ENGINE_LOGGER = "_rs.counting.engine"
@@ -365,6 +366,119 @@ def test_shifted_alt_bases_spell_no_other_allele_of_refs_length(tmp_path, caplog
     counts, calls = _counted(tmp_path, caplog, "grch38_dup23_20x")
     assert (counts.rd, counts.ad) == (25, 29)
     assert calls[("h2", "REF")] == 24 and calls[("h2", "other")] == 0, dict(calls)
+
+
+# ── Two units inserted at one site, both rows given (co-annotated siblings) ─────────────
+PAIR_CALL = re.compile(
+    r"read call (\S+ \S+) read=(h[12]|ref)_(\S+) mate=(\d) ref=(\w+) alt=(\w+) "
+    r".*?partial=(\d+).*?uninformative=(\w+)"
+)
+
+
+def _counted_pair(tmp_path, caplog, name, listed=True):
+    """The shape's two rows, the given unit (`alt`) and another unit at the same site
+    (`alt2`), counted in one call: co-annotated as the CLI groups them (each the other's
+    sibling), or each alone; and each read's call at each row (0 for `alt`, 1 for `alt2`),
+    by the haplotype it came from."""
+    f = FIXTURE[name]
+    tmp_path.mkdir(parents=True, exist_ok=True)
+    fa, raw, bam = tmp_path / f"{name}.fa", tmp_path / f"{name}.raw.bam", tmp_path / f"{name}.bam"
+    fa.write_text(f">1\n{f['ref']}\n")
+    pysam.faidx(str(fa))
+    header = {"HD": {"VN": "1.6", "SO": "coordinate"}, "SQ": [{"SN": "1", "LN": len(f["ref"])}]}
+    with pysam.AlignmentFile(str(raw), "wb", header=header) as out:
+        for qname, flag, pos, cigar, mapq, hap, off, length, mate_pos, tlen in f["reads"]:
+            if zlib.crc32(qname[qname.index("_") :].encode()) & 1:
+                flag ^= 0xC0  # half the fragments the other pair orientation, as a library holds
+            a = pysam.AlignedSegment()
+            a.query_name, a.flag, a.reference_id, a.reference_start = qname, flag, 0, pos
+            a.cigarstring, a.mapping_quality = cigar, mapq
+            a.query_sequence = f[hap][off : off + length]
+            a.query_qualities = pysam.qualitystring_to_array("I" * length)
+            a.next_reference_id, a.next_reference_start, a.template_length = 0, mate_pos, tlen
+            out.write(a)
+    pysam.sort("-o", str(bam), str(raw))
+    pysam.index(str(bam))
+    p = f["pos"]
+    anchor = f["ref"][p - 1]
+    prepared = _rs.prepare_variants(
+        [_rs.Variant("1", p - 1, anchor, anchor + f[k], "INS") for k in ("alt", "alt2")],
+        str(fa),
+        5,
+        False,
+        1,
+        True,
+    )
+    # each row as prep normalized it, as the read calls name it
+    rows = [f"1:{v.pos + 1} {v.ref_allele}>{v.alt_allele}" for v in (pv.variant for pv in prepared)]
+    siblings = sibling_lists(prepared, [0, 1]) if listed else [[], []]
+    assert not listed or all(len(s) == 1 for s in siblings), "the two rows are co-annotated"
+    caplog.clear()
+    with caplog.at_level(5, logger=ENGINE_LOGGER):
+        _rs.reset_log_caching()
+        counts = count_checked(str(bam), [pv.variant for pv in prepared], sibling_variants=siblings)
+    calls = {}
+    for record in caplog.records:
+        if m := PAIR_CALL.search(record.getMessage()):
+            row, hap, read, mate, ref, is_alt, partial, depth = m.groups()
+            shown = {
+                "REF": ref == "true",
+                "ALT": is_alt == "true",
+                "partial": partial != "0",
+                "depth": depth == "true",
+            }
+            calls[(rows.index(row), hap, read, mate)] = next(
+                (c for c, on in shown.items() if on), "other"
+            )
+    return counts, calls
+
+
+def _alt_at_both(calls):
+    """Reads counted ALT at both rows."""
+    rows = collections.defaultdict(set)
+    for (row, hap, read, mate), call in calls.items():
+        if call == "ALT":
+            rows[(hap, read, mate)].add(row)
+    return [k for k, r in rows.items() if len(r) == 2]
+
+
+def test_each_unit_inserted_at_one_site_counts_its_carriers(tmp_path, caplog):
+    """A VNTR of 40-bp units: one haplotype inserts unit x, the other unit y, at one site,
+    both rows given. BWA writes the carriers ungapped a unit off; the exact-carrier rule
+    reads each as its unit, and the sibling guard's aligned REF test read their slice as
+    REF and demoted every one (AD 0 at both rows). Judged by its bases placed whole, a
+    carrier is its own unit's: each row counts as it does alone, and no read is the other
+    unit's ALT or ALT at both rows."""
+    alone, _ = _counted_pair(tmp_path / "alone", caplog, "vntr40_same_site", listed=False)
+    listed, calls = _counted_pair(tmp_path / "listed", caplog, "vntr40_same_site")
+    assert [c.ad for c in listed] == [c.ad for c in alone] and all(c.ad > 0 for c in listed)
+    wrong = [k for k, c in calls.items() if c == "ALT" and (k[0], k[1]) in {(0, "h2"), (1, "h1")}]
+    assert not wrong and not _alt_at_both(calls), (wrong, _alt_at_both(calls))
+
+
+def test_a_listed_unit_no_read_carries_takes_no_carrier(tmp_path, caplog):
+    """The same VNTR with REF and x only, y listed beside x: x's row counts its carriers
+    as alone, y's row none."""
+    alone, _ = _counted_pair(tmp_path / "alone", caplog, "vntr40_same_site_ref_h1", listed=False)
+    listed, _ = _counted_pair(tmp_path / "listed", caplog, "vntr40_same_site_ref_h1")
+    assert listed[0].ad == alone[0].ad > 0 and listed[1].ad == 0, (
+        listed[0].ad,
+        alone[0].ad,
+        listed[1].ad,
+    )
+
+
+def test_reads_fitting_both_units_count_for_neither_row(tmp_path, caplog):
+    """x and y differing only near the unit's end (bases 37 and 38): a read fitting both,
+    read whole, is either unit's, so neither row's AD; no read counts ALT at both rows
+    and none the other unit's ALT."""
+    alone, _ = _counted_pair(tmp_path / "alone", caplog, "vntr40_same_site_tail", listed=False)
+    listed, calls = _counted_pair(tmp_path / "listed", caplog, "vntr40_same_site_tail")
+    assert all(a.ad <= b.ad for a, b in zip(listed, alone, strict=True)) and all(
+        c.ad > 0 for c in listed
+    )
+    wrong = [k for k, c in calls.items() if c == "ALT" and (k[0], k[1]) in {(0, "h2"), (1, "h1")}]
+    assert not wrong and not _alt_at_both(calls), (wrong, _alt_at_both(calls))
 
 
 def test_a_plain_insertion_is_unchanged(tmp_path, caplog):

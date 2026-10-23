@@ -3605,20 +3605,20 @@ const WHOLE_CAP: usize = 2;
 /// other allele's own, shifted onto the reads written through it (a run's junction), and
 /// would let that allele fit them.
 fn other_fits_as_well(w: &WholeHaps, read: &[u8], q: &[u8], min_baseq: u8, alt: bool) -> bool {
-    let fewest = |h: &[u8]| fewest_anywhere(h, read, q, min_baseq);
+    let fewest = |h: &[u8]| fewest_anywhere(h, read, q, min_baseq, WHOLE_CAP);
     let (called, other) = if alt { (fewest(&w.plain_hap), fewest(&w.plain)) } else { (fewest(&w.plain), fewest(&w.plain_hap)) };
     other.is_some_and(|o| o < WHOLE_CAP && called.is_some_and(|c| o <= c))
 }
 
-/// The fewest confident mismatches (at or above `min_baseq`, not N; up to [`WHOLE_CAP`])
-/// of a read's bases placed ungapped anywhere on a haplotype, the whole read on it. None
-/// where the read is longer than the haplotype.
-fn fewest_anywhere(hap: &[u8], read: &[u8], q: &[u8], min_baseq: u8) -> Option<usize> {
+/// The fewest confident mismatches (at or above `min_baseq`, not N; up to `cap`) of a
+/// read's bases placed ungapped anywhere on a haplotype, the whole read on it. None where
+/// the read is longer than the haplotype.
+fn fewest_anywhere(hap: &[u8], read: &[u8], q: &[u8], min_baseq: u8, cap: usize) -> Option<usize> {
     let n = read.len();
     if n == 0 || n > hap.len() || q.len() < n {
         return None;
     }
-    let mut fewest = WHOLE_CAP;
+    let mut fewest = cap;
     for o in 0..=hap.len() - n {
         let mut m = 0;
         for i in 0..n {
@@ -3636,6 +3636,60 @@ fn fewest_anywhere(hap: &[u8], read: &[u8], q: &[u8], min_baseq: u8) -> Option<u
         }
     }
     Some(fewest)
+}
+
+/// Mismatches counted per placement when a co-annotated sibling contests an ALT read
+/// ([`sibling_by_bases`]): none, one, two or more decide.
+const SIBLING_CAP: usize = 3;
+
+/// Whether a co-annotated sibling claims a read the exact-carrier rule called ALT for
+/// `v`, judged by the read's own bases wherever it could lie (RJ-5 for ALT reads, as
+/// RJ-27 reads a read whole): the read, every readable base of it, placed ungapped
+/// anywhere on `v`'s ALT haplotype and on each sibling's, over `v`'s whole-read reach,
+/// its confident mismatches counted (at or above `min_baseq`, not N). A sibling whose
+/// haplotype fits with fewer mismatches claims it (the sibling's molecule); one fitting
+/// with as few leaves it either allele, neither row's AD (both rows' partial evidence). A
+/// sibling whose haplotype is `v`'s own (one allele written another way) is no
+/// competitor. `Some(false)`: every sibling misses more. None where no allele places the
+/// read whole under the cap (its own indel, a splice, or errors) or no reach holds `v`'s
+/// alleles: the aligned comparison judges it.
+pub(crate) fn sibling_by_bases(
+    record: &Record,
+    v: &Variant,
+    siblings: &[Variant],
+    quals: &[u8],
+    min_baseq: u8,
+    rules: &ReadRules,
+) -> Option<bool> {
+    let (start, plain) = whole_reference(v)?;
+    let on = |pos: i64, r: &str, a: &str| haplotype(&plain, usize::try_from(pos - start).ok()?, &upper(r), &upper(a));
+    let own = on(v.pos, &v.ref_allele, &v.alt_allele)?;
+    let (first, after) = readable_range(record, rules)?;
+    let seq = record.seq().as_bytes();
+    let (read, q) = (seq.get(first..after)?, quals.get(first..after)?);
+    let own_m = fewest_anywhere(&own, read, q, min_baseq, SIBLING_CAP)?;
+    let mut placed = own_m < SIBLING_CAP;
+    for sib in siblings {
+        let Some(hap) = on(sib.pos, &sib.ref_allele, &sib.alt_allele) else { continue };
+        if hap == own {
+            continue;
+        }
+        let sib_m = fewest_anywhere(&hap, read, q, min_baseq, SIBLING_CAP);
+        placed |= sib_m.is_some_and(|m| m < SIBLING_CAP);
+        // a sibling placing the read whole (under the cap) as well as or better than
+        // this row's ALT claims it; a read placed whole on neither is left to the
+        // aligned comparison
+        if sib_m.is_some_and(|m| m < SIBLING_CAP && m <= own_m) {
+            trace!(
+                "AD-claiming guard (bases): read={} ALT for {}>{} at {}:{} fits sibling {}>{} at {}:{} \
+                 as well or better, read whole ({} mismatches on its own ALT)",
+                String::from_utf8_lossy(record.qname()), v.ref_allele, v.alt_allele, v.chrom, v.pos + 1,
+                sib.ref_allele, sib.alt_allele, sib.chrom, sib.pos + 1, own_m,
+            );
+            return Some(true);
+        }
+    }
+    placed.then_some(false)
 }
 
 /// The allele a read's bases fit read whole (`readable`, without its own alignment's
@@ -4660,18 +4714,42 @@ mod tests {
         let hap: Vec<u8> = [other(4, b'T'), unit.as_bytes().to_vec(), other(20, b'C')].concat();
         let read = unit.as_bytes().to_vec();
         let q = vec![30u8; read.len()];
-        assert_eq!(fewest_anywhere(&hap, &read, &q, 20), Some(0), "its own copy");
-        assert_eq!(fewest_anywhere(&hap[..30], &read, &q, 20), Some(1), "only the first copy: one base off");
+        assert_eq!(fewest_anywhere(&hap, &read, &q, 20, WHOLE_CAP), Some(0), "its own copy");
+        assert_eq!(fewest_anywhere(&hap[..30], &read, &q, 20, WHOLE_CAP), Some(1), "only the first copy: one base off");
         let mut erred = read.clone();
         erred[10] = if erred[10] == b'A' { b'C' } else { b'A' };
-        assert_eq!(fewest_anywhere(&hap[..30], &erred, &q, 20), Some(WHOLE_CAP), "two off, counted to the cap");
+        assert_eq!(fewest_anywhere(&hap[..30], &erred, &q, 20, WHOLE_CAP), Some(WHOLE_CAP), "two off, counted to the cap");
         let mut low = q.clone();
         low[10] = 5;
-        assert_eq!(fewest_anywhere(&hap[..30], &erred, &low, 20), Some(1), "a base below the minimum quality is unread");
+        assert_eq!(fewest_anywhere(&hap[..30], &erred, &low, 20, WHOLE_CAP), Some(1), "a base below the minimum quality is unread");
         let mut masked = hap[..30].to_vec();
         masked[4] = IUPAC[(bit(b'T') | bit(unit.as_bytes()[4])) as usize];
-        assert_eq!(fewest_anywhere(&masked, &read, &q, 20), Some(0), "a mask takes either base");
-        assert_eq!(fewest_anywhere(&hap[..20], &read, &q, 20), None, "a read longer than the haplotype");
+        assert_eq!(fewest_anywhere(&masked, &read, &q, 20, WHOLE_CAP), Some(0), "a mask takes either base");
+        assert_eq!(fewest_anywhere(&hap[..20], &read, &q, 20, WHOLE_CAP), None, "a read longer than the haplotype");
+    }
+
+    #[test]
+    fn a_sibling_contests_an_alt_read_by_its_bases_wherever_it_lies() {
+        // two ten-base insertions after the anchor C, differing at their sixth base
+        let (left, right) = ("GATCAGTTCAGGACTTAGCA", "TTGACCATGGATCCAGTACG");
+        let ctx = format!("{left}C{right}");
+        let (x, y) = ("AGGTCCATGA", "AGGTCGATGA");
+        let v = var(&ctx, 20, "C", &format!("C{x}"));
+        let sib = var(&ctx, 20, "C", &format!("C{y}"));
+        let contest = |read: &str, siblings: &[Variant]| {
+            let mut rec = Record::new();
+            let cigar = CigarString(vec![Cigar::Match(read.len() as u32)]);
+            rec.set(b"r", Some(&cigar), read.as_bytes(), &vec![30; read.len()]);
+            rec.set_pos(5);
+            sibling_by_bases(&rec, &v, siblings, &vec![30; read.len()], 20, &ReadRules::DNA)
+        };
+        let carrier = |ins: &str, take: usize| format!("{}C{}{}", &left[5..], &ins[..take], if take == ins.len() { &right[..10] } else { "" });
+        assert_eq!(contest(&carrier(x, 10), std::slice::from_ref(&sib)), Some(false), "x's carrier is x's");
+        assert_eq!(contest(&carrier(y, 10), std::slice::from_ref(&sib)), Some(true), "y's carrier is y's");
+        assert_eq!(contest(&carrier(x, 4), std::slice::from_ref(&sib)), Some(true), "short of the telling base: either allele");
+        let twin = var(&ctx, 20, "C", &format!("C{x}"));
+        assert_eq!(contest(&carrier(x, 4), &[twin]), Some(false), "a sibling spelling this row's own allele is no competitor");
+        assert_eq!(contest("TTTTTTTTTTCCCCCCCCCCAAAAAAAAAA", &[sib]), None, "placed on no allele: the aligned tests judge it");
     }
 
     #[test]
