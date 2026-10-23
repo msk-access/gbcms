@@ -35,12 +35,21 @@ Merged into develop on 2026-10-23; #294 and #300 closed:
 
 **Filed (sub-issues of #276):**
 - #301 (C43l): a co-located deletion's reads.
-- #304 (C43m): a whole-read haplotype judge. A candidate, no milestone.
+- #304 (C43m): a whole-read haplotype judge. In 6.7.0, decided inside package 2 (operator, 2026-10-23).
 - #305 (C43n): AD above the oracle after #300.
 - #306 (C43o): the error census's 5% cliff.
 
 **Measurement comments** on #144 (13 of 20 clear carriers lost at two HG002 duplications,
 clipped on both sides), #273 (name the ties) and #290 (what remains after #302).
+
+**Audit of the open tickets (2026-10-23):**
+- **#173 closed as done:** its RNA part by #217; its DNA parts by #278 (clipped pure-indel
+  carriers read and admitted), #254 and RJ-23's other-flank placement.
+- **#282 closed as superseded:** #300's decision that a tie is neither row's AD, seen or not,
+  replaces Test 3's seen share for every exact-carrier call.
+- **#264 narrowed to its documentation.** HG002 small het insertions went from median VAF
+  0.429 to 0.500 since #278, and small deletions from 0.455 to 0.500. Long insertions (0.441)
+  move to package 2.
 
 **Study page** (private artifact): https://claude.ai/artifact/DGLKH2nuK4N47rfguEcY6Q. It
 covers what short reads can tell at three HG002 rows, the field's approaches and the
@@ -58,7 +67,7 @@ PairHMM probe. The source is `m294/study_page/`.
 **Main checkout:** still on the merged `feature/c40-long-deletions`, with stale uncommitted
 `.agents` copies that develop now holds. Switch it to develop once the docs PR merges.
 
-## Next — 6.7.0 work packages (plan, 2026-10-23; awaiting the operator's order)
+## Next — 6.7.0 work packages (operator, 2026-10-23: the recommended order; #304 in 6.7.0)
 Tickets that answer the same question, or share code paths and measurements, land together.
 - **Count-changing packages** run one at a time. Each starts from develop on its own branch,
   goes red-first, gets an adversarial review, and is measured on every arm with the checks
@@ -68,10 +77,10 @@ Tickets that answer the same question, or share code paths and measurements, lan
 
 | # | Package | Tickets | Why together | First step |
 |:--|:--|:--|:--|:--|
-| 1 | Co-annotated alleles | #305, #282, #246 | the AD-claiming guard and RJ-5/RJ-25; one measurement set: the cluster-aware check, the compound-het arm, the panel and gate clusters | #305 read by read on the data in hand; then #282 as decided (Test 3 follows the seen share); re-measure #246 under #300 and close it if gone |
-| 2 | Repeats: unit counts and placement | #290, #301, #297, #144, #264, #304 | one question: which length of a repeat a read carries when the aligner placed it elsewhere. One acceptance metric: VAF at germline hets in repeats (#264) | decide the architecture first. Measure #304 (a whole-read haplotype judge) on every arm as a prototype against targeted fixes, then build |
+| 1 | Co-annotated alleles | #305, #246 | the AD-claiming guard and RJ-5/RJ-25; one measurement set: the cluster-aware check, the compound-het arm, the panel and gate clusters | #305 read by read on the data in hand; then #246, whose SNV sibling still claims the read through its own uncontested call |
+| 2 | Repeats: unit counts and placement | #290, #301, #297, #144, #304; #264 (docs) | one question, in four code paths: which length of a repeat a read carries when the aligner placed it elsewhere. One acceptance metric: VAF at germline hets in repeats (long insertions 0.441 on HG002) | decide the architecture first. Measure #304 (a whole-read haplotype judge) on every arm as a prototype against targeted fixes, then build; #264's documentation with it |
 | 3 | RNA read judgment | #292, #293, #178 | the spliced-read path; FORTE | #292's three prototypes, measured (decided 2026-10-17) |
-| 4 | Evidence outside the aligned bases | #173 (DNA part), #177, #212, #179 | read admission and clipped bases (RJ-10, RJ-13); WES and HG002 without realignment | #212 first: the fragment end bounds what a clip may hold |
+| 4 | Evidence outside the aligned bases | #177, #212, #179 | read admission and clipped bases (RJ-10, RJ-13); WES and HG002 without realignment | #212 first: the fragment end bounds what a clip may hold |
 | 5 | Guard statistics and artifacts | #306, #180 | telling a recurring change from an error or an artifact (fragment shares, pair orientation; #302 added the binomial orientation veto) | count the rows near the 5% line; decide #180's form |
 | 6 | Homopolymer twin and decomposition | #111, #112 (#145, #146), #128 | the opt-in `--rescue-homopolymer` path | decide fix or retire (#111); retiring closes #112, #145 and #146 |
 | 7 | Complex-event read-on | #274 | RJ-9 for delins | measure in the engine, then decide |
@@ -80,10 +89,9 @@ Tickets that answer the same question, or share code paths and measurements, lan
 | D7 | Platforms (parallel) | #232 (#233–#237) | infrastructure | as planned |
 | G | Truth arms and the gate | #266, #267, #268, #275 | the HPC gate | the D12 settings on #275; HPC when available |
 
-**Recommended order:** 1 → 2 (decision, then build) → 3 → 4 → 5 → 6 → 7, with P, H and D7
-alongside; then G, the freeze and the gate. This moves #282 ahead of #290, against the
-2026-10-17 order. #282 is quick with its data in hand, while #290 now waits on package 2's
-architecture decision.
+**Order (operator, 2026-10-23):** 1 → 2 (decision, then build) → 3 → 4 → 5 → 6 → 7, with P,
+H and D7 alongside; then G, the freeze and the gate. The packages are recorded on #196;
+the A–F parents stay as they are.
 
 ## Before — #285 (C40a) and the Group 1 decisions (2026-10-17 to 2026-10-19)
 #289 merged 2026-10-16 (e56ed8e4). Closed: #278, #291, #287 (fixed by #288), #143
