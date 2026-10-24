@@ -5,7 +5,79 @@
 
 _Last updated: 2026-10-23_
 
-## Now — 6.7.0 after #302, #303 and #299 (C43: repeats, siblings, PairHMM)
+## Now — 6.7.0 package 2 decided: a universal per-haplotype read judge (2026-10-23)
+**Package 1 done.**
+- #305 closed: no AD excess after #300. The oracle's 2-mismatch cap and reads off the anchor
+  span made it; develop has at most 3 wrong-allele reads in 6,024. What remains (own-allele
+  reads left depth only, RD at sites with no REF haplotype) moves to package 2.
+- #246 parked into package 2: an SNV row double-counts insertion carriers written through
+  the repeat (HG002: 547 such credits at 473 trans pairs; RC none). A prototype (listed
+  indels on SNV rows, `plan670/parked_246/`) cut them to 217; its red contract test
+  (`test_snv_beside_indel_contract.py`, in the parked patch) is a package 2 acceptance case.
+
+**Package 2 decided (operator, 2026-10-23; record on #304).** One judge for every small-variant
+row replaces the size-specific read-judgment rules:
+- haplotypes: every context of the other listed rows within read reach, crossed with every
+  state of X's site (REF, X, other alleles there, recurring discovered ones);
+- scorer: the read whole against each haplotype, ends free, affine edit cost, a base below
+  `--min-baseq` costing nothing;
+- decision: ALT or REF only by one confident base; ties depth only; no phase credit.
+
+Built in 6.7.0 behind a flag; the default before the freeze only if it passes every arm, a
+cost target (within 2x develop) and the HPC gate, else opt-in and the flip in 6.8.0.
+
+**R2 bake-off** (HG002 phased truth; decidable carriers credited, develop -> judge):
+#246 pairs SNV 91.9 -> 96.7%, INS 1-9 60 -> 97%; tandem repeats DEL 10-49 74 -> 98%,
+INS 50-299 44 -> 96%, INS 300-999 42 -> 96%; SV arm 50 bp-10 kb 96-99%. False ALT equal
+or lower except INS 10-49 (20 vs 9). A PairHMM scorer was rejected for this (its repeat gap
+model sinks perfect short repeat indels below the margin).
+
+**Next: the engine build** on `feature/c46-haplotype-judge`: design doc, red-first tests, the
+Rust judge behind a flag. It must add speed (the prototype is ~300x develop: k-mer triage,
+SIMD banded alignment, trimming), mRNA haplotypes for RNA, junction-based REF for long
+deletions (RJ-24), the guard's background changes as context rows, and prep-level row
+lists for binning invariance; then every local arm, including the IMPACT 50-500 bp events
+(ABRA2-written CIGARs, no SV-caller second opinion below ~500 bp).
+
+**After 6.7.0:** genotyping a separate SV file (cBioPortal SV text, iCallSV, SVtorm or VCF)
+per breakend junction with fragment evidence, and RNA fusions on mRNA junctions.
+
+**Harness** (`plan670/`, local):
+- `r2/`: the `hapjudge` prototype (Rust; `runs/` per arm), `truth.py` (BWA labels against
+  HG002's two haplotypes), `truth_haps.py`, `evaluate.py`, `delta_sweep.py`, `SPEC.md`.
+- Arms: `giab/c246/` (#246 pairs), `giab/tr/` (GIAB TR v1.0.1 Tier 1), `giab/sv/` (v5.0q
+  SVs); the 10-tool harness gained `hg002_c246`.
+- Builds: `src_c44k3` (develop's counts), `src_c45c` (the parked #246 prototype).
+
+**Main checkout:** on develop.
+
+## Next — 6.7.0 work packages (operator, 2026-10-23: the recommended order; #304 in 6.7.0)
+Tickets that answer the same question, or share code paths and measurements, land together.
+- **Count-changing packages** run one at a time. Each starts from develop on its own branch,
+  goes red-first, gets an adversarial review, and is measured on every arm with the checks
+  above.
+- **Output-only and hygiene items** run alongside in their own worktrees.
+- **Then** D9–D12 on HPC, and one 6.7.0 freeze and gate.
+
+| # | Package | Tickets | Why together | First step |
+|:--|:--|:--|:--|:--|
+| 1 | Co-annotated alleles (**done**: #305 closed, #246 parked into 2) | #305, #246 | the AD-claiming guard and RJ-5/RJ-25; one measurement set: the cluster-aware check, the compound-het arm, the panel and gate clusters | #305 read by read on the data in hand; then #246, whose SNV sibling still claims the read through its own uncontested call |
+| 2 | Repeats: unit counts and placement (**decided**: the universal haplotype judge, #304) | #290, #301, #297, #144, #304; #264 (docs); #246 | one question, in four code paths: which length of a repeat a read carries when the aligner placed it elsewhere. One acceptance metric: VAF at germline hets in repeats (long insertions 0.441 on HG002) | decide the architecture first. Measure #304 (a whole-read haplotype judge) on every arm as a prototype against targeted fixes, then build; #264's documentation with it |
+| 3 | RNA read judgment | #292, #293, #178 | the spliced-read path; FORTE | #292's three prototypes, measured (decided 2026-10-17) |
+| 4 | Evidence outside the aligned bases | #177, #212, #179 | read admission and clipped bases (RJ-10, RJ-13); WES and HG002 without realignment | #212 first: the fragment end bounds what a clip may hold |
+| 5 | Guard statistics and artifacts | #306, #180 | telling a recurring change from an error or an artifact (fragment shares, pair orientation; #302 added the binomial orientation veto) | count the rows near the 5% line; decide #180's form |
+| 6 | Homopolymer twin and decomposition | #111, #112 (#145, #146), #128 | the opt-in `--rescue-homopolymer` path | decide fix or retire (#111); retiring closes #112, #145 and #146 |
+| 7 | Complex-event read-on | #274 | RJ-9 for delins | measure in the engine, then decide |
+| P | Output and reporting (parallel) | #273, #227, #132, #127 | no count change | #273, then #227 (it feeds the QC summary); close #127 unless a pipeline needs it |
+| H | Hygiene (parallel) | #284, #216, #219, #138, #150, #195 | no count change | #195's fallback path is one Phase 3 never reaches: fix it or retire it |
+| D7 | Platforms (parallel) | #232 (#233–#237) | infrastructure | as planned |
+| G | Truth arms and the gate | #266, #267, #268, #275 | the HPC gate | the D12 settings on #275; HPC when available |
+
+**Order (operator, 2026-10-23):** 1 → 2 (decision, then build) → 3 → 4 → 5 → 6 → 7, with P,
+H and D7 alongside; then G, the freeze and the gate. The packages are recorded on #196;
+the A–F parents stay as they are.
+
+## Before — 6.7.0 after #302, #303 and #299 (C43: repeats, siblings, PairHMM)
 Merged into develop on 2026-10-23; #294 and #300 closed:
 - **#302 (#294, C43j).** RJ-27 amended:
   - the windows read on past the guard's masks to a base that tells the alleles apart;
@@ -64,34 +136,6 @@ PairHMM probe. The source is `m294/study_page/`.
 - HG002 per-read truth scripts: `m294/truth_scripts/` (`truth_lib.py`, `changed_rows.py`).
 - The HG002 compound-het arm and its oracle: `sib294/hg002/` (`run_ch.sh`, `vs_oracle.py`).
 
-**Main checkout:** still on the merged `feature/c40-long-deletions`, with stale uncommitted
-`.agents` copies that develop now holds. Switch it to develop once the docs PR merges.
-
-## Next — 6.7.0 work packages (operator, 2026-10-23: the recommended order; #304 in 6.7.0)
-Tickets that answer the same question, or share code paths and measurements, land together.
-- **Count-changing packages** run one at a time. Each starts from develop on its own branch,
-  goes red-first, gets an adversarial review, and is measured on every arm with the checks
-  above.
-- **Output-only and hygiene items** run alongside in their own worktrees.
-- **Then** D9–D12 on HPC, and one 6.7.0 freeze and gate.
-
-| # | Package | Tickets | Why together | First step |
-|:--|:--|:--|:--|:--|
-| 1 | Co-annotated alleles | #305, #246 | the AD-claiming guard and RJ-5/RJ-25; one measurement set: the cluster-aware check, the compound-het arm, the panel and gate clusters | #305 read by read on the data in hand; then #246, whose SNV sibling still claims the read through its own uncontested call |
-| 2 | Repeats: unit counts and placement | #290, #301, #297, #144, #304; #264 (docs) | one question, in four code paths: which length of a repeat a read carries when the aligner placed it elsewhere. One acceptance metric: VAF at germline hets in repeats (long insertions 0.441 on HG002) | decide the architecture first. Measure #304 (a whole-read haplotype judge) on every arm as a prototype against targeted fixes, then build; #264's documentation with it |
-| 3 | RNA read judgment | #292, #293, #178 | the spliced-read path; FORTE | #292's three prototypes, measured (decided 2026-10-17) |
-| 4 | Evidence outside the aligned bases | #177, #212, #179 | read admission and clipped bases (RJ-10, RJ-13); WES and HG002 without realignment | #212 first: the fragment end bounds what a clip may hold |
-| 5 | Guard statistics and artifacts | #306, #180 | telling a recurring change from an error or an artifact (fragment shares, pair orientation; #302 added the binomial orientation veto) | count the rows near the 5% line; decide #180's form |
-| 6 | Homopolymer twin and decomposition | #111, #112 (#145, #146), #128 | the opt-in `--rescue-homopolymer` path | decide fix or retire (#111); retiring closes #112, #145 and #146 |
-| 7 | Complex-event read-on | #274 | RJ-9 for delins | measure in the engine, then decide |
-| P | Output and reporting (parallel) | #273, #227, #132, #127 | no count change | #273, then #227 (it feeds the QC summary); close #127 unless a pipeline needs it |
-| H | Hygiene (parallel) | #284, #216, #219, #138, #150, #195 | no count change | #195's fallback path is one Phase 3 never reaches: fix it or retire it |
-| D7 | Platforms (parallel) | #232 (#233–#237) | infrastructure | as planned |
-| G | Truth arms and the gate | #266, #267, #268, #275 | the HPC gate | the D12 settings on #275; HPC when available |
-
-**Order (operator, 2026-10-23):** 1 → 2 (decision, then build) → 3 → 4 → 5 → 6 → 7, with P,
-H and D7 alongside; then G, the freeze and the gate. The packages are recorded on #196;
-the A–F parents stay as they are.
 
 ## Before — #285 (C40a) and the Group 1 decisions (2026-10-17 to 2026-10-19)
 #289 merged 2026-10-16 (e56ed8e4). Closed: #278, #291, #287 (fixed by #288), #143
