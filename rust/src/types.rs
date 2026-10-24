@@ -74,6 +74,14 @@ pub struct Variant {
     #[pyo3(get)]
     pub listed_neighbours: Vec<(i64, String, String)>,
 
+    /// The input's other rows (PASS) whose REF span lies within a read's reach of this
+    /// row's (`judge::READ_REACH` each side): 0-based POS, REF, ALT, upper case, in
+    /// position order. The haplotype judge builds this row's haplotypes from them; prep
+    /// fills it from the whole input, so no bin geometry can change it. The decomposed
+    /// twin carries its parent's.
+    #[pyo3(get)]
+    pub reach_rows: Vec<(i64, String, String)>,
+
     /// Reference bases a whole read reaches each side of an event the exact-carrier rule
     /// judges, with their 0-based start (covering `event_ref`): a read the aligner placed
     /// a unit off in a repeat is read whole over all its bases. Prep's; None otherwise.
@@ -113,6 +121,7 @@ impl Variant {
             event_ref,
             boundary_span,
             listed_neighbours: Vec::new(),
+            reach_rows: Vec::new(),
             whole_ref: None,
         }
     }

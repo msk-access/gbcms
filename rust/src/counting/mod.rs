@@ -15,6 +15,7 @@
 //! - [`window`] — Discrimination windows: what a read must span to tell alleles apart
 //! - [`observed`] — The allele the reads carry when it is not the given one (diagnostic)
 //! - [`carrier`] — Exact-carrier classification for complex variants
+//! - [`judge`] — The haplotype judge (`--read-judge haplotype`): every row's reads against its local haplotypes
 //! - [`mfsd`] — Mutant Fragment Size Distribution statistics (KS test, LLR, mean)
 //! - [`rna`] — RNA-seq-specific alignment filters and utilities
 //! - [`parquet_writer`] — Parquet output for fragment size distributions
@@ -29,6 +30,7 @@ mod variant_checks;
 pub(crate) mod window;
 mod observed;
 pub(crate) mod carrier;
+pub(crate) mod judge;
 pub(crate) mod junction;
 mod utils;
 pub(crate) mod mfsd;

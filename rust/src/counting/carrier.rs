@@ -113,11 +113,14 @@ pub(crate) struct ReadRules<'a> {
     /// The substitutions the variant's reads share, found from its reads on first
     /// use: no error, so never tolerated. None tolerates every one.
     pub tolerance: Option<&'a Tolerance<'a>>,
+    /// Which read judgment counts the row's reads.
+    pub judge: super::judge::ReadJudge,
 }
 
 impl ReadRules<'static> {
     /// DNA, no guard: clipped bases are read; no read is spliced.
-    pub(crate) const DNA: ReadRules<'static> = ReadRules { clip_edges: None, reference: None, spliced: None, guard: None, tolerance: None };
+    pub(crate) const DNA: ReadRules<'static> =
+        ReadRules { clip_edges: None, reference: None, spliced: None, guard: None, tolerance: None, judge: super::judge::ReadJudge::Rules };
 }
 
 /// The exon edges and junction ends near a variant, found on first use: only the
@@ -3925,7 +3928,7 @@ mod tests {
 
     fn readable(rec: &Record, edges: Option<Vec<i64>>) -> Option<(usize, usize)> {
         let found = edges.map(|e| ClipEdges::new(move || (e.clone(), Vec::new())));
-        readable_range(rec, &ReadRules { clip_edges: found.as_ref(), reference: None, spliced: None, guard: None, tolerance: None })
+        readable_range(rec, &ReadRules { clip_edges: found.as_ref(), ..ReadRules::DNA })
     }
 
     #[test]

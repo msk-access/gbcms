@@ -129,6 +129,7 @@ pub fn prepare_variants(
             // Post-processing: assign multi-allelic group IDs
             assign_multi_allelic_groups(&mut r);
             assign_listed_neighbours(&mut r);
+            assign_reach_rows(&mut r);
 
             // Log summary
             let valid = r.iter().filter(|p| p.gbcms_status == "PASS").count();
@@ -197,6 +198,45 @@ fn grouping_reach(v: &Variant) -> (i64, i64, Option<(i64, i64)>) {
     let (lo, hi) = (v.pos, v.pos + v.ref_allele.len() as i64);
     let window = is_length_changing(v).then(|| (lo - window_pad(v), hi + window_pad(v)));
     (lo, hi, window)
+}
+
+/// Records on each row the input's other rows within a read's reach of it
+/// (`Variant::reach_rows`), for the haplotype judge; the decomposed twin carries its
+/// parent's. Whole-input, so the rows a read is weighed against never depend on the bin.
+fn assign_reach_rows(variants: &mut [PreparedVariant]) {
+    let reach = crate::counting::judge::READ_REACH;
+    let mut by_chrom: std::collections::HashMap<String, Vec<(i64, String, String)>> =
+        std::collections::HashMap::new();
+    for p in variants.iter().filter(|p| p.gbcms_status == "PASS") {
+        let v = &p.variant;
+        by_chrom.entry(v.chrom.clone()).or_default().push((
+            v.pos,
+            v.ref_allele.to_ascii_uppercase(),
+            v.alt_allele.to_ascii_uppercase(),
+        ));
+    }
+    for rows in by_chrom.values_mut() {
+        rows.sort();
+        rows.dedup();
+    }
+    let longest = by_chrom.values().flatten().map(|r| r.1.len() as i64).max().unwrap_or(1);
+    for p in variants.iter_mut().filter(|p| p.gbcms_status == "PASS") {
+        let v = &p.variant;
+        let Some(rows) = by_chrom.get(&v.chrom) else { continue };
+        let own = (v.pos, v.ref_allele.to_ascii_uppercase(), v.alt_allele.to_ascii_uppercase());
+        let (lo, hi) = (v.pos - reach, v.pos + v.ref_allele.len() as i64 + reach);
+        let from = rows.partition_point(|r| r.0 < lo - longest);
+        let near: Vec<(i64, String, String)> = rows[from..]
+            .iter()
+            .take_while(|r| r.0 < hi)
+            .filter(|r| **r != own && r.0 + r.1.len() as i64 > lo)
+            .cloned()
+            .collect();
+        if let Some(twin) = p.decomposed_variant.as_mut() {
+            twin.reach_rows = near.clone();
+        }
+        p.variant.reach_rows = near;
+    }
 }
 
 /// Records on each deletion of 50 bp or more the input's other substitution rows
@@ -795,6 +835,7 @@ fn prepare_single_variant(
                 event_ref: None,
                 boundary_span: None,
                 listed_neighbours: Vec::new(),
+                reach_rows: Vec::new(),
                 whole_ref: None,
             },
             gbcms_status: verdict,
@@ -835,6 +876,7 @@ fn prepare_single_variant(
                 event_ref: None,
                 boundary_span: None,
                 listed_neighbours: Vec::new(),
+                reach_rows: Vec::new(),
                 whole_ref: None,
             },
             gbcms_status: "FAIL".to_string(),
@@ -1051,6 +1093,7 @@ fn prepare_single_variant(
                     event_ref: None,
                     boundary_span: None,
                     listed_neighbours: Vec::new(),
+                    reach_rows: Vec::new(),
                     whole_ref: None,
                 }
             })
@@ -1099,6 +1142,7 @@ fn prepare_single_variant(
         event_ref: None,
         boundary_span: None,
         listed_neighbours: Vec::new(),
+        reach_rows: Vec::new(),
         whole_ref: None,
     };
     prepared.event_ref = event_core_ref(reader, &prepared, tally);

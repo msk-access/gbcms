@@ -24,6 +24,8 @@ class Variant:
     # rows inside its prepared reference: (0-based POS, REF, ALT).
     @property
     def listed_neighbours(self) -> list[tuple[int, str, str]]: ...
+    @property
+    def reach_rows(self) -> list[tuple[int, str, str]]: ...
     def __init__(
         self,
         chrom: str,
@@ -256,6 +258,7 @@ def count_bam_binned(
     bin_window: int | None = None,
     bin_max_variants: int | None = None,
     warn_per_bam: bool = True,
+    read_judge: str = "rules",
 ) -> list[BaseCounts]: ...
 def count_bam_binned_observations(
     bam_path: str,
@@ -291,6 +294,7 @@ def count_bam_binned_observations(
     observations_path: str | None = None,
     bin_window: int | None = None,
     bin_max_variants: int | None = None,
+    read_judge: str = "rules",
 ) -> tuple[list[BaseCounts], list[Observation]]: ...
 def reset_log_caching() -> None: ...
 def build_commit() -> str: ...

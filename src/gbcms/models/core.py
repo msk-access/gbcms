@@ -202,6 +202,23 @@ class AlignmentConfig(BaseModel):
         description="PairHMM gap-extend probability for tandem repeat regions.",
     )
 
+    read_judge: str = Field(
+        default="rules",
+        description=(
+            "Read judgment: 'rules' (the size-specific rules, default) or 'haplotype' "
+            "(each read scored whole against the row's local haplotypes; #304)."
+        ),
+    )
+
+    @field_validator("read_judge")
+    @classmethod
+    def validate_read_judge(cls, v: str) -> str:
+        """Validate the read judgment is a supported value."""
+        v = v.lower().strip()
+        if v not in ("rules", "haplotype"):
+            raise ValueError(f"Invalid read judge '{v}'. Must be 'rules' or 'haplotype'.")
+        return v
+
     @field_validator("backend")
     @classmethod
     def validate_backend(cls, v: str) -> str:

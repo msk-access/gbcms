@@ -65,6 +65,7 @@ use super::rna;
 use super::window::{self, AlleleKind};
 use super::observed;
 use super::carrier;
+use super::judge;
 use super::junction;
 use crate::shared::baq::apply_heuristic_baq;
 
@@ -419,6 +420,7 @@ fn count_bam_binned_core(
     bin_window: Option<i64>,
     bin_max_variants: Option<i64>,
     warn_per_bam: bool,
+    read_judge: &str,
 ) -> PyResult<(Vec<BaseCounts>, Vec<Observation>)> {
     let (window, max_variants) = bin_geometry(bin_window, bin_max_variants)?;
     // The decomposed and sibling lists run parallel to the variants: a shorter
@@ -435,6 +437,12 @@ fn count_bam_binned_core(
     decomposed.resize_with(variants.len(), || None);
     let mut sibling_variants = sibling_variants;
     sibling_variants.resize_with(variants.len(), Vec::new);
+    let read_judge = judge::parse_read_judge(read_judge).map_err(pyo3::exceptions::PyValueError::new_err)?;
+    if read_judge == judge::ReadJudge::Haplotype {
+        return Err(pyo3::exceptions::PyNotImplementedError::new_err(
+            "read_judge \"haplotype\" is not built yet (package 2, #304)",
+        ));
+    }
     let backend = parse_alignment_backend(
         alignment_backend,
         hmm_llr_threshold,
@@ -725,6 +733,7 @@ fn count_bam_binned_core(
                             filter_indel,
                             fragment_qual_threshold,
                             &backend,
+                            read_judge,
                             apply_baq,
                             umi_tag_owned,
                             mode,
@@ -921,7 +930,7 @@ fn count_bam_binned_core(
 /// arguments (production passes neither): counts must not depend on them.
 #[allow(clippy::too_many_arguments)]
 #[pyfunction]
-#[pyo3(signature = (bam_path, variants, decomposed, min_mapq, min_baseq, filter_duplicates, filter_secondary, filter_supplementary, filter_qc_failed, filter_improper_pair, filter_indel, threads, fragment_qual_threshold=10, sibling_variants=Vec::new(), alignment_backend="pairhmm", hmm_llr_threshold=2.3, hmm_gap_open=1e-4, hmm_gap_extend=0.1, hmm_gap_open_repeat=1e-2, hmm_gap_extend_repeat=0.5, apply_baq=false, umi_tag=None, mode="dna", enforce_strandedness=false, strandedness="reverse", mfsd=false, rna_editing_db=None, gtf_path=None, reference_fasta=None, library_type="capture", bin_window=None, bin_max_variants=None, warn_per_bam=true))]
+#[pyo3(signature = (bam_path, variants, decomposed, min_mapq, min_baseq, filter_duplicates, filter_secondary, filter_supplementary, filter_qc_failed, filter_improper_pair, filter_indel, threads, fragment_qual_threshold=10, sibling_variants=Vec::new(), alignment_backend="pairhmm", hmm_llr_threshold=2.3, hmm_gap_open=1e-4, hmm_gap_extend=0.1, hmm_gap_open_repeat=1e-2, hmm_gap_extend_repeat=0.5, apply_baq=false, umi_tag=None, mode="dna", enforce_strandedness=false, strandedness="reverse", mfsd=false, rna_editing_db=None, gtf_path=None, reference_fasta=None, library_type="capture", bin_window=None, bin_max_variants=None, warn_per_bam=true, read_judge="rules"))]
 pub fn count_bam_binned(
     py: Python<'_>,
     bam_path: String,
@@ -957,6 +966,7 @@ pub fn count_bam_binned(
     bin_window: Option<i64>,
     bin_max_variants: Option<i64>,
     warn_per_bam: bool,
+    read_judge: &str,
 ) -> PyResult<Vec<BaseCounts>> {
     let (counts, _observations) = count_bam_binned_core(
         py, false, None, bam_path, variants, decomposed, min_mapq, min_baseq, filter_duplicates,
@@ -965,7 +975,7 @@ pub fn count_bam_binned(
         hmm_llr_threshold, hmm_gap_open, hmm_gap_extend, hmm_gap_open_repeat,
         hmm_gap_extend_repeat, apply_baq, umi_tag, mode, enforce_strandedness, strandedness,
         mfsd, rna_editing_db, gtf_path, reference_fasta, library_type,
-        bin_window, bin_max_variants, warn_per_bam,
+        bin_window, bin_max_variants, warn_per_bam, read_judge,
     )?;
     Ok(counts)
 }
@@ -982,7 +992,7 @@ pub fn count_bam_binned(
 /// Counts are byte-identical to `count_bam_binned` — same core, same classifier.
 #[allow(clippy::too_many_arguments)]
 #[pyfunction]
-#[pyo3(signature = (bam_path, variants, decomposed, min_mapq, min_baseq, filter_duplicates, filter_secondary, filter_supplementary, filter_qc_failed, filter_improper_pair, filter_indel, threads, fragment_qual_threshold=10, sibling_variants=Vec::new(), alignment_backend="pairhmm", hmm_llr_threshold=2.3, hmm_gap_open=1e-4, hmm_gap_extend=0.1, hmm_gap_open_repeat=1e-2, hmm_gap_extend_repeat=0.5, apply_baq=false, umi_tag=None, mode="dna", enforce_strandedness=false, strandedness="reverse", mfsd=false, rna_editing_db=None, gtf_path=None, reference_fasta=None, library_type="capture", observations_path=None, bin_window=None, bin_max_variants=None))]
+#[pyo3(signature = (bam_path, variants, decomposed, min_mapq, min_baseq, filter_duplicates, filter_secondary, filter_supplementary, filter_qc_failed, filter_improper_pair, filter_indel, threads, fragment_qual_threshold=10, sibling_variants=Vec::new(), alignment_backend="pairhmm", hmm_llr_threshold=2.3, hmm_gap_open=1e-4, hmm_gap_extend=0.1, hmm_gap_open_repeat=1e-2, hmm_gap_extend_repeat=0.5, apply_baq=false, umi_tag=None, mode="dna", enforce_strandedness=false, strandedness="reverse", mfsd=false, rna_editing_db=None, gtf_path=None, reference_fasta=None, library_type="capture", observations_path=None, bin_window=None, bin_max_variants=None, read_judge="rules"))]
 pub fn count_bam_binned_observations(
     py: Python<'_>,
     bam_path: String,
@@ -1018,6 +1028,7 @@ pub fn count_bam_binned_observations(
     observations_path: Option<&str>,
     bin_window: Option<i64>,
     bin_max_variants: Option<i64>,
+    read_judge: &str,
 ) -> PyResult<(Vec<BaseCounts>, Vec<Observation>)> {
     count_bam_binned_core(
         py, true, observations_path, bam_path, variants, decomposed, min_mapq, min_baseq, filter_duplicates,
@@ -1026,7 +1037,7 @@ pub fn count_bam_binned_observations(
         hmm_llr_threshold, hmm_gap_open, hmm_gap_extend, hmm_gap_open_repeat,
         hmm_gap_extend_repeat, apply_baq, umi_tag, mode, enforce_strandedness, strandedness,
         mfsd, rna_editing_db, gtf_path, reference_fasta, library_type,
-        bin_window, bin_max_variants, true,
+        bin_window, bin_max_variants, true, read_judge,
     )
 }
 
@@ -1089,6 +1100,7 @@ fn count_bin_shared(
     filter_indel: bool,
     fragment_qual_threshold: u8,
     backend: &AlignmentBackend,
+    read_judge: judge::ReadJudge,
     apply_baq: bool,
     umi_tag: Option<[u8; 2]>,
     mode: &str,
@@ -1253,9 +1265,10 @@ fn count_bin_shared(
                 spliced: Some(&spliced),
                 guard: Some(&guard),
                 tolerance: Some(&tolerance),
+                judge: read_judge,
             }
         } else {
-            carrier::ReadRules { guard: Some(&guard), tolerance: Some(&tolerance), ..carrier::ReadRules::DNA }
+            carrier::ReadRules { guard: Some(&guard), tolerance: Some(&tolerance), judge: read_judge, ..carrier::ReadRules::DNA }
         };
 
         let (counts_orig, obs_orig) = count_variant_from_cache(
@@ -1658,7 +1671,9 @@ fn count_variant_from_cache(
         let quals = effective_quals(record, use_baq, baq_spare);
         let effective_quals: &[u8] = &quals;
 
-        // ── Allele classification
+        // ── Allele classification. The haplotype judge takes this seam (#304); until it
+        // is built, count_bam_binned_core refuses it, so only the rules reach here.
+        debug_assert_eq!(rules.judge, judge::ReadJudge::Rules, "the haplotype judge is not built yet");
         let result = check_allele_with_qual(
             record, variant, sibling_variants, effective_quals, min_baseq,
             &mut alt_aligner, &mut ref_aligner, backend, rules,
@@ -4012,6 +4027,7 @@ mod tests {
             event_ref: None,
             boundary_span: None,
             listed_neighbours: Vec::new(),
+            reach_rows: Vec::new(),
             whole_ref: None,
         }
     }
@@ -4740,6 +4756,7 @@ mod tests {
             event_ref: None,
             boundary_span: None,
             listed_neighbours: Vec::new(),
+            reach_rows: Vec::new(),
             whole_ref: None,
         }
     }

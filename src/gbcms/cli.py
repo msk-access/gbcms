@@ -50,6 +50,13 @@ class AlignmentBackend(StrEnum):
     PAIRHMM = "pairhmm"
 
 
+class ReadJudge(StrEnum):
+    """CLI-exposed read judgments: the size-specific rules, or the haplotype judge."""
+
+    RULES = "rules"
+    HAPLOTYPE = "haplotype"
+
+
 # Valid variant file extensions (checked before Pydantic config construction).
 # .vcf.gz  — bgzip/gzip-compressed VCF (tabix-indexable, most common HPC format)
 # .vcf.bgz — BGZip-compressed VCF, alternative extension used by some pipelines
@@ -393,6 +400,14 @@ def dna(
             "Invalid values are rejected at parse time."
         ),
     ),
+    read_judge: ReadJudge = typer.Option(
+        ReadJudge.RULES,
+        "--read-judge",
+        help=(
+            "Read judgment: 'rules' (the size-specific rules, default) or 'haplotype' "
+            "(each read scored whole against the row's local haplotypes; in development, #304)."
+        ),
+    ),
     hmm_llr_threshold: float = typer.Option(
         2.3,
         "--llr-threshold",
@@ -525,6 +540,7 @@ def dna(
         # This is required because AlignmentConfig.validate_backend operates on str.
         alignment_config = AlignmentConfig(
             backend=alignment_backend.value,
+            read_judge=read_judge.value,
             hmm_llr_threshold=hmm_llr_threshold,
             hmm_gap_open=hmm_gap_open,
             hmm_gap_extend=hmm_gap_extend,
@@ -760,6 +776,14 @@ def rna(
             "'sw' (Smith-Waterman) or 'pairhmm' (WFA2 + PairHMM, default for RNA)."
         ),
     ),
+    read_judge: ReadJudge = typer.Option(
+        ReadJudge.RULES,
+        "--read-judge",
+        help=(
+            "Read judgment: 'rules' (the size-specific rules, default) or 'haplotype' "
+            "(each read scored whole against the row's local haplotypes; in development, #304)."
+        ),
+    ),
     hmm_llr_threshold: float = typer.Option(
         2.3,
         "--llr-threshold",
@@ -889,6 +913,7 @@ def rna(
 
         alignment_config = AlignmentConfig(
             backend=alignment_backend.value,
+            read_judge=read_judge.value,
             hmm_llr_threshold=hmm_llr_threshold,
             hmm_gap_open=hmm_gap_open,
             hmm_gap_extend=hmm_gap_extend,

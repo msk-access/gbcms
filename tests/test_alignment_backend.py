@@ -226,3 +226,58 @@ def test_rs_default_backend_is_pairhmm():
 
     sig = _rs.count_bam_binned.__text_signature__
     assert 'alignment_backend="pairhmm"' in sig, f"unexpected default in {sig}"
+
+
+# ── The read judgment (--read-judge, #304) ───────────────────────────────────
+
+
+@patch("gbcms.cli.Pipeline")
+def test_cli_read_judge_defaults_to_the_rules(mock_pipeline_cls, tmp_path):
+    """Without --read-judge the size-specific rules count the reads."""
+    vcf, bam, fasta, output_dir = _make_test_files(tmp_path)
+    mock_pipeline_cls.return_value.run.return_value = {"samples_processed": 1, "failed_samples": []}
+    result = runner.invoke(app, _base_args(vcf, bam, fasta, output_dir))
+    assert result.exit_code == 0
+    assert mock_pipeline_cls.call_args[0][0].alignment.read_judge == "rules"
+
+
+@patch("gbcms.cli.Pipeline")
+def test_cli_read_judge_haplotype_reaches_the_config(mock_pipeline_cls, tmp_path):
+    """--read-judge haplotype propagates to the config the engine reads."""
+    vcf, bam, fasta, output_dir = _make_test_files(tmp_path)
+    mock_pipeline_cls.return_value.run.return_value = {"samples_processed": 1, "failed_samples": []}
+    args = _base_args(vcf, bam, fasta, output_dir) + ["--read-judge", "haplotype"]
+    result = runner.invoke(app, args)
+    assert result.exit_code == 0
+    assert mock_pipeline_cls.call_args[0][0].alignment.read_judge == "haplotype"
+
+
+def test_cli_invalid_read_judge(tmp_path):
+    """An unknown read judgment is rejected at parse time."""
+    vcf, bam, fasta, output_dir = _make_test_files(tmp_path)
+    args = _base_args(vcf, bam, fasta, output_dir) + ["--read-judge", "haplotypes"]
+    assert runner.invoke(app, args).exit_code != 0
+
+
+def test_engine_rejects_an_unknown_read_judge(tmp_path):
+    """The engine parses the token strictly: a typo fails loudly, never counts with the
+    other judgment."""
+    from gbcms import _rs
+
+    vcf, bam, fasta, _ = _make_test_files(tmp_path)
+    with pytest.raises(ValueError, match="read_judge"):
+        _rs.count_bam_binned(
+            str(bam),
+            [],
+            [],
+            20,
+            20,
+            True,
+            True,
+            True,
+            False,
+            False,
+            False,
+            1,
+            read_judge="Haplotype",
+        )

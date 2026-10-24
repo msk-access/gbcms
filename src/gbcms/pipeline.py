@@ -903,6 +903,7 @@ class Pipeline:
             "threads": self.config.threads,
             "fragment_qual_threshold": self.config.quality.fragment_qual_threshold,
             "alignment_backend": align_cfg.backend,
+            "read_judge": align_cfg.read_judge,
             "hmm_llr_threshold": align_cfg.hmm_llr_threshold,
             "hmm_gap_open": align_cfg.hmm_gap_open,
             "hmm_gap_extend": align_cfg.hmm_gap_extend,
