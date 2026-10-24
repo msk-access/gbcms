@@ -44,8 +44,10 @@ nextflow/
 - `min_mapq = 20`, `min_baseq = 20` set explicitly in NF.
 - `enforce_strandedness = true` (NF) — note this is currently a no-op unless
   `gene_strand` is populated from the GTF.
-- `apply_baq = false` in config, but RNA relies on the CLI default (on) unless
-  explicitly set — modules pass `--apply-baq`/`--no-baq` conditionally.
+- Where the DNA and RNA CLI defaults differ, RNA has its own param: `rna_min_mapq`
+  (1), `rna_apply_baq` (on), `rna_gap_*` (5e-3/0.25); `min_mapq`, `apply_baq`,
+  `gap_*` are DNA's. `tests/test_nextflow_cli_defaults_contract.py` pins every
+  module's param defaults to its CLI's.
 
 When changing a CLI default or filter, update `nextflow.config` in the same change.
 

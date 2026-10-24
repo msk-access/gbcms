@@ -44,6 +44,11 @@ workflow {
     if (!(params.mode in ['dna', 'rna'])) {
         error "Invalid mode '${params.mode}'. Must be 'dna' or 'rna'. Use --mode dna|rna"
     }
+    // The mFSD report reads its statistics from the MAF output, and gbcms refuses it
+    // with VCF output: fail at launch, not in every sample's task.
+    if (params.mode == 'dna' && asBool(params.mfsd_report) && params.format != 'maf') {
+        error "--mfsd_report requires --format maf (the report reads its mFSD statistics from the MAF output)"
+    }
 
     log.info """
     ============================================================
