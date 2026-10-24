@@ -780,8 +780,8 @@ def rna(
         ReadJudge.RULES,
         "--read-judge",
         help=(
-            "Read judgment: 'rules' (the size-specific rules, default) or 'haplotype' "
-            "(each read scored whole against the row's local haplotypes; in development, #304)."
+            "Read judgment: 'rules' (the size-specific rules, default). 'haplotype' does "
+            "not judge spliced reads yet and is refused in RNA mode (#304)."
         ),
     ),
     hmm_llr_threshold: float = typer.Option(
@@ -838,6 +838,13 @@ def rna(
         logger.warning(
             "--preserve-barcode has no effect when the variant file is not a MAF.",
         )
+
+    if read_judge == ReadJudge.HAPLOTYPE:
+        logger.error(
+            "--read-judge haplotype does not judge spliced reads yet; RNA mode needs "
+            "--read-judge rules."
+        )
+        raise typer.Exit(code=1)
 
     cpu_count = os.cpu_count() or 1
     if threads > cpu_count:

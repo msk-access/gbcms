@@ -259,6 +259,42 @@ def test_cli_invalid_read_judge(tmp_path):
     assert runner.invoke(app, args).exit_code != 0
 
 
+@patch("gbcms.cli.Pipeline")
+def test_cli_rna_refuses_the_haplotype_judge(mock_pipeline_cls, tmp_path):
+    """The haplotype judge does not judge spliced reads yet: RNA refuses it up front
+    rather than counting every spliced read as depth only."""
+    vcf, bam, fasta, output_dir = _make_test_files(tmp_path)
+    args = ["rna"] + _base_args(vcf, bam, fasta, output_dir)[1:] + ["--read-judge", "haplotype"]
+    result = runner.invoke(app, args)
+    assert result.exit_code != 0
+    assert not mock_pipeline_cls.called
+
+
+def test_engine_refuses_the_haplotype_judge_in_rna_mode(tmp_path):
+    """The engine refuses it too, for a caller that skips the CLI."""
+    from gbcms import _rs
+
+    vcf, bam, fasta, _ = _make_test_files(tmp_path)
+    with pytest.raises(ValueError, match="RNA"):
+        _rs.count_bam_binned(
+            str(bam),
+            [],
+            [],
+            20,
+            20,
+            True,
+            True,
+            True,
+            False,
+            False,
+            False,
+            1,
+            mode="rna",
+            reference_fasta=str(fasta),
+            read_judge="haplotype",
+        )
+
+
 def test_engine_rejects_an_unknown_read_judge(tmp_path):
     """The engine parses the token strictly: a typo fails loudly, never counts with the
     other judgment."""

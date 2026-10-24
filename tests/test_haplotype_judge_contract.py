@@ -291,3 +291,120 @@ def test_prep_lists_every_other_row_within_a_reads_reach(tmp_path):
     assert (
         prepared[6].reach_rows == []
     ), "a row 900 bases away lists nothing it cannot share a read with"
+
+
+# ── Admission: a read that misses the anchor counts only where its alignment to the
+# haplotype it is judged on holds the anchor ──
+
+A0 = 700
+REF_ADM = _contig(700, length=1600)
+INS30 = "".join(random.Random(30).choice("ACGT") for _ in range(30))
+
+
+def test_reads_past_a_deletions_anchor_are_not_admitted(tmp_path):
+    """A 30-bp deletion: 5 carriers over the junction, 4 REF reads over the anchor; 6 REF
+    reads starting inside the deleted bases and 6 carriers aligned after the junction hold
+    the anchor on neither haplotype, so they are not depth (as the size-specific rules)."""
+    row = (A0, REF_ADM[A0 - 1 : A0 + 30], REF_ADM[A0 - 1])
+    alt = _apply(REF_ADM, [row])
+    reads = [_plain(f"a{i}", alt, A0 - 50 + i) for i in range(5)]
+    reads += [_plain(f"r{i}", REF_ADM, A0 - 50 + i) for i in range(4)]
+    reads += [_plain(f"x{i}", REF_ADM, A0 + 5 + i) for i in range(6)]
+    for i in range(6):
+        hs = A0 + 5 + i  # haplotype offset past the junction; on the genome 30 further
+        reads.append(make_read(f"p{i}", alt[hs : hs + READ_LEN], hs + 30, ((0, READ_LEN),)))
+    [(rd, ad, dp)] = _run(tmp_path, REF_ADM, [row], reads)
+    assert (rd, ad, dp) == (4, 5, 9)
+
+
+def test_reads_past_an_insertions_anchor_are_not_admitted(tmp_path):
+    """A 30-bp insertion: 4 carriers with the gap at the anchor, 4 REF reads over it; 5
+    carriers aligned from the base after the anchor with inserted bases soft-clipped before
+    it, and 5 REF reads starting there, hold the anchor on neither haplotype."""
+    row = (A0, REF_ADM[A0 - 1], REF_ADM[A0 - 1] + INS30)
+    alt = _apply(REF_ADM, [row])
+    reads = [_gapped(f"g{i}", REF_ADM, A0, INS30, A0 - 30 - i) for i in range(4)]
+    reads += [_plain(f"r{i}", REF_ADM, A0 - 50 + i) for i in range(4)]
+    for i in range(5):
+        k = 10 + i  # inserted bases in the clip
+        hs = A0 + 30 - k
+        reads.append(make_read(f"c{i}", alt[hs : hs + READ_LEN], A0, ((4, k), (0, READ_LEN - k))))
+    reads += [_plain(f"x{i}", REF_ADM, A0) for i in range(5)]
+    [(rd, ad, dp)] = _run(tmp_path, REF_ADM, [row], reads)
+    assert (rd, ad, dp) == (4, 4, 8)
+
+
+# ── An MNP's ALT needs every changed base read ──
+
+
+def test_an_mnp_read_showing_one_of_its_changes_is_not_alt(tmp_path):
+    """A 3-base MNP: 10 carriers over it, 5 carriers ending on its first base (depth), 5
+    starting on its last (not over the anchor), 10 REF reads."""
+    m0 = 1000
+    ref = _contig(5, length=2000)
+    alt3 = "".join("A" if b != "A" else "C" for b in ref[m0 - 1 : m0 + 2])
+    row = (m0, ref[m0 - 1 : m0 + 2], alt3)
+    alt = _apply(ref, [row])
+    reads = [_plain(f"f{i}", alt, m0 - 60 + i) for i in range(10)]
+    reads += [_plain(f"e{i}", alt, m0 - READ_LEN) for i in range(5)]
+    reads += [_plain(f"s{i}", alt, m0 + 1) for i in range(5)]
+    reads += [_plain(f"r{i}", ref, m0 - 30 + i) for i in range(10)]
+    [(rd, ad, dp)] = _run(tmp_path, ref, [row], reads)
+    assert (rd, ad, dp) == (10, 10, 25)
+
+
+# ── An SNV in a repeat beside a listed expansion of it ──
+
+
+def test_an_snv_in_a_repeat_counts_its_carriers_whichever_side_the_expansion_lies(tmp_path):
+    """(CA)x8 with an SNV in unit 5 and a listed +CA left-aligned at the anchor: 10
+    carriers of the SNV with the expansion after it, 10 with it before. Each read's bases
+    say G at the SNV."""
+    p0 = 1001  # 1-based anchor G, (CA)x8 after it
+    ref = _contig(7, length=2400, motifs=((p0 - 1, "G" + "CA" * 8 + "T"),))
+    snv = (p0 + 10, "A", "G")  # unit 5's A
+    ins = (p0, "G", "GCA")
+    right = _apply(ref, [snv, (p0 + 16, "A", "ACA")])
+    left = _apply(ref, [snv, ins])
+    reads = []
+    for i in range(10):
+        s = p0 - 61 + i
+        k = p0 + 17 - 1 - s
+        reads.append(make_read(f"r{i}", right[s : s + 120], s, ((0, k), (1, 2), (0, 120 - k - 2))))
+        k = p0 - s
+        reads.append(make_read(f"l{i}", left[s : s + 120], s, ((0, k), (1, 2), (0, 120 - k - 2))))
+    (snv_rd, snv_ad, snv_dp), _ = _run(tmp_path, ref, [snv, ins], reads)
+    assert (snv_rd, snv_ad, snv_dp) == (0, 20, 20)
+
+
+# ── #246 among many rows: the insertion's haplotype must be one the judge builds ──
+
+
+def test_an_snv_on_an_insertions_first_base_among_many_rows_counts_its_own_carriers(tmp_path):
+    """#246 in a CTTT repeat as HG002 carries it (chr6:36681273/4): a 12-bp insertion at
+    the run's start whose first base is the SNV's ALT, the two in trans, each haplotype
+    with its own rows around them (shared, and its own) within a read's reach, so the
+    contexts are capped. The insertion's carriers, written 151M through the repeat, are
+    REF for the SNV: the haplotype carrying the insertion with its neighbours is among
+    those kept, so no state stands in for a missing row."""
+    a0 = 700  # 1-based anchor T, the SNV the T after it
+    tract = "GCTTTTCTTTC" + "T" + "TTCTTTTTTTC" + "TTTC" * 12 + "TTTTCTTTCTTTCTTTT"
+    ref = _contig(36681273, length=1600, motifs=((a0 - 12, tract),))
+    alt_of = lambda b: "C" if b != "C" else "A"  # noqa: E731
+    snv_at = lambda p: (p, ref[p - 1], alt_of(ref[p - 1]))  # noqa: E731
+    ins = (a0, "T", "TCTCTTTCTTTCC")
+    snv = (a0 + 1, "T", "C")
+    shared = [snv_at(a0 - 130), snv_at(a0 - 76), snv_at(a0 + 7), snv_at(a0 + 135)]
+    h0_only = [snv_at(a0 - 40), snv_at(a0 + 61), snv_at(a0 + 138)]
+    h1_only = [snv_at(a0 - 33), snv_at(a0 + 66), snv_at(a0 + 134)]
+    rows = [ins, snv] + shared + h0_only + h1_only
+    h0 = _apply(ref, [ins] + shared + h0_only)
+    h1 = _apply(ref, [snv] + shared + h1_only)
+    reads = []
+    for i in range(12):
+        s = a0 - 120 + 9 * i
+        reads.append(make_read(f"i{i}", h0[s : s + 151], s, ((0, 151),)))
+        reads.append(make_read(f"s{i}", h1[s : s + 151], s, ((0, 151),)))
+    got = _run(tmp_path, ref, rows, reads)
+    snv_rd, snv_ad, _ = got[1]
+    assert (snv_rd, snv_ad) == (12, 12), got

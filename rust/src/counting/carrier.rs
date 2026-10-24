@@ -115,12 +115,21 @@ pub(crate) struct ReadRules<'a> {
     pub tolerance: Option<&'a Tolerance<'a>>,
     /// Which read judgment counts the row's reads.
     pub judge: super::judge::ReadJudge,
+    /// Under the haplotype judge, the row's haplotypes, built from its reads on first use.
+    pub haplotypes: Option<&'a super::judge::Haplotypes<'a>>,
 }
 
 impl ReadRules<'static> {
     /// DNA, no guard: clipped bases are read; no read is spliced.
-    pub(crate) const DNA: ReadRules<'static> =
-        ReadRules { clip_edges: None, reference: None, spliced: None, guard: None, tolerance: None, judge: super::judge::ReadJudge::Rules };
+    pub(crate) const DNA: ReadRules<'static> = ReadRules {
+        clip_edges: None,
+        reference: None,
+        spliced: None,
+        guard: None,
+        tolerance: None,
+        judge: super::judge::ReadJudge::Rules,
+        haplotypes: None,
+    };
 }
 
 /// The exon edges and junction ends near a variant, found on first use: only the
@@ -275,6 +284,11 @@ fn bit(b: u8) -> Bases {
         b'T' => 8,
         _ => 0,
     }
+}
+
+/// The bases a set takes, in A C G T order.
+pub(crate) fn bases_in(set: Bases) -> impl Iterator<Item = u8> {
+    b"ACGT".iter().copied().filter(move |&b| set & bit(b) != 0)
 }
 
 /// The bases a window base takes: its own, or every base of its IUPAC code.
