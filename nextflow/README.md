@@ -100,7 +100,8 @@ nextflow run nextflow/main.nf \
 | `--context_padding` | Minimum flanking bases for alignment | `5` |
 | `--adaptive_context` | Auto-increase context in tandem repeats | `true` |
 | `--umi_tag` | UMI BAM tag for deduplication (e.g., `XM`, `RX`) | `''` (disabled) |
-| `--apply_baq` | Apply BAQ recalibration (config default off; the RNA CLI enables it by default) | `false` |
+| `--apply_baq` | Apply BAQ recalibration (DNA; matches `gbcms dna`) | `false` |
+| `--rna_apply_baq` | Apply BAQ recalibration (RNA; matches `gbcms rna`) | `true` |
 | `--filter_duplicates` | Filter duplicate reads | `true` |
 | `--filter_secondary` | Filter secondary alignments | `true` |
 | `--filter_supplementary` | Filter supplementary alignments | `true` |
