@@ -93,4 +93,4 @@ for the secret scan.
 - Skills: `.agents/skills/` · Harness plan & philosophy: `docs/harness/00-plan.md`
 - Where we left off: `CONTINUITY.md` · Durable facts: `.agents/memory/MEMORY.md`
 - Open work: `CONTINUITY.md` "Next" (the 6.7.0 work packages), tracker #196 on GitHub, and
-  `PRODUCTION_READINESS.md`. Retired plans are in `docs/archive/`.
+  `PRODUCTION_READINESS.md`. Retired plans are in `.agents/archive/`.

@@ -66,8 +66,8 @@ gbcms/
 │       └── normalize/           # Left-alignment, decomp, fasta, repeat
 ├── nextflow/            # Nextflow pipeline wrapper
 ├── tests/               # pytest suite: contract tests, census.py, helpers.py (`ls tests`)
-├── docs/                # MkDocs documentation; docs/archive/ holds retired plans
-└── .agents/             # Agent rules, skills, memory, learnings
+├── docs/                # MkDocs documentation
+└── .agents/             # Agent rules, skills, memory, learnings; archive/ holds retired plans
 ```
 
 ## Rust/Python Boundary

@@ -7,6 +7,10 @@ description: "Procedure for the gbcms pre-merge DEV QA sweep — ruff, black, my
 
 Run the full lint/test gate. Fix order: ruff → black → mypy → clippy.
 
+Run all of it for a docs-, skills- or Nextflow-only change too: contract tests read
+`docs/` (every `docs/**/*.md`), `nextflow/` and the README, so a moved or reworded
+file can fail them.
+
 ```bash
 ruff check src/ tests/
 black --check src/ tests/
