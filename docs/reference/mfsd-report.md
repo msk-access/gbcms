@@ -4,11 +4,11 @@ Interactive HTML report for per-variant Mutant Fragment Size Distribution analys
 
 ## Overview
 
-The `--mfsd-report` flag generates a self-contained HTML file alongside standard VCF/MAF output. The report provides an interactive visual diagnostic for evaluating fragment size distributions at each variant position, helping distinguish **tumor-derived cfDNA** from **clonal hematopoiesis (CH)** artifacts.
+The `--mfsd-report` flag generates a self-contained HTML file alongside the MAF output (it requires `--format maf`). The report provides an interactive visual diagnostic for evaluating fragment size distributions at each variant position, grading how far each variant's ALT fragments are shorter than its REF fragments. The grade is evidence toward a tumor origin, never an origin call; it does not separate tumor from **clonal hematopoiesis (CH)**, which matched-normal data decide.
 
 !!! tip "Quick Start"
     ```bash
-    gbcms dna --mfsd --mfsd-parquet --mfsd-report \
+    gbcms dna --mfsd --mfsd-parquet --mfsd-report --format maf \
       -v variants.maf -b sample.bam -f ref.fa -o output/
     ```
     This produces three outputs: a MAF with 41 mFSD columns, a `.fsd.parquet` with raw fragment arrays, and a `.mfsd_report.html` for interactive visualization.
@@ -19,7 +19,7 @@ The `--mfsd-report` flag generates a self-contained HTML file alongside standard
 
 | Flag | Default | Description |
 |:-----|:--------|:------------|
-| `--mfsd-report` | `false` | Generate an interactive HTML report. Implies `--mfsd` and `--mfsd-parquet` (both are auto-enabled). |
+| `--mfsd-report` | `false` | Generate an interactive HTML report. Implies `--mfsd` and `--mfsd-parquet` (both are auto-enabled). Requires `--format maf`: the report reads its statistics from the MAF. |
 | `--mfsd-report-min-alt` | `3` | Minimum ALT fragment count to include a variant in the report. Variants below this threshold are excluded. |
 | `--mfsd-report-max-variants` | `20` | Maximum number of variants to include. Variants are selected by highest ALT count. Use `-1` for no limit. |
 

@@ -185,8 +185,8 @@ gbcms dna \
     --format maf \
     --output-dir /tmp/regression_out/
 
-# Diff against baseline
-python scripts/concordance.py /tmp/regression_baseline/ /tmp/regression_out/
+# Diff against baseline: match rows by locus, never by position. The release gate's
+# comparison is scripts/regression_panel/compare_panel.py (see Regression Panel).
 ```
 
 Key invariants to check:
@@ -199,7 +199,7 @@ Key invariants to check:
 | `any_alt = ad + partial_alt` | Must hold for every row (Phase 2 decomposition invariant) |
 | `any_alt >= ad` | Must hold for every row |
 | `n_count / DP ratio` | Should be low (<5%) for clean sites; high ratios flag duplex masking hotspots |
-| `gbcms_status` starts with `PASS` or `FAIL_` | First token is always the verdict; no empty values |
+| `gbcms_status` is exactly `PASS` or `FAIL` | The verdict is never empty; the reason of a `FAIL` (or a `PASS` with a warning) is in `gbcms_status_reason` |
 | `gbcms_diagnostic` empty for FAIL variants | Diagnostics only computed for PASS variants |
 | `gbcms_diagnostic` semicolon-separated | Flags use `;` delimiter (MAF) or `\|` (VCF) |
 | `gbcms_rescue` conditional column | Only present when `--rescue-mnp` is enabled (v4.3.0) |

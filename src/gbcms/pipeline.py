@@ -29,7 +29,7 @@ from rich.progress import (
 
 from .core.kernel import CoordinateKernel
 from .io.atomic import atomic_path, commit_partial, discard_partial, partial_path
-from .io.input import MafReader, VariantReader, VcfReader
+from .io.input import MafReader, VariantReader, VcfReader, variant_format
 from .io.output import MafWriter, VcfWriter, build_identity, declared_contigs
 from .models.core import GbcmsBaseConfig, OutputFormat, Variant, VariantType
 from .rescue_audit import (
@@ -221,7 +221,8 @@ def run_implications(cfg: Any) -> list[str]:
             "(WARN_HOMOPOLYMER_DECOMP)"
         )
     if o.mfsd:
-        out.append("--mfsd adds 40 fragment-size (mFSD) columns")
+        added = len(MafWriter.column_names(mfsd=True)) - len(MafWriter.column_names())
+        out.append(f"--mfsd adds {added} fragment-size (mFSD) columns")
     if cfg.show_normalization:
         out.append("--show-normalization adds the norm_* columns")
     if o.observations_parquet:
@@ -351,21 +352,7 @@ def read_variant_file(path: Path) -> list[Variant]:
     Format is selected by extension. This is the pre-normalization read, so no
     reference is required.
     """
-    reader: VariantReader
-    name_lower = path.name.lower()
-    if (
-        path.suffix.lower() == ".vcf"
-        or name_lower.endswith(".vcf.gz")
-        or name_lower.endswith(".vcf.bgz")
-    ):
-        reader = VcfReader(path)
-    elif path.suffix.lower() == ".maf":
-        reader = MafReader(path)
-    else:
-        raise ValueError(
-            f"Unsupported variant file format: '{path.suffix}'. "
-            "Expected .vcf, .vcf.gz, .vcf.bgz, or .maf."
-        )
+    reader: VariantReader = MafReader(path) if variant_format(path) == "maf" else VcfReader(path)
     variants = list(reader)
     if hasattr(reader, "close"):
         reader.close()
@@ -544,7 +531,7 @@ class Pipeline:
 
         # 2. Prepare variants: MAF anchor → validate REF → left-align → ref_context
         #    This replaces the old _validate_variants() + manual ref_context fetch.
-        is_maf = self.config.variant_file.suffix.lower() == ".maf"
+        is_maf = variant_format(self.config.variant_file) == "maf"
         rs_input = [
             _get_rs().Variant(
                 v.chrom,
@@ -814,7 +801,7 @@ class Pipeline:
             # Written through a temp file renamed once counting succeeds, so a
             # failed run leaves no partial Parquet.
             _obs_path: str | None = None
-            _obs_final = self.config.output.directory / f"{sample_name}.observations.parquet"
+            _obs_final = self._output_file(sample_name, "observations.parquet")
             if self.config.output.observations_parquet:
                 _obs_path = str(partial_path(_obs_final))
             _count_fn = (
@@ -877,7 +864,7 @@ class Pipeline:
             logger.debug("Sample %s completed in %.3fs", sample_name, sample_time)
 
         except Exception as e:
-            discard_partial(self.config.output.directory / f"{sample_name}.observations.parquet")
+            discard_partial(self._output_file(sample_name, "observations.parquet"))
             # logger.exception captures the traceback; the stored message
             # names the exception class because str(e) alone can be a bare
             # dictionary key (KeyError) or even empty.
@@ -1435,6 +1422,17 @@ class Pipeline:
             return []
         return contigs
 
+    def _output_file(self, sample_name: str, kind: str) -> Path:
+        """``{output-dir}/{sample}{suffix}.{kind}``: the main output (``kind`` is
+        ``maf``/``vcf``) and each companion file (``fsd.parquet``,
+        ``mfsd_report.html``, ``observations.parquet``).
+
+        Built from the sample name and suffix, never by swapping the main output's
+        extension: ``Path.with_suffix`` drops dotted suffixes (``.genotyped``) and
+        dotted sample names (``S.1``), which mispairs a companion with its output
+        and lets two samples write the same file."""
+        return self.config.output.directory / f"{sample_name}{self.config.output.suffix}.{kind}"
+
     def _write_output(
         self,
         sample_name: str,
@@ -1451,8 +1449,7 @@ class Pipeline:
             prepared: PreparedVariant objects for normalization/validation info.
         """
         ext = "vcf" if self.config.output.format == OutputFormat.VCF else "maf"
-        suffix = self.config.output.suffix
-        output_path = self.config.output.directory / f"{sample_name}{suffix}.{ext}"
+        output_path = self._output_file(sample_name, ext)
 
         writer: VcfWriter | MafWriter
         if self.config.output.format == OutputFormat.VCF:
@@ -1530,7 +1527,7 @@ class Pipeline:
         # only the counted (real BaseCounts) rows and say how many were left
         # out, so a row-count difference vs the MAF/VCF is explained.
         if self.config.output.mfsd_parquet:
-            fsd_path = output_path.with_suffix("").with_suffix(".fsd.parquet")
+            fsd_path = self._output_file(sample_name, "fsd.parquet")
             counted = [
                 (v, c)
                 for v, c in zip(variants, counts_list, strict=True)
@@ -1567,7 +1564,7 @@ class Pipeline:
                 try:
                     from .report import generate_mfsd_report
 
-                    report_path = output_path.with_suffix("").with_suffix(".mfsd_report.html")
+                    report_path = self._output_file(sample_name, "mfsd_report.html")
                     generate_mfsd_report(
                         parquet_path=fsd_path,
                         maf_path=output_path,

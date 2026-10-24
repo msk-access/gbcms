@@ -170,7 +170,7 @@ Get up and running in minutes. All examples below assume gbcms is [installed](in
         --variants variants.vcf \
         --bam unstranded:aligned.bam \
         --fasta reference.fa \
-        --no-strandedness \
+        --strandedness unstranded \
         --output-dir results/
     ```
 

@@ -4,7 +4,7 @@ This directory contains a Nextflow workflow for running `gbcms` on multiple samp
 
 ## Prerequisites
 
-1. [Nextflow](https://www.nextflow.io/docs/latest/getstarted.html) (>=22.10.1)
+1. [Nextflow](https://www.nextflow.io/docs/latest/getstarted.html) 24.04.0 or later (the manifest enforces `nextflowVersion = '!>=24.04.0'`)
 2. [Docker](https://docs.docker.com/engine/installation/) or [Singularity](https://www.sylabs.io/guides/3.0/user-guide/)
 
 ## Quick Start
@@ -88,6 +88,8 @@ nextflow run nextflow/main.nf \
 | Parameter | Description | Default |
 |-----------|-------------|---------|
 | `--outdir` | Output directory | `results` |
+| `--publish_dir_mode` | How Nextflow stages results into `--outdir` (`copy`, `symlink`, `link`, `move`, ...) | `copy` |
+| `--tracedir` | Directory for the execution trace, report, timeline and DAG files | `${params.outdir}/pipeline_info` |
 | `--format` | Output format (`vcf` or `maf`) | `vcf` |
 | `--suffix` | Suffix to append to output filenames | `''` (empty) |
 | `--column_prefix` | Prefix for gbcms count columns in MAF output | `''` (empty) |
@@ -100,7 +102,8 @@ nextflow run nextflow/main.nf \
 | `--context_padding` | Minimum flanking bases for alignment | `5` |
 | `--adaptive_context` | Auto-increase context in tandem repeats | `true` |
 | `--umi_tag` | UMI BAM tag for deduplication (e.g., `XM`, `RX`) | `''` (disabled) |
-| `--apply_baq` | Apply BAQ recalibration (config default off; the RNA CLI enables it by default) | `false` |
+| `--apply_baq` | Apply BAQ recalibration (DNA; matches `gbcms dna`) | `false` |
+| `--rna_apply_baq` | Apply BAQ recalibration (RNA; matches `gbcms rna`) | `true` |
 | `--filter_duplicates` | Filter duplicate reads | `true` |
 | `--filter_secondary` | Filter secondary alignments | `true` |
 | `--filter_supplementary` | Filter supplementary alignments | `true` |
@@ -179,7 +182,7 @@ Pipeline info and logs are in `${params.outdir}/pipeline_info/`.
 |--------|-------------|
 | `GBCMS_DNA` | DNA allele counting via `gbcms dna` |
 | `GBCMS_RNA` | RNA allele counting via `gbcms rna` |
-| `GBCMS_NORMALIZE` | Variant normalization via `gbcms normalize` |
+| `GBCMS_NORMALIZE` | Variant normalization via `gbcms normalize`. Defined in `modules/local/gbcms/normalize` but included by no workflow, so a run never executes it; run `gbcms normalize` directly |
 | `MERGE_COUNTS` | Merge per-BAM counts into simplex/duplex combined columns (`--merge_counts`) |
 | `FILTER_MAF` | Pre-filter multi-sample MAF by sample |
 | `PIPELINE_SUMMARY` | Aggregate filtering statistics |

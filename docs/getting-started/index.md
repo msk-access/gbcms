@@ -8,7 +8,7 @@ flowchart TD
 
     Start -->|"cfDNA · IMPACT · WGS\nWES · Panel"| DNA(["gbcms dna"]):::dna
     Start -->|"STAR-aligned RNA-seq\ndUTP stranded"| RNA(["gbcms rna"]):::rna
-    Start -->|"Unstranded RNA-seq\n(random orientation)"| RNAL(["gbcms rna\n--no-strandedness"]):::rnal
+    Start -->|"Unstranded RNA-seq\n(random orientation)"| RNAL(["gbcms rna\n--strandedness unstranded"]):::rnal
 
     classDef start fill:#9b59b6,color:#fff,stroke:#7d3c98,stroke-width:2px;
     classDef dna fill:#27ae60,color:#fff,stroke:#1e8449,stroke-width:2px;
@@ -37,10 +37,10 @@ flowchart TD
 
     **Key capabilities:**
 
-    - NH:i:1 MAPQ rescue for novel splice junction reads
-    - dUTP strandedness filtering (disable with `--no-strandedness` for unstranded libraries)
+    - `NH:i:1` rescue of uniquely aligned reads whose MAPQ falls below `--min-mapq`; MAPQ 1 default keeps STAR's two-to-four-locus primaries
+    - dUTP strandedness filtering (`--strandedness unstranded` for unstranded libraries; `forward` for fr-secondstrand)
     - A-to-I RNA editing site flagging via REDIportal (`--rna-editing-db`)
-    - Splice junction tracking (`rna_splice_spanning_count`)
+    - Splice junction tracking (`rna_splice_spanning`)
 
     **Defaults:** MAPQ 1 · base quality 20 · secondary/supplementary/QC-failed reads filtered · PairHMM relaxed RT gap penalties
 
@@ -57,7 +57,7 @@ flowchart TD
 | Reference FASTA with `.fai` index | ✅ | ✅ |
 | VCF or MAF with variant positions | ✅ | ✅ |
 | STAR-aligned BAM (NH tag) | — | ✅ |
-| Gene strand annotation in MAF (`gene_strand` column) | — | Recommended |
+| GTF annotation (`--gtf`), the source of each variant's gene strand | — | Needed for strand-aware counting |
 | REDIportal TABLE1 file | — | Optional |
 
 !!! tip "BAM Index"

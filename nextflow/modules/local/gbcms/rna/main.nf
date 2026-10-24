@@ -56,8 +56,10 @@ process GBCMS_RNA {
 
     // Per-molecule observation export (companion Parquet; counts unchanged).
     def observations_arg = asBool(params.observations_parquet) ? "--observations-parquet" : ""
+    // RNA's own PairHMM gap penalties (rna_gap_*): the `gbcms rna` defaults, relaxed
+    // for reverse-transcription stutter — not DNA's gap_* params.
     def hmm_args = params.alignment_backend in ['hmm', 'pairhmm'] ? \
-        "--llr-threshold ${params.llr_threshold} --gap-open-prob ${params.gap_open_prob} --gap-extend-prob ${params.gap_extend_prob} --repeat-gap-open-prob ${params.gap_open_prob_repeat} --repeat-gap-extend-prob ${params.gap_extend_prob_repeat}" : ""
+        "--llr-threshold ${params.llr_threshold} --gap-open-prob ${params.rna_gap_open_prob} --gap-extend-prob ${params.rna_gap_extend_prob} --repeat-gap-open-prob ${params.rna_gap_open_prob_repeat} --repeat-gap-extend-prob ${params.rna_gap_extend_prob_repeat}" : ""
     
     // Construct filter arguments. Always pass the explicit on/off form: omitting
     // a flag falls back to the CLI default (true for duplicates/secondary/
@@ -90,8 +92,9 @@ process GBCMS_RNA {
     // RNA library strand protocol — only emit when it differs from the CLI default ('reverse')
     def strand_protocol_arg = params.strandedness != 'reverse' ? "--strandedness ${params.strandedness}" : ""
 
-    // BAQ: CLI default for RNA is --apply-baq (on). Pass --no-baq only if user explicitly disables.
-    def baq_arg = !asBool(params.apply_baq) ? "--no-baq" : ""
+    // BAQ: RNA's own param (rna_apply_baq, default on like `gbcms rna`), passed
+    // explicitly either way (DNA's apply_baq, default off, is not read here).
+    def baq_arg = asBool(params.rna_apply_baq) ? "--apply-baq" : "--no-baq"
 
     """
     gbcms rna \\

@@ -29,7 +29,13 @@
 pip install gbcms
 ```
 
-**From source (requires Rust):**
+A release ships one prebuilt wheel (CPython 3.11, Linux x86_64, glibc 2.34+) and the
+source distribution. On macOS, other Python versions and older Linux, `pip` builds the
+source, which needs a Rust toolchain and a C compiler. The exact platform matrix and
+build prerequisites are on the
+[Installation page](https://msk-access.github.io/gbcms/getting-started/installation/#platform-support).
+
+**From source (Rust toolchain + C compiler):**
 ```bash
 git clone https://github.com/msk-access/gbcms.git
 cd gbcms

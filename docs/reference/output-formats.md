@@ -71,13 +71,15 @@ The `##fileformat`, `##source`, and `##INFO`/`##FORMAT` meta-lines are
 written once. Provenance metadata (`##gbcms_command`, `##reference`,
 `##contig`, `##FILTER`) is included when available. RNA-specific
 meta-lines are only included when running `gbcms rna` — the header is
-self-describing.
+self-describing. The `GR` INFO line follows
+`GD` only with `--rescue-mnp`, and the mFSD, normalization and GTF lines only
+with their options (see [INFO Fields](#info-fields)).
 
 === "DNA mode"
 
     ```
     ##fileformat=VCFv4.2
-    ##source=gbcms v5.3.0
+    ##source=gbcms vX.Y.Z (a1b2c3d4)
     ##gbcms_command=gbcms dna --bam tumor:tumor.bam --fasta ref.fa --threads 4
     ##reference=file:///path/to/ref.fa
     ##contig=<ID=chr1,length=248956422>
@@ -87,7 +89,6 @@ self-describing.
     ##INFO=<ID=GS,Number=1,Type=String,Description="gbcms verdict: PASS or FAIL">
     ##INFO=<ID=GSR,Number=1,Type=String,Description="gbcms status reason tags, |-separated (. when none)">
     ##INFO=<ID=GD,Number=1,Type=String,Description="gbcms post-counting diagnostic flags">
-    ##INFO=<ID=GR,Number=1,Type=String,Description="gbcms rescue audit trail">
     ##INFO=<ID=AAD,Number=1,Type=Integer,Description="Any ALT Depth (any_alt = ad + partial_alt)">
     ##INFO=<ID=PAD,Number=1,Type=Integer,Description="Partial ALT Depth">
     ##INFO=<ID=NAD,Number=1,Type=Integer,Description="N-base Depth (duplex masking QC)">
@@ -124,7 +125,7 @@ self-describing.
 
     ```
     ##fileformat=VCFv4.2
-    ##source=gbcms v5.3.0
+    ##source=gbcms vX.Y.Z (a1b2c3d4)
     ##gbcms_command=gbcms rna --bam rna_sample.bam --fasta ref.fa
     ##reference=file:///path/to/ref.fa
     ##contig=<ID=chr1,length=248956422>
@@ -132,7 +133,6 @@ self-describing.
     ##INFO=<ID=DP,...>
     ##INFO=<ID=GS,...>
     ##INFO=<ID=GD,...>
-    ##INFO=<ID=GR,...>
     ##INFO=<ID=AAD,...>
     ##INFO=<ID=PAD,...>
     ##INFO=<ID=NAD,...>
@@ -225,7 +225,6 @@ The `INFO` column is a semicolon-separated list of `KEY=VALUE` pairs.
     | `GS` | String | gbcms verdict: `PASS` or `FAIL`. |
     | `GSR` | String | Status reason tags, `\|`-separated (the `gbcms_status_reason` value); `.` when none. Each reason: [QC Flags → Verdict and status reasons](qc-flags.md#verdict-and-status-reasons). |
     | `GD` | String | Diagnostic flags (the `gbcms_diagnostic` value), `\|`-separated; `.` when none. Each flag: [QC Flags → Diagnostics](qc-flags.md#diagnostics). |
-    | `GR` | String | Rescue audit trail (the `gbcms_rescue` value with `;` written as `\|`); `.` for non-candidates. Outcomes: [QC Flags → MNP rescue](qc-flags.md#mnp-rescue). |
     | `AAD` | Integer | Any ALT Depth — reads with ALT evidence at ≥1 discriminating position. Invariant: `AAD = AD + PAD` |
     | `PAD` | Integer | Partial ALT Depth — reads matching ALT at some but not all discriminating positions. Populated for all variant types including INDELs (via Phase 3 structural evidence propagation). |
     | `NAD` | Integer | N-base Depth — reads with N base at ≥1 discriminating position (duplex masking QC metric) |
@@ -233,6 +232,12 @@ The `INFO` column is a semicolon-separated list of `KEY=VALUE` pairs.
     | `SB_OR` | Float | Fisher's exact test odds ratio for read-level strand bias |
     | `FSB_PVAL` | Float | Fragment-level strand bias p-value |
     | `FSB_OR` | Float | Fragment-level strand bias odds ratio |
+
+=== "--rescue-mnp only"
+
+    | Field | Type | Description |
+    |:------|:-----|:------------|
+    | `GR` | String | Rescue audit trail (the `gbcms_rescue` value with `;` written as `\|`); `.` for non-candidates. Outcomes: [QC Flags → MNP rescue](qc-flags.md#mnp-rescue). |
 
 === "RNA mode only"
 
@@ -246,11 +251,14 @@ The `INFO` column is a semicolon-separated list of `KEY=VALUE` pairs.
 
 === "--mfsd only"
 
+    13 fields, each the uppercased name of a `mfsd_*` MAF column.
+
     | Field | Type | Description |
     |:------|:-----|:------------|
     | `MFSD_DELTA_ALT_REF` | Float | mean(ALT) − mean(REF) fragment size delta (bp) |
     | `MFSD_KS_ALT_REF` | Float | 2-sample KS D-statistic (ALT vs REF fragments) |
     | `MFSD_PVAL_ALT_REF` | Float | KS test p-value (ALT vs REF) |
+    | `MFSD_QVAL_ALT_REF` | Float | Benjamini-Hochberg FDR q-value of the ALT-vs-REF KS p-value, across the variants of the sample |
     | `MFSD_ALT_LLR` | Float | Log-likelihood ratio for ALT fragments vs healthy/tumor Gaussian model, mean per fragment |
     | `MFSD_REF_LLR` | Float | Log-likelihood ratio for REF fragments, mean per fragment |
     | `MFSD_ALT_COUNT` | Integer | ALT-classified fragments in 50–1000 bp size window |
@@ -370,7 +378,7 @@ metadata for reproducibility:
 === "DNA mode"
 
     ```
-    #gbcms v6.6.0 (9c371263)
+    #gbcms vX.Y.Z (a1b2c3d4)
     #command gbcms dna --bam tumor:tumor.bam --fasta ref.fa --threads 4
     Hugo_Symbol	Chromosome	Start_Position	...
     ```
@@ -378,7 +386,7 @@ metadata for reproducibility:
 === "RNA mode"
 
     ```
-    #gbcms v6.6.0 (9c371263)
+    #gbcms vX.Y.Z (a1b2c3d4)
     #command gbcms rna --bam rna_sample:star.bam --fasta ref.fa --gtf genes.gtf
     Hugo_Symbol	Chromosome	Start_Position	...
     ```
@@ -559,7 +567,7 @@ These columns are **always** appended regardless of input format.
 | Column | Type | Description |
 |:-------|:-----|:------------|
 | `rna_sense_depth` | Integer | REF and ALT reads on the transcript sense strand at this position |
-| `rna_antisense_depth` | Integer | REF and ALT reads on the antisense strand (first-class, over the anchor). Under `--enforce-strandedness` (the RNA default) these reads are kept out of REF, ALT, depth, fragments and the other counts, but are still classified and tallied here, so the column is the same with `--no-strandedness`. Exceptions: `--rescue-homopolymer` and `--rescue-mnp` choose between counts by ALT depth, so the adopted form (and this column) can differ between the modes; loci without a gene strand (intergenic, or genes of both strands over the locus) report 0, as every read there counts as sense. |
+| `rna_antisense_depth` | Integer | REF and ALT reads on the antisense strand (first-class, over the anchor). Under `--enforce-strandedness` (the RNA default) these reads are kept out of REF, ALT, depth, fragments and the other counts, but are still classified and tallied here, so the column is the same with `--no-strandedness`. Exceptions: `--rescue-homopolymer` and `--rescue-mnp` choose between counts by ALT depth, so the adopted form (and this column) can differ between the modes; loci without a gene strand (intergenic, or genes of both strands over the locus) report 0, as every read there counts as sense, and so does a whole run with `--strandedness unstranded`. |
 | `rna_alt_sense_count` | Integer | ALT reads on the sense strand |
 | `rna_editing_site` | Boolean | QC flag (requires `--rna-editing-db`): [definition](qc-flags.md#qc-columns) |
 | `rna_splice_spanning` | Integer | ALT reads whose alignment spans a splice junction (`N` CIGAR operation) |
@@ -748,8 +756,8 @@ for it.)
 ### Provenance and versions
 
 The merged MAF starts with its own provenance (`#gbcms v…`, `#command …`) and one
-line per input with that input's version line: `#input duplex: gbcms v6.6.0
-(9c371263) (/path/to/duplex.maf)`. Merge warns when the inputs come from
+line per input with that input's version line: `#input duplex: gbcms vX.Y.Z
+(a1b2c3d4) (/path/to/duplex.maf)`. Merge warns when the inputs come from
 different gbcms versions or builds (their counts may follow different rules),
 and stops when one input is a VCF-input MAF from before 6.5.0 (`vcf_pos` without
 `vcf_ref`/`vcf_alt`) and another is not: 6.5.0 changed the coordinates and
@@ -796,7 +804,7 @@ alleles of VCF-input rows, so their rows would not join.
     the main output:
 
     ```
-    {--output-dir}/{sample_name}.observations.parquet
+    {--output-dir}/{sample_name}{--suffix}.observations.parquet
     ```
 
     One row per fragment per variant — `variant_index, chrom, pos, ref, alt,

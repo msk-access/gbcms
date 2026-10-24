@@ -18,6 +18,7 @@ import sys
 from collections import Counter
 from collections.abc import Iterator
 from pathlib import Path
+from typing import Literal
 
 import pysam
 from pydantic import ValidationError
@@ -34,7 +35,33 @@ logger = logging.getLogger(__name__)
 # A countable allele: bases only (N included; preparation rejects it visibly).
 _SEQUENCE_ALLELE = re.compile(r"[ACGTNacgtn]+")
 
-__all__ = ["VariantReader", "VcfReader", "MafReader"]
+__all__ = ["VariantReader", "VcfReader", "MafReader", "variant_format"]
+
+# Variant-file extensions, matched case-insensitively against the end of the name:
+# .vcf, and the block-gzip VCFs .vcf.gz (the common tabix-indexed form) and .vcf.bgz
+# (the same bytes under another name some pipelines use); pysam reads all three.
+_VCF_SUFFIXES: tuple[str, ...] = (".vcf", ".vcf.gz", ".vcf.bgz")
+_MAF_SUFFIXES: tuple[str, ...] = (".maf",)
+
+
+def variant_format(path: Path) -> Literal["vcf", "maf"]:
+    """``"vcf"`` or ``"maf"`` from a variant file's extension.
+
+    The one place a variant file's format is read from its name, so every command
+    (counting, ``normalize``, ``convert``) accepts the same files.
+
+    Raises:
+        ValueError: The extension is not ``.vcf``, ``.vcf.gz``, ``.vcf.bgz`` or ``.maf``.
+    """
+    name = path.name.lower()
+    if name.endswith(_VCF_SUFFIXES):
+        return "vcf"
+    if name.endswith(_MAF_SUFFIXES):
+        return "maf"
+    raise ValueError(
+        f"Unsupported variant file extension '{path.suffix.lower()}'. "
+        f"Expected .vcf, .vcf.gz, .vcf.bgz, or .maf. Got: {path}"
+    )
 
 
 class VariantReader:
