@@ -37,6 +37,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the CLI defaults: with the GTF no row changes; without it one row's REF count was 5
   reads (3 fragments) higher under the old arguments; AD and depth unchanged.
 
+### Fixed — user docs that were wrong or failed (#310)
+
+- **Install.** One page states what the release builds (one cp311 `manylinux_2_34`
+  x86_64 wheel and the sdist; every other platform builds from source with a Rust
+  toolchain and a C compiler); the README links to it. Nextflow 24.04.0 or later, as
+  the manifest enforces.
+- **Examples.** Every `gbcms dna|rna|merge|normalize|convert` example in the docs parses
+  against the CLI (the synopses and three DNA examples lacked the required
+  `--output-dir`).
+- **Unstranded RNA** is `--strandedness unstranded`; `--no-strandedness` alone only stops
+  the filtering. The RNA MAPQ text links to the measured default.
+- **Output reference.** `MFSD_QVAL_ALT_REF` (13 mFSD INFO fields), `GR` only with
+  `--rescue-mnp`, ASJD fields in the VCF, the real `norm_*` and `rna_splice_spanning`
+  names, no `gene_strand` MAF column (the GTF supplies the strand), version examples.
+- **Nextflow.** `--gtf`, `--publish_dir_mode` and `--tracedir` documented;
+  `GBCMS_NORMALIZE` is in no workflow.
+- **Release gate.** BAM Evidence Caveats lists C6 #143, C24 #195, C33 #214, C34 #216 and
+  all of C31 #212, with the status their issues give.
+- **Guard tests** (`tests/test_docs_contract.py`): the fenced examples, the documented
+  MAF columns and VCF INFO/FORMAT names against the writers, and the Nextflow parameters
+  table against `nextflow.config`.
+
 ### Changed — a co-annotated sibling contests an exact-carrier ALT read by its bases (#300)
 
 - The AD-claiming sibling guard re-tested every non-anchor ALT call against REF on the

@@ -293,7 +293,7 @@ flowchart TB
     classDef base fill:#9b59b6,color:#fff,stroke:#7d3c98,stroke-width:2px;
 ```
 
-See [models/core.py](file:///src/gbcms/models/core.py) for definitions.
+See [models/core.py](https://github.com/msk-access/gbcms/blob/main/src/gbcms/models/core.py) for definitions.
 
 ---
 

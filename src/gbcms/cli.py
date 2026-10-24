@@ -601,7 +601,8 @@ def rna(
         "--enforce-strandedness/--no-strandedness",
         help=(
             "Filter reads by strand orientation relative to gene strand. "
-            "Disable for unstranded RNA-seq libraries (or pass --strandedness unstranded)."
+            "For an unstranded library pass --strandedness unstranded instead: "
+            "--no-strandedness only stops the filtering."
         ),
     ),
     strandedness: str = typer.Option(

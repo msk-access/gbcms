@@ -8,8 +8,11 @@ Count alleles at variant positions across one or more DNA/cfDNA BAM/CRAM files.
 ## Synopsis
 
 ```bash
-gbcms dna [OPTIONS] --variants <FILE> --bam <NAME:PATH>... --fasta <FILE>
+gbcms dna [OPTIONS] --variants <FILE> --bam <NAME:PATH>... --fasta <FILE> --output-dir <DIR>
 ```
+
+`--variants`, `--fasta` and `--output-dir` are required, and so is one of `--bam` or
+`--bam-list`; a command without them exits with a usage error.
 
 ## Required Arguments
 
@@ -232,7 +235,8 @@ Phase 3 (haplotype-based) classification uses a **two-stage pipeline**:
         --bam tumor:tumor.bam \
         --bam normal:normal.bam \
         --fasta reference.fa \
-        --format maf # (1)!
+        --format maf \ # (1)!
+        --output-dir results/
     ```
 
     1. MAF output preserves all input MAF columns and appends gbcms count columns.
@@ -245,7 +249,8 @@ Phase 3 (haplotype-based) classification uses a **two-stage pipeline**:
         --bam sample:sample.bam \
         --fasta reference.fa \
         --filter-duplicates \
-        --min-mapq 30
+        --min-mapq 30 \
+        --output-dir results/
     ```
 
 === "With Normalization"
@@ -256,10 +261,11 @@ Phase 3 (haplotype-based) classification uses a **two-stage pipeline**:
         --bam sample:sample.bam \
         --fasta reference.fa \
         --format maf \
-        --show-normalization # (1)!
+        --show-normalization \ # (1)!
+        --output-dir results/
     ```
 
-    1. Appends `norm_chrom`, `norm_pos`, `norm_ref`, `norm_alt` columns showing left-aligned coordinates.
+    1. MAF output appends `norm_Start_Position`, `norm_End_Position`, `norm_Reference_Allele` and `norm_Tumor_Seq_Allele2` (after any `--column-prefix`) showing the left-aligned variant; VCF output carries `NORM_POS`, `NORM_REF` and `NORM_ALT` INFO fields.
 
 === "With UMI Tags"
 

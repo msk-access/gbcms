@@ -25,6 +25,8 @@ Complete reference for all pipeline parameters.
 | `--suffix` | `''` | Suffix for output filenames |
 | `--column_prefix` | `''` | Prefix for gbcms count columns in MAF output |
 | `--preserve_barcode` | `false` | Keep original Tumor_Sample_Barcode from input MAF |
+| `--publish_dir_mode` | `copy` | How Nextflow stages results into `--outdir` (`publishDir` mode: `copy`, `symlink`, `link`, `move`, ...) |
+| `--tracedir` | `${params.outdir}/pipeline_info` | Directory for the execution trace, report, timeline and DAG files |
 
 ## mFSD Options (DNA only)
 
@@ -73,8 +75,9 @@ These parameters are only used when `--mode rna` is specified.
 
 | Parameter | Default | Description |
 |:----------|:--------|:------------|
+| `--gtf` | `''` | Path to an Ensembl/GENCODE GTF, plain or `.gtf.gz`. Enables exon-boundary distance, per-transcript counts and ASJD, and supplies each variant's gene strand, which `--enforce_strandedness` needs (without it every read counts as sense). See [GTF loading](#gtf-loading-rna). |
 | `--rna_editing_db` | `''` | Path to [REDIportal](http://srv00.recas.ba.infn.it/atlas/index.html) editing database file (e.g., `TABLE1_hg38_v3.txt`). Flags ALT sites that overlap known A→I RNA editing positions. |
-| `--enforce_strandedness` | `true` | Enforce strand-specific library prep. Disable with `false` for unstranded RNA-seq libraries (`--no-strandedness` equivalent). |
+| `--enforce_strandedness` | `true` | Filter reads by orientation relative to the gene strand (needs `--gtf` for the strand). `false` passes `--no-strandedness`, which only stops the filtering. For an unstranded RNA-seq library set `--strandedness unstranded` instead. |
 | `--strandedness` | `'reverse'` | RNA library strand protocol: `'reverse'` (dUTP/fr-firststrand, featureCounts `-s 2` — the FORTE default), `'forward'` (fr-secondstrand, `-s 1`), or `'unstranded'` (`-s 0`). Sets the read→transcript-strand fold used by `--enforce_strandedness` and ASJD strand-discordance; `'unstranded'` disables both. |
 | `--library_type` | `'capture'` | `'capture'` (default) or `'amplicon'`. Amplicon mode treats R1 and R2 as **independent observations** (no fragment-level consensus) and auto-disables strandedness — use it for amplicon/primer-based RNA panels where mates aren't independent fragments. |
 

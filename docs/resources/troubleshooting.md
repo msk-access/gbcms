@@ -35,7 +35,7 @@ Common issues and solutions for gbcms. Issues are grouped by phase — work top-
 
 ??? question "`GLIBC_2.34 not found` when installing via pip"
 
-    Your system has an older glibc (RHEL 8 / CentOS 8 / HPC). PyPI wheels require glibc 2.34+.
+    Your system has an older glibc (RHEL 8 / CentOS 8 / HPC). The one prebuilt wheel (CPython 3.11, Linux x86_64) requires glibc 2.34+; other platforms build from source ([Platform support](../getting-started/installation.md#platform-support)).
     Use the [Legacy Linux](../getting-started/installation.md#legacy-linux-rhel-8-hpc) install path
     (micromamba + clangdev + source install).
 
@@ -119,7 +119,7 @@ Common issues and solutions for gbcms. Issues are grouped by phase — work top-
        Run normalization to see the left-aligned coordinates:
        ```bash
        gbcms normalize --variants variants.maf --fasta ref.fa --output /tmp/norm/normalized.tsv
-       # Check norm_pos vs original Start_Position
+       # Compare original_pos with norm_pos in the output TSV
        ```
 
     4. **BAM coverage** — verify the BAM actually has reads at this position:
@@ -160,9 +160,11 @@ Common issues and solutions for gbcms. Issues are grouped by phase — work top-
     intentional. A 1-4bp deletion in the wrong reference context is almost certainly spurious noise,
     not a left-alignment artifact.
 
-    To diagnose deletion ≥5bp still returning low alt:
+    To diagnose deletion ≥5bp still returning low alt, read the per-read calls: each
+    `read call` line names the rule that decided the read (`rule=`), and `--verbose`
+    adds a `Phase stats` line per variant:
     ```bash
-    gbcms dna --trace ... 2>&1 | grep "S3 reject\|falling back to phase3_classify"
+    gbcms dna --trace ... 2>&1 | grep "read call"
     ```
 
 ??? question "Large Δalt vs sign-out `t_alt` for MNP / ONP / DNP variants"
@@ -358,7 +360,7 @@ Common issues and solutions for gbcms. Issues are grouped by phase — work top-
 
     An **empty or fully-rejected variant set is not a failure**: a sample that legitimately
     has no variants called (or whose variants are all rejected at prep) still exits **0**, and
-    the rejected variants are written to the output with their `FAIL_*` `gbcms_status`. This
+    the rejected variants are written to the output with `gbcms_status` `FAIL` and the reason in `gbcms_status_reason`. This
     lets a per-sample workflow keep going instead of failing the whole cohort on a sample that
     genuinely has nothing to count.
 

@@ -12,6 +12,9 @@ The Nextflow workflow provides:
 - **Containerization** with Docker/Singularity
 - **Resume capability** for failed runs
 
+Requires Nextflow 24.04.0 or later (the pipeline manifest enforces it) and Docker or
+Singularity; see [Installation](../getting-started/installation.md#requirements).
+
 ## Pipeline Architecture
 
 ```mermaid

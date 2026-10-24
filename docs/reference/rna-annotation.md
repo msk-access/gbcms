@@ -14,7 +14,7 @@ With `--gtf`, GTF mode appends **17 columns** total: `exon_boundary_dist` (1),
 !!! important "`gene_strand` is the keystone"
     Parsing the GTF also back-fills each variant's **`gene_strand`** (the transcript's
     `+`/`-` strand). This is what makes strand-aware features work: without it,
-    `--enforce_strandedness` and the ASJD strand-discordance test are silent no-ops
+    `--enforce-strandedness` and the ASJD strand-discordance test are silent no-ops
     (every read reads as sense, so `antisense_depth` stays 0). Strand-specific counting
     therefore requires `--gtf`, not just `--strandedness`.
 
