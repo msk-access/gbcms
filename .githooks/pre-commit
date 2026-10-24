@@ -12,9 +12,12 @@ staged="$(git diff --cached --name-only --diff-filter=ACM)"
 #    tests/testdata/ (allowed by .gitignore), which must carry no real identifiers,
 #    and the regression panel's checkpoint list (commit SHAs and PR labels, committed
 #    on a checkpoint-wheels/* branch to build its wheels; checked in 1a).
-data_re='\.(parquet|bam|bai|cram|crai|tsv|csv|maf|dat)$'
+#    Variant and read files carry patient or sample identifiers (a VCF's header and
+#    #CHROM line name the sample; FASTQ read names carry run and flowcell IDs), so
+#    VCF, BED and FASTQ are blocked too, plain or gzip/bgzip-compressed, in any case.
+data_re='\.(parquet|bam|bai|cram|crai|tsv|csv|maf|dat|vcf|bed|fastq|fq)(\.(gz|bgz))?$'
 checkpoints='scripts/regression_panel/checkpoints.tsv'
-outside="$(printf '%s\n' "$staged" | grep -E "$data_re" | grep -v '^tests/testdata/' | grep -vxF "$checkpoints" || true)"
+outside="$(printf '%s\n' "$staged" | grep -Ei "$data_re" | grep -v '^tests/testdata/' | grep -vxF "$checkpoints" || true)"
 if [ -n "$outside" ]; then
   echo "pre-commit BLOCKED: data/artifact file staged. Unstage it (see .gitignore)." >&2
   printf '%s\n' "$outside" >&2
@@ -54,8 +57,15 @@ if [ -n "$fixtures" ]; then
       echo "pre-commit BLOCKED: $f is $size bytes; fixtures stay under $max_bytes (synthetic and small)." >&2
       exit 1
     fi
-    case "$f" in
+    # The decoder is picked by the lowercased name, so `X.VCF.GZ` is decoded like `x.vcf.gz`.
+    case "$(printf '%s' "$f" | tr '[:upper:]' '[:lower:]')" in
       *.bam) text="$(git show ":$f" | gzip -dc 2>/dev/null | LC_ALL=C tr -c '[:print:]\n' ' ')" ;;
+      # Compressed text (a .vcf.gz/.vcf.bgz header, .bed.gz, .fastq.gz): decode it so the
+      # scan reads the header and read names, not compressed bytes it could never match.
+      *.gz|*.bgz)
+        text="$(git show ":$f" | gzip -dc | LC_ALL=C tr -c '[:print:]\n' ' ')" \
+          || { echo "pre-commit BLOCKED: cannot decompress $f to scan it for identifiers." >&2; exit 1; }
+        ;;
       *.parquet)
         text="$(git show ":$f" | python3 -c '
 import io, sys
@@ -93,6 +103,22 @@ if [ -n "$py" ]; then
   if command -v black >/dev/null 2>&1; then
     echo "$py" | xargs black --check || { echo "pre-commit BLOCKED: black. Run 'black' then re-stage." >&2; exit 1; }
   fi
+fi
+
+# 3) Every staged skill's frontmatter must parse as YAML, checked on the staged copy
+#    (check_skill_frontmatter.py: PyYAML when importable, else a minimal check). An
+#    unquoted `#` or `: ` in a description truncates it or breaks the file, and the
+#    skill's "use when" trigger never reaches the model.
+skills="$(printf '%s\n' "$staged" | grep -E '^\.agents/skills/[^/]+/SKILL\.md$' || true)"
+if [ -n "$skills" ]; then
+  hooks_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+  while IFS= read -r f; do
+    [ -z "$f" ] && continue
+    if ! git show ":$f" | python3 -I "$hooks_dir/check_skill_frontmatter.py" "$f"; then
+      echo "pre-commit BLOCKED: $f frontmatter does not parse. Quote the description (double quotes)." >&2
+      exit 1
+    fi
+  done <<< "$skills"
 fi
 
 exit 0

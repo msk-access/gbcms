@@ -1,6 +1,6 @@
 ---
 name: qa-check
-description: Procedure for the gbcms pre-merge DEV QA sweep — ruff, black, mypy, pytest, cargo test, clippy, and a staged-data-file guard. Use before merging or when asked to QA a change. NOTE: this is developer QA (lint/test). For genomic read-level QC (filters, BQ gating, BAQ) see the read-filters-qc skill.
+description: "Procedure for the gbcms pre-merge DEV QA sweep — ruff, black, mypy, pytest, cargo test, clippy, and a staged-data-file guard. Use before merging or when asked to QA a change. NOTE: this is developer QA (lint/test). For genomic read-level QC (filters, BQ gating, BAQ) see the read-filters-qc skill."
 ---
 
 # qa-check
@@ -14,7 +14,7 @@ mypy src/
 python -m pytest tests/ --no-header -q
 cd rust && cargo test && cargo clippy --all-targets -- -D warnings && cd ..
 git status && git diff --stat
-git diff --cached --name-only | grep -E '\.(parquet|tsv|csv|bam|bai)$'   # must be empty
+git diff --cached --name-only | grep -Ei '\.(parquet|bam|bai|cram|crai|tsv|csv|maf|dat|vcf|bed|fastq|fq)(\.(gz|bgz))?$' | grep -v '^tests/testdata/'   # must be empty (the pre-commit hook enforces it)
 ```
 
 Report on pass:

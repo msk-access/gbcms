@@ -34,7 +34,7 @@ native Parquet, Rayon per-bin parallelism. Full module map: `.agents/rules/archi
 5. **Type stub tracks the bindings.** `src/gbcms/_rs.pyi` is the single stub for the
    `gbcms._rs` extension module; it must match the `#[pyo3(get)]` fields and
    `#[pyo3(signature)]` params exactly. (There is no second stub — the old top-level
-   `src/gbcms_rs.pyi` mirrored a module that isn't imported and was removed in LO-1.)
+   `src/gbcms_rs.pyi` mirrored a module that isn't imported and was removed.)
 6. **mFSD/RNA columns are gated** — absent when off, never NA-filled.
 7. **Count the given allele — a genotyper, not a caller.** Input alleles are taken as
    correct: never credit a read to a row's ALT unless its own bases carry that ALT
@@ -83,12 +83,14 @@ frontmatter. Reach for them by outcome.
 
 ## Safety (enforced by hooks, not prose)
 Determinism floor: `.claude/hooks/` (block-rm-rf, block-push-main, injection-guard,
-block-env-edits) + `.githooks/` (pre-commit lint/data-file guard, pre-push gitleaks
-secret scan + main block). Intent: `.agents/rules/security.md`. Enable git hooks once
-per clone: `git config core.hooksPath .githooks`. Install gitleaks for the secret scan.
+block-env-edits) + `.githooks/` (pre-commit lint, data-file guard and skill-frontmatter
+parse; pre-push gitleaks secret scan + main block). Intent: `.agents/rules/security.md`.
+Enable git hooks once per clone: `git config core.hooksPath .githooks`. Install gitleaks
+for the secret scan.
 
 ## Pointers
 - Deep rules: `.agents/rules/{architecture,code-quality,git-conventions,security}.md`
 - Skills: `.agents/skills/` · Harness plan & philosophy: `docs/harness/00-plan.md`
 - Where we left off: `CONTINUITY.md` · Durable facts: `.agents/memory/MEMORY.md`
-- Open work: `CODE_REVIEW_IMPLEMENTATION_PLAN.md` (45 tickets, milestones M1–M6)
+- Open work: `CONTINUITY.md` "Next" (the 6.7.0 work packages), tracker #196 on GitHub, and
+  `PRODUCTION_READINESS.md`. Retired plans are in `docs/archive/`.

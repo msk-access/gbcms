@@ -1,6 +1,6 @@
 ---
 name: mfsd-analysis
-description: Reference for gbcms mFSD (fragment size distribution) — the opt-in --mfsd flag, MAF/VCF column gating, KS test + LLR statistics, and Rust-native ZSTD Parquet output. Use when touching mfsd.rs, parquet_writer.rs, the mFSD report, or column-count tests.
+description: "Reference for gbcms mFSD (fragment size distribution) — the opt-in --mfsd flag, MAF/VCF column gating, KS test + LLR statistics, and Rust-native ZSTD Parquet output. Use when touching mfsd.rs, parquet_writer.rs, the mFSD report, or column-count tests."
 ---
 
 # mFSD Analysis Patterns

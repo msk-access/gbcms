@@ -76,6 +76,13 @@ test_data/
 *.fa
 *.fa.fai
 *.vcf
+*.vcf.gz
+*.vcf.bgz
+*.bed
+*.bed.gz
+*.fastq
+*.fastq.gz
+*.fq.gz
 *.maf
 *.parquet
 *.mfsd_report.html
@@ -91,6 +98,13 @@ scripts/*_test/
 !tests/testdata/*.fa
 !tests/testdata/*.fa.fai
 !tests/testdata/*.vcf
+!tests/testdata/*.vcf.gz
+!tests/testdata/*.vcf.bgz
+!tests/testdata/*.bed
+!tests/testdata/*.bed.gz
+!tests/testdata/*.fastq
+!tests/testdata/*.fastq.gz
+!tests/testdata/*.fq.gz
 !tests/testdata/*.maf
 !tests/testdata/*.parquet
 
