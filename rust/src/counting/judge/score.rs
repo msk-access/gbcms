@@ -272,6 +272,12 @@ pub(crate) fn stands(r: &Run) -> bool {
     !r.clipped && r.score >= BAND_FLOOR
 }
 
+/// [`stands`] for a band `slack` columns each side of the read's diagonal (past the
+/// length changes it carries).
+pub(crate) fn stands_in(r: &Run, slack: i64) -> bool {
+    !r.clipped && r.score >= -(GAP_OPEN + GAP_EXTEND * (slack as i32 + 1))
+}
+
 /// The full programme, scores only.
 pub(crate) fn full_score(read: &[u8], hap: &[u8]) -> i32 {
     if read.is_empty() {

@@ -35,6 +35,25 @@ pub(crate) const ALL_SUBSETS: usize = 4;
 pub(crate) const ALL_SUBSETS_CAP: usize = 64;
 /// Haplotypes the contexts of more rows may fill.
 pub(crate) const MAX_HAPS: usize = 64;
+/// Rows a read's evidence adds to those its bases show on the reference, at most.
+const MAX_STEPS: usize = 16;
+/// Haplotypes a read's evidence search may score, at most (a site with a few listed rows
+/// needs a few dozen).
+const MAX_EVALS: usize = 128;
+/// Reads whose evidence is searched at one site, at most (spread evenly over its reads).
+const MAX_SEARCHED: usize = 400;
+/// How far from where a length change can sit a substitution's bases move with it.
+const MOVE_NEAR: i64 = 32;
+/// At a dense cluster: the distinct sets of rows reads show that are intersected for the
+/// sets reads show together (those most reads show)...
+const MAX_SHOWN_SETS: usize = 128;
+/// ...the sets collected from them...
+const MAX_TOGETHER: usize = 1024;
+/// ...the molecules the reads assemble into...
+const MAX_MOLECULES: usize = 64;
+/// ...and the candidate contexts ranked by the reads they explain (those most reads
+/// show). Each bound is far above what a site with a few listed rows reaches.
+const MAX_RANKED: usize = 512;
 
 
 /// A listed allele the haplotypes apply: its 0-based genome position and its REF and
@@ -82,6 +101,14 @@ pub(crate) struct ReadView {
     refpos: Vec<i64>,
     ref_start: i64,
     ref_end: i64,
+    /// The insertions its own alignment writes: the genome position after the anchor,
+    /// and the inserted bases (upper case, as read).
+    pub(crate) inserts: Vec<(i64, Vec<u8>)>,
+    /// Per indel its own alignment writes, the bases (indices into `seq`) on either side
+    /// of it: the last before it and the first after it (either may lie outside `seq`).
+    indels: Vec<(isize, isize)>,
+    /// Per base of `seq`, whether its alignment places it on a reference base.
+    aligned: Vec<bool>,
 }
 
 impl ReadView {
@@ -96,16 +123,29 @@ impl ReadView {
         min_baseq: u8,
     ) -> Option<ReadView> {
         let mut refpos = Vec::with_capacity(seq.len());
+        let mut aligned = Vec::with_capacity(seq.len());
+        let (mut inserts, mut indels) = (Vec::new(), Vec::new());
         let mut r = ref_start;
+        // the read's bases either side of an indel, as indices into the readable bases
+        let side = |q: usize| q as isize - first as isize;
         for op in cigar {
             match *op {
                 Cigar::Match(n) | Cigar::Equal(n) | Cigar::Diff(n) => {
                     for _ in 0..n {
                         refpos.push(r);
+                        aligned.push(true);
                         r += 1;
                     }
                 }
-                Cigar::Ins(n) => refpos.extend(std::iter::repeat_n((r - 1).max(ref_start), n as usize)),
+                Cigar::Ins(n) => {
+                    let q = refpos.len();
+                    if let Some(bases) = seq.get(q..q + n as usize) {
+                        inserts.push((r, bases.to_ascii_uppercase()));
+                    }
+                    indels.push((side(q) - 1, side(q + n as usize)));
+                    refpos.extend(std::iter::repeat_n((r - 1).max(ref_start), n as usize));
+                    aligned.extend(std::iter::repeat_n(false, n as usize));
+                }
                 Cigar::SoftClip(n) => {
                     let n = n as i64;
                     if refpos.is_empty() {
@@ -113,13 +153,20 @@ impl ReadView {
                     } else {
                         refpos.extend((0..n).map(|t| r + t));
                     }
+                    aligned.extend(std::iter::repeat_n(false, n as usize));
                 }
-                Cigar::Del(n) | Cigar::RefSkip(n) => r += n as i64,
+                Cigar::Del(n) => {
+                    let q = refpos.len();
+                    indels.push((side(q) - 1, side(q)));
+                    r += n as i64
+                }
+                Cigar::RefSkip(n) => r += n as i64,
                 Cigar::HardClip(_) | Cigar::Pad(_) => {}
             }
         }
         // A CIGAR that disagrees with the bases' length: pad or cut, never fail.
         refpos.resize(seq.len(), r);
+        aligned.resize(seq.len(), false);
         let after = after.min(seq.len()).min(quals.len());
         if first >= after {
             return None;
@@ -142,7 +189,52 @@ impl ReadView {
             refpos: refpos[first..after].to_vec(),
             ref_start,
             ref_end: r.max(ref_start + 1),
+            inserts,
+            indels,
+            aligned: aligned[first..after].to_vec(),
         })
+    }
+
+    /// The allele the read's own bases spell at each indel its alignment writes: from the
+    /// last base before it to the first after it that start [`SPELL_STOP`] bases reading
+    /// the reference's (read confidently, aligned), the read's bases between them, as a
+    /// row anchored on the base before. A mismatch the aligner wrote beside the gap is part of the allele (a
+    /// delins written as a deletion and a substitution is that delins). None for an indel
+    /// whose bases there are not all read. A base the guard masks (`masked`, genome
+    /// positions sorted: a germline change beside the event) is no part of the allele.
+    pub(crate) fn spelled_indels(&self, base: &dyn Fn(i64) -> Option<u8>, masked: &[i64]) -> Vec<Row> {
+        let n = self.seq.len() as isize;
+        let fits = |i: isize| (0..n).contains(&i) && self.aligned[i as usize] && self.seq[i as usize] != WILD;
+        let matches = |i: isize| {
+            let p = self.refpos[i as usize];
+            base(p) == Some(self.seq[i as usize]) || masked.binary_search(&p).is_ok()
+        };
+        // The allele ends at SPELL_STOP read bases in a row that read the reference's (a
+        // base of the allele may match the reference by chance).
+        let stops = |i: isize, step: isize| (0..SPELL_STOP as isize).all(|k| fits(i + k * step) && matches(i + k * step));
+        self.indels
+            .iter()
+            .filter_map(|&(l, r)| {
+                let (mut l, mut r) = (l, r);
+                while fits(l) && !stops(l, -1) {
+                    l -= 1;
+                }
+                while fits(r) && !stops(r, 1) {
+                    r += 1;
+                }
+                if !fits(l) || !fits(r) {
+                    return None;
+                }
+                let bases = &self.seq[(l + 1) as usize..r as usize];
+                if bases.contains(&WILD) {
+                    return None;
+                }
+                let (a, b) = (self.refpos[l as usize], self.refpos[r as usize]);
+                let reference: Option<Vec<u8>> = (a..b).map(base).collect();
+                let reference = reference?;
+                Some(Row::new(a, &reference, &[&reference[..1], bases].concat()))
+            })
+            .collect()
     }
 
     pub(crate) fn len(&self) -> usize {
@@ -168,6 +260,12 @@ impl Hap {
         let mut order: Vec<usize> = rows.to_vec();
         order.sort_by_key(|&r| site.spans[r].0);
         let mut seq = site.reference.clone();
+        // A masked base takes any base where no applied row covers it.
+        for &m in &site.masked {
+            if !order.iter().any(|&r| site.spans[r].0 <= m && m < site.spans[r].1) {
+                seq[m as usize] = WILD;
+            }
+        }
         for &r in order.iter().rev() {
             let (s, e) = site.spans[r];
             seq.splice(s as usize..e as usize, site.rows[r].alt_al.iter().copied());
@@ -245,6 +343,11 @@ pub(crate) struct Site {
     places: Vec<(i64, i64)>,
     /// The most any haplotype's rows change the window's length by.
     max_shift: i64,
+    /// Window positions every haplotype takes any base at (the guard's masks), sorted.
+    masked: Vec<i64>,
+    /// X's site, `[s, e)` window coordinates: the bases it changes and, for a length
+    /// change, every place it can sit and the repeat it changes, a base each side.
+    site_window: (i64, i64),
     pub(crate) haps: Vec<Hap>,
     /// Contexts kept, and whether any candidate context was left out by the cap.
     pub(crate) n_contexts: usize,
@@ -259,6 +362,281 @@ pub(crate) struct Candidates {
     pub(crate) listed: Vec<Row>,
     pub(crate) discovered: Vec<Row>,
     pub(crate) background: Vec<Row>,
+    /// Genome positions where a change recurs beside the event that may take any base
+    /// (the guard's masks): every haplotype takes any base there, unless a row it applies
+    /// covers it, so a read's base there tells no haplotype from another.
+    pub(crate) masked: Vec<i64>,
+    /// Indels the reads' own alignments write recurringly (any length): states where
+    /// they lie at X's site, else left out.
+    pub(crate) found: Vec<Row>,
+}
+
+/// Measurement only, TEMPORARY: which of the judge's other-allele options are on
+/// (`GBCMS_JUDGE_OTHER`, comma-separated: `runs` the other lengths of X's repeat as
+/// states, `found` the indels the reads write recurringly at X's site as states, `fit`
+/// the absolute-fit check; `none`; `both` all three). Default `found,fit`.
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct OtherOption {
+    pub(crate) runs: bool,
+    pub(crate) found: bool,
+    pub(crate) fit: bool,
+}
+
+pub(crate) fn other_option() -> OtherOption {
+    static OPT: std::sync::OnceLock<OtherOption> = std::sync::OnceLock::new();
+    *OPT.get_or_init(|| {
+        let v = std::env::var("GBCMS_JUDGE_OTHER").unwrap_or_else(|_| "found,fit".into());
+        let v = match v.as_str() {
+            "both" => "runs,found,fit".to_string(),
+            "states" => "runs,found".to_string(),
+            other => other.to_string(),
+        };
+        let on = |k: &str| v.split(',').any(|t| t.trim() == k);
+        OtherOption { runs: on("runs"), found: on("found"), fit: on("fit") }
+    })
+}
+
+/// Read bases in a row reading the reference that end an allele the read spells.
+const SPELL_STOP: usize = 3;
+
+/// Masks this many bases in a row or more are a shifted molecule's, not applied.
+const MASK_RUN: usize = 3;
+
+/// The longest repeat the most units may be added to or taken from: unit length.
+const RUN_MAX_UNIT: usize = 6;
+/// Units added to or taken from a run for the other lengths of it a site holds.
+const RUN_STEPS: [i64; 4] = [-2, -1, 1, 2];
+
+/// The longest tandem run of unit `p` in `h` with a unit starting or ending at the
+/// boundary `edge` (before base `edge`): `[lo, hi)`, at least that one unit long.
+fn run_through(h: &[u8], edge: usize, p: usize) -> (usize, usize) {
+    let grow = |mut lo: usize, mut hi: usize| {
+        while lo >= 1 && h[lo - 1] == h[lo - 1 + p] {
+            lo -= 1;
+        }
+        while hi < h.len() && h[hi] == h[hi - p] {
+            hi += 1;
+        }
+        (lo, hi)
+    };
+    let right = (edge + p <= h.len()).then(|| grow(edge, edge + p));
+    let left = (edge >= p).then(|| grow(edge - p, edge));
+    [right, left].into_iter().flatten().max_by_key(|&(lo, hi)| hi - lo).unwrap_or((edge, edge))
+}
+
+/// The repeat X's length change lengthens or shortens: the longest run (unit `p` up to
+/// [`RUN_MAX_UNIT`], dividing the change, two copies or more) on the longer allele that
+/// holds as many of the bases where the alleles differ as the change adds, and the run
+/// of that unit through the same place on the shorter allele. Per allele (REF, then X),
+/// its run `[lo, hi)` in that allele's coordinates, with the unit length. None when X
+/// keeps the length or lies in no such repeat.
+fn x_run(x: &Row, start: i64, w: &[u8]) -> Option<([(usize, usize); 2], usize)> {
+    let d = x.alt_al.len() as i64 - x.ref_al.len() as i64;
+    if d == 0 {
+        return None;
+    }
+    let (xs, xe) = ((x.pos - start) as usize, (x.end() - start) as usize);
+    let (on_ref, on_alt) = telling(x);
+    let hx: Vec<u8> = [&w[..xs], &x.alt_al[..], &w[xe..]].concat();
+    let alleles = [(w, xs + on_ref.start, xs + on_ref.end), (&hx[..], xs + on_alt.start, xs + on_alt.end)];
+    let (long, short) = if d > 0 { (1, 0) } else { (0, 1) };
+    let k = d.unsigned_abs() as usize;
+    let (h, a, b) = alleles[long];
+    let mut best: Option<(usize, usize, usize)> = None;
+    for p in (1..=RUN_MAX_UNIT).filter(|p| k.is_multiple_of(*p)) {
+        for edge in [a, b] {
+            let (lo, hi) = run_through(h, edge, p);
+            let held = hi.min(b).saturating_sub(lo.max(a));
+            if hi - lo >= 2 * p && hi - lo >= 3 && held >= k && best.is_none_or(|(l, e, _)| hi - lo > e - l) {
+                best = Some((lo, hi, p));
+            }
+        }
+    }
+    let (lo, hi, p) = best?;
+    let (hs, sa, sb) = alleles[short];
+    let on_short = [sa, sb].into_iter().map(|edge| run_through(hs, edge, p)).max_by_key(|&(l, e)| e - l)?;
+    let mut runs = [(0, 0); 2];
+    runs[long] = (lo, hi);
+    runs[short] = on_short;
+    Some((runs, p))
+}
+
+/// The other lengths of the repeat X's change lengthens or shortens ([`x_run`]), on REF
+/// and on X: each allele with one or two units of it more or fewer, as rows over the
+/// window. Another length of the repeat is another allele (partial evidence), never
+/// REF or X.
+fn run_alleles(x: &Row, start: i64, w: &[u8]) -> Vec<Row> {
+    let Some((runs, p)) = x_run(x, start, w) else {
+        return Vec::new();
+    };
+    let (xs, xe) = ((x.pos - start) as usize, (x.end() - start) as usize);
+    let hx: Vec<u8> = [&w[..xs], &x.alt_al[..], &w[xe..]].concat();
+    let mut out = Vec::new();
+    for (h, (lo, hi)) in [(w, runs[0]), (&hx[..], runs[1])] {
+        for k in RUN_STEPS {
+            let alt: Vec<u8> = if k > 0 {
+                if hi - lo < p {
+                    continue;
+                }
+                let unit = &h[lo..lo + p];
+                [&h[..lo], &unit.repeat(k as usize)[..], &h[lo..]].concat()
+            } else {
+                let cut = p * k.unsigned_abs() as usize;
+                if hi - lo < cut {
+                    continue;
+                }
+                [&h[..lo], &h[lo + cut..]].concat()
+            };
+            if let Some(r) = row_between(w, &alt, start) {
+                out.push(r);
+            }
+        }
+    }
+    out
+}
+
+/// The longest unit an imperfect repeat's period is looked for up to.
+const APPROX_MAX_UNIT: usize = 50;
+
+/// The repeat, perfect or not, holding the bases `[a, b)` of `h`: the longest stretch
+/// around them where each base mostly repeats the one a unit before it (a unit of up to
+/// [`APPROX_MAX_UNIT`] bases; a unit of 5 or more may differ at one base in a unit's
+/// length, as the units of a VNTR do), the smallest unit reaching it; at least two units
+/// past the bases. `[lo, hi)`, or None.
+fn approx_repeat(h: &[u8], a: usize, b: usize) -> Option<(usize, usize)> {
+    let k = b - a;
+    let mut best: Option<(usize, usize)> = None;
+    for p in 1..=APPROX_MAX_UNIT.min(h.len() / 2) {
+        let slack = usize::from(p >= 5);
+        // right: base i repeats base i - p
+        let mut hi = b.max(p);
+        let mut misses: std::collections::VecDeque<usize> = std::collections::VecDeque::new();
+        let mut last_good = hi;
+        while hi < h.len() {
+            if h[hi] != h[hi - p] {
+                misses.push_back(hi);
+            }
+            while misses.front().is_some_and(|&m| m + p <= hi) {
+                misses.pop_front();
+            }
+            if misses.len() > slack {
+                break;
+            }
+            if h[hi] == h[hi - p] {
+                last_good = hi + 1;
+            }
+            hi += 1;
+        }
+        let hi = last_good;
+        // left: base j repeats base j + p
+        let mut lo = a;
+        misses.clear();
+        let mut first_good = lo;
+        while lo >= 1 && lo - 1 + p < h.len() {
+            let j = lo - 1;
+            if h[j] != h[j + p] {
+                misses.push_back(j);
+            }
+            while misses.front().is_some_and(|&m| m >= j + p) {
+                misses.pop_front();
+            }
+            if misses.len() > slack {
+                break;
+            }
+            if h[j] == h[j + p] {
+                first_good = j;
+            }
+            lo -= 1;
+        }
+        let lo = first_good;
+        // the changed bases must follow the period too
+        let inside = (a.max(p)..b).filter(|&i| h[i] == h[i - p]).count();
+        let checked = b.saturating_sub(a.max(p));
+        if checked > 0 && inside * 10 < checked * 9 {
+            continue;
+        }
+        if hi - lo >= k + 2 * p && best.is_none_or(|(l, e)| hi - lo > e - l) {
+            best = Some((lo, hi));
+        }
+    }
+    best
+}
+
+/// X's site in window coordinates `[s, e)`, where another indel in a read makes it
+/// another allele (RJ-7; #290: another length of the repeat X lengthens, wherever it is
+/// written in it): for a length change its discrimination window (every place it can
+/// sit, `place` in genome coordinates, with a base each side), the repeat it lengthens
+/// or shortens ([`x_run`]) and the repeat, perfect or not, its changed bases lie in
+/// ([`approx_repeat`]), on REF, with a base each side; else its REF span.
+fn x_site(x: &Row, start: i64, w: &[u8], place: (i64, i64)) -> (i64, i64) {
+    let (xs, xe) = (x.pos - start, x.end() - start);
+    if !x.changes_length() {
+        return (xs, xe);
+    }
+    let (mut s, mut e) = (place.0 - start, place.1 - start + 1);
+    if let Some((runs, _)) = x_run(x, start, w) {
+        s = s.min(runs[0].0 as i64 - 1);
+        e = e.max(runs[0].1 as i64 + 1);
+    }
+    // the repeat on the longer allele, in REF coordinates
+    let d = x.alt_al.len() as i64 - x.ref_al.len() as i64;
+    let (on_ref, on_alt) = telling(x);
+    let (xs_u, xe_u) = (xs as usize, xe as usize);
+    // REF's repeat at the bases X changes (for an insertion, at its junction), and the
+    // longer allele's, in REF coordinates.
+    let mut found = vec![approx_repeat(w, xs_u + on_ref.start, xs_u + on_ref.end).map(|(lo, hi)| (lo as i64, hi as i64))];
+    if d > 0 {
+        let hx: Vec<u8> = [&w[..xs_u], &x.alt_al[..], &w[xe_u..]].concat();
+        let (a, b) = (xs_u + on_alt.start, xs_u + on_alt.end);
+        found.push(approx_repeat(&hx, a, b).map(|(lo, hi)| {
+            let back = |p: usize| if p <= a { p as i64 } else if p >= b { p as i64 - d } else { a as i64 };
+            (back(lo), back(hi))
+        }));
+    }
+    for (lo, hi) in found.into_iter().flatten() {
+        s = s.min(lo - 1);
+        e = e.max(hi + 1);
+    }
+    (s.max(0), e.min(w.len() as i64))
+}
+
+/// Where `r` (a same-length change over every base a substitution `x` changes) reads
+/// X's or REF's bases at X's changed bases: its other changes, one row per base; else
+/// None.
+fn split_beside(x: &Row, r: &Row) -> Option<Vec<Row>> {
+    if x.changes_length() || r.changes_length() || r.pos > x.pos || r.end() < x.end() {
+        return None;
+    }
+    let at = |p: i64| (p - r.pos) as usize;
+    let (on_ref, _) = telling(x);
+    let span = (x.pos + on_ref.start as i64)..(x.pos + on_ref.end as i64);
+    let reads_x = span.clone().all(|p| r.alt_al[at(p)] == x.alt_al[(p - x.pos) as usize]);
+    let reads_ref = span.clone().all(|p| r.alt_al[at(p)] == r.ref_al[at(p)]);
+    if !(reads_x || reads_ref) {
+        return None;
+    }
+    Some(
+        (r.pos..r.end())
+            .filter(|p| !span.contains(p) && r.alt_al[at(*p)] != r.ref_al[at(*p)])
+            .map(|p| Row::new(p, &r.ref_al[at(p)..=at(p)], &r.alt_al[at(p)..=at(p)]))
+            .collect(),
+    )
+}
+
+/// The row turning `w` (starting at genome `start`) into `h`: their differing bases,
+/// anchored on the base before them when one side is empty. None when they are equal.
+fn row_between(w: &[u8], h: &[u8], start: i64) -> Option<Row> {
+    let short = w.len().min(h.len());
+    let pre = w.iter().zip(h).take_while(|(a, b)| a == b).count().min(short);
+    if pre == short && w.len() == h.len() {
+        return None;
+    }
+    let suf = w.iter().rev().zip(h.iter().rev()).take(short - pre).take_while(|(a, b)| a == b).count();
+    let (mut s, we, he) = (pre, w.len() - suf, h.len() - suf);
+    if s == we || s == he {
+        s = s.checked_sub(1)?;
+    }
+    Some(Row::new(start + s as i64, &w[s..we], &h[s..he]))
 }
 
 /// The bases a row's alleles differ at, as offsets into REF and into ALT: past the
@@ -332,6 +710,82 @@ impl Site {
         }
     }
 
+    /// X's site in `hap`'s columns, `[a, b)`: the bases X changes and, for a length
+    /// change, every place it can sit and the repeat it lengthens or shortens, with a base
+    /// each side.
+    /// X's site in genome coordinates, `[s, e)`.
+    pub(crate) fn site_span(&self) -> (i64, i64) {
+        (self.site_window.0 + self.start, self.site_window.1 + self.start)
+    }
+
+    fn site_columns(&self, hap: &Hap) -> (i64, i64) {
+        let (s, e) = self.site_window;
+        (hap.to_hap(s, false), hap.to_hap(e, true))
+    }
+
+    /// Whether an alignment of a read to `hap` (its columns offset by `off`) inserts or
+    /// deletes bases at X's site: at any place the indel can slide to (an indel in a
+    /// repeat is one allele wherever it is written in it).
+    pub(crate) fn gap_at_site(&self, hap: &Hap, read: &[u8], al: &Alignment, off: usize) -> bool {
+        let (a, b) = self.site_columns(hap);
+        let h = &hap.seq;
+        let m = h.len() as i64;
+        let at = |c: i64| (0..m).contains(&c).then(|| h[c as usize]);
+        let mut last: Option<i64> = None;
+        let mut i = 0;
+        while i < al.placed.len() {
+            match al.placed[i] {
+                Placed::At(c) => {
+                    let c = (c + off) as i64;
+                    let k = i64::from(al.skipped_after[i]);
+                    if k > 0 {
+                        // hap columns [lo, lo + k) skipped, slid each way
+                        let (mut lo, mut hi) = (c + 1, c + 1);
+                        while at(lo - 1).is_some() && at(lo - 1) == at(lo - 1 + k) {
+                            lo -= 1;
+                        }
+                        while at(hi + k).is_some() && at(hi) == at(hi + k) {
+                            hi += 1;
+                        }
+                        if lo < b && hi + k > a {
+                            return true;
+                        }
+                    }
+                    last = Some(c);
+                    i += 1;
+                }
+                Placed::Inserted => {
+                    // the read bases [i, j) inserted before column `last` + 1
+                    let j = (i..al.placed.len()).find(|&t| al.placed[t] != Placed::Inserted).unwrap_or(al.placed.len());
+                    if let Some(c) = last {
+                        let ins = &read[i..j];
+                        let n = ins.len();
+                        // slide left: the base before the boundary equals the insert's last
+                        // base (rotated as it slides); right: the base after it its first
+                        let mut lo = c + 1;
+                        let mut rot = n;
+                        while lo > 0 && at(lo - 1) == Some(ins[(rot - 1) % n]) {
+                            lo -= 1;
+                            rot = if rot == 1 { n } else { rot - 1 };
+                        }
+                        let mut hi = c + 1;
+                        let mut r = 0;
+                        while at(hi) == Some(ins[r % n]) {
+                            hi += 1;
+                            r += 1;
+                        }
+                        if a < hi && lo < b {
+                            return true;
+                        }
+                    }
+                    i = j;
+                }
+                Placed::LeftOver => i += 1,
+            }
+        }
+        false
+    }
+
     /// The haplotypes of `target` over the window `(start, reference)` (upper case),
     /// from `candidates` and the variant's `reads`. None when the window does not hold
     /// the target's REF.
@@ -388,8 +842,26 @@ impl Site {
                 }
             }
         };
-        for r in &candidates.listed {
-            take(r, meets(&target, r));
+        // A pure indel anchored on a substitution X's last base changes no base X names:
+        // anchored on the base after it instead (the same haplotype), it is beside X, so it
+        // can lie with X and is weighed with every state (a germline indel written right
+        // after the block).
+        let beside = |r: &Row| -> Row {
+            let xe = target.end();
+            if target.changes_length() || r.pos != xe - 1 || !pure(r) {
+                return r.clone();
+            }
+            let at = |g: i64| usize::try_from(g - start).ok().filter(|&i| i < reference.len());
+            let moved = if r.alt_al.len() > r.ref_al.len() {
+                at(xe).map(|i| Row::new(xe, &reference[i..=i], &[&r.alt_al[1..], &reference[i..=i]].concat()))
+            } else {
+                let k = (r.ref_al.len() - 1) as i64;
+                at(xe).zip(at(xe + k)).map(|(i, j)| Row::new(xe, &reference[i..=j], &reference[j..=j]))
+            };
+            moved.unwrap_or_else(|| r.clone())
+        };
+        for r in candidates.listed.iter().map(beside) {
+            take(&r, meets(&target, &r));
         }
         if target.ref_al.len() == 1 && target.alt_al.len() == 1 {
             // An SNV's site holds every base (a third base is another allele).
@@ -397,13 +869,48 @@ impl Site {
                 take(&Row::new(target.pos, &target.ref_al, &[b]), true);
             }
         }
+        // An allele the guard found, spelled over a window: a state where the bases it
+        // changes meet X's site, else a change beside X (RJ-8: another indel outside the
+        // window is a separate event), a context.
         for r in &candidates.discovered {
-            take(r, true);
+            let (s0, e0) = ((r.pos - start) as usize, (r.end() - start) as usize);
+            if s0 > e0 || e0 > reference.len() {
+                continue;
+            }
+            let spelled = [&reference[..s0], &r.alt_al[..], &reference[e0..]].concat();
+            match row_between(&reference, &spelled, start) {
+                Some(minimal) if !meets(&target, &minimal) => take(&minimal, false),
+                _ => take(r, true),
+            }
+        }
+        // Another length of X's repeat, and an indel the reads write recurringly at X's
+        // site: other alleles, which explain their reads as neither REF nor X.
+        if other_option().runs {
+            for r in run_alleles(&target, start, &reference) {
+                take(&r, true);
+            }
+        }
+        if other_option().found {
+            for r in candidates.found.iter().map(beside).filter(|r| meets(&target, r)) {
+                // An allele of the same length over the bases a substitution X changes,
+                // which reads X's (or REF's) bases there, is X (or REF) with a change
+                // beside it, a phased neighbour: each change beside X is a context, never
+                // a state.
+                if let Some(beside_x) = split_beside(&target, &r) {
+                    for c in beside_x {
+                        if !meets(&target, &c) {
+                            take(&c, false);
+                        }
+                    }
+                    continue;
+                }
+                take(&r, true);
+            }
         }
         // A background change at X's place cannot share a haplotype with X: crossed with
         // REF alone it would favour REF, so it is left to the reads' bases there.
-        for r in candidates.background.iter().filter(|r| !meets(&target, r)) {
-            take(r, false);
+        for r in candidates.background.iter().map(beside).filter(|r| !meets(&target, r)) {
+            take(&r, false);
         }
         states.sort();
         contexts.sort();
@@ -458,9 +965,43 @@ impl Site {
         contexts.sort();
         let n_states = states.len();
         let rows: Vec<Row> = std::iter::once(target).chain(states).chain(contexts).collect();
-        let spans = rows.iter().map(|r| (r.pos - start, r.end() - start)).collect();
+        let spans: Vec<(i64, i64)> = rows.iter().map(|r| (r.pos - start, r.end() - start)).collect();
         let places = rows.iter().map(place).map(|(s, e)| (s - start, e - start)).collect();
         let max_shift = rows.iter().map(|r| r.ref_al.len().abs_diff(r.alt_al.len()) as i64).sum();
+        // A mask where a row changes a base is that row's base: the row explains the reads
+        // carrying it (a context with every state, or a state of the site). A row spelled
+        // over a wider window (an allele the guard found) changes only some of its bases.
+        let changed: Vec<(i64, i64)> = rows
+            .iter()
+            .map(|r| {
+                let (on_ref, _) = telling(r);
+                (r.pos - start + on_ref.start as i64, r.pos - start + on_ref.end as i64)
+            })
+            .collect();
+        let mut masked: Vec<i64> = candidates
+            .masked
+            .iter()
+            .map(|&p| p - start)
+            .filter(|&m| m >= 0 && m < wn && !changed.iter().any(|&(s, e)| s <= m && m < e))
+            .collect();
+        masked.sort_unstable();
+        masked.dedup();
+        // A run of masks (three bases or more in a row) is no germline change beside the
+        // event but the shifted bases of reads of another length written without their
+        // gap: any base there would make those reads fit X and REF alike. Left unmasked,
+        // the reads' bases there are weighed.
+        let run_at = |i: usize| {
+            let (mut lo, mut hi) = (i, i);
+            while lo > 0 && masked[lo - 1] + 1 == masked[lo] {
+                lo -= 1;
+            }
+            while hi + 1 < masked.len() && masked[hi] + 1 == masked[hi + 1] {
+                hi += 1;
+            }
+            hi - lo + 1
+        };
+        let masked: Vec<i64> = (0..masked.len()).filter(|&i| run_at(i) < MASK_RUN).map(|i| masked[i]).collect();
+        let site_window = x_site(&rows[0], start, &reference, place(&rows[0]));
         let mut site = Site {
             start,
             reference,
@@ -469,6 +1010,8 @@ impl Site {
             spans,
             places,
             max_shift,
+            masked,
+            site_window,
             haps: Vec::new(),
             n_contexts: 0,
             cap_exceeded: false,
@@ -517,16 +1060,24 @@ impl Site {
     /// Per read, the context rows it shows and those it refutes, among `rows` it
     /// reaches. A substitution is read off the read's alignment to the reference: shown
     /// where every base it changes is read confidently as its ALT's, refuted where every
-    /// one is read as REF's. A length change is scored: `DELTA` better with the row than
-    /// on the reference shows it, as much worse refutes it.
+    /// one is read as REF's. The length changes are chosen together, one at a time on
+    /// the haplotype of those already shown (the substitutions it shows first): each
+    /// time the one that fits the read best, while it fits `DELTA` better than without
+    /// it; a length change that then fits it `DELTA` worse is refuted. So two rows that
+    /// each explain part of one molecule's indel (two insertions in one repeat) are not
+    /// both shown by a read carrying one of them, and a read carrying several changes
+    /// shows the set its molecule carries.
     fn evidence(&self, reads: &[ReadView], rows: &[usize]) -> Vec<Evidence> {
         let reference = Hap::build(self, &[]);
-        let singles: Vec<Option<Hap>> =
-            rows.iter().map(|&r| self.rows[r].changes_length().then(|| Hap::build(self, &[r]))).collect();
+        let mut built: HashMap<Vec<usize>, Hap> = HashMap::new();
         let wn = self.reference.len() as i64;
+        // At a deep site the search runs on reads spread evenly over it, at most
+        // MAX_SEARCHED; the rest keep what their bases show on the reference.
+        let stride = reads.len().div_ceil(MAX_SEARCHED).max(1);
         reads
             .iter()
-            .map(|read| {
+            .enumerate()
+            .map(|(i, read)| {
                 let mut scorer = Scorer::new(read);
                 let l = read.len() as i64;
                 let (a, b) = ((read.ref_start - self.start - l).clamp(0, wn), (read.ref_end - self.start + l).clamp(0, wn));
@@ -539,84 +1090,288 @@ impl Site {
                     }
                 }
                 let mut e = Evidence::default();
-                for (&r, single) in rows.iter().zip(&singles) {
+                let mut lengths = Vec::new();
+                for &r in rows {
                     let (rs, re) = self.spans[r];
                     if rs < a || re > b {
                         continue;
                     }
-                    match single {
-                        None => {
-                            let row = &self.rows[r];
-                            let reads: Vec<Option<u8>> = (0..row.ref_al.len())
-                                .filter(|&k| row.ref_al[k] != row.alt_al[k])
-                                .map(|k| at.get(&(rs + k as i64)).copied().filter(|&b| b != WILD).map(|b| {
-                                    if b == row.alt_al[k] {
-                                        1
-                                    } else if b == row.ref_al[k] {
-                                        0
-                                    } else {
-                                        2
-                                    }
-                                }))
-                                .collect();
-                            if reads.iter().all(|v| *v == Some(1)) {
-                                e.shown.push(r);
-                            } else if reads.iter().all(|v| *v == Some(0)) {
-                                e.refuted.push(r);
-                            }
+                    let row = &self.rows[r];
+                    if row.changes_length() {
+                        lengths.push(r);
+                        continue;
+                    }
+                    let reads: Vec<Option<u8>> = (0..row.ref_al.len())
+                        .filter(|&k| row.ref_al[k] != row.alt_al[k])
+                        .map(|k| {
+                            at.get(&(rs + k as i64)).copied().filter(|&b| b != WILD).map(|b| {
+                                if b == row.alt_al[k] {
+                                    1
+                                } else if b == row.ref_al[k] {
+                                    0
+                                } else {
+                                    2
+                                }
+                            })
+                        })
+                        .collect();
+                    if reads.iter().all(|v| *v == Some(1)) {
+                        e.shown.push(r);
+                    } else if reads.iter().all(|v| *v == Some(0)) {
+                        e.refuted.push(r);
+                    }
+                }
+                if !lengths.is_empty() && i % stride == 0 {
+                    // Seeded with the substitutions shown that can be applied together, the
+                    // rows the read's molecule carries are added one at a time: each time the
+                    // one that fits the read best, while it fits DELTA better. A length change
+                    // moves the read's bases, so once one is chosen the substitutions are
+                    // weighed by the fit too (their bases read off the reference may sit
+                    // elsewhere on the molecule).
+                    let mut chosen: Vec<usize> = Vec::new();
+                    for &r in &e.shown {
+                        if chosen.iter().all(|&c| !self.conflict(c, r)) {
+                            chosen.push(r);
                         }
-                        Some(single) => {
-                            let with_r = scorer.score(self, single);
-                            let without = scorer.score(self, &reference);
-                            if with_r - without >= DELTA {
-                                e.shown.push(r);
-                            } else if without - with_r >= DELTA {
-                                e.refuted.push(r);
+                    }
+                    // A set's fit with REF at X's site, or with X (where X can lie with it):
+                    // the molecule a read carries is chosen whichever allele it holds there,
+                    // each allele's search apart (a read carrying one molecule's indels can
+                    // fit another molecule with X almost as well, step by step).
+                    let mut score_of = |set: &[usize], with_x: bool, scorer: &mut Scorer| -> i32 {
+                        let mut key = set.to_vec();
+                        if with_x {
+                            if key.iter().any(|&c| self.conflict(0, c)) {
+                                return i32::MIN / 4;
                             }
+                            key.push(0);
+                        }
+                        key.sort_unstable();
+                        let hap = built.entry(key.clone()).or_insert_with(|| Hap::build(self, &key));
+                        scorer.score(self, hap)
+                    };
+                    let reachable: Vec<usize> =
+                        rows.iter().copied().filter(|&r| self.spans[r].0 >= a && self.spans[r].1 <= b).collect();
+                    // From the seed, and from the seed with each length change first (one
+                    // molecule's indels can each fit a read less well alone than another
+                    // molecule's one does), the best set reached.
+                    let seed = chosen.clone();
+                    // A substitution near a length change (within MOVE_NEAR of where it can
+                    // sit) is read anew with it: the change moves the read's bases there.
+                    let near = |r: usize, set: &[usize]| {
+                        let (s, e) = self.spans[r];
+                        set.iter().filter(|&&c| self.rows[c].changes_length()).any(|&c| {
+                            let (ps, pe) = self.places[c];
+                            s < pe + MOVE_NEAR && ps - MOVE_NEAR < e
+                        })
+                    };
+                    let mut evals = 0usize;
+                    let mut score_counted = |set: &[usize], with_x: bool, scorer: &mut Scorer, evals: &mut usize| {
+                        *evals += 1;
+                        score_of(set, with_x, scorer)
+                    };
+                    // the seed fitting the read whole with REF at X: nothing fits it better
+                    let seed_fit = score_counted(&seed, false, &mut scorer, &mut evals);
+                    let starts: Vec<Option<usize>> = if seed_fit == 0 {
+                        Vec::new()
+                    } else {
+                        std::iter::once(None).chain(lengths.iter().map(|&r| Some(r))).collect()
+                    };
+                    let mut reached: Option<(i32, Vec<usize>)> = Some((seed_fit, seed.clone()));
+                    let mut reached_x = false;
+                    'starts: for (with_x, first) in [false, true].into_iter().flat_map(|x| starts.iter().map(move |&f| (x, f))) {
+                        // the seed but for the rows at the first change's place
+                        let mut set: Vec<usize> =
+                            seed.iter().copied().filter(|&c| first.is_none_or(|f| !self.conflict(c, f))).collect();
+                        set.extend(first);
+                        let mut current = score_counted(&set, with_x, &mut scorer, &mut evals);
+                        for _ in 0..MAX_STEPS {
+                            if evals >= MAX_EVALS {
+                                break 'starts;
+                            }
+                            // the best move: a row added (a length change, or a substitution
+                            // near one chosen), or such a substitution dropped
+                            let mut best: Option<(i32, Vec<usize>)> = None;
+                            for &r in reachable.iter().filter(|&&r| {
+                                !set.contains(&r)
+                                    && (self.rows[r].changes_length() || near(r, &set))
+                                    && set.iter().all(|&c| !self.conflict(c, r))
+                            }) {
+                                let next = [&set[..], &[r]].concat();
+                                let s = score_counted(&next, with_x, &mut scorer, &mut evals);
+                                if s - current >= DELTA && best.as_ref().is_none_or(|(b, _)| s > *b) {
+                                    best = Some((s, next));
+                                }
+                            }
+                            for &r in set.iter().filter(|&&r| !self.rows[r].changes_length() && near(r, &set)) {
+                                let next: Vec<usize> = set.iter().copied().filter(|&c| c != r).collect();
+                                let s = score_counted(&next, with_x, &mut scorer, &mut evals);
+                                if s - current >= DELTA && best.as_ref().is_none_or(|(b, _)| s > *b) {
+                                    best = Some((s, next));
+                                }
+                            }
+                            let Some((s, next)) = best else { break };
+                            set = next;
+                            current = s;
+                        }
+                        if reached.as_ref().is_none_or(|(s, r)| current > *s || (current == *s && set.len() < r.len())) {
+                            reached = Some((current, set));
+                            reached_x = with_x;
+                        }
+                    }
+                    let (current, chosen) = reached.unwrap_or((seed_fit, seed));
+                    // A substitution near a chosen length change has the evidence the fit
+                    // gives it; every other keeps what its bases read off the reference show.
+                    e.shown.retain(|&r| !near(r, &chosen) || chosen.contains(&r));
+                    e.refuted.retain(|&r| !near(r, &chosen));
+                    for &r in &reachable {
+                        if chosen.contains(&r) {
+                            if !e.shown.contains(&r) {
+                                e.shown.push(r);
+                            }
+                        } else if (self.rows[r].changes_length() || near(r, &chosen))
+                            && !e.refuted.contains(&r)
+                            && chosen.iter().all(|&c| !self.conflict(c, r))
+                            && evals < 2 * MAX_EVALS
+                            && current - score_counted(&[&chosen[..], &[r]].concat(), reached_x, &mut scorer, &mut evals) >= DELTA
+                        {
+                            e.refuted.push(r);
                         }
                     }
                 }
+                e.shown.sort_unstable();
+                e.refuted.sort_unstable();
                 e
             })
             .collect()
     }
 
     /// Contexts from more than [`ALL_SUBSETS`] rows, in the order they are kept while
-    /// there is room: each row, each pair two reads or more show together, and each set
-    /// reads show together, ranked by the reads they explain (a context missing a row the
-    /// reads carry with another leaves them fitting no haplotype, and the state that
-    /// best stands in for the row then wins them), then by fewer rows and nearer X.
+    /// there is room: each row, each pair two reads or more show together, each set reads
+    /// show together and each molecule the reads assemble into, ranked by the reads they
+    /// explain (a context missing a row the reads carry with another leaves them fitting
+    /// no haplotype, and the state that best stands in for the row then wins them), then
+    /// by fewer rows and nearer X. At a dense cluster (rows on nearly every base, deep
+    /// reads) the enumeration is bounded: the [`MAX_RANKED`] candidates most reads show
+    /// are ranked (every candidate where there are no more).
     fn ranked_contexts(&self, rest: &[usize], evidence: &[Evidence]) -> Vec<Vec<usize>> {
-        let mut candidates: BTreeSet<Vec<usize>> = rest.iter().map(|&r| vec![r]).collect();
-        for (i, &a) in rest.iter().enumerate() {
-            for &b in &rest[i + 1..] {
-                if self.conflict(a, b) {
+        let conflicts = self.conflicts_among(rest);
+        // Per row, the reads showing it (a bitset): a set two reads show together holds
+        // only rows two reads or more show.
+        let words = evidence.len().div_ceil(64);
+        let mut shown_by: HashMap<usize, Vec<u64>> = HashMap::new();
+        for (i, e) in evidence.iter().enumerate() {
+            for &r in &e.shown {
+                shown_by.entry(r).or_insert_with(|| vec![0u64; words])[i / 64] |= 1 << (i % 64);
+            }
+        }
+        let count = |bits: &[u64]| bits.iter().map(|w| w.count_ones() as usize).sum::<usize>();
+        let support: HashMap<usize, usize> = shown_by.iter().map(|(&r, b)| (r, count(b))).collect();
+        // (reads showing it, the set)
+        let mut candidates: BTreeMap<Vec<usize>, usize> = BTreeMap::new();
+        let add = |set: Vec<usize>, n: usize, candidates: &mut BTreeMap<Vec<usize>, usize>| {
+            let e = candidates.entry(set).or_insert(0);
+            *e = (*e).max(n);
+        };
+        for &r in rest {
+            add(vec![r], support.get(&r).copied().unwrap_or(0), &mut candidates);
+        }
+        let paired: Vec<usize> = rest.iter().copied().filter(|r| support.get(r).is_some_and(|&n| n >= 2)).collect();
+        for (i, &a) in paired.iter().enumerate() {
+            for &b in &paired[i + 1..] {
+                if conflicts[&a].contains(&b) {
                     continue;
                 }
-                let together = evidence
-                    .iter()
-                    .filter(|e| e.shown.binary_search(&a).is_ok() && e.shown.binary_search(&b).is_ok())
-                    .count();
+                let together: usize = shown_by[&a].iter().zip(&shown_by[&b]).map(|(x, y)| (x & y).count_ones() as usize).sum();
                 if together >= 2 {
-                    candidates.insert(vec![a, b]);
+                    add(vec![a, b], together, &mut candidates);
                 }
             }
         }
-        candidates.extend(self.shown_together(evidence));
-        self.rank(evidence, candidates.into_iter().collect())
+        for (set, n) in self.shown_together(evidence, &support) {
+            add(set, n, &mut candidates);
+        }
+        for (set, n) in self.molecules(evidence, &conflicts) {
+            add(set, n, &mut candidates);
+        }
+        let mut pool: Vec<(Vec<usize>, usize)> = candidates.into_iter().collect();
+        if pool.len() > MAX_RANKED {
+            pool.sort_by(|a, b| b.1.cmp(&a.1).then(a.0.len().cmp(&b.0.len())).then(a.0.cmp(&b.0)));
+            pool.truncate(MAX_RANKED);
+        }
+        self.rank(evidence, pool.into_iter().map(|(set, _)| set).collect(), &conflicts)
+    }
+
+    /// Per row of `rows`, the rows of `rows` at its place.
+    fn conflicts_among(&self, rows: &[usize]) -> HashMap<usize, Vec<usize>> {
+        rows.iter()
+            .map(|&a| (a, rows.iter().copied().filter(|&b| b != a && self.conflict(a, b)).collect()))
+            .collect()
+    }
+
+    /// The molecules the reads assemble into: reads whose evidence agrees (none shows a
+    /// row the others refute or that sits at the place of one they show, nor refutes one
+    /// they show) join, the rows they show together one context, so a haplotype whose
+    /// rows no one read spans whole is still a context. Larger reads' sets first; each
+    /// read joins the first molecule it agrees with (a read agreeing with none once
+    /// [`MAX_MOLECULES`] are open joins none). Those of two reads or more, with their reads.
+    fn molecules(&self, evidence: &[Evidence], conflicts: &HashMap<usize, Vec<usize>>) -> Vec<(Vec<usize>, usize)> {
+        let mut order: Vec<&Evidence> = evidence.iter().filter(|e| !e.shown.is_empty()).collect();
+        order.sort_by(|a, b| b.shown.len().cmp(&a.shown.len()).then(a.shown.cmp(&b.shown)).then(a.refuted.cmp(&b.refuted)));
+        // per molecule: the rows shown, those refuted, and its reads
+        let mut found: Vec<(BTreeSet<usize>, BTreeSet<usize>, usize)> = Vec::new();
+        for e in order {
+            let agrees = |(shown, refuted, _): &(BTreeSet<usize>, BTreeSet<usize>, usize)| {
+                e.shown.iter().all(|r| {
+                    !refuted.contains(r) && conflicts.get(r).is_none_or(|cs| cs.iter().all(|c| !shown.contains(c)))
+                }) && e.refuted.iter().all(|r| !shown.contains(r))
+            };
+            let open = found.len() < MAX_MOLECULES;
+            match found.iter_mut().find(|m| agrees(m)) {
+                Some(m) => {
+                    m.0.extend(e.shown.iter().copied());
+                    m.1.extend(e.refuted.iter().copied());
+                    m.2 += 1;
+                }
+                None if open => found.push((e.shown.iter().copied().collect(), e.refuted.iter().copied().collect(), 1)),
+                None => {}
+            }
+        }
+        // A read that agrees with several molecules (one showing only rows they share,
+        // germline rows on both haplotypes) carries its rows to each of them.
+        let mut found: Vec<_> = found.into_iter().filter(|m| m.2 >= 2).collect();
+        for e in evidence.iter().filter(|e| !e.shown.is_empty()) {
+            for m in found.iter_mut() {
+                let agrees = e.shown.iter().all(|r| {
+                    !m.1.contains(r) && conflicts.get(r).is_none_or(|cs| cs.iter().all(|c| !m.0.contains(c)))
+                }) && e.refuted.iter().all(|r| !m.0.contains(r));
+                if agrees {
+                    m.0.extend(e.shown.iter().copied());
+                }
+            }
+        }
+        found.into_iter().map(|m| (m.0.into_iter().collect(), m.2)).collect()
     }
 
     /// Every maximal set of rows that can be applied together shown together by two
-    /// reads or more.
-    fn shown_together(&self, evidence: &[Evidence]) -> BTreeSet<Vec<usize>> {
-        let mut distinct: BTreeMap<&Vec<usize>, usize> = BTreeMap::new();
-        for e in evidence.iter().filter(|e| !e.shown.is_empty()) {
-            *distinct.entry(&e.shown).or_insert(0) += 1;
+    /// reads or more, with the reads of the two sets it came from. Bounded at a dense
+    /// cluster: only rows two reads or more show take part (no other can be in two reads'
+    /// sets); the [`MAX_SHOWN_SETS`] distinct sets most reads show are intersected, and
+    /// the collection stops at [`MAX_TOGETHER`] sets.
+    fn shown_together(&self, evidence: &[Evidence], support: &HashMap<usize, usize>) -> Vec<(Vec<usize>, usize)> {
+        let mut distinct: HashMap<Vec<usize>, usize> = HashMap::new();
+        for e in evidence {
+            let set: Vec<usize> = e.shown.iter().copied().filter(|r| support.get(r).is_some_and(|&n| n >= 2)).collect();
+            if !set.is_empty() {
+                *distinct.entry(set).or_insert(0) += 1;
+            }
         }
-        let distinct: Vec<(&Vec<usize>, usize)> = distinct.into_iter().collect();
-        let mut together: BTreeSet<Vec<usize>> = BTreeSet::new();
-        let mut seen: BTreeSet<Vec<usize>> = BTreeSet::new();
-        for a in 0..distinct.len() {
+        let mut distinct: Vec<(Vec<usize>, usize)> = distinct.into_iter().collect();
+        distinct.sort_by(|a, b| b.1.cmp(&a.1).then(b.0.len().cmp(&a.0.len())).then(a.0.cmp(&b.0)));
+        distinct.truncate(MAX_SHOWN_SETS);
+        let mut together: BTreeMap<Vec<usize>, usize> = BTreeMap::new();
+        let mut seen: std::collections::HashSet<Vec<usize>> = std::collections::HashSet::new();
+        'pairs: for a in 0..distinct.len() {
             for b in a..distinct.len() {
                 if a == b && distinct[a].1 < 2 {
                     continue;
@@ -625,15 +1380,29 @@ impl Site {
                     distinct[a].0.iter().copied().filter(|r| distinct[b].0.binary_search(r).is_ok()).collect();
                 // Many read pairs share an intersection: enumerate each one once.
                 if !inter.is_empty() && seen.insert(inter.clone()) {
-                    self.maximal_independent_sets(&inter, &mut together);
+                    let mut sets = BTreeSet::new();
+                    self.maximal_independent_sets(&inter, &mut sets);
+                    let n = if a == b { distinct[a].1 } else { distinct[a].1 + distinct[b].1 };
+                    for s in sets {
+                        let e = together.entry(s).or_insert(0);
+                        *e = (*e).max(n);
+                    }
+                    if together.len() >= MAX_TOGETHER {
+                        break 'pairs;
+                    }
                 }
             }
         }
-        together
-            .iter()
-            .filter(|t| !together.iter().any(|u| u.len() > t.len() && is_subset(t, u)))
-            .cloned()
-            .collect()
+        // the maximal ones: none inside a longer one
+        let mut by_len: Vec<(Vec<usize>, usize)> = together.into_iter().collect();
+        by_len.sort_by(|a, b| b.0.len().cmp(&a.0.len()).then(a.0.cmp(&b.0)));
+        let mut kept: Vec<(Vec<usize>, usize)> = Vec::new();
+        for (t, n) in by_len {
+            if !kept.iter().any(|(u, _)| u.len() > t.len() && is_subset(&t, u)) {
+                kept.push((t, n));
+            }
+        }
+        kept
     }
 
     /// The maximal sets of `set` (sorted) that can be applied together, bounded.
@@ -678,19 +1447,20 @@ impl Site {
 
     /// A context explains a read when it holds none of the rows the read refutes, at
     /// least one it shows, and accounts for every one it shows (holding it, or a row at
-    /// its place: rows at one place can all beat the reference in one read).
-    fn explains(&self, h: &[usize], e: &Evidence) -> bool {
-        !h.iter().any(|r| e.refuted.binary_search(r).is_ok())
-            && h.iter().any(|r| e.shown.binary_search(r).is_ok())
-            && e.shown.iter().all(|&s| h.iter().any(|&r| r == s || self.conflict(r, s)))
+    /// its place: rows at one place can all beat the reference in one read). `h` sorted.
+    fn explains(&self, h: &[usize], e: &Evidence, conflicts: &HashMap<usize, Vec<usize>>) -> bool {
+        let holds = |r: &usize| h.binary_search(r).is_ok();
+        !e.refuted.iter().any(holds)
+            && e.shown.iter().any(holds)
+            && e.shown.iter().all(|s| holds(s) || conflicts.get(s).is_some_and(|cs| cs.iter().any(holds)))
     }
 
     /// Candidates ranked: reads explained (more first), fewer rows, nearer X, positions.
-    fn rank(&self, evidence: &[Evidence], cands: Vec<Vec<usize>>) -> Vec<Vec<usize>> {
+    fn rank(&self, evidence: &[Evidence], cands: Vec<Vec<usize>>, conflicts: &HashMap<usize, Vec<usize>>) -> Vec<Vec<usize>> {
         let mut keyed: Vec<(usize, usize, i64, Vec<usize>)> = cands
             .into_iter()
             .map(|h| {
-                let support = evidence.iter().filter(|e| self.explains(&h, e)).count();
+                let support = evidence.iter().filter(|e| self.explains(&h, e, conflicts)).count();
                 let d = h.iter().map(|&r| self.distance_to_target(r)).min().unwrap_or(0);
                 (support, h.len(), d, h)
             })
@@ -743,6 +1513,59 @@ struct Evidence {
     refuted: Vec<usize>,
 }
 
+/// The half-width (past its length changes) of the wider band tried before the full
+/// programme.
+const WIDE_SLACK: i64 = 4 * BAND_SLACK;
+
+/// The rows within a read's band reach in `hap` ([`Scorer::near`]).
+fn near_rows(scorer: &Scorer, site: &Site, hap: &Hap) -> Vec<usize> {
+    scorer.near(site, hap)
+}
+
+/// The k-mer length of [`kmer_bound`].
+const BOUND_K: usize = 8;
+
+/// An upper bound on the score of `read` (masked bases [`WILD`]) anywhere in `hap`: the
+/// read's k-mers holding no masked base that occur nowhere in `hap` are each broken by
+/// some edit of any alignment; one edit breaks at most `BOUND_K` of them and costs at
+/// least a mismatch (a gap or a base left over more per k-mer). 0 when `hap` holds a
+/// masked base (any base fits there).
+fn kmer_bound(read: &[u8], hap: &[u8]) -> i32 {
+    let code = |b: u8| match b {
+        b'A' => Some(0u32),
+        b'C' => Some(1),
+        b'G' => Some(2),
+        b'T' => Some(3),
+        _ => None,
+    };
+    if read.len() < BOUND_K || hap.iter().any(|&b| code(b).is_none()) {
+        return 0;
+    }
+    let mask = (1u32 << (2 * BOUND_K)) - 1;
+    let mut present = vec![0u64; 1 << (2 * BOUND_K - 6)];
+    let mut v = 0u32;
+    for (i, &b) in hap.iter().enumerate() {
+        v = ((v << 2) | code(b).unwrap_or(0)) & mask;
+        if i + 1 >= BOUND_K {
+            present[(v >> 6) as usize] |= 1 << (v & 63);
+        }
+    }
+    let (mut missing, mut v, mut run) = (0usize, 0u32, 0usize);
+    for &b in read {
+        match code(b) {
+            Some(c) => {
+                v = ((v << 2) | c) & mask;
+                run += 1;
+            }
+            None => run = 0,
+        }
+        if run >= BOUND_K && present[(v >> 6) as usize] & (1 << (v & 63)) == 0 {
+            missing += 1;
+        }
+    }
+    score::MISMATCH * missing.div_ceil(BOUND_K) as i32
+}
+
 fn is_subset(a: &[usize], b: &[usize]) -> bool {
     a.iter().all(|x| b.binary_search(x).is_ok())
 }
@@ -778,6 +1601,11 @@ impl<'r> Scorer<'r> {
     /// at, the band's half-width the slack plus the length changes the rows within the
     /// band (`near`) carry.
     fn prepare<'h>(&self, site: &Site, hap: &'h Hap, near: &[usize]) -> (&'h [u8], usize, Band) {
+        self.prepare_with(site, hap, near, BAND_SLACK)
+    }
+
+    /// [`Scorer::prepare`] with `slack` columns each side of the diagonal.
+    fn prepare_with<'h>(&self, site: &Site, hap: &'h Hap, near: &[usize], slack: i64) -> (&'h [u8], usize, Band) {
         let read = self.read;
         let l = read.len() as i64;
         let (a, b) = hap.reach(read.ref_start - site.start, read.ref_end - site.start, l);
@@ -787,7 +1615,7 @@ impl<'r> Scorer<'r> {
         centers.push(at(read.refpos[0]));
         centers.extend(read.refpos.iter().map(|&p| at(p) + 1));
         let shifts: i64 = near.iter().map(|&r| site.rows[r].ref_al.len().abs_diff(site.rows[r].alt_al.len()) as i64).sum();
-        (&hap.seq[a..b], a, Band::around(&centers, BAND_SLACK + shifts, b - a))
+        (&hap.seq[a..b], a, Band::around(&centers, slack + shifts, b - a))
     }
 
     /// The rows within the band's reach: its slack and every length change the site's
@@ -797,9 +1625,22 @@ impl<'r> Scorer<'r> {
     }
 
     pub(crate) fn score(&mut self, site: &Site, hap: &Hap) -> i32 {
+        match self.score_or_bound(site, hap, None) {
+            Ok(s) => s,
+            Err(_) => unreachable!("no bound asked"),
+        }
+    }
+
+    /// The read's score on `hap`; or, where the banded programme cannot vouch for it
+    /// and the full one would be needed, `Err(bound)` when `beaten` is given and an upper
+    /// bound on the score is already at most `beaten` (the score cannot matter there).
+    /// The bound counts the read's confident k-mers found nowhere in the haplotype's
+    /// trim: each edit of an alignment breaks at most [`BOUND_K`] of them and costs at
+    /// least a mismatch, so the score is at most a mismatch per `BOUND_K` missing.
+    pub(crate) fn score_or_bound(&mut self, site: &Site, hap: &Hap, beaten: Option<i32>) -> Result<i32, i32> {
         let wide = self.rows_within(site, hap, self.read.len() as i64 + site.max_shift);
         if let Some(&s) = self.finals.get(&wide) {
-            return s;
+            return Ok(s);
         }
         let near = self.near(site, hap);
         let (seq, _, band) = self.prepare(site, hap, &near);
@@ -813,10 +1654,25 @@ impl<'r> Scorer<'r> {
         let s = if score::stands(&banded) && (banded.score == 0 || !score::copy_off_band(read, seq, &band)) {
             banded.score
         } else {
-            score::full_score(read, seq)
+            if let Some(b) = beaten {
+                let bound = kmer_bound(read, seq);
+                if bound <= b {
+                    return Err(bound);
+                }
+            }
+            // A band WIDE_SLACK wide decides as the narrow one does, by its own edge and
+            // floor (an indel long enough to leave it costs more than its score); else the
+            // full programme.
+            let (wseq, _, wide) = self.prepare_with(site, hap, &near_rows(self, site, hap), WIDE_SLACK);
+            let w = score::banded(read, wseq, &wide);
+            if score::stands_in(&w, WIDE_SLACK) && (w.score == 0 || !score::copy_off_band(read, wseq, &wide)) {
+                w.score
+            } else {
+                score::full_score(read, seq)
+            }
         };
         self.finals.insert(wide, s);
-        s
+        Ok(s)
     }
 
     /// The read's alignment in `hap`, and where its trimmed haplotype starts (add it to an

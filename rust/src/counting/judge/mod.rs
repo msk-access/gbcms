@@ -18,7 +18,7 @@ use std::collections::HashMap;
 use log::{debug, warn};
 use rust_htslib::bam::record::Record;
 
-use super::carrier::{bases_in, Guard, ReadRules};
+use super::carrier::{bases_in, Guard, ReadRules, GUARD_MIN_READS, GUARD_REF_SHARE};
 use super::utils::ClassifyResult;
 use crate::normalize::fasta::CachedFasta;
 use crate::types::Variant;
@@ -123,7 +123,11 @@ pub(crate) fn site_for(v: &Variant, guard: Option<&Guard>, reference: &CachedFas
         return None;
     };
     let base = |p: i64| usize::try_from(p - lo).ok().and_then(|i| window.get(i).copied());
-    let background: Vec<Row> = guard
+    // The guard's recurring changes beside the event explain reads, never credit them:
+    // a masked base taking only some bases is a context row per change; one taking any
+    // base is any base in every haplotype; a recurring indel (a germline indel beside
+    // the event) is a context row.
+    let mut background: Vec<Row> = guard
         .map(|g| {
             g.background
                 .iter()
@@ -132,13 +136,23 @@ pub(crate) fn site_for(v: &Variant, guard: Option<&Guard>, reference: &CachedFas
                 .collect()
         })
         .unwrap_or_default();
-    let candidates = Candidates { listed, discovered, background };
+    let masked: Vec<i64> = guard
+        .map(|g| g.masked.iter().copied().filter(|p| !g.background.iter().any(|(q, _)| q == p)).collect())
+        .unwrap_or_default();
+    if let Some(g) = guard {
+        background.extend(g.indels.iter().filter_map(|&(p, n)| indel_row(p, n, &base, reads)));
+    }
+    let mut guarded: Vec<i64> = guard.map(|g| g.masked.clone()).unwrap_or_default();
+    guarded.sort_unstable();
+    let found = found_indels(&base, reads, &guarded);
+    let candidates = Candidates { listed, discovered, background, masked, found };
     let site = Site::build(target, &candidates, (lo, window), reads);
     match &site {
         Some(s) => debug!(
-            "haplotype judge {}:{} {}>{}: {} haplotypes over {} contexts{} from {} reads",
+            "haplotype judge {}:{} {}>{}: {} haplotypes over {} contexts{} from {} reads; site {}-{}",
             v.chrom, v.pos + 1, v.ref_allele, v.alt_allele, s.haps.len(), s.n_contexts,
             if s.cap_exceeded { " (the base contexts alone pass the cap)" } else { "" }, reads.len(),
+            s.site_span().0 + 1, s.site_span().1,
         ),
         None => warn!(
             "haplotype judge: the reference does not hold the REF of {}:{} {}>{}; its reads are depth only",
@@ -146,6 +160,46 @@ pub(crate) fn site_for(v: &Variant, guard: Option<&Guard>, reference: &CachedFas
         ),
     }
     site
+}
+
+/// The alleles the reads' own bases spell at the indels their alignments write
+/// (`ReadView::spelled_indels`), on [`GUARD_MIN_READS`] reads or more and
+/// [`GUARD_REF_SHARE`] of them: alleles the reads show, whatever their length (a state
+/// where one lies at X's site). X's own carriers, however the aligner wrote them, spell X.
+fn found_indels(base: &dyn Fn(i64) -> Option<u8>, reads: &[ReadView], masked: &[i64]) -> Vec<Row> {
+    let mut tally: std::collections::BTreeMap<Row, u32> = std::collections::BTreeMap::new();
+    for r in reads {
+        let mut once = std::collections::BTreeSet::new();
+        for row in r.spelled_indels(base, masked) {
+            if once.insert(row.clone()) {
+                *tally.entry(row).or_insert(0) += 1;
+            }
+        }
+    }
+    let floor = (GUARD_REF_SHARE * reads.len() as f64).max(f64::from(GUARD_MIN_READS));
+    tally.into_iter().filter(|&(_, n)| f64::from(n) >= floor).map(|(row, _)| row).collect()
+}
+
+/// A recurring indel the reads' own alignments write (`Guard::indels`: the genome
+/// position after its anchor, its length, + inserted, - deleted) as a row: a deletion's
+/// bases from the reference, an insertion's as the reads writing it there show them most
+/// (the first such sequence on a tie).
+fn indel_row(p: i64, n: i64, base: &dyn Fn(i64) -> Option<u8>, reads: &[ReadView]) -> Option<Row> {
+    let anchor = base(p - 1)?;
+    if n < 0 {
+        let deleted: Option<Vec<u8>> = (p..p - n).map(base).collect();
+        return Some(Row::new(p - 1, &[&[anchor][..], &deleted?].concat(), &[anchor]));
+    }
+    let mut seen: Vec<(&[u8], usize)> = Vec::new();
+    for bases in reads.iter().flat_map(|r| &r.inserts).filter(|(q, b)| *q == p && b.len() as i64 == n).map(|(_, b)| &b[..]) {
+        match seen.iter_mut().find(|(b, _)| *b == bases) {
+            Some(s) => s.1 += 1,
+            None => seen.push((bases, 1)),
+        }
+    }
+    let most = seen.iter().map(|s| s.1).max()?;
+    let bases = seen.iter().find(|s| s.1 == most)?.0;
+    Some(Row::new(p - 1, &[anchor], &[&[anchor][..], bases].concat()))
 }
 
 #[cfg(test)]
@@ -276,7 +330,8 @@ mod tests {
     }
 
     #[test]
-    fn a_read_one_repeat_unit_off_is_depth_only() {
+    fn a_read_one_repeat_unit_off_is_partial_evidence() {
+        // Another length of the repeat is another allele: partial evidence, never REF or ALT.
         // G anchor at 299, (CA)x8 at 300..316, then a T.
         let c = contig(37, 297, b"TTGCACACACACACACACAT");
         let ins = row(300, "G", "GCA");
@@ -287,7 +342,7 @@ mod tests {
             read(&h_alt, 222, 151, 222, "78M2I71M"),
             read(&c, 224, 151, 224, "151M"),
         ];
-        assert_eq!(calls(&c, std::slice::from_ref(&ins), &ins, &reads), vec![Call::Depth, Call::Alt, Call::Ref]);
+        assert_eq!(calls(&c, std::slice::from_ref(&ins), &ins, &reads), vec![Call::Other, Call::Alt, Call::Ref]);
     }
 
     #[test]
