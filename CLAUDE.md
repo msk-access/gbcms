@@ -11,6 +11,7 @@
 - Hooks: `.claude/settings.json` wires the `.claude/hooks/` guards (`block-rm-rf.py`,
   `block-push-main.py`, `block-env-edits.py`, `injection-guard.py`) plus time injection.
 - Memory auto-recall reads `.agents/memory/` (symlinked from the Claude project memory dir).
-- Delegation: set each subagent's `model` by the task — Fable or Opus for deep reasoning
-  (adversarial reviews, rule design, decisions), Sonnet for surveys and routine work, Haiku
-  for mechanical scans — and say which; suggest a session switch when the phase changes.
+- Delegation: set each subagent's `model` by the task — Fable for research surveys, Fable
+  or Opus for deep reasoning (adversarial reviews, rule design, decisions), Sonnet for
+  routine work, Haiku for mechanical scans — and say which; suggest a session switch when
+  the phase changes.
