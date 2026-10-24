@@ -1,6 +1,6 @@
 ---
 name: abra2-junction-placement
-description: "IMPACT/ACCESS BAMs are ABRA2-realigned; a junction insert there carries assembly evidence, so WES (BWA only) is the control for placement questions"
+description: "IMPACT/ACCESS BAMs are ABRA2-realigned (YO tag = original BWA alignment); a junction insert there carries assembly evidence, WES (BWA only) is the placement control; 50-500 bp events are called by VarDict/MuTect off ABRA2's CIGARs with no SV-caller second opinion"
 metadata:
   node_type: memory
   type: project
@@ -15,6 +15,12 @@ writes at the variant's junction with a flank substitution is the given ALT plus
 single-molecule error (C37 #245: 28/28 RC reads, spectrum-checked). The WES loci
 (`harness/c20/wes`, BWA + MarkDuplicates) are the no-realigner control: use them for any
 "where did the aligner put the gap" question, as the operator suggested 2026-10-07.
+
+Large events (50 bp to ~500 bp) in IMPACT's small-variant files are called by VarDict
+or MuTect, made easy by ABRA2's CIGAR signature (explicit long I/D ops on its contigs),
+not by independent evidence; IMPACT's SV calls (cBioPortal `data_sv.txt`) start at about
+500 bp, so 50-500 bp events have no second caller (operator, 2026-10-23). Judge such
+events by bases, read by read against the `YO` (original BWA) placement.
 
 **Why:** C37 almost changed the strict path on the premise that a realigner forced reads
 onto the known indel; the data showed ABRA2's placement was the better-informed one.

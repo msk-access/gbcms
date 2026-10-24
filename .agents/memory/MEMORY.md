@@ -16,7 +16,7 @@ One line per memory. Full content lives in the linked file. Keep this index tigh
 - [Test across data types](test-across-data-types.md) — accept a count-changing rule on every data type (tissue tumour+normal, cfDNA, WES/WGS, RNA) and input type, with more than one truth source; GIAB alone is not acceptance; DNA and RNA may need different rules.
 - [Better than the standard](better-than-standard.md) — the survey is a floor, not a ceiling: where no tool sets a standard or a measured rule beats the field's, adopt it and say why.
 - [Best, not least-bad](best-not-least-bad.md) — in analysis and implementation alike: name what the data can't see, stress it with synthetic shapes and diagnostics, then make every shape a red-first test and land the rule in every path.
-- [Model per task](model-per-task.md) — set each subagent's model by the task: Fable/Opus for deep reasoning (reviews, rule design, decisions), Sonnet for surveys and routine work, Haiku for mechanical scans; suggest a session switch when the phase changes.
+- [Model per task](model-per-task.md) — set each subagent's model by the task: Fable for research surveys, Fable/Opus for deep reasoning (reviews, rule design, decisions), Sonnet for routine work, Haiku for mechanical scans; suggest a session switch when the phase changes.
 - [External review: measure first](external-review-measure-first.md) — map an outside review to behaviour, tickets, REJECTED.md and old probes, and measure its value, before filing tickets.
 - [mFSD is graded evidence](mfsd-graded-evidence.md) — fragment size gives increased confidence toward CH or toward somatic (or none), never a hard origin call; don't over-interpret.
 - [Decisions with worked examples](decisions-worked-examples.md) — count-rule decisions come with a real row drawn out, the community standard, the RNA effect, a truth check, and every option offered measured (not estimated).
@@ -28,6 +28,7 @@ One line per memory. Full content lives in the linked file. Keep this index tigh
 - [Production aligner settings](production-aligner-settings.md) — nucleo (ACCESS; IMPACT's stand-in) BWA+ABRA2, forte STAR 2.7.10a; FORTE's fill-out still calls the C++ gbcms 1.2.5; full flags on #275.
 
 ## Project facts (from the 2026-06-26 code review)
+- [Universal haplotype judge](universal-haplotype-judge.md) — DECIDED 2026-10-23: package 2 adopts a per-haplotype read judge (edit scorer, context x site-state closure, one-base margin) for small-variant rows, flag-first in 6.7.0; SV file input after 6.7.0.
 - [Bin fetch-end must cover the anchor variant](bin-anchor-coverage.md) — CR-1; pinned by the bin property test and binning-invariance tests.
 - [WFA fast-path shares the base-quality gate](wfa-bq-gate-contract.md) — CR-2 cross-backend quality contract.
 - [Engine should be output-aware](engine-output-aware.md) — plumb intent across FFI vs compute-then-discard.
@@ -35,7 +36,7 @@ One line per memory. Full content lives in the linked file. Keep this index tigh
 - [Nextflow defaults diverge from CLI](nextflow-cli-default-divergence.md) — keep nextflow.config in sync with CLI defaults.
 - [RNA MAPQ default is 1](rna-mapq-default.md) — keeps STAR's 2–4-locus reads (pseudogene-tied junction reads); unique-only cost PIK3CA E545K ALT; decided 2026-10-03.
 - [MAPQ-0 loci (PMS2)](mapq0-loci-pms2.md) — pseudogene genes run at --min-mapq 0; keep MAPQ-0 alignments countable; validate read-admission changes at --min-mapq 0 too.
-- [ABRA2 junction placement](abra2-junction-placement.md) — IMPACT/ACCESS are ABRA2-realigned (junction inserts carry assembly evidence); WES (BWA only) is the placement control.
+- [ABRA2 junction placement](abra2-junction-placement.md) — IMPACT/ACCESS are ABRA2-realigned (YO = original BWA alignment; junction inserts carry assembly evidence); WES (BWA only) is the placement control; 50-500 bp events are called off ABRA2's CIGARs with no SV-caller second opinion.
 - [ABRA2 after collapsing](abra2-collapse-artifacts.md) — ACCESS runs ABRA2 twice (standard, then post-collapse); the second pass can introduce events: check the standard BAM; CIGAR-trusting rules count them, bases-judging rules don't.
 
 ## Tooling / build
