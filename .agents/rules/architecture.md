@@ -14,13 +14,18 @@ gbcms/
 │   ├── pipeline.py      # Orchestration, progress, Parquet dispatch
 │   ├── normalize.py     # Standalone normalization workflow
 │   ├── convert.py       # Standalone VCF <-> MAF conversion
+│   ├── merge.py         # `gbcms merge`: per-BAM-type MAFs (duplex, simplex) -> one, simplex_duplex_* columns
+│   ├── observations.py  # Per-molecule observation export (public API; companion Parquet)
+│   ├── rescue_audit.py  # The gbcms_rescue audit contract, shared by the MNP rescue pass and merge
 │   ├── _rs.pyi          # Primary Rust type stubs (authoritative)
 │   ├── core/
 │   │   └── kernel.py    # Coordinates; the one VCF<->MAF rule (vcf2maf/maf2vcf) + type labels
 │   ├── io/
 │   │   ├── input.py     # VcfReader (skips uncountable ALTs), MafReader
 │   │   ├── output.py    # VcfWriter, MafWriter (mFSD/RNA column gating)
-│   │   └── reference.py # Reference bases for MAF -> VCF anchors
+│   │   ├── reference.py # Reference bases for MAF -> VCF anchors
+│   │   ├── atomic.py    # Atomic output files (temp file + fsync + rename)
+│   │   └── batch.py     # Polars batch I/O for post-processing (merge, mFSD report)
 │   ├── models/
 │   │   └── core.py      # GbcmsConfig, OutputConfig, AlignmentConfig (Pydantic)
 │   ├── report/
@@ -33,9 +38,12 @@ gbcms/
 │       ├── types.rs     # Variant, BaseCounts PyO3 bindings
 │       ├── counting/
 │       │   ├── engine.rs        # Main counting loop, genomic binning, Rayon par_iter()
-│       │   ├── variant_checks.rs # check_snp/mnp/ins/del/complex, windowed scan
-│       │   ├── carrier.rs       # Exact-carrier rule for complex variants (delins, Del+SNV, structural MNP)
+│       │   ├── variant_checks.rs # splice triage; check_snp/mnp/ins/del/complex CIGAR checks, windowed scan
+│       │   ├── carrier.rs       # Exact-carrier rule: pure indels, delins, Del+SNV, structural MNP; neighbouring-change guard
+│       │   ├── junction.rs      # Junction judge for pure deletions of 50 bp or more
+│       │   ├── window.rs        # allele_kind, read/guard/discrimination windows, informative-read tests
 │       │   ├── observed.rs      # OBSERVED_ALLELE / COEXISTING_ALLELE: the allele the reads carry
+│       │   ├── utils.rs         # ClassifyResult/ClassifyPhase, haplotype and masked-compare helpers
 │       │   ├── alignment.rs     # Smith-Waterman
 │       │   ├── pairhmm.rs       # PairHMM backend, LLR scoring
 │       │   ├── pangenome.rs     # Haplotype matrix for complex phase
@@ -52,13 +60,14 @@ gbcms/
 │       │   ├── fragment.rs      # FragmentEvidence, QNAME/UMI hashing
 │       │   ├── stats.rs         # Fisher's exact test, strand bias
 │       │   ├── bam_utils.rs     # median_qual, find_read_pos
+│       │   ├── contig.rs        # Contig-name normalization across BAM/GTF/VCF (chrM vs MT)
 │       │   ├── filters.rs       # ReadFilter, FilterCounts
 │       │   └── baq.rs           # Heuristic BAQ (Li 2011)
 │       └── normalize/           # Left-alignment, decomp, fasta, repeat
 ├── nextflow/            # Nextflow pipeline wrapper
-├── tests/               # 255 Python tests (15+ files)
+├── tests/               # pytest suite: contract tests, census.py, helpers.py (`ls tests`)
 ├── docs/                # MkDocs documentation
-└── .agents/             # Agent rules, workflows, skills
+└── .agents/             # Agent rules, skills, memory, learnings; archive/ holds retired plans
 ```
 
 ## Rust/Python Boundary
@@ -86,7 +95,7 @@ gbcms/
 5. **4-layer CLI validation**: Parse-time (Typer) → Pre-model (cli.py) → Model-time (Pydantic) → No silent skips.
 6. **Fragment counting always on**: Quality-weighted consensus; discards counted in DPF not RDF/ADF.
 7. **Windowed indel detection**: ±5bp scan expanding to `max(5, repeat_span + 2)`.
-8. **Dual alignment backends**: SW (default) or PairHMM (`--alignment-backend hmm`).
+8. **Dual alignment backends**: PairHMM (the CLI default, `--alignment-backend pairhmm`; `hmm` is an alias; WFA2 triage runs in front of it) or Smith-Waterman (`sw`, opt-in). They are the residual fallback behind the exact-carrier and junction rules (counting-engine skill).
 9. **Genomic binning**: ~10kb bins, one `bam.fetch()` per bin, max 200 variants/bin.
 10. **COITree for annotation**: Platform-portable metadata access via `Borrow` trait (nosimd vs NEON/AVX backends). The index is built per run from the GTF (plain or gzip/BGZF; ~2 s for a whole Ensembl GTF, ~6.5 s for GENCODE comprehensive; each line's feature and chromosome read before anything else is parsed); there is no disk cache (`--gtf-cache-dir` / `build-gtf-cache` are deprecated no-ops in 6.6.0, removed in 6.7.0).
 11. **Diagnostic flags**: `gbcms_diagnostic` and `gbcms_rescue` are strongly-typed Rust fields, not dynamic attributes.
@@ -139,4 +148,4 @@ oracle was retired (#170).
   edit it whenever the `#[pyo3(get)]` fields or `#[pyo3(signature)]` params change
 - It includes: `BaseCounts`, `PreparedVariant`, diagnostic fields, ASJD fields, nucleosomal fractions
 - (Historical: a top-level `src/gbcms_rs.pyi` used to mirror this; it stubbed a module
-  nothing imports and was removed in LO-1. Don't reintroduce it.)
+  nothing imports and was removed. Don't reintroduce it.)

@@ -1,5 +1,13 @@
 # gbcms Harness Setup Plan
 
+> **Historical (2026-06-26).** This is the plan the harness was first built from; it is
+> kept for its rationale and is not maintained. What exists now: `AGENTS.md` (standing
+> context), `.agents/rules/`, `.agents/skills/` (workflows were folded into skills; there is
+> no `.agents/workflows/`), `.agents/memory/`, `.claude/hooks/` and `.githooks/`.
+> `.agents/archive/CODE_REVIEW_IMPLEMENTATION_PLAN.md` is the retired code-review plan this
+> page mentions; open work is tracked in `CONTINUITY.md`, tracker #196 and
+> `PRODUCTION_READINESS.md`.
+
 **Branch:** `feat/claude-harness` · **Date:** 2026-06-26 · **Following:** [BioInfo/claudelicious](https://github.com/BioInfo/claudelicious)
 
 This plan adapts the **claudelicious** harness pattern ("run the model as a system, not a chat box") to the gbcms project. Per the source's own guidance — *"You cannot buy a harness… look at the shape of someone else's, see which parts map to your work"* — we adopt the **shape and discipline**, not a clone.
@@ -87,7 +95,7 @@ Antigravity v1.20.3+, Cursor, Codex, Copilot, Windsurf, Zed, Junie, …). Princi
 |-------|--------------------|----------------|----------------------|
 | Standing context | `AGENTS.md` | `CLAUDE.md` = `@AGENTS.md` import | read `AGENTS.md` natively (`GEMINI.md` = Google override only) |
 | Skills | `.agents/skills/<name>/SKILL.md` | `.claude/skills/` → symlink | Antigravity reads `.agents/skills/` |
-| Enforcement | `.githooks/pre-commit` + `guard-destructive.sh` | `.claude/settings.json` wires the hook | git hook is tool-agnostic |
+| Enforcement | `.githooks/pre-commit` + `.githooks/pre-push` | `.claude/settings.json` wires `.claude/hooks/` (`block-rm-rf.py`, `block-push-main.py`, `block-env-edits.py`, `injection-guard.py`) and time injection | git hooks are tool-agnostic |
 | Memory | `.agents/memory/*.md` (in-repo) | Claude recall dir → symlink | any tool ingests the same files |
 | Continuity | `CONTINUITY.md` | referenced from `AGENTS.md` | referenced from `AGENTS.md` |
 | Learning loop | convention in `AGENTS.md` | inherited | inherited |
