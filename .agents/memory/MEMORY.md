@@ -52,7 +52,7 @@ One line per memory. Full content lives in the linked file. Keep this index tigh
 
 ## Validation / testing
 - [QC-fail flag absent from MSK data](qcfail-flag-absent-msk-data.md) — no pipeline stage sets 0x200; filter verified correct but inert in practice (contract test pins it).
-- [--trace output wraps](trace-output-wraps.md) — set COLUMNS=60000 (3000 wraps alleles over ~2.9 kb) before parsing `read call` lines; a read call is not a count (take totals from the MAF); match keys by haplotype.
+- [--trace output wraps](trace-output-wraps.md) — set COLUMNS just above the longest allele (3000 wraps alleles over ~2.9 kb; a blanket 60000 pads every line, >450x slower) before parsing `read call` lines; a read call is not a count (take totals from the MAF); match keys by haplotype.
 - [Census mirrors read inputs](census-mirrors-read-inputs.md) — the census shares read-input rules (fragment end, filters), so validate those against an oracle it doesn't share (the bases themselves, the mate's alignment, ITD rows first).
 - [VAF uses informative reads](vaf-informative-reads.md) — `vaf` = AD/(RD+AD); per-sample total_count (DP) includes unjudgeable reads; never advise AD/DP (repeat indels: reads ending inside the tract).
 - [pysam validation oracle](pysam-validation-oracle.md) — use fetch()+get_reference_positions (not pileup) to cross-check gbcms counts; RD/AD match exact, DP includes neither.
