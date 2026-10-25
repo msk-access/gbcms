@@ -796,7 +796,7 @@ alleles of VCF-input rows, so their rows would not join.
     the main output:
 
     ```
-    {--output-dir}/{sample_name}.observations.parquet
+    {--output-dir}/{sample_name}{--suffix}.observations.parquet
     ```
 
     One row per fragment per variant — `variant_index, chrom, pos, ref, alt,

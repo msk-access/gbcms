@@ -7,6 +7,36 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed — companion file names, `.vcf.bgz` in normalize, the amplicon rule, Nextflow RNA defaults (#309)
+
+- **Companion files keep every dot of the output name.** The mFSD Parquet and report
+  were named by swapping the main output's extension, which dropped a dotted
+  `--suffix` (`S1.genotyped.maf` → `S1.fsd.parquet`) and a dotted sample name, so two
+  samples (`S.1`, `S.2`) wrote the same file. They are now
+  `{sample}{suffix}.fsd.parquet` / `.mfsd_report.html`, as documented, and the
+  observations Parquet honours `--suffix` (`{sample}{suffix}.observations.parquet`).
+- **`gbcms normalize` reads `.vcf.bgz`**, which the CLI already accepted: one
+  `variant_format()` in `gbcms.io.input` now reads a variant file's extension for the
+  CLI, the pipeline and normalize.
+- **The amplicon rule applies to programmatic callers too.** `GbcmsRnaConfig` with
+  `library_type="amplicon"` now reads the library unstranded, and an unstranded
+  protocol disables strand enforcement, as the CLI already did.
+- **`--mfsd-report` requires `--format maf`.** The report reads its statistics from
+  the MAF output; with `--format vcf` the run is refused at configuration time.
+- **A read calling no base over a row's window is depth only at a contig end.** Where
+  the exact-carrier rule cannot judge a row (its repeat runs to the contig end), the
+  CIGAR checks' reference-coverage rules (a deletion's anchor covered with no gap; a
+  deletion-direction delins' anchor covered by a clean match) counted a read whose
+  bases there are all N as REF. Such a read is now neither (N class), as the
+  exact-carrier rule counts it elsewhere. No existing test's counts change.
+- **Nextflow RNA tasks pass the RNA CLI defaults.** The RNA module passed DNA's
+  PairHMM gap penalties (1e-4/0.1 over RNA's 5e-3/0.25) and `--no-baq` (BAQ is on in
+  `gbcms rna`). RNA now reads its own params, `rna_gap_*` and `rna_apply_baq` (on), as
+  it already did `rna_min_mapq`; a test pins every module's param defaults to its
+  CLI's. Measured on the 33 local FORTE slices (94 rows), old module arguments against
+  the CLI defaults: with the GTF no row changes; without it one row's REF count was 5
+  reads (3 fragments) higher under the old arguments; AD and depth unchanged.
+
 ### Changed — a co-annotated sibling contests an exact-carrier ALT read by its bases (#300)
 
 - The AD-claiming sibling guard re-tested every non-anchor ALT call against REF on the

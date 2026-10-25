@@ -19,7 +19,7 @@ from pathlib import Path
 from gbcms import _rs as gbcms_rs
 
 from .io.atomic import atomic_output
-from .io.input import MafReader, VcfReader
+from .io.input import MafReader, VcfReader, variant_format
 
 logger = logging.getLogger(__name__)
 
@@ -44,16 +44,8 @@ def normalize_variants(
         context_padding: Flanking bases for ref_context.
     """
     # 1. Load raw variants
-    suffix = variant_file.suffix.lower()
-    is_maf = suffix == ".maf"
-
-    reader: VcfReader | MafReader
-    if suffix in [".vcf", ".gz"]:
-        reader = VcfReader(variant_file)
-    elif is_maf:
-        reader = MafReader(variant_file)
-    else:
-        raise ValueError(f"Unsupported variant file format: {suffix}")
+    is_maf = variant_format(variant_file) == "maf"
+    reader: VcfReader | MafReader = MafReader(variant_file) if is_maf else VcfReader(variant_file)
 
     variants = list(reader)
     if hasattr(reader, "close"):
