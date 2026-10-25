@@ -73,7 +73,7 @@ def _gapped(name, ref, pos, alt_ins, start, length=READ_LEN):
     )
 
 
-def _run(tmp_path, ref, rows, reads, partial=False):
+def _run(tmp_path, ref, rows, reads, partial=False, maf_rows=False):
     fa = tmp_path / "ref.fasta"
     fa.write_text(">1\n" + ref + "\n")
     pysam.faidx(str(fa))
@@ -117,6 +117,8 @@ def _run(tmp_path, ref, rows, reads, partial=False):
         assert n["total_count_fragment"] >= n["ref_count_fragment"] + n["alt_count_fragment"]
         assert n["ref_count"] == n["ref_count_forward"] + n["ref_count_reverse"]
         assert n["alt_count"] == n["alt_count_forward"] + n["alt_count_reverse"]
+    if maf_rows:
+        return got
     if partial:
         return [
             (int(r["ref_count"]), int(r["alt_count"]), int(r["total_count"]), int(r["partial_alt"]))
@@ -507,6 +509,76 @@ def test_an_mnp_read_showing_one_of_its_changes_is_not_alt(tmp_path):
     reads += [_plain(f"r{i}", ref, m0 - 30 + i) for i in range(10)]
     [(rd, ad, dp)] = _run(tmp_path, ref, [row], reads)
     assert (rd, ad, dp) == (10, 10, 25)
+
+
+def test_an_mnp_carrier_with_a_changed_base_below_the_quality_floor_counts_alt(tmp_path):
+    """A 2-base MNP: 6 carriers read both changed bases, 4 read the second at Q2 (the
+    first decides, as the rules count it, RJ-25), 5 REF reads."""
+    m0 = 1000
+    ref = _contig(7, length=2000)
+    row = (
+        m0,
+        ref[m0 - 1 : m0 + 1],
+        "".join("A" if b != "A" else "C" for b in ref[m0 - 1 : m0 + 1]),
+    )
+    alt = _apply(ref, [row])
+    reads = [_plain(f"f{i}", alt, m0 - 60 + i) for i in range(6)]
+    for i in range(4):
+        q = [30] * READ_LEN
+        q[m0 - (m0 - 50 + i)] = 2
+        reads.append(_plain(f"q{i}", alt, m0 - 50 + i, quals=q))
+    reads += [_plain(f"r{i}", ref, m0 - 30 + i) for i in range(5)]
+    [(rd, ad, dp)] = _run(tmp_path, ref, [row], reads)
+    assert (rd, ad, dp) == (5, 10, 15)
+
+
+# ── An SNV listed beside an MNV holding its change (RJ-28) ──
+
+
+def test_an_snv_beside_an_mnv_holding_its_change_counts_the_mnvs_carriers(tmp_path):
+    """An SNV and a listed DNP whose first base is the SNV's: 6 DNP carriers, 4 carrying
+    the SNV alone, 5 REF reads. The SNV's row counts all 10 carriers (RJ-28) and names the
+    6 it shares with the DNP; the DNP's row counts its 6, the SNV-only reads partial."""
+    m0 = 1000
+    ref = _contig(11, length=2000)
+    a1 = "A" if ref[m0 - 1] != "A" else "C"
+    a2 = "G" if ref[m0] != "G" else "T"
+    snv, dnp = (m0, ref[m0 - 1], a1), (m0, ref[m0 - 1 : m0 + 1], a1 + a2)
+    h_dnp, h_snv = _apply(ref, [dnp]), _apply(ref, [snv])
+    reads = [_plain(f"d{i}", h_dnp, m0 - 60 + i) for i in range(6)]
+    reads += [_plain(f"s{i}", h_snv, m0 - 55 + i) for i in range(4)]
+    reads += [_plain(f"r{i}", ref, m0 - 30 + i) for i in range(5)]
+    got = {
+        (r["Reference_Allele"], r["Tumor_Seq_Allele2"]): r
+        for r in _run(tmp_path, ref, [snv, dnp], reads, maf_rows=True)
+    }
+    s, d = got[(snv[1], snv[2])], got[(dnp[1], dnp[2])]
+    assert (int(s["ref_count"]), int(s["alt_count"])) == (5, 10)
+    assert (int(d["ref_count"]), int(d["alt_count"]), int(d["partial_alt"])) == (5, 6, 4)
+    assert f"MNV_SHARED(1:{m0}:{dnp[1]}>{dnp[2]}:6/10)" in s["gbcms_diagnostic"].split(";")
+    assert "MNV_SHARED" not in d["gbcms_diagnostic"]
+
+
+# ── A long deletion with a listed row inside its deleted bases ──
+
+
+def test_a_listed_snv_inside_a_long_deletions_bases_leaves_its_ref_reads_ref(tmp_path):
+    """A 113-bp deletion and a listed SNV 86 bases into its deleted bases: 8 REF reads
+    over the anchor short of the SNV, 4 over it carrying the SNV, 6 deletion carriers. The
+    deletion's row counts the 12 REF reads REF, the SNV's a change on REF's molecules."""
+    d0 = 1000
+    ref = _contig(13, length=2000)
+    dele = (d0, ref[d0 - 1 : d0 + 113], ref[d0 - 1])
+    snv = (d0 + 87, ref[d0 + 86], "A" if ref[d0 + 86] != "A" else "C")
+    h_snv = _apply(ref, [snv])
+    reads = [_plain(f"r{i}", ref, d0 - 70 + i) for i in range(8)]
+    reads += [_plain(f"s{i}", h_snv, d0 - 10 + i) for i in range(4)]
+    for i in range(6):
+        s = d0 - 60 + i
+        seq = ref[s:d0] + ref[d0 + 113 : d0 + 113 + READ_LEN - (d0 - s)]
+        reads.append(make_read(f"a{i}", seq, s, ((0, d0 - s), (2, 113), (0, READ_LEN - (d0 - s)))))
+    (del_rd, del_ad, _), _snv = _run(tmp_path, ref, [dele, snv], reads)
+    assert (del_rd, del_ad) == (12, 6)
 
 
 # ── An SNV in a repeat beside a listed expansion of it ──

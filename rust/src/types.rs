@@ -507,6 +507,13 @@ pub struct BaseCounts {
     /// changes.
     #[pyo3(get)]
     pub possible_minority: String,
+    /// Under the haplotype judge, at a substitution: per co-listed row holding its change
+    /// (an MNV beside its component SNV, whose carriers count as this row's ALT), how many
+    /// of the ALT reads spell that row whole, as `POS:REF>ALT:n/m` (1-based POS; n of the
+    /// m ALT reads), several joined by `+`; empty when none. Diagnostic only (feeds
+    /// MNV_SHARED); no count changes.
+    #[pyo3(get)]
+    pub mnv_shared: String,
     /// Reads processed with the requested `--umi-tag` present. Internal only
     /// (no Python getter): summed per BAM to warn when a requested UMI tag is
     /// never seen and fragment grouping silently fell back to QNAME.

@@ -288,3 +288,27 @@ def test_possible_minority_haplotype_flag():
     counts.possible_minority = ""
     _make_pipeline()._compute_diagnostics([pv], [counts])
     assert "POSSIBLE_MINORITY_HAPLOTYPE" not in pv.gbcms_diagnostic
+
+
+def test_mnv_shared_flag():
+    """MNV_SHARED names, per co-listed MNV holding a substitution's change, how many of the
+    row's ALT reads spell it whole (n/m); one flag per entry ('+'-joined in the counts);
+    absent when the field is empty or missing."""
+    pv = _mock_prepared_variant()
+    counts = _mock_counts(ad=20)
+    counts.mnv_shared = "100:AC>TG:10/20"
+    _make_pipeline()._compute_diagnostics([pv], [counts])
+    assert pv.gbcms_diagnostic == "MNV_SHARED(chr1:100:AC>TG:10/20)"
+    pv = _mock_prepared_variant()
+    counts = _mock_counts(ad=20)
+    counts.mnv_shared = "100:AC>TG:10/20+99:GAC>CTG:3/20"
+    _make_pipeline()._compute_diagnostics([pv], [counts])
+    assert pv.gbcms_diagnostic.split(";") == [
+        "MNV_SHARED(chr1:100:AC>TG:10/20)",
+        "MNV_SHARED(chr1:99:GAC>CTG:3/20)",
+    ]
+    pv = _mock_prepared_variant()
+    counts = _mock_counts(ad=20)
+    counts.mnv_shared = ""
+    _make_pipeline()._compute_diagnostics([pv], [counts])
+    assert "MNV_SHARED" not in pv.gbcms_diagnostic

@@ -50,6 +50,11 @@ pub(crate) struct Verdict {
     /// Measurement only (`GBCMS_JUDGE_TRIAGE=check`): the call and quality triage gave the
     /// read, where it decided it, and the unknown k-mers it held.
     pub(crate) triage: Option<(Call, u8, u16)>,
+    /// An ALT call on a substitution that read every base X changes confidently, as X's.
+    pub(crate) confirmed: bool,
+    /// For an ALT call, the states holding X's change the read spells whole
+    /// ([`Site::spelled_holders`]).
+    pub(crate) spells: u32,
 }
 
 /// Measurement only, TEMPORARY: what a delins call needs read (`GBCMS_JUDGE_DELINS`):
@@ -97,12 +102,23 @@ pub(crate) fn decide(best: [Option<i32>; 3]) -> Call {
         }
     }
     // ALT 0, REF 1, OTHER 2: another allele tied with one of REF and X, the other beaten
-    for (tied, beaten) in [(0, 1), (1, 0)] {
-        if best[2].is_some() && best[tied].is_some() && v[2].min(v[tied]) - v[beaten] >= delta {
-            return Call::Other;
-        }
+    if tied_with(best).is_some() {
+        return Call::Other;
     }
     Call::Depth
+}
+
+/// Where no class beats both others by [`DELTA`]: the class (ALT 0, REF 1) another allele
+/// ties with, the remaining one beaten by both.
+fn tied_with(best: [Option<i32>; 3]) -> Option<usize> {
+    let v = best.map(|b| b.map_or(i64::MIN / 4, i64::from));
+    let delta = i64::from(DELTA);
+    [(0, 1), (1, 0)]
+        .into_iter()
+        .find(|&(tied, beaten)| {
+            best[2].is_some() && best[tied].is_some() && (v[2] - v[tied]).abs() < delta && v[2].min(v[tied]) - v[beaten] >= delta
+        })
+        .map(|(tied, _)| tied)
 }
 
 /// Judge one read against the site's haplotypes. A REF or ALT call stands only where
@@ -147,7 +163,7 @@ fn judge_enumerated(site: &Site, read: &ReadView, min_baseq: u8, ask_anchor: boo
     // haplotypes do not hold) is depth only: a margin between two misfits is no evidence.
     if top < FITS_NOTHING {
         trace!("haplotype judge: the read fits no haplotype (best at most {top}) → depth only");
-        return Verdict { call: Call::Depth, qual: 0, best: [None; 3], holds_anchor: false, placed: None, triage: None };
+        return Verdict { call: Call::Depth, qual: 0, best: [None; 3], holds_anchor: false, placed: None, triage: None, confirmed: false, spells: 0 };
     }
     for h in pending {
         let hap = &site.haps[h];
@@ -186,7 +202,7 @@ fn judge_graph(site: &Site, read: &ReadView, min_baseq: u8, ask_anchor: bool) ->
     };
     if site.triage_mode == TriageMode::On {
         if let Some(t) = triaged {
-            return Verdict { call: t.call, qual: t.qual, best: [None; 3], holds_anchor: false, placed: None, triage: None };
+            return Verdict { call: t.call, qual: t.qual, best: [None; 3], holds_anchor: false, placed: None, triage: None, confirmed: false, spells: 0 };
         }
     }
     let mut best: [Option<(i32, usize)>; 3] = [None; 3];
@@ -199,7 +215,7 @@ fn judge_graph(site: &Site, read: &ReadView, min_baseq: u8, ask_anchor: bool) ->
     let top = best.iter().flatten().map(|b| b.0).max().unwrap_or(i32::MIN);
     let verdict = if top < FITS_NOTHING && fits_exact() {
         trace!("haplotype judge: the read fits no state's graph (best {top}) → depth only");
-        Verdict { call: Call::Depth, qual: 0, best: [None; 3], holds_anchor: false, placed: None, triage: None }
+        Verdict { call: Call::Depth, qual: 0, best: [None; 3], holds_anchor: false, placed: None, triage: None, confirmed: false, spells: 0 }
     } else {
         let scorer = Scorer::new(read);
         let ws = std::cell::RefCell::new(ws);
@@ -229,6 +245,20 @@ fn conclude<'h>(
 ) -> Verdict {
     let scores = best.map(|b| b.map(|(s, _)| s));
     let mut call = decide(scores);
+    // A tie of REF with another allele, X beaten, is evidence of that allele only where
+    // the read reaches the bases that tell it from REF: short of them (an allele inside a
+    // long deletion's bases, past where a read over X's anchor ends) the read shows REF
+    // where REF and X differ, and nothing of the other allele.
+    let mut ref_by_reach = false;
+    if call == Call::Other && tied_with(scores) == Some(Class::Ref as usize) {
+        if let Some((_, k)) = best[Class::Other as usize] {
+            if !site.reaches_state(read, &hap(k)) {
+                trace!("haplotype judge: REF ties another allele the read never reaches → REF");
+                call = Call::Ref;
+                ref_by_reach = true;
+            }
+        }
+    }
     // The haplotype the read fits best of all, where its alignment there leaves an indel
     // unexplained inside X's site: the read carries another allele there, never REF or X.
     let overall = best.iter().flatten().copied().max_by(|a, b| a.0.cmp(&b.0).then(b.1.cmp(&a.1)));
@@ -251,10 +281,10 @@ fn conclude<'h>(
         Call::Depth => None,
     };
     let Some(won) = won else {
-        return Verdict { call, qual: 0, best: scores, holds_anchor: false, placed: None, triage: None };
+        return Verdict { call, qual: 0, best: scores, holds_anchor: false, placed: None, triage: None, confirmed: false, spells: 0 };
     };
     if call == Call::Other && !ask_anchor {
-        return Verdict { call, qual: 0, best: scores, holds_anchor: false, placed: None, triage: None };
+        return Verdict { call, qual: 0, best: scores, holds_anchor: false, placed: None, triage: None, confirmed: false, spells: 0 };
     }
     let hap_w = match fit_other {
         Some(h) => h,
@@ -270,11 +300,14 @@ fn conclude<'h>(
     let at = |p: &Placed| matches!(p, Placed::At(_));
     let placed = wa.placed.iter().position(at).zip(wa.placed.iter().rposition(at)).map(|(a, b)| (a, b + 1));
     if call == Call::Other {
-        return Verdict { call, qual: 0, best: scores, holds_anchor, placed, triage: None };
+        return Verdict { call, qual: 0, best: scores, holds_anchor, placed, triage: None, confirmed: false, spells: 0 };
     }
-    // The bases that tell X from REF at its site, read by the winning alignment: X's own
-    // for an ALT call; REF's for a REF call on a substitution (the rules read an MNP's
-    // whole block), never on a delins (the rules read equal-length windows there).
+    // The bases that tell X from REF at its site, covered by the winning alignment: X's
+    // own for an ALT call, none of them read confidently as another base; REF's for a REF
+    // call on a substitution (the rules read an MNP's whole block); never on a delins (the
+    // rules read equal-length windows there). A base below `--min-baseq` there weighs
+    // nothing either way, as an MNP read with a differing base below it counts ALT under
+    // the rules (RJ-25); the margin already rests the call on its confident bases.
     let need = site.is_substitution()
         || match delins_option() {
             DelinsOption::Asym => call == Call::Alt,
@@ -282,19 +315,28 @@ fn conclude<'h>(
             DelinsOption::Margin => false,
         };
     let telling = if need { site.telling_in(hap_w) } else { Vec::new() };
-    let reads_all = telling.into_iter().all(|(col, base)| {
-        wa.placed.iter().enumerate().any(|(i, p)| {
-            column(p) == Some(col) && (call == Call::Ref || (read.seq[i] != WILD && read.seq[i] == base))
-        })
-    });
+    let mut confirmed = call == Call::Alt;
+    let mut reads_all = true;
+    for (col, base) in telling {
+        match wa.placed.iter().position(|p| column(p) == Some(col)) {
+            None => reads_all = false,
+            Some(i) if call == Call::Alt => {
+                let b = read.seq[i];
+                confirmed &= b != WILD;
+                reads_all &= b == WILD || b == base;
+            }
+            Some(_) => {}
+        }
+    }
     if !reads_all {
         call = Call::Depth;
-        return Verdict { call, qual: 0, best: scores, holds_anchor: false, placed: None, triage: None };
+        return Verdict { call, qual: 0, best: scores, holds_anchor: false, placed: None, triage: None, confirmed: false, spells: 0 };
     }
-    // The best losing haplotype: the best of the other classes, the first on a tie.
+    // The best losing haplotype: the best of the other classes, the first on a tie (X's,
+    // for a REF call the other allele tied: the bases that beat X decided it).
     let floor = min_baseq.max(1);
     let lost = (0..3)
-        .filter(|&k| k != won as usize)
+        .filter(|&k| k != won as usize && !(ref_by_reach && k == Class::Other as usize))
         .filter_map(|k| best[k])
         .max_by(|a, b| a.0.cmp(&b.0).then(b.1.cmp(&a.1)))
         .map(|(_, h)| h);
@@ -302,7 +344,8 @@ fn conclude<'h>(
         let (la, _) = scorer.align(site, &hap(l));
         deciding_quality(read, &wa, &la).map_or(floor, |q| q.max(floor))
     });
-    Verdict { call, qual, best: scores, holds_anchor, placed, triage: None }
+    let spells = if call == Call::Alt { site.spelled_holders(read, hap_w, &wa, off) } else { 0 };
+    Verdict { call, qual, best: scores, holds_anchor, placed, triage: None, confirmed, spells }
 }
 
 /// What one read base costs in an alignment, and the haplotype bases skipped on each
@@ -430,6 +473,12 @@ pub(crate) fn classify(record: &Record, variant: &Variant, quals: &[u8], min_bas
                 Call::Other => ClassifyResult::neither_with_partial(PHASE, 1, false),
                 Call::Depth => depth(),
             };
+            // An MNP's ALT call that read every base where the alleles differ, confidently
+            // and as the ALT's (MNP rescue keeps such a row's haplotype).
+            out.mnp_confirmed = out.is_alt && verdict.confirmed;
+            if out.is_alt && verdict.spells != 0 {
+                out.spells_listed = spelled_listed(site, variant, verdict.spells);
+            }
             // Admission off the anchor, by the alignment to the called haplotype. A clip
             // admits the read only where every base that alignment places lies inside the
             // read's fragment (RJ-13): past the fragment end a clip is adapter, and a read
@@ -470,6 +519,22 @@ pub(crate) fn classify(record: &Record, variant: &Variant, quals: &[u8], min_bas
     out
 }
 
+/// The co-listed rows holding `variant`'s change (`super::listed_holders`) among the site's
+/// holders a read spells (`spells`, a bit per [`Site::holders`]), as bits in their order.
+fn spelled_listed(site: &Site, variant: &Variant, spells: u32) -> u32 {
+    let listed = super::listed_holders(variant);
+    site.holders()
+        .into_iter()
+        .take(32)
+        .enumerate()
+        .filter(|&(k, _)| spells >> k & 1 == 1)
+        .filter_map(|(_, h)| {
+            listed.iter().position(|&(p, r, a)| *p == h.pos && r.as_bytes().eq_ignore_ascii_case(&h.ref_al) && a.as_bytes().eq_ignore_ascii_case(&h.alt_al))
+        })
+        .filter(|&j| j < 32)
+        .fold(0u32, |m, j| m | 1 << j)
+}
+
 /// The flags a call carries beside its allele: an N the read shows over the row's REF
 /// span (the duplex-masking diagnostic); an MNP ALT call that read every base where the
 /// alleles differ, confidently and as the ALT's (MNP rescue keeps such a row's
@@ -482,9 +547,9 @@ fn mark(mut out: ClassifyResult, record: &Record, variant: &Variant) -> Classify
     let span = if long_deletion { (variant.pos, variant.pos + 1) } else { (variant.pos, variant.pos + ref_len) };
     let seq = record.seq();
     out.has_n_base = (span.0..span.1).any(|p| find_read_pos(record, p).is_some_and(|q| seq[q] == b'N'));
-    // An MNP's ALT call already read every base where the alleles differ, confidently
-    // and as the ALT's, on the alignment it was called on (however the CIGAR wrote them).
-    out.mnp_confirmed = out.is_alt && kind == Some(AlleleKind::Mnp);
+    // An MNP's ALT call that read every base where the alleles differ, confidently and as
+    // the ALT's, on the alignment it was called on (however the CIGAR wrote them).
+    out.mnp_confirmed &= out.is_alt && kind == Some(AlleleKind::Mnp);
     if out.is_alt && matches!(kind, Some(AlleleKind::Insertion | AlleleKind::Deletion)) && keep_structural() {
         out.is_structural = writes_exact_op(record, variant);
     }

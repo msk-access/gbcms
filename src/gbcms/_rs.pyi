@@ -150,6 +150,11 @@ class BaseCounts:
     # haplotype's, left unmasked, as POS:REF>ALT:c/n (1-based POS); empty when none.
     # Diagnostic only (POSSIBLE_MINORITY_HAPLOTYPE flag).
     possible_minority: str
+    # Under the haplotype judge, at a substitution: per co-listed row holding its change
+    # (an MNV beside its component SNV), the ALT reads spelling it whole, as
+    # POS:REF>ALT:n/m (1-based POS; n of the m ALT reads), several joined by '+'; empty
+    # when none. Diagnostic only (MNV_SHARED flag).
+    mnv_shared: str
     # GTF-informed annotation (None when no GTF)
     exon_boundary_dist: int | None
     # Per-transcript counts (empty string when no GTF or no overlap)

@@ -294,7 +294,7 @@ impl Hap {
                 x_seg = Some((hs, he));
             }
         }
-        let class = if rows.contains(&0) {
+        let class = if rows.contains(&0) || rows.iter().any(|&r| site.holds_x[r]) {
             Class::Alt
         } else if rows.iter().any(|&r| site.is_state(r)) {
             Class::Other
@@ -348,6 +348,10 @@ pub(crate) struct Site {
     /// X (index 0), the other site states, then the context rows.
     rows: Vec<Row>,
     n_states: usize,
+    /// Per row, whether it is a state holding X's change at X's site (a substitution X:
+    /// an allele of the same length over X's bases with X's bases there, such as an MNV
+    /// listed beside its component SNV). Its haplotypes are X's ALT (decided 2026-10-25).
+    holds_x: Vec<bool>,
     /// Window-relative REF spans of `rows`, and the spans their equivalent placements
     /// cover (a length change's; any other row's REF span).
     spans: Vec<(i64, i64)>,
@@ -550,6 +554,9 @@ fn parse_other(v: &str) -> OtherOption {
 const LONG_EVENT: i64 = crate::counting::junction::LONG_DELETION as i64;
 /// Bases inside a long event's ends where an indel still meets its junction.
 const EDGE: i64 = 1;
+/// A long deletion's deleted bases, past its microhomology, that a read over its anchor
+/// reads to tell REF from it (RJ-24's REF window: four clean bases of the deleted bases).
+const JUNCTION_WINDOW: i64 = 4;
 
 /// Read bases in a row reading the reference that end an allele the read spells.
 const SPELL_STOP: usize = 3;
@@ -843,7 +850,17 @@ impl Site {
 
     /// X's anchor (its first REF base) in `hap`: X's own first base where X is applied.
     pub(crate) fn anchor_in(&self, hap: &Hap) -> i64 {
-        hap.x_seg.map_or_else(|| hap.to_hap(self.spans[0].0, false), |(hs, _)| hs)
+        hap.x_seg.map_or_else(|| self.column_in(hap, self.spans[0].0), |(hs, _)| hs)
+    }
+
+    /// The column of window position `p` in `hap`: inside an applied row that keeps the
+    /// length (a state holding X's change), the base at its offset there; else as
+    /// [`Hap::to_hap`] maps it.
+    fn column_in(&self, hap: &Hap, p: i64) -> i64 {
+        hap.segs
+            .iter()
+            .find(|&&(rs, re, hs, he)| rs <= p && p < re && he - hs == re - rs)
+            .map_or_else(|| hap.to_hap(p, false), |&(rs, _, hs, _)| hs + (p - rs))
     }
 
     /// The haplotype positions, with their bases, where `hap` tells X from REF at X's
@@ -860,9 +877,48 @@ impl Site {
         let (on_ref, on_alt) = telling(x);
         match (hap.class, hap.x_seg) {
             (Class::Alt, Some((hs, _))) => on_alt.map(|k| (hs + k as i64, x.alt_al[k])).collect(),
+            // a state holding X's change: X's bases at their places in it
+            (Class::Alt, None) if !x.changes_length() => {
+                on_alt.map(|k| (self.column_in(hap, self.spans[0].0 + k as i64), x.alt_al[k])).collect()
+            }
             (Class::Ref, _) => on_ref.map(|k| (hap.to_hap(self.spans[0].0 + k as i64, false), x.ref_al[k])).collect(),
             _ => Vec::new(),
         }
+    }
+
+    /// The states holding X's change (`holds_x`), in order.
+    pub(crate) fn holders(&self) -> Vec<&Row> {
+        (1..=self.n_states).filter(|&r| self.holds_x[r]).map(|r| &self.rows[r]).collect()
+    }
+
+    /// Which of [`Site::holders`] (a bit each, in order, the first 32) `read` spells whole
+    /// on its alignment `al` (columns offset by `off`) to `hap`: every base such a state
+    /// changes beside X's read confidently as the state's, not only X's part of it.
+    pub(crate) fn spelled_holders(&self, read: &ReadView, hap: &Hap, al: &Alignment, off: usize) -> u32 {
+        if !self.holds_x.contains(&true) {
+            return 0;
+        }
+        let at: HashMap<i64, u8> = al
+            .placed
+            .iter()
+            .enumerate()
+            .filter_map(|(i, p)| if let Placed::At(c) = *p { Some(((c + off) as i64, read.seq[i])) } else { None })
+            .collect();
+        let (xs, xe) = self.spans[0];
+        let spells = |r: usize| {
+            let row = &self.rows[r];
+            let (s, _) = self.spans[r];
+            (0..row.ref_al.len()).filter(|&i| row.ref_al[i] != row.alt_al[i] && !(xs..xe).contains(&(s + i as i64))).all(|i| {
+                let col = self.column_in(hap, s + i as i64);
+                at.get(&col).is_some_and(|&b| b != WILD && b == row.alt_al[i])
+            })
+        };
+        (1..=self.n_states)
+            .filter(|&r| self.holds_x[r])
+            .take(32)
+            .enumerate()
+            .filter(|&(_, r)| spells(r))
+            .fold(0u32, |m, (k, _)| m | 1 << k)
     }
 
     /// X's site in `hap`'s columns, `[a, b)`: the bases X changes and, for a length
@@ -963,6 +1019,24 @@ impl Site {
         false
     }
 
+    /// Whether `read` reaches where another state's haplotype `other` differs from REF's:
+    /// on REF's haplotype with `other`'s contexts (its rows but the state's), its aligned
+    /// bases reach past their common prefix and start before their common suffix. In a
+    /// repeat the two differ only past its end (reading in from either side), so a read
+    /// ending inside it reaches nothing that tells them apart.
+    pub(crate) fn reaches_state(&self, read: &ReadView, other: &Hap) -> bool {
+        let rows: Vec<usize> = other.rows.iter().copied().filter(|&r| !self.is_state(r)).collect();
+        let reference = Hap::build(self, &rows);
+        let (a, b) = (&reference.seq, &other.seq);
+        if a == b {
+            return false;
+        }
+        let prefix = a.iter().zip(b).take_while(|(x, y)| x == y).count();
+        let suffix = a.iter().rev().zip(b.iter().rev()).take_while(|(x, y)| x == y).count();
+        let (al, off) = Scorer::new(read).align(self, &reference);
+        al.covers().is_some_and(|(f, l)| l + off >= prefix && f + off + suffix < a.len())
+    }
+
     /// The haplotypes of `target` over the window `(start, reference)` (upper case),
     /// from `candidates` and the variant's `reads`. None when the window does not hold
     /// the target's REF.
@@ -1025,6 +1099,26 @@ impl Site {
                 m((a.pos, a.end()), (b.pos, b.end()))
             }
         };
+        // The bases a long pure deletion X removes wherever it sits (genome, [lo, hi)), past
+        // the window its junctions are read by at each end. A substitution there changes
+        // bases only REF's molecules hold, never X's, and away from the junctions it is no
+        // allele at X's site (as RJ-24 has a co-annotated sibling claim REF reads only
+        // through REF's window): a context on REF's side, lying with REF and with any state
+        // keeping those bases, never with X. A shorter deletion's bases are all its window:
+        // a row there stays another allele, as RJ-5 has it.
+        let deleted_core: Option<(i64, i64)> =
+            (pure(&target) && target.ref_al.len() >= target.alt_al.len() + LONG_EVENT as usize)
+                .then(|| {
+                    let (lo, hi) = run(&target);
+                    let k = (target.ref_al.len() - target.alt_al.len()) as i64;
+                    (hi - k + JUNCTION_WINDOW, lo + k - JUNCTION_WINDOW)
+                })
+                .filter(|(a, b)| a < b);
+        let in_deleted = |r: &Row| {
+            let (on_ref, _) = telling(r);
+            let (s, e) = (r.pos + on_ref.start as i64, r.pos + on_ref.end as i64);
+            !r.changes_length() && s < e && deleted_core.is_some_and(|(a, b)| a <= s && e <= b)
+        };
         // The site's states and the contexts' rows, each once.
         let mut seen: BTreeSet<Row> = BTreeSet::from([target.clone()]);
         let (mut states, mut contexts): (Vec<Row>, Vec<Row>) = (Vec::new(), Vec::new());
@@ -1058,7 +1152,7 @@ impl Site {
             moved.unwrap_or_else(|| r.clone())
         };
         for r in candidates.listed.iter().map(beside) {
-            take(&r, meets(&target, &r));
+            take(&r, meets(&target, &r) && !in_deleted(&r));
         }
         if target.ref_al.len() == 1 && target.alt_al.len() == 1 {
             // An SNV's site holds every base (a third base is another allele).
@@ -1076,7 +1170,7 @@ impl Site {
             }
             let spelled = [&reference[..s0], &r.alt_al[..], &reference[e0..]].concat();
             match row_between(&reference, &spelled, start) {
-                Some(minimal) if !meets(&target, &minimal) => take(&minimal, false),
+                Some(minimal) if !meets(&target, &minimal) || in_deleted(&minimal) => take(&minimal, false),
                 _ => take(r, true),
             };
         }
@@ -1103,6 +1197,10 @@ impl Site {
                     }
                     continue;
                 }
+                if in_deleted(&r) {
+                    take(&r, false);
+                    continue;
+                }
                 if take(&r, true) {
                     found_states.push((r, by));
                 }
@@ -1112,6 +1210,29 @@ impl Site {
         // REF alone it would favour REF, so it is left to the reads' bases there.
         for r in candidates.background.iter().map(beside).filter(|r| !meets(&target, r)) {
             take(&r, false);
+        }
+        // A state of a substitution X's site that keeps the length may also change bases
+        // beside X's (an allele spelled over a window, a listed MNV reaching past X): each
+        // such change is a separate event, so it is also a context of every state, and a
+        // read carrying X (or REF) with it is X's (or REF's) beside a phased neighbour,
+        // never left tied between X and that state.
+        if !target.changes_length() {
+            let beside_x: Vec<Row> = states
+                .iter()
+                .filter(|r| !r.changes_length())
+                .flat_map(|r| {
+                    (0..r.ref_al.len())
+                        .filter(|&i| r.ref_al[i] != r.alt_al[i])
+                        .map(|i| Row::new(r.pos + i as i64, &r.ref_al[i..=i], &r.alt_al[i..=i]))
+                        .filter(|c| c.pos < target.pos || c.pos >= target.end())
+                        .collect::<Vec<_>>()
+                })
+                .collect();
+            for c in beside_x {
+                if holds(&c) && seen.insert(c.clone()) {
+                    contexts.push(c);
+                }
+            }
         }
         states.sort();
         contexts.sort();
@@ -1166,6 +1287,23 @@ impl Site {
         contexts.sort();
         let n_states = states.len();
         let rows: Vec<Row> = std::iter::once(target).chain(states).chain(contexts).collect();
+        // A state holding X's change at X's site: for a substitution X, an allele of the
+        // same length over X's bases that reads X's bases where X changes them.
+        let holds_x: Vec<bool> = {
+            let x = &rows[0];
+            let (on_ref, _) = telling(x);
+            rows.iter()
+                .enumerate()
+                .map(|(r, row)| {
+                    (1..=n_states).contains(&r)
+                        && !x.changes_length()
+                        && !row.changes_length()
+                        && row.pos <= x.pos
+                        && row.end() >= x.end()
+                        && on_ref.clone().all(|k| row.alt_al[(x.pos + k as i64 - row.pos) as usize] == x.alt_al[k])
+                })
+                .collect()
+        };
         let spans: Vec<(i64, i64)> = rows.iter().map(|r| (r.pos - start, r.end() - start)).collect();
         let places = rows.iter().map(place).map(|(s, e)| (s - start, e - start)).collect();
         let max_shift = rows.iter().map(|r| r.ref_al.len().abs_diff(r.alt_al.len()) as i64).sum();
@@ -1208,6 +1346,7 @@ impl Site {
             reference,
             rows,
             n_states,
+            holds_x,
             spans,
             places,
             max_shift,
@@ -2041,7 +2180,7 @@ impl Site {
     /// state as a bubble.
     fn state_graphs(&self, rest: &[usize]) -> Vec<StateGraph> {
         let mut states: Vec<(Class, Option<usize>)> = vec![(Class::Ref, None), (Class::Alt, Some(0))];
-        states.extend((1..=self.n_states).map(|r| (Class::Other, Some(r))));
+        states.extend((1..=self.n_states).map(|r| (if self.holds_x[r] { Class::Alt } else { Class::Other }, Some(r))));
         states
             .into_iter()
             .map(|(class, row)| {

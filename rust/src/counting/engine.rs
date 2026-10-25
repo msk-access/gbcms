@@ -1618,6 +1618,9 @@ fn count_variant_from_cache(
     // Distance-to-read-end tracking for QC metrics
     let mut alt_dists: Vec<u32> = Vec::with_capacity(500);
     let mut ref_dists: Vec<u32> = Vec::with_capacity(500);
+    // Per co-listed row holding a substitution's change (the haplotype judge counts its
+    // carriers as this row's ALT), the ALT reads that spell it whole (MNV_SHARED).
+    let mut spelled: [u32; 32] = [0; 32];
 
     // Create SW aligners ONCE per variant (indelpost pattern), scored by `sw_score`.
     let mut alt_aligner = Aligner::new(SW_GAP_OPEN, SW_GAP_EXTEND, &sw_score);
@@ -1972,6 +1975,9 @@ fn count_variant_from_cache(
             counts.ad += 1;
             counts.any_alt += 1; // Full ALT → counts toward any_alt
             if result.mnp_confirmed { counts.mnp_confirmed_alt += 1; }
+            for (k, n) in spelled.iter_mut().enumerate() {
+                *n += result.spells_listed >> k & 1;
+            }
             if is_reverse { counts.ad_rev += 1; } else { counts.ad_fwd += 1; }
 
             // ── RNA-SPECIFIC ALT TRACKING ──
@@ -1996,6 +2002,15 @@ fn count_variant_from_cache(
 
     // ── QC MEDIAN COMPUTATION: compute median distance-to-end for REF/ALT.
     counts.alt_dist_end_median = compute_median_u32(&mut alt_dists);
+    if spelled.iter().any(|&n| n > 0) {
+        counts.mnv_shared = judge::listed_holders(variant)
+            .into_iter()
+            .zip(spelled)
+            .filter(|&(_, n)| n > 0)
+            .map(|((p, r, a), n)| format!("{}:{r}>{a}:{n}/{}", p + 1, counts.ad))
+            .collect::<Vec<_>>()
+            .join("+");
+    }
     counts.ref_dist_end_median = compute_median_u32(&mut ref_dists);
 
     // ── RNA editing site flag (DB-only) ────────────────────────────

@@ -21,6 +21,19 @@ For a row X and each admitted read:
   as much; partial evidence where another site allele wins so; otherwise depth only. Ties are
   never credited. Because every context appears in every state, only the read's bases at X
   decide; a linked variant elsewhere never credits it.
+- **Phase C refinements (2026-10-25):**
+  - A state holding X's change at X's site (for a substitution X, an allele of its length
+    over X's bases that reads X's bases there, as an MNV listed beside its component SNV)
+    is X's ALT (RJ-28); `MNV_SHARED` names the reads the two rows share.
+  - A same-length state's changes beside a substitution X are also contexts of every state,
+    so a read carrying X with such a change is X's.
+  - A substitution inside a long (50+ bp) deletion's bases, past a 4-base junction window at
+    each end, is a context on REF's side, never another allele at X's site (RJ-24); inside
+    a shorter deletion it stays another allele (RJ-5).
+  - A tie of REF with another allele, X beaten, is partial evidence only where the read
+    reaches past where the two haplotypes differ; a read short of it shows REF.
+  - An MNP's ALT call needs every changed base covered and none read as another base; one
+    below `--min-baseq` weighs nothing (RJ-25), and `mnp_confirmed` needs all read.
 
 Measured (HG002 phased truth, R2): see #304. The prototype is `plan670/r2/hapjudge` (local).
 
@@ -68,7 +81,9 @@ strand, mFSD and diagnostics consume the `ClassifyResult` as today.
 - More: singletons, pairs a read shows together (per-row evidence on ≥ 2 reads), then
   read-supported sets, to 32 haplotypes; the empty context always.
 - States: REF, X, the site's listed alleles, and for an SNV every other base; for an MNP or
-  an indel the guard's discovered alleles there.
+  an indel the guard's discovered alleles there. A state holding X's change is of X's class
+  (RJ-28); a substitution in a long deletion's bases past its junction windows is a context
+  on REF's side (§1).
 - Deterministic order everywhere (rows by position; ties to fewer rows); per variant only.
 
 ## 6. RNA

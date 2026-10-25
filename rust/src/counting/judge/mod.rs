@@ -55,6 +55,33 @@ pub(crate) fn parse_read_judge(token: &str) -> Result<ReadJudge, String> {
     }
 }
 
+/// The input's rows within reach of a substitution `v` that hold its change at its site
+/// (`Variant::reach_rows`): rows of the same length over `v`'s bases reading its ALT bases
+/// where it changes them, such as an MNV listed beside its component SNV. Their carriers
+/// are `v`'s ALT reads (decided 2026-10-25); the diagnostic MNV_SHARED says how many of
+/// `v`'s ALT reads spell each whole. Empty for an indel or delins `v`.
+pub(crate) fn listed_holders(v: &Variant) -> Vec<&(i64, String, String)> {
+    let (r0, a0) = (v.ref_allele.as_bytes(), v.alt_allele.as_bytes());
+    if r0.len() != a0.len() {
+        return Vec::new();
+    }
+    let end = v.pos + r0.len() as i64;
+    v.reach_rows
+        .iter()
+        .filter(|(p, r, a)| {
+            let (r, a) = (r.as_bytes(), a.as_bytes());
+            r.len() == a.len()
+                && *p <= v.pos
+                && *p + r.len() as i64 >= end
+                && (r, a) != (r0, a0)
+                && (0..r0.len()).filter(|&k| !r0[k].eq_ignore_ascii_case(&a0[k])).all(|k| {
+                    let i = (v.pos - *p) as usize + k;
+                    a[i].eq_ignore_ascii_case(&a0[k])
+                })
+        })
+        .collect()
+}
+
 /// A record's identity at one row: its name, flags, position, and CIGAR and bases.
 pub(crate) type ReadKey = (Vec<u8>, u16, i64, Vec<u8>);
 
@@ -510,6 +537,148 @@ mod tests {
         let s = site(&c, &snv, &[], 151);
         let v = judge(&s, &carrier, MIN_BQ, false);
         assert_eq!((v.call, v.qual), (Call::Alt, 25));
+    }
+
+    /// A 113-base deletion after the anchor at 0-based 250 on a random contig.
+    fn long_deletion() -> (Vec<u8>, Row) {
+        let c = random_seq(700, 83);
+        let del = Row::new(250, &c[250..364], &c[250..251]);
+        (c, del)
+    }
+
+    #[test]
+    fn a_substitution_inside_a_deletions_bases_is_a_context_on_refs_side() {
+        use Call::*;
+        // A listed SNV 86 bases into the deleted bases: REF's bases can carry it, X's
+        // never hold them. Reads over the anchor short of it are REF, whatever it is.
+        let (c, del) = long_deletion();
+        let other = |b: u8| if b == b'A' { b'C' } else { b'A' };
+        let snv = Row::new(336, &c[336..337], &[other(c[336])]);
+        let rows = vec![del.clone(), snv.clone()];
+        let (h_del, h_snv) = (haplotype(&c, &[&del]), haplotype(&c, &[&snv]));
+        let reads = vec![
+            read(&c, 180, 100, 180, "100M"),     // REF over the anchor, short of the SNV
+            read(&c, 200, 100, 200, "100M"),
+            read(&h_snv, 240, 100, 240, "100M"), // REF's bases with the SNV, over the anchor
+            read(&h_del, 180, 100, 180, "71M113D29M"),
+        ];
+        assert_eq!(calls(&c, &rows, &del, &reads), vec![Ref, Ref, Ref, Alt], "the deletion's row");
+        assert_eq!(calls(&c, &rows, &snv, &reads[2..]), vec![Alt, Other], "the SNV's row: the deletion is another allele there");
+    }
+
+    #[test]
+    fn a_substitution_in_a_deletions_window_stays_another_allele() {
+        use Call::*;
+        // A 20-base deletion's bases are all its window (RJ-5), and a long deletion's first
+        // bases its junction's (RJ-24): a listed SNV there is another allele, so a read over
+        // the anchor carrying it is partial evidence; one short of it shows REF.
+        let c = random_seq(700, 89);
+        let other = |b: u8| if b == b'A' { b'C' } else { b'A' };
+        let short = Row::new(250, &c[250..271], &c[250..251]);
+        let (_, long) = long_deletion();
+        let c_long = long_deletion().0;
+        for (c, del, at, cig) in [(&c, &short, 262usize, "71M20D29M"), (&c_long, &long, 253, "71M113D29M")] {
+            let snv = Row::new(at as i64, &c[at..=at], &[other(c[at])]);
+            let rows = vec![del.clone(), snv.clone()];
+            let (h_del, h_snv) = (haplotype(c, &[del]), haplotype(c, &[&snv]));
+            let reads = vec![
+                read(c, at - 100, 100, (at - 100) as i64, "100M"), // over the anchor, ends before the SNV
+                read(&h_snv, 200, 100, 200, "100M"),
+                read(&h_del, 180, 100, 180, cig),
+            ];
+            assert_eq!(calls(c, &rows, del, &reads), vec![Ref, Other, Alt], "SNV at {at}");
+        }
+    }
+
+    #[test]
+    fn a_tie_with_another_allele_the_read_never_reaches_is_no_evidence_of_it() {
+        use Call::*;
+        // A listed 60-base deletion from 80 bases into X's deleted bases to past X's end:
+        // another allele at X's site. A REF read over X's anchor ending before it starts
+        // reads nothing that tells REF from it: REF, X beaten. A read carrying it is it.
+        let (c, del) = long_deletion();
+        let sib = Row::new(330, &c[330..391], &c[330..331]);
+        let rows = vec![del.clone(), sib.clone()];
+        let (h_del, h_sib) = (haplotype(&c, &[&del]), haplotype(&c, &[&sib]));
+        let reads = vec![
+            read(&c, 180, 100, 180, "100M"),
+            read(&c, 220, 100, 220, "100M"),
+            read(&h_sib, 240, 100, 240, "91M60D9M"),
+            read(&h_del, 180, 100, 180, "71M113D29M"),
+        ];
+        assert_eq!(calls(&c, &rows, &del, &reads), vec![Ref, Ref, Other, Alt]);
+    }
+
+    #[test]
+    fn an_mnp_carrier_with_a_changed_base_below_the_quality_floor_is_alt() {
+        use Call::*;
+        // Every changed base covered, one below --min-baseq: the confident one decides,
+        // as an MNP read with a differing base below the floor counts ALT under the rules
+        // (RJ-25). A read short of a changed base stays depth only.
+        let c = random_seq(600, 5);
+        let other = |b: u8| if b == b'A' { b'C' } else { b'A' };
+        let alt: Vec<u8> = c[300..302].iter().map(|&b| other(b)).collect();
+        let mnp = Row::new(300, &c[300..302], &alt);
+        let h = haplotype(&c, &[&mnp]);
+        let low = |i: usize| -> Vec<u8> { (0..100).map(|k| if k == i { 2 } else { Q }).collect() };
+        let reads = [
+            read_q(&h[250..350], low(51), 250, "100M"), // the second changed base low
+            read_q(&h[250..350], low(50), 250, "100M"), // the first
+            read_q(&c[250..350], low(51), 250, "100M"), // REF, the second low
+            read_q(&h[250..350], vec![Q; 100], 250, "100M"),
+            read(&h, 201, 100, 201, "100M"), // ends on the first changed base
+        ];
+        let s = site(&c, &mnp, &[], 100);
+        let got: Vec<(Call, bool)> = reads.iter().map(|r| judge(&s, r, MIN_BQ, false)).map(|v| (v.call, v.confirmed)).collect();
+        assert_eq!(got, vec![(Alt, false), (Alt, false), (Ref, false), (Alt, true), (Depth, false)]);
+    }
+
+    #[test]
+    fn a_change_another_allele_carries_beside_x_is_a_context_of_every_state() {
+        use Call::*;
+        // X: an MNP at 300-301. An allele the reads show over 298-305 (the guard's), with
+        // X's second base, REF's first and a change at 304 beside X: another allele at X's
+        // site. X's carriers carrying the change at 304 too are X's; the allele's own
+        // carriers are another allele.
+        let c = random_seq(600, 29);
+        let other = |b: u8| if b == b'A' { b'C' } else { b'A' };
+        let x = Row::new(300, &c[300..302], &[other(c[300]), other(c[301])]);
+        let mut spelled = c[298..306].to_vec();
+        spelled[3] = other(c[301]);
+        spelled[6] = other(c[304]);
+        let allele = Row::new(298, &c[298..306], &spelled);
+        let beside = Row::new(304, &c[304..305], &[other(c[304])]);
+        let candidates = Candidates { discovered: vec![allele.clone()], ..Candidates::default() };
+        let (h_x, h_allele) = (haplotype(&c, &[&x, &beside]), haplotype(&c, &[&allele]));
+        let reads = [read(&h_x, 250, 100, 250, "100M"), read(&h_allele, 251, 100, 251, "100M"), read(&c, 252, 100, 252, "100M")];
+        let s = Site::build(x, &candidates, (0, c.clone()), &reads).unwrap();
+        let got: Vec<Call> = reads.iter().map(|r| judge(&s, r, MIN_BQ, false).call).collect();
+        assert_eq!(got, vec![Alt, Other, Ref]);
+    }
+
+    #[test]
+    fn an_snvs_carriers_include_a_listed_mnv_holding_its_change() {
+        use Call::*;
+        // An SNV at 300 and a listed MNV over 300-301 with the SNV's base at 300. At the
+        // SNV's row a read carrying the MNV carries its change: ALT, and it spells the MNV
+        // whole. At the MNV's row a read carrying the SNV alone is another allele.
+        let c = random_seq(600, 31);
+        let other = |b: u8| if b == b'A' { b'C' } else { b'A' };
+        let snv = Row::new(300, &c[300..301], &[other(c[300])]);
+        let mnv = Row::new(300, &c[300..302], &[other(c[300]), other(c[301])]);
+        let rows = vec![snv.clone(), mnv.clone()];
+        let (h_snv, h_mnv) = (haplotype(&c, &[&snv]), haplotype(&c, &[&mnv]));
+        let reads = vec![
+            read(&h_mnv, 250, 100, 250, "100M"),
+            read(&h_snv, 251, 100, 251, "100M"),
+            read(&c, 252, 100, 252, "100M"),
+            read(&h_mnv, 201, 100, 201, "100M"), // ends on the SNV's base: the SNV or the MNV
+        ];
+        assert_eq!(calls(&c, &rows, &snv, &reads), vec![Alt, Alt, Ref, Alt], "the SNV's row");
+        assert_eq!(calls(&c, &rows, &mnv, &reads), vec![Alt, Other, Ref, Other], "the MNV's row");
+        let s = site(&c, &snv, &rows, 100);
+        let spells: Vec<u32> = reads.iter().map(|r| judge(&s, r, MIN_BQ, false).spells).collect();
+        assert_eq!(spells, vec![1, 0, 0, 0], "only the read showing the MNV's second base spells it");
     }
 
     #[test]
