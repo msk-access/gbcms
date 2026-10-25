@@ -1,6 +1,6 @@
 ---
 name: trace-output-wraps
-description: "gbcms --trace read-call lines: set COLUMNS=60000 (Rich wraps them; 3000 still wraps alleles over ~2.9 kb); a read call is not a count (uncounted reads are logged too); the key is the prepared variant, so match rows by haplotype."
+description: "gbcms --trace read-call lines: set COLUMNS just above the longest allele (Rich wraps lines; 3000 wraps alleles over ~2.9 kb) but never a blanket 60000 (Rich pads every line to it: >450x slower); a read call is not a count; match rows by haplotype."
 metadata:
   node_type: memory
   type: reference
@@ -15,6 +15,13 @@ matches nothing (every read looks "not traced"). Run it with `COLUMNS=60000` in 
 environment: `COLUMNS=3000` still wraps lines whose alleles pass ~2.9 kb (it dropped 3,226
 calls on the HG002 pri_ins and pri_del50 arms, #265 measurement, 2026-10-16). `partial=` is a count (positions matching ALT), not a bool; `mate` is
 1 for first-in-template, else 2.
+
+**The cost of a wide COLUMNS (2026-10-24, the 6.7.0 speed review):** Rich pads every log
+line to the full width, so `COLUMNS=60000` makes a trace more than 450x slower than the
+untraced run (HG002 pri arm: 4.7 GB in 11 minutes against 1.3 s; a 15k-row SV arm ran over
+5 hours and was abandoned). Set COLUMNS to the longest allele in the input plus ~400 (e.g.
+12000 for alleles up to 10 kb) and trace only arms of a few thousand rows; the lasting fix
+is a Rust-side read-call file instead of log lines (6.7.0 review ticket).
 
 **How to apply:** any per-read adjudication harness that diffs two builds' trace
 calls ([[pysam-validation-oracle]], [[genotyper-not-caller]]) — set the env var and
