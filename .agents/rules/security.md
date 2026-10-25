@@ -26,8 +26,13 @@ model's habits and loses under load). The deterministic floor lives in
   `.githooks/pre-push` runs gitleaks.)
 - Scan tracked **code and fixtures**, not only data files — secrets hide in test
   fixtures and hardcoded example lists.
+- The pre-commit hook refuses data files outside `tests/testdata/`: parquet, BAM/CRAM
+  and their indexes, TSV/CSV/MAF, `.dat`, and VCF/BED/FASTQ (`.fq`), plain or `.gz`/`.bgz`
+  (a VCF's header and `#CHROM` line name the sample). It also refuses a staged
+  `.agents/skills/*/SKILL.md` whose frontmatter does not parse (step 3).
 - Test fixtures (`tests/testdata/`) are **synthetic**. The pre-commit hook lets data
-  files in there only after scanning each staged one (decoded where binary) for MSK
+  files in there only after scanning each staged one (decoded where binary or
+  compressed, so a `.vcf.gz` header is read) for MSK
   sample, CMO and anonymized-BAM identifiers, under 2 MB; a slice of a real BAM
   never goes there, renamed or not — its reads are the patient's. (Enforced:
   `.githooks/pre-commit` step 1b.) The one other data-extension file it admits is

@@ -1,109 +1,55 @@
 ---
 name: counting-engine
-description: Reference for the gbcms counting core — genomic binning (10kb bins, one fetch per bin), the 4-phase variant-check pipeline, and alignment-backend dispatch. Use when modifying engine.rs or variant_checks.rs, debugging count discrepancies, or reasoning about binning and binning invariance. For fragment/consensus see fragment-counting; for filters/quality see read-filters-qc.
+description: "Map of the gbcms counting core: how check_allele_with_qual dispatches a read (splice triage, SNV/MNP checks, the exact-carrier rule, the 50 bp deletion junction judge, CIGAR checks as the residual fallback), the key files, and genomic binning. Use when modifying engine.rs, carrier.rs, junction.rs or variant_checks.rs, debugging a count discrepancy, or reasoning about binning invariance. For fragment/consensus see fragment-counting; for filters/quality see read-filters-qc."
 ---
 
-# Counting Engine Patterns
+# Counting Engine Map
 
-## Genomic Binning
+What call each read shape gets, and the decision behind it (register RJ-n), is specified in
+`docs/reference/read-judgment.md`; how the engine computes it is
+`docs/reference/allele-classification.md`. Read those first; this page maps the code.
+(A whole-read haplotype judge is being built behind `--read-judge` in package 2, #304.)
 
-Variants are grouped into ~10kb bins for efficient BAM traversal:
-- `BIN_WINDOW = 10_000` — one `bam.fetch()` per bin (not per variant)
-- `BIN_MAX_VARIANTS = 200` — forced split when exceeded
-- Padding: `max(repeat_span + 2, 5)` to capture nearby evidence
-- Rayon `par_iter()` parallelizes across bins
+## Dispatch: `check_allele_with_qual` (engine.rs), in order
+1. **Splice triage** (`splice_skip_triage`, variant_checks.rs): a CIGAR `N` spanning every
+   discriminating position gives `no_coverage`; the read is left out of DP/DPF.
+2. **`window::allele_kind(ref, alt)`** picks the route from the alleles, never from the
+   `variant_type` label: Snv, Mnp, Insertion, Deletion or Complex.
+3. **SNV** → `check_snp`. **MNP** → `check_mnp` (masked per position, no alignment); an MNP
+   read with an indel or clip at the block takes the complex route (6).
+4. **Pure insertion, and a pure deletion step 5 does not take** → the exact-carrier rule (`by_bases` →
+   `carrier::classify`): a read counts when its own bases carry the allele.
+5. **Prepared deletion of 50 bp or more** (`junction::judges`, `LONG_DELETION`) →
+   `junction::classify`: the read's bases at the POS breakpoint, however the aligner wrote
+   the gap.
+6. **Complex** (delins, Del+SNV, an insertion that changes the anchor) → `classify_complex`,
+   which is the exact-carrier rule too.
+7. **Residual fallback.** Only where a rule cannot judge (no prepared reference, or one
+   without the event's flank) do the CIGAR checks run: `check_insertion`, `check_deletion`,
+   `check_complex` (windowed scan, edit distance, then "Phase 3": WFA triage, then PairHMM or
+   Smith-Waterman). Such reads set `carrier_fallback` and are counted and warned once per
+   variant. The fallback decides essentially no reads: Phase 3 decided 0 of ~4M read calls
+   on every runnable arm (#265).
 
-**Invariant (load-bearing):** a bin's fetch-end must cover the *anchor* (leftmost)
-variant's full ref span, not just `bin_start + window`. A bin anchored by a large
-deletion/DelIns whose `ref_allele.len()` exceeds the window will otherwise
-under-fetch its right tail and undercount AD/ADF. Any binning change must keep
-`tests/test_binning_invariance.py` and the `build_genomic_bins` property test green.
+The `read call` trace line names the deciding rule (`deciding_rule`: `exact_carrier`,
+`junction`, `carrier_fallback`, `alt_by_bases`, ...).
 
-## Variant Check Pipeline
+## Key files (`rust/src/counting/`)
+- `engine.rs`: binning (`build_genomic_bins`), the shared read loop, dispatch, fragment
+  resolution, ASJD, per-transcript counts; `ref_needs_the_window` / `alt_needs_the_window`.
+- `carrier.rs`: the exact-carrier rule, the neighbouring-change guard (`Guard`,
+  `tells_others_aligned`), `sibling_by_bases`. `junction.rs`: the long-deletion judge.
+- `window.rs`: `allele_kind`, read/guard/discrimination windows, informative-read tests.
+- `observed.rs`: `observed_allele` (the OBSERVED_ALLELE diagnostic; changes no count).
+- `variant_checks.rs`: the CIGAR checks and windowed scans. `utils.rs`: `ClassifyResult`,
+  `ClassifyPhase`, haplotype and masked-compare helpers.
+- `alignment.rs` (SW), `pairhmm.rs`, `pangenome.rs`, `wfa_router.rs`. The CLI default
+  backend is `pairhmm`; all backends and the WFA fast path share one base-quality gate.
 
-```
-Phase 1: Simple match (exact REF/ALT at position)
-Phase 2: Windowed scan (±5bp, expanding for repeats)
-Phase 2.5: Edit distance fallback (Levenshtein, >1 edit margin)
-Phase 3: Full alignment (SW or PairHMM, via wfa_router fast-path)
-```
-
-## Wrong-length pure indels (issue #91 — load-bearing)
-
-A read whose CIGAR proves a pure indel of a DIFFERENT length at the anchor is a
-**distinct allele** → `neither + has_nearby_evidence` (counts `partial_alt`),
-never REF, never ALT, and **never Phase 3** — the haplotype window is
-length-blind in repeat tracts, and alignment scoring promotes wrong-sequence
-inserts to ALT. Same-event escapes that stay ALT:
-- exact-length sequence-verified (strict/windowed),
-- ≥50bp deletion **placement-aware band** (≤3 expected-span bases retained,
-  ≤3 changed outside — covers wobble + split `D+M+D`; the 50bp gate is an
-  artifact-SIZE prior: artifacts are small, a ≥50bp op is a real deletion),
-- insertion **truncation containment** (≥4bp, ≥90% identity, both sequences
-  non-low-complexity).
-Windowed S3 = same haplotype (`same_insertion_haplotype`: X+S == S+Y, never for
-an anchor-substituting ALT; `same_deletion_haplotype`: the stretch between
-placements has period len) and the read's only change across the discrimination
-window (`only_change_in_window`; else distinct allele), so a carrier written
-anywhere in the repeat (or rotated) is ALT (#189); `window::scan_window` reaches
-every placement in `shift_region` (deletions: starts up to hi − len), and
-tract-cluster grouping's `window_pad` reaches as far. The variant's bases at a non-equivalent
-spot are a distinct allele (`has_distinct_allele_nearby`) inside the
-discrimination window, a separate event (REF) outside it; other bases keep
-Phase-3 arbitration via `has_shifted_same_length` (partial propagated on non-ALT).
-A same-length deletion ≥5bp of another haplotype is a distinct allele (not Phase 3).
-A prepared deletion of 50bp or more is judged at its POS breakpoint (`junction.rs`, RJ-24). The strict path also needs no other I/D in
-the window (an I/D pair is inspected in either order). An ALT read spanning
-neither ALT-side window (`window::alt_read_is_informative`: a deletion's are an
-insertion's, its extent counts its own gap) must discriminate by its bases
-(`alt_needs_the_window` / `window::alt_bases_discriminate`), else `uninformative`
-(depth only). "In a repeat" for distinct alleles = `repeat_span >= 2 ||
-window::slides`. One-base-REF ALTs that change the anchor (A>CCC) go to the
-exact-carrier rule, like Del+SNV (cluster 1: #188, #191, #192, #121). Windowed wrong-length
-(dels ≥5bp only — 1–4bp windowed Ds are noise → plain REF; ins any size):
-repeat tract → neither+partial; unique context → REF+partial.
-Delins stay `check_complex` (Phase-3 realignment is CORRECT for them).
-Contract battery: `tests/test_wrong_length_contract.py` (parity-oracle).
-
-## Splice-aware evidence (issue #94 cluster A — load-bearing)
-
-A read testifies only through **aligned bases (or a D op) at the
-discriminating positions**. CIGAR `N` = asserted splicing = no observation:
-`splice_skip_triage` (runs before every checker) returns
-`ClassifyResult::no_coverage` (`covers_locus=false`) when the N spans ALL of
-them — deletion span `[pos+1, pos+ref_len)`, insertion flanks `[pos, pos+2)`,
-else `[pos, pos+ref_len)` — and the engine **excludes the read from DP/DPF
-entirely** (samtools-pileup semantics; the main and per-transcript read loops;
-`splice_skip_excluded=` in the Phase-stats debug line). `D` is deletion
-evidence, `N` never is (no D-vs-N representation flip). Indel ops directly
-after an N get the same anchor/windowed inspection as after an M (shared
-helpers `resolve_anchor_{deletion,insertion}_candidate` /
-`scan_windowed_*_candidate` — M-arm and N-arm must never diverge). Phase 3
-never scores across a splice: `extract_raw_read_window` → `None` on N-crossing
-windows; `check_complex` reconstruction → neither.
-**Span-aligned REF testimony** (pure deletions only): anchor spliced out
-(inside the read's N) + FULL deleted span covered by M ops + no competing
-indel flags → REF, qual from the first span base. Partial span → neither.
-Contract battery: `tests/test_rna_splice_contract.py`.
-
-## Multi-Allelic Handling
-
-At overlapping loci, sibling ALT alleles are excluded from each other's counting.
-
-## Alignment dispatch
-
-- Default backend PairHMM (`--alignment-backend hmm`, pangenomic WFA→PairHMM);
-  SW via `sw`. Under PairHMM, SW runs only when the haplotype matrix cannot be
-  built — counted (`sw_fallback_reads`), WARNed per variant, and flagged
-  `SW_FALLBACK(n)`. SW penalties are constants (`SW_GAP_OPEN`/`SW_GAP_EXTEND`
-  in `alignment.rs`) that CLI gap flags never reach.
-- A WFA2 fast-path (`wfa_router.rs`) triages before the fallback. The fast path
-  must apply the **same base-quality gate** as SW/PairHMM — it must not make a
-  definitive REF/ALT call on bases the fallback would reject.
-
-## Key Files
-- `rust/src/counting/engine.rs`: binning, main loop, rayon dispatch
-- `rust/src/counting/variant_checks.rs`: 4-phase check pipeline
-- `rust/src/counting/alignment.rs`: Smith-Waterman
-- `rust/src/counting/pairhmm.rs`: PairHMM backend
-- `rust/src/counting/wfa_router.rs`: WFA2 fast-path + routing
+## Binning (load-bearing: AGENTS.md invariant 1)
+Variants group into bins of at least `BIN_WINDOW` (10 kb) and at most `BIN_MAX_VARIANTS`
+(200); one `bam.fetch()` per bin, rayon over bins. Bin geometry is performance only: each
+bin's fetch must hold every member's full read window, anchor included, and its guard
+window (`window::guard_window`). Keep `tests/test_binning_invariance.py` and the
+`build_genomic_bins` property test green. A co-annotated sibling's ALT read is not REF for
+this row, and a tie between rows is neither row's AD (RJ-5).

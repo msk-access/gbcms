@@ -122,29 +122,20 @@ A new test file starts with a name check: `git ls-files tests/<name>.py` prints 
 or create it with the Write tool (it refuses to overwrite a file it has not read). A
 shell write (`open(p, "w")`, `>`) once replaced an existing contract's tests unseen.
 
-## Test Suite: 266 Python + 161 Rust Tests
+## Test Suite
 
-| File | What It Tests |
-|:-----|:-------------|
-| `test_accuracy.py` | SNP, insertion, deletion, complex, MNP accuracy; DP invariant |
-| `test_shifted_indels.py` | Windowed indel detection (15 cases) |
-| `test_fuzzy_complex.py` | Quality-aware masked complex matching (14+ cases) |
-| `test_filters.py` | Read filter flags |
-| `test_strand_counts.py` | Strand-specific counting |
-| `test_alignment_backend.py` | SW vs PairHMM concordance |
-| `test_fragment_consensus.py` | Fragment quality consensus, DPF invariant |
-| `test_indel_fragment_consensus.py` | INDEL structural ALT priority, Phase 3 dispatch, SNP regression |
-| `test_multi_allelic.py` | Sibling ALT exclusion |
-| `test_dp_neither.py` | DP includes neither/third-allele reads |
-| `test_normalization.py` | Left-alignment, REF validation, window expansion |
-| `test_cli_sample_id.py` | CLI argument parsing, validation, error paths |
-| `test_cli_dna_rna.py` | DNA/RNA CLI integration, GTF parameter wiring |
-| `test_maf_reader.py` | MAF input parsing |
-| `test_maf_preservation.py` | MAF column preservation |
-| `test_pipeline_v2.py` | End-to-end integration |
-| `test_phase2_output.py` | Phase 2 output column schema |
-| `test_mfsd_flag.py` | mFSD flag gating, column counts, Parquet output |
-| `test_rescue_mnp.py` | MNP rescue pass validation |
-| `test_config_isolation.py` | Config validation, threshold ranges |
-| `test_diagnostic_flags.py` | gbcms_diagnostic flag computation |
-| `test_rna_output.py` | RNA output column schema |
+Counts drift; get them from the tools (`python -m pytest --collect-only -q | tail -1`,
+`cd rust && cargo test`) and never write them down. Find a file with `ls tests`; the
+families:
+
+| Family | Files | What it holds |
+|:-------|:------|:--------------|
+| Contract tests | `tests/test_*_contract.py` | One decided rule each (wrong-length indels, splice evidence, carrier placement, RNA strandedness, ...): the shapes it covers, as red-first tests |
+| Read-judgment spec | `tests/test_read_judgment_spec.py`, `tests/read_judgment_cases.py` | Executes the case table of `docs/reference/read-judgment.md`; a decided case fails when the engine breaks its rule |
+| Classification oracle | `tests/census.py`, `tests/test_read_census.py` | Each read judged by its own bases; open decisions are strict xfails |
+| Binning | `tests/test_binning_invariance.py`, `tests/helpers.py` (`count_checked`, `count_bam_checked`) | Counts do not depend on bin geometry; the Rust `build_genomic_bins` property test is the other half |
+| Counting basics | `test_accuracy.py`, `test_shifted_indels.py`, `test_fuzzy_complex.py`, `test_filters.py`, `test_strand_counts.py`, `test_fragment_consensus.py`, `test_multi_allelic.py`, `test_dp_neither.py`, `test_alignment_backend.py` | Per-variant-type accuracy, filters, strands, fragments, siblings, backend concordance |
+| Output and I/O | `test_phase2_output.py`, `test_rna_output.py`, `test_maf_reader.py`, `test_maf_preservation.py`, `test_mfsd_flag.py`, `test_observations.py`, `test_merge.py` | Column schemas and gating, readers, companion files, merge |
+| CLI, config and pipeline | `test_cli_*.py`, `test_config_isolation.py`, `test_pipeline_*.py`, `test_e2e_*.py` | Argument parsing, validation, end to end |
+| Stub parity | `tests/test_rs_stub_parity.py` | `_rs.pyi` matches the `#[pyo3(get)]` fields and signatures |
+| Rust | `#[cfg(test)]` modules under `rust/src/` | Unit tests; `cargo test` |

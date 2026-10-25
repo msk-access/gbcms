@@ -17,6 +17,19 @@ regenerating a section.
 
 ---
 
+## [LRN-20261024-001] rule-body | a docs-only change still runs the whole test suite
+- **Status:** resolved (rule promoted)
+- **Cause:** rule-body
+- **Summary:** PR #321 (harness accuracy) moved a retired plan into `docs/archive/` and
+  was pushed after the hook and path checks but without pytest, because it changed no
+  code. Its CI failed on all four test legs: a docs contract walks every `docs/**/*.md`
+  for stale mFSD wording, and the old plan carried it. Contract tests read `docs/`,
+  `nextflow/` and the README, so no change is "docs only" to the suite.
+  The plan moved to `.agents/archive/` (no test edited).
+- **Promotion target:** `.agents/skills/qa-check/SKILL.md`: the full gate runs for a
+  docs-, skills- or Nextflow-only change too, and a file moved into `docs/` is checked
+  against the tests that walk it. (Done.)
+
 ## [LRN-20261021-001] rule-body | every option offered for a decision is measured, not estimated
 - **Status:** resolved (rule promoted)
 - **Cause:** rule-body

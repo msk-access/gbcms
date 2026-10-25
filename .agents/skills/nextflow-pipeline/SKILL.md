@@ -1,6 +1,6 @@
 ---
 name: nextflow-pipeline
-description: Reference for the gbcms Nextflow wrapper — module layout (dna/rna/filter_maf/merge/normalize/pipeline_summary), profiles and SLURM/iris resource routing, the samplesheet schema, multi-BAM merge options, and the places where Nextflow defaults DIVERGE from the CLI defaults. Use when editing anything under nextflow/ or debugging a pipeline run (OOM, queue routing, SLURM retries, output-name collisions).
+description: "Reference for the gbcms Nextflow wrapper — module layout (dna/rna/filter_maf/merge/normalize/pipeline_summary), profiles and SLURM/iris resource routing, the samplesheet schema, multi-BAM merge options, and the places where Nextflow defaults DIVERGE from the CLI defaults. Use when editing anything under nextflow/ or debugging a pipeline run (OOM, queue routing, SLURM retries, output-name collisions)."
 ---
 
 # Nextflow Pipeline
@@ -39,15 +39,22 @@ nextflow/
 
 ## ⚠️ Nextflow vs CLI default divergences (trap)
 
-`nextflow.config` is **not** a 1:1 mirror of CLI defaults. Known differences:
-- `alignment_backend = 'pairhmm'` (NF) vs `sw` (CLI default).
-- `min_mapq = 20`, `min_baseq = 20` set explicitly in NF.
-- `enforce_strandedness = true` (NF) — note this is currently a no-op unless
-  `gene_strand` is populated from the GTF.
-- Where the DNA and RNA CLI defaults differ, RNA has its own param: `rna_min_mapq`
-  (1), `rna_apply_baq` (on), `rna_gap_*` (5e-3/0.25); `min_mapq`, `apply_baq`,
-  `gap_*` are DNA's. `tests/test_nextflow_cli_defaults_contract.py` pins every
-  module's param defaults to its CLI's.
+`nextflow.config` is **not** a 1:1 mirror of the CLI defaults, and the modules pass most of
+them explicitly, so a CLI default change does not reach a pipeline run on its own.
+
+Matches the CLI today (do not "fix"): `alignment_backend = 'pairhmm'` (the CLI default for
+both DNA and RNA; `sw` is the opt-in), `min_baseq = 20`, the filter flags (always passed in
+their explicit on/off form), `enforce_strandedness = true`, `strandedness = 'reverse'`,
+`library_type = 'capture'`.
+
+Where the DNA and RNA CLI defaults differ, RNA has its own param: `rna_min_mapq` (1),
+`rna_apply_baq` (on), `rna_gap_*` (5e-3/0.25); `min_mapq` (20), `apply_baq` (off) and
+`gap_*` are DNA's. `tests/test_nextflow_cli_defaults_contract.py` pins every module's
+param defaults to its CLI's.
+
+Caveat, not a divergence: `enforce_strandedness` does nothing for a variant with no
+resolvable gene strand (no `--gtf`, an intergenic locus, genes of both strands over it); the
+engine warns once, naming them.
 
 When changing a CLI default or filter, update `nextflow.config` in the same change.
 
