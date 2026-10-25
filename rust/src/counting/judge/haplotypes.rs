@@ -28,6 +28,7 @@ use std::collections::{BTreeMap, BTreeSet, HashMap};
 use rust_htslib::bam::record::Cigar;
 
 use super::score::{self, Alignment, Band, Placed, BAND_SLACK, DELTA, WILD};
+use crate::counting::carrier::{GUARD_MIN_READS, GUARD_REF_SHARE};
 
 /// Rows within the reads' reach up to which every applicable set of them is a context.
 pub(crate) const ALL_SUBSETS: usize = 4;
@@ -109,6 +110,8 @@ pub(crate) struct ReadView {
     indels: Vec<(isize, isize)>,
     /// Per base of `seq`, whether its alignment places it on a reference base.
     aligned: Vec<bool>,
+    /// The read's name (its fragment), empty where not given.
+    pub(crate) name: Vec<u8>,
 }
 
 impl ReadView {
@@ -192,7 +195,14 @@ impl ReadView {
             inserts,
             indels,
             aligned: aligned[first..after].to_vec(),
+            name: Vec::new(),
         })
+    }
+
+    /// The view with the read's name (its fragment).
+    pub(crate) fn named(mut self, name: &[u8]) -> Self {
+        self.name = name.to_vec();
+        self
     }
 
     /// The allele the read's own bases spell at each indel its alignment writes: from the
@@ -366,35 +376,120 @@ pub(crate) struct Candidates {
     /// (the guard's masks): every haplotype takes any base there, unless a row it applies
     /// covers it, so a read's base there tells no haplotype from another.
     pub(crate) masked: Vec<i64>,
-    /// Indels the reads' own alignments write recurringly (any length): states where
-    /// they lie at X's site, else left out.
-    pub(crate) found: Vec<Row>,
+    /// Indels the reads' own alignments write recurringly (any length), each with the
+    /// reads (indices into the site's reads) that write it: states where they lie at X's
+    /// site and those reads' bases tell them from X and REF, else left out.
+    pub(crate) found: Vec<(Row, Vec<usize>)>,
 }
 
 /// Measurement only, TEMPORARY: which of the judge's other-allele options are on
 /// (`GBCMS_JUDGE_OTHER`, comma-separated: `runs` the other lengths of X's repeat as
-/// states, `found` the indels the reads write recurringly at X's site as states, `fit`
-/// the absolute-fit check; `none`; `both` all three). Default `found,fit`.
+/// states, `found` the indels the reads write at X's site as states (`foundK`: written by
+/// K reads, default [`FOUND_MIN_READS`]; `found3` the guard's floor), a [`FoundRule`]
+/// token for which of them stay states, `fit` the absolute-fit check, `edges` the check
+/// passing over indels inside a long event's own bases; `none`; `both` runs, found and
+/// fit). Default `found,fit,told,edges`.
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct OtherOption {
     pub(crate) runs: bool,
     pub(crate) found: bool,
     pub(crate) fit: bool,
+    /// Which found alleles stay states ([`Site::drop_spellings`]).
+    pub(crate) rule: FoundRule,
+    /// The fit check passes over an indel wholly inside a long event's own bases
+    /// ([`Site::long_interior`]).
+    pub(crate) edges: bool,
+    /// The reads that must write an indel (and [`GUARD_REF_SHARE`] of the site's) for it to
+    /// be found (`foundK`; default [`FOUND_MIN_READS`]).
+    pub(crate) found_min: u32,
+}
+
+/// Reads whose own alignments write an indel (with [`GUARD_REF_SHARE`] of the site's
+/// reads) that make it a candidate state: two reads writing one allele make it a
+/// candidate, as two reads showing an allele do for the community's callers (GATK's
+/// assembly-graph pruning, FreeBayes's `--min-alternate-count`); whether it is a state is
+/// the reads' telling it from X and REF ([`FoundRule`]), not the aligner's writing it. A
+/// sibling allele whose carriers mostly end inside a repeat, or soft-clip its end, is
+/// written whole by few reads but told apart by many.
+pub(crate) const FOUND_MIN_READS: u32 = 2;
+
+/// Measurement only, TEMPORARY: which found alleles stay site states. A read ending inside
+/// X's own bases (a long insertion's first bases, one copy of a deleted duplication, a
+/// repeat X lengthens) writes the part of X it holds as another indel; that spelling is
+/// X's, never another allele, while a sibling allele its few reads spell partially is
+/// another allele all the same. A read *tells* a found allele where its best haplotype
+/// holding it beats every haplotype carrying X and every one holding REF's bases by
+/// [`DELTA`].
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum FoundRule {
+    /// Every found allele at X's site is a state (no token).
+    All,
+    /// `told`: the found floor of reads ([`GUARD_MIN_READS`] and [`GUARD_REF_SHARE`] of the
+    /// site's) tell it; `toldK`: K reads.
+    Told(usize),
+    /// `spell`: dropped where no writer (a read whose alignment writes it) tells it from X,
+    /// or none from REF, by score; `spellK`: kept where K writers tell it.
+    Spell(usize),
+    /// `exact`, `exactK`: as `spell`, a writer telling it from X (REF) only where the bases
+    /// it shows of the allele's haplotype (error-free) lie in no haplotype carrying X
+    /// (holding REF's bases) as well.
+    Exact(usize),
+    /// `fragK`: K fragments tell it as `exact` does (a writer or its mate among the site's
+    /// reads) and neither mate is told from it by X or REF.
+    Frag(usize),
+    /// `cleanK` (`clean`: K = 1): the found floor tells it, or K reads show it whole
+    /// ([`Pick::Clean`]): reads whose own bases are that allele's, X's and REF's haplotypes
+    /// each missing them by a confident base wherever placed. Noise rarely makes a carrier
+    /// of X (or a REF read) spell another found allele with no confident edit and no copy
+    /// in X's or REF's haplotypes, while one such read is a read carrying another allele.
+    Clean(usize),
+    /// `share`: one read or more tells it, and they are at least [`GUARD_REF_SHARE`] of the
+    /// reads telling it from X either way (those spanning where they differ).
+    Share,
 }
 
 pub(crate) fn other_option() -> OtherOption {
     static OPT: std::sync::OnceLock<OtherOption> = std::sync::OnceLock::new();
-    *OPT.get_or_init(|| {
-        let v = std::env::var("GBCMS_JUDGE_OTHER").unwrap_or_else(|_| "found,fit".into());
-        let v = match v.as_str() {
-            "both" => "runs,found,fit".to_string(),
-            "states" => "runs,found".to_string(),
-            other => other.to_string(),
-        };
-        let on = |k: &str| v.split(',').any(|t| t.trim() == k);
-        OtherOption { runs: on("runs"), found: on("found"), fit: on("fit") }
-    })
+    *OPT.get_or_init(|| parse_other(&std::env::var("GBCMS_JUDGE_OTHER").unwrap_or_else(|_| "found,fit,told,edges".into())))
 }
+
+fn parse_other(v: &str) -> OtherOption {
+    let v = match v {
+        "both" => "runs,found,fit".to_string(),
+        "states" => "runs,found".to_string(),
+        other => other.to_string(),
+    };
+    let tokens: Vec<&str> = v.split(',').map(str::trim).collect();
+    let on = |k: &str| tokens.contains(&k);
+    let numbered = |stem: &str| {
+        tokens.iter().find_map(|t| t.strip_prefix(stem).and_then(|n| if n.is_empty() { Some(0) } else { n.parse().ok() }))
+    };
+    let rule = if let Some(k) = numbered("told") {
+        FoundRule::Told(k)
+    } else if let Some(k) = numbered("spell") {
+        FoundRule::Spell(k)
+    } else if let Some(k) = numbered("exact") {
+        FoundRule::Exact(k)
+    } else if let Some(k) = numbered("frag") {
+        FoundRule::Frag(k)
+    } else if let Some(k) = numbered("clean") {
+        FoundRule::Clean(k.max(1))
+    } else if on("share") {
+        FoundRule::Share
+    } else {
+        FoundRule::All
+    };
+    let found = numbered("found");
+    let found_min = found.filter(|&k| k > 0).map_or(FOUND_MIN_READS, |k| k as u32);
+    OtherOption { runs: on("runs"), found: found.is_some(), fit: on("fit"), rule, edges: on("edges"), found_min }
+}
+
+/// An event's own bases from which an indel inside them, away from its ends, is a change
+/// on its molecule rather than another allele of it (the length from which the rules
+/// judge a deletion at its junction and expect no read to hold an allele whole).
+const LONG_EVENT: i64 = crate::counting::junction::LONG_DELETION as i64;
+/// Bases inside a long event's ends where an indel still meets its junction.
+const EDGE: i64 = 1;
 
 /// Read bases in a row reading the reference that end an allele the read spells.
 const SPELL_STOP: usize = 3;
@@ -718,6 +813,24 @@ impl Site {
         (self.site_window.0 + self.start, self.site_window.1 + self.start)
     }
 
+    /// The columns of `hap` inside a long event's own bases, more than [`EDGE`] from
+    /// either end: X's inserted (or substituted) bases on a haplotype carrying X, its
+    /// deleted (or substituted) REF bases on one holding REF's, where they number
+    /// [`LONG_EVENT`] or more (an event a read is not expected to hold whole, told from
+    /// REF at its junctions). None for a shorter event, and on another allele's haplotype.
+    fn long_interior(&self, hap: &Hap) -> Option<(i64, i64)> {
+        let (on_ref, on_alt) = telling(&self.rows[0]);
+        let (c0, c1) = match (hap.class, hap.x_seg) {
+            (Class::Alt, Some((hs, _))) => (hs + on_alt.start as i64, hs + on_alt.end as i64),
+            (Class::Ref, _) => {
+                let xs = self.spans[0].0;
+                (hap.to_hap(xs + on_ref.start as i64, false), hap.to_hap(xs + on_ref.end as i64, true))
+            }
+            _ => return None,
+        };
+        (c1 - c0 >= LONG_EVENT).then_some((c0 + EDGE, c1 - EDGE))
+    }
+
     fn site_columns(&self, hap: &Hap) -> (i64, i64) {
         let (s, e) = self.site_window;
         (hap.to_hap(s, false), hap.to_hap(e, true))
@@ -728,6 +841,10 @@ impl Site {
     /// repeat is one allele wherever it is written in it).
     pub(crate) fn gap_at_site(&self, hap: &Hap, read: &[u8], al: &Alignment, off: usize) -> bool {
         let (a, b) = self.site_columns(hap);
+        // a gap lying wholly inside a long event's own bases is a change on that molecule,
+        // never another allele of X
+        let interior = if other_option().edges { self.long_interior(hap) } else { None };
+        let inside = |lo: i64, hi: i64| interior.is_some_and(|(i0, i1)| i0 <= lo && hi <= i1);
         let h = &hap.seq;
         let m = h.len() as i64;
         let at = |c: i64| (0..m).contains(&c).then(|| h[c as usize]);
@@ -747,7 +864,7 @@ impl Site {
                         while at(hi + k).is_some() && at(hi) == at(hi + k) {
                             hi += 1;
                         }
-                        if lo < b && hi + k > a {
+                        if lo < b && hi + k > a && !inside(lo, hi + k) {
                             return true;
                         }
                     }
@@ -774,7 +891,7 @@ impl Site {
                             hi += 1;
                             r += 1;
                         }
-                        if a < hi && lo < b {
+                        if a < hi && lo < b && !inside(lo, hi) {
                             return true;
                         }
                     }
@@ -789,11 +906,17 @@ impl Site {
     /// The haplotypes of `target` over the window `(start, reference)` (upper case),
     /// from `candidates` and the variant's `reads`. None when the window does not hold
     /// the target's REF.
-    pub(crate) fn build(
+    pub(crate) fn build(target: Row, candidates: &Candidates, window: (i64, Vec<u8>), reads: &[ReadView]) -> Option<Site> {
+        Site::build_with(target, candidates, window, reads, other_option().rule)
+    }
+
+    /// [`Site::build`], the found alleles kept as states by `rule`.
+    fn build_with(
         target: Row,
         candidates: &Candidates,
         (start, reference): (i64, Vec<u8>),
         reads: &[ReadView],
+        rule: FoundRule,
     ) -> Option<Site> {
         let wn = reference.len() as i64;
         let holds = |r: &Row| {
@@ -833,14 +956,16 @@ impl Site {
         // The site's states and the contexts' rows, each once.
         let mut seen: BTreeSet<Row> = BTreeSet::from([target.clone()]);
         let (mut states, mut contexts): (Vec<Row>, Vec<Row>) = (Vec::new(), Vec::new());
-        let mut take = |r: &Row, state: bool| {
+        let mut take = |r: &Row, state: bool| -> bool {
             if holds(r) && seen.insert(r.clone()) {
                 if state {
                     states.push(r.clone());
                 } else {
                     contexts.push(r.clone());
                 }
+                return true;
             }
+            false
         };
         // A pure indel anchored on a substitution X's last base changes no base X names:
         // anchored on the base after it instead (the same haplotype), it is beside X, so it
@@ -881,7 +1006,7 @@ impl Site {
             match row_between(&reference, &spelled, start) {
                 Some(minimal) if !meets(&target, &minimal) => take(&minimal, false),
                 _ => take(r, true),
-            }
+            };
         }
         // Another length of X's repeat, and an indel the reads write recurringly at X's
         // site: other alleles, which explain their reads as neither REF nor X.
@@ -890,8 +1015,10 @@ impl Site {
                 take(&r, true);
             }
         }
+        // The found states, each with the reads that spell it.
+        let mut found_states: Vec<(Row, &[usize])> = Vec::new();
         if other_option().found {
-            for r in candidates.found.iter().map(beside).filter(|r| meets(&target, r)) {
+            for (r, by) in candidates.found.iter().map(|(r, by)| (beside(r), &by[..])).filter(|(r, _)| meets(&target, r)) {
                 // An allele of the same length over the bases a substitution X changes,
                 // which reads X's (or REF's) bases there, is X (or REF) with a change
                 // beside it, a phased neighbour: each change beside X is a context, never
@@ -904,7 +1031,9 @@ impl Site {
                     }
                     continue;
                 }
-                take(&r, true);
+                if take(&r, true) {
+                    found_states.push((r, by));
+                }
             }
         }
         // A background change at X's place cannot share a haplotype with X: crossed with
@@ -1043,6 +1172,7 @@ impl Site {
         site.haps = haps.into_iter().zip(keep).filter_map(|(h, k)| k.then_some(h)).collect();
         site.n_contexts = n_contexts;
         site.cap_exceeded = cap_exceeded;
+        site.drop_spellings(&found_states, reads, rule);
         Some(site)
     }
 
@@ -1469,6 +1599,137 @@ impl Site {
         keyed.into_iter().map(|k| k.3).collect()
     }
 
+    /// The bases a read shows of `hap`: the haplotype's bases its alignment there covers,
+    /// from the first base it places to the last, any base where the read's own is
+    /// unreadable. What the read would show, were it from `hap` without an error.
+    fn shown(&self, read: &ReadView, hap: &Hap) -> Vec<u8> {
+        let (al, off) = Scorer::new(read).align(self, hap);
+        let Some((a, b)) = al.covers() else {
+            return Vec::new();
+        };
+        let mut shown = hap.seq[off + a..=off + b].to_vec();
+        for (i, p) in al.placed.iter().enumerate() {
+            if let Placed::At(c) = *p {
+                if read.seq[i] == WILD {
+                    shown[c - a] = WILD;
+                }
+            }
+        }
+        shown
+    }
+
+    /// One read's best scores on the haplotypes `holds` marks (a found allele's), on those
+    /// carrying X and on those holding REF's bases, with the first haplotype reaching the
+    /// allele's best.
+    fn telling(&self, read: &ReadView, holds: &[bool]) -> Telling {
+        let mut scorer = Scorer::new(read);
+        let none = i32::MIN / 4;
+        let (mut f, mut h, mut x, mut r) = (none, 0usize, none, none);
+        for (k, (hap, &held)) in self.haps.iter().zip(holds).enumerate() {
+            let s = scorer.score(self, hap);
+            if held && s > f {
+                (f, h) = (s, k);
+            }
+            match hap.class {
+                Class::Alt => x = x.max(s),
+                Class::Ref => r = r.max(s),
+                Class::Other => {}
+            }
+        }
+        Telling { f, x, r, h, lies: None }
+    }
+
+    /// Whether the bases `read` shows of haplotype `h` ([`Site::shown`]) lie whole in a
+    /// haplotype carrying X, and in one holding REF's bases: wherever placed there (a copy
+    /// of a repeat the scorer's band, which follows the read's own alignment, misses).
+    fn lies_in_x_or_ref(&self, read: &ReadView, h: usize) -> (bool, bool) {
+        let shown = self.shown(read, &self.haps[h]);
+        let lies = |class: Class| self.haps.iter().filter(|hap| hap.class == class).any(|hap| holds_bases(&hap.seq, &shown));
+        (lies(Class::Alt), lies(Class::Ref))
+    }
+
+    /// A found allele (an indel the reads' own alignments write at X's site) stays a state
+    /// only where `rule` ([`FoundRule`]) finds it another allele rather than X's or REF's
+    /// spelling. A read ending inside X's own bases (a long insertion's first bases, one
+    /// copy of a deleted duplication, a repeat X lengthens) writes the part of X it holds
+    /// as an indel that reads, over its span, as X does: such an allele is X's (or REF's)
+    /// spelling, never another allele, and its haplotypes are dropped. A sibling allele
+    /// whose few reads spell it whole (most of its carriers ending in a repeat or clipping
+    /// its end) is told apart by many: another allele, a state.
+    fn drop_spellings(&mut self, found: &[(Row, &[usize])], reads: &[ReadView], rule: FoundRule) {
+        // Measurement only, TEMPORARY: with GBCMS_JUDGE_FOUND_PROBE=1 every rule's decision
+        // is logged per found allele (the rule in force still decides).
+        let probe = std::env::var("GBCMS_JUDGE_FOUND_PROBE").is_ok_and(|v| v == "1");
+        if rule == FoundRule::All && !probe {
+            return;
+        }
+        let mut dropped: Vec<usize> = Vec::new();
+        for (row, by) in found {
+            let Some(o) = self.rows.iter().position(|r| r == row).filter(|&o| self.is_state(o)) else {
+                continue;
+            };
+            let holds: Vec<bool> = self.haps.iter().map(|h| h.rows.binary_search(&o).is_ok()).collect();
+            if !holds.contains(&true) {
+                continue;
+            }
+            let mut tally = Tally::new(self, reads, holds, by);
+            let keep = tally.decide(rule);
+            if probe {
+                let rules = [
+                    ("told", FoundRule::Told(0)),
+                    ("told1", FoundRule::Told(1)),
+                    ("spell", FoundRule::Spell(0)),
+                    ("spell1", FoundRule::Spell(1)),
+                    ("exact1", FoundRule::Exact(1)),
+                    ("frag1", FoundRule::Frag(1)),
+                    ("share", FoundRule::Share),
+                    ("clean", FoundRule::Clean(1)),
+                ];
+                let verdicts: Vec<String> =
+                    rules.iter().map(|&(name, r)| format!("{name}={}", u8::from(tally.decide(r)))).collect();
+                let n = |tally: &mut Tally, pick: Pick| (0..reads.len()).filter(|&i| tally.picks(i, pick)).count();
+                let (tellers, clean, spanning) = (n(&mut tally, Pick::Tells), n(&mut tally, Pick::Clean), n(&mut tally, Pick::SpansX));
+                let w: Vec<Telling> = by.iter().map(|&i| tally.get(i)).collect();
+                log::debug!(
+                    "haplotype judge: found-allele probe {}:{}>{} at {}:{}>{} writers {} of {}: tellers {tellers} (writers {}), \
+                     clean {clean}, spanning X {spanning}, writers X-over {} REF-over {}; {}",
+                    row.pos + 1,
+                    String::from_utf8_lossy(&row.ref_al),
+                    String::from_utf8_lossy(&row.alt_al),
+                    self.rows[0].pos + 1,
+                    String::from_utf8_lossy(&self.rows[0].ref_al),
+                    String::from_utf8_lossy(&self.rows[0].alt_al),
+                    by.len(),
+                    reads.len(),
+                    w.iter().filter(|t| t.tells()).count(),
+                    w.iter().filter(|t| t.x - t.f >= DELTA).count(),
+                    w.iter().filter(|t| t.r - t.f >= DELTA).count(),
+                    verdicts.join(" "),
+                );
+            }
+            log::debug!(
+                "haplotype judge: the found allele {}:{}>{} (written by {} of {} reads) → {}",
+                row.pos + 1,
+                String::from_utf8_lossy(&row.ref_al),
+                String::from_utf8_lossy(&row.alt_al),
+                by.len(),
+                reads.len(),
+                if keep { "another allele, a state" } else { "X's or REF's spelling, not a state" },
+            );
+            if !keep {
+                dropped.push(o);
+            }
+        }
+        if dropped.is_empty() {
+            return;
+        }
+        self.haps.retain(|h| !h.rows.iter().any(|r| dropped.contains(r)));
+        self.max_shift = (0..self.rows.len())
+            .filter(|r| !dropped.contains(r))
+            .map(|r| self.rows[r].ref_al.len().abs_diff(self.rows[r].alt_al.len()) as i64)
+            .sum();
+    }
+
     /// The haplotypes: the empty context, then the `ordered` contexts while the
     /// haplotypes stay within `cap`, each crossed with every state (REF, X, each other
     /// state) but for a state at one of the context's rows' place. Returns the row sets,
@@ -1504,6 +1765,179 @@ impl Site {
         }
         (haps, n_contexts, left_out)
     }
+}
+
+/// One read's best scores at a found allele ([`Site::telling`]): on the haplotypes holding
+/// it (`h` the first reaching it), on those carrying X and on those holding REF's bases;
+/// once read, whether the bases it shows of haplotype `h` lie whole in one carrying X, and
+/// in one holding REF's ([`Site::lies_in_x_or_ref`]).
+#[derive(Clone, Copy, Debug)]
+struct Telling {
+    f: i32,
+    x: i32,
+    r: i32,
+    h: usize,
+    lies: Option<(bool, bool)>,
+}
+
+impl Telling {
+    /// The allele's best haplotype beats every one carrying X and every one holding REF's
+    /// bases by [`DELTA`].
+    fn tells(&self) -> bool {
+        self.f - self.x >= DELTA && self.f - self.r >= DELTA
+    }
+}
+
+/// Which reads a [`Tally`] counts.
+#[derive(Clone, Copy, Debug)]
+enum Pick {
+    /// Those that tell the allele ([`Telling::tells`]).
+    Tells,
+    /// Those that tell it and fit it whole (no confident base of theirs edited on its
+    /// haplotype), the bases they show of it lying in no haplotype carrying X or holding
+    /// REF's bases wherever placed: reads whose own bases are that allele's, X and REF each
+    /// missing them by a confident base.
+    Clean,
+    /// Those that tell it from X either way (span where they differ).
+    SpansX,
+}
+
+/// The reads' tellings at one found allele, each read on first use.
+struct Tally<'a> {
+    site: &'a Site,
+    reads: &'a [ReadView],
+    holds: Vec<bool>,
+    /// The reads writing it (indices into `reads`, sorted).
+    by: &'a [usize],
+    /// The writers, then the rest.
+    order: Vec<usize>,
+    cache: Vec<Option<Telling>>,
+}
+
+impl<'a> Tally<'a> {
+    fn new(site: &'a Site, reads: &'a [ReadView], holds: Vec<bool>, by: &'a [usize]) -> Self {
+        let order = by.iter().copied().chain((0..reads.len()).filter(|i| by.binary_search(i).is_err())).collect();
+        Tally { site, reads, holds, by, order, cache: vec![None; reads.len()] }
+    }
+
+    fn get(&mut self, i: usize) -> Telling {
+        if let Some(t) = self.cache[i] {
+            return t;
+        }
+        let t = self.site.telling(&self.reads[i], &self.holds);
+        self.cache[i] = Some(t);
+        t
+    }
+
+    /// Read `i`'s bases on the allele's best haplotype: lying in one carrying X, in one
+    /// holding REF's bases.
+    fn lies(&mut self, i: usize) -> (bool, bool) {
+        let t = self.get(i);
+        if let Some(l) = t.lies {
+            return l;
+        }
+        let l = self.site.lies_in_x_or_ref(&self.reads[i], t.h);
+        self.cache[i] = Some(Telling { lies: Some(l), ..t });
+        l
+    }
+
+    fn picks(&mut self, i: usize, pick: Pick) -> bool {
+        let t = self.get(i);
+        match pick {
+            Pick::Tells => t.tells(),
+            Pick::Clean => t.tells() && t.f >= 0 && self.lies(i) == (false, false),
+            Pick::SpansX => (t.f - t.x).abs() >= DELTA,
+        }
+    }
+
+    /// The reads `pick` takes, writers first, counted up to `enough`.
+    fn count(&mut self, enough: f64, pick: Pick) -> usize {
+        let mut n = 0usize;
+        for k in 0..self.order.len() {
+            if self.picks(self.order[k], pick) {
+                n += 1;
+                if n as f64 >= enough {
+                    break;
+                }
+            }
+        }
+        n
+    }
+
+    /// Whether the writers tell it from X and from REF (`exact`: their bases there lying
+    /// in no haplotype carrying X, or holding REF's): some writer from each (`k` 0), or
+    /// `k` writers from both.
+    fn spell(&mut self, k: usize, exact: bool) -> bool {
+        let (mut tx, mut tr, mut both) = (0usize, 0usize, 0usize);
+        for j in 0..self.by.len() {
+            let i = self.by[j];
+            let t = self.get(i);
+            let (mut x, mut r) = (t.f - t.x >= DELTA, t.f - t.r >= DELTA);
+            if exact && (x || r) {
+                let (in_x, in_ref) = self.lies(i);
+                (x, r) = (x && !in_x, r && !in_ref);
+            }
+            tx += usize::from(x);
+            tr += usize::from(r);
+            both += usize::from(x && r);
+        }
+        if k == 0 {
+            tx > 0 && tr > 0
+        } else {
+            both >= k
+        }
+    }
+
+    /// Whether `k` writers' fragments (a writer and its mate among the site's reads) tell
+    /// it as `exact` does, neither mate told from it by X or REF.
+    fn fragments(&mut self, k: usize) -> bool {
+        let mut by_name: BTreeMap<Vec<u8>, Vec<usize>> = BTreeMap::new();
+        for &i in self.by {
+            by_name.entry(self.reads[i].name.clone()).or_default().push(i);
+        }
+        for (i, read) in self.reads.iter().enumerate() {
+            if let Some(v) = by_name.get_mut(&read.name).filter(|_| !read.name.is_empty()) {
+                if !v.contains(&i) {
+                    v.push(i);
+                }
+            }
+        }
+        let mut n = 0usize;
+        for members in by_name.into_values() {
+            let t: Vec<Telling> = members.iter().map(|&i| self.get(i)).collect();
+            let refuted = t.iter().any(|t| t.x - t.f >= DELTA || t.r - t.f >= DELTA);
+            if !refuted && members.iter().any(|&i| self.get(i).tells() && self.lies(i) == (false, false)) {
+                n += 1;
+            }
+        }
+        n >= k.max(1)
+    }
+
+    fn decide(&mut self, rule: FoundRule) -> bool {
+        let floor = (GUARD_REF_SHARE * self.reads.len() as f64).max(f64::from(GUARD_MIN_READS));
+        match rule {
+            FoundRule::All => true,
+            FoundRule::Told(0) => self.count(floor, Pick::Tells) as f64 >= floor,
+            FoundRule::Told(k) => self.count(k as f64, Pick::Tells) >= k,
+            FoundRule::Spell(k) => self.spell(k, false),
+            FoundRule::Exact(k) => self.spell(k, true),
+            FoundRule::Frag(k) => self.fragments(k),
+            FoundRule::Clean(k) => self.count(floor, Pick::Tells) as f64 >= floor || self.count(k as f64, Pick::Clean) >= k,
+            FoundRule::Share => {
+                let n = self.count(f64::INFINITY, Pick::Tells);
+                let spanning = self.count(f64::INFINITY, Pick::SpansX);
+                n >= 1 && n as f64 >= GUARD_REF_SHARE * spanning as f64
+            }
+        }
+    }
+}
+
+/// Whether `needle` lies whole in `hay`, a base [`WILD`] on either side matching any.
+fn holds_bases(hay: &[u8], needle: &[u8]) -> bool {
+    if needle.is_empty() {
+        return true;
+    }
+    hay.windows(needle.len()).any(|w| w.iter().zip(needle).all(|(&h, &n)| h == n || h == WILD || n == WILD))
 }
 
 /// One read's evidence on the context rows (sorted row indices).
@@ -1828,5 +2262,68 @@ pub(crate) mod tests {
         let ins2 = row(300, "A", "ATTA");
         let s = site(&c, &ins1, &[ins2], 100);
         assert_eq!((s.n_states, s.n_contexts, s.haps.len()), (1, 1, 3));
+    }
+
+    #[test]
+    fn the_other_allele_tokens_parse() {
+        let o = parse_other("found,fit,told,edges");
+        assert!(o.found && o.fit && o.edges && !o.runs);
+        assert_eq!((o.rule, o.found_min), (FoundRule::Told(0), FOUND_MIN_READS));
+        let o = parse_other("found3,fit,clean,edges");
+        assert_eq!((o.found, o.rule, o.found_min), (true, FoundRule::Clean(1), 3));
+        let o = parse_other("none");
+        assert_eq!((o.found, o.fit, o.rule), (false, false, FoundRule::All));
+    }
+
+    #[test]
+    fn a_needle_lies_in_a_haystack_any_base_matching_wild() {
+        assert!(holds_bases(b"ACGTACGT", b"GTAC"));
+        assert!(holds_bases(b"ACGTACGT", b"GNAC"));
+        assert!(holds_bases(b"ACNTACGT", b"GTAC"), "a wild base in the haystack takes any");
+        assert!(!holds_bases(b"ACGTACGT", b"GTTC"));
+        assert!(holds_bases(b"ACGT", b""));
+    }
+
+    /// (AT)10 T23 between unique flanks; X makes it (AT)11 T28; a found allele (AT)12 T23
+    /// (the reference with +ATAT), written by reads that fit none of them whole.
+    fn sibling_case() -> (Vec<u8>, Row, Row) {
+        let mut c = random_seq(700, 41);
+        let run: Vec<u8> = [&b"AT".repeat(10)[..], &b"T".repeat(23)[..]].concat();
+        c[300] = b'C';
+        c[301..301 + run.len()].copy_from_slice(&run);
+        c[301 + run.len()] = b'G';
+        let anchor = 301 + 19; // the run's last T
+        let x = Row::new(anchor, b"T", b"TATTTTTT");
+        let found = Row::new(anchor, b"T", b"TATAT");
+        (c, x, found)
+    }
+
+    #[test]
+    fn a_found_allele_one_read_shows_whole_stays_a_state_only_under_clean() {
+        let (c, x, found) = sibling_case();
+        let apply = |r: &Row| [&c[..r.pos as usize], &r.alt_al[..], &c[r.end() as usize..]].concat();
+        let view = |h: &[u8], s: usize, n: usize| {
+            ReadView::new(&h[s..s + n], &vec![30; n], s as i64, &[Cigar::Match(n as u32)], (0, n), 20).unwrap()
+        };
+        // the sibling (AT)12 T28, read from the left flank to 19 of its T's: the found
+        // allele's haplotype whole; X misses it by a base, REF by two
+        let sib = apply(&Row::new(x.pos, b"T", b"TATATTTTTT"));
+        let teller = view(&sib, 301 + 24 + 19 - 100, 100);
+        let reads = vec![teller, view(&apply(&x), 240, 100), view(&c, 245, 100)];
+        let candidates = Candidates { found: vec![(found.clone(), vec![])], ..Candidates::default() };
+        let states = |rule: FoundRule| {
+            let s = Site::build_with(x.clone(), &candidates, (0, c.clone()), &reads, rule).unwrap();
+            s.haps.iter().filter(|h| h.class == Class::Other).count()
+        };
+        assert!(states(FoundRule::All) > 0, "the found allele is a state before any rule");
+        assert_eq!(states(FoundRule::Told(0)), 0, "one read is below the found floor");
+        assert!(states(FoundRule::Clean(1)) > 0, "one read shows it whole: another allele");
+        // the same read with a confident error elsewhere tells it, yet not whole: dropped
+        let mut noisy = sib.clone();
+        let at = 301 + 24 + 19 - 100 + 10;
+        noisy[at] = if noisy[at] == b'A' { b'C' } else { b'A' };
+        let reads = vec![view(&noisy, 301 + 24 + 19 - 100, 100), view(&apply(&x), 240, 100), view(&c, 245, 100)];
+        let s = Site::build_with(x.clone(), &candidates, (0, c.clone()), &reads, FoundRule::Clean(1)).unwrap();
+        assert_eq!(s.haps.iter().filter(|h| h.class == Class::Other).count(), 0);
     }
 }

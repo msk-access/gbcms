@@ -249,7 +249,7 @@ pub(crate) fn read_view(record: &Record, quals: &[u8], min_baseq: u8, rules: &Re
     }
     let seq = record.seq().as_bytes();
     let readable = readable_range(record, rules)?;
-    ReadView::new(&seq, quals, record.pos(), &cigar, readable, min_baseq)
+    ReadView::new(&seq, quals, record.pos(), &cigar, readable, min_baseq).map(|v| v.named(record.qname()))
 }
 
 /// Measurement only, TEMPORARY, to be removed before the merge (design §10): with

@@ -233,7 +233,8 @@ def test_a_linked_variant_never_credits_a_read_whose_bases_at_x_say_nothing(tmp_
 
 L0 = 600
 REF_LONG = _contig(144, length=2400)
-INS60 = "".join(random.Random(60).choice("ACGT") for _ in range(60))
+_r60 = random.Random(60)  # one generator: a fresh Random(60) per base gives a G run
+INS60 = "".join(_r60.choice("ACGT") for _ in range(60))
 
 
 def test_a_long_insertion_carrier_written_as_a_soft_clip_counts(tmp_path):
@@ -262,6 +263,153 @@ def test_a_long_deletion_counts_ref_on_reads_over_its_anchor_only(tmp_path):
     reads += [_plain(f"x{i}", REF_LONG, L0 + 100 + 20 * i) for i in range(6)]
     [(rd, ad, dp)] = _run(tmp_path, REF_LONG, [row], reads)
     assert (rd, ad, dp) == (4, 5, 9)
+
+
+def test_a_long_deletions_carriers_ending_inside_it_are_alt_not_another_allele(tmp_path):
+    """A 60-bp unit and its copy one base longer side by side; the row deletes the unit.
+    6 carriers span the copy (the deletion written at the anchor), 6 end inside the copy
+    (aligned through the unit with its extra base written as a 1-bp insertion: an allele
+    their bases spell, on reads that cannot tell it from the deletion), 6 REF reads. The
+    spelled insertion is the deletion's own spelling, never another allele: (6, 12, 0)."""
+    rng = random.Random(85)
+    left = "".join(rng.choice("ACGT") for _ in range(400))
+    unit = "".join(rng.choice("ACGT") for _ in range(60))
+    extra = next(b for b in "ACGT" if b not in (unit[9], unit[10]))
+    copy = unit[:10] + extra + unit[10:]
+    ref = left + unit + copy + "".join(rng.choice("ACGT") for _ in range(600))
+    row = (400, ref[399:460], ref[399])
+    alt = _apply(ref, [row])
+    reads = []
+    for i in range(6):
+        s = 380 - i
+        reads.append(
+            make_read(
+                f"a{i}", alt[s : s + READ_LEN], s, ((0, 400 - s), (2, 60), (0, READ_LEN - 400 + s))
+            )
+        )
+        s = 330 + 2 * i  # ends inside the copy, past its extra base
+        k = 410 - s
+        reads.append(
+            make_read(f"p{i}", alt[s : s + READ_LEN], s, ((0, k), (1, 1), (0, READ_LEN - k - 1)))
+        )
+        reads.append(_plain(f"r{i}", ref, 360 + i))
+    [(rd, ad, _, partial)] = _run(tmp_path, ref, [row], reads, partial=True)
+    assert (rd, ad, partial) == (6, 12, 0)
+
+
+@pytest.mark.parametrize("kind", ["insertion carriers", "deletion REF reads"])
+def test_a_sporadic_indel_inside_a_long_events_own_bases_is_no_other_allele(tmp_path, kind):
+    """A 120-bp insertion (its carriers soft-clipped at the junction) or a 400-bp deletion;
+    6 reads of each allele over the junction, and 6 more of the allele named carrying a
+    1-bp deletion each at its own place 30-40 bases inside the event's own bases (the
+    inserted bases, or the deleted ones REF holds): a change on that molecule, away from
+    the junction that tells the alleles apart, never another allele of the row. Every read
+    counts for the allele its junction shows: 12 of that allele, 6 of the other."""
+    if kind == "insertion carriers":
+        rng = random.Random(120)
+        ins = "".join(rng.choice("ACGT") for _ in range(120))
+        row = (L0, REF_LONG[L0 - 1], REF_LONG[L0 - 1] + ins)
+    else:
+        row = (L0, REF_LONG[L0 - 1 : L0 + 400], REF_LONG[L0 - 1])
+    alt = _apply(REF_LONG, [row])
+    noisy_hap = alt if kind == "insertion carriers" else REF_LONG
+    reads = []
+    for i in range(6):
+        s = L0 - 30 - i
+        if kind == "insertion carriers":
+            reads.append(
+                make_read(f"a{i}", alt[s : s + READ_LEN], s, ((0, L0 - s), (4, READ_LEN - L0 + s)))
+            )
+        else:
+            reads.append(_plain(f"a{i}", alt, s))
+        reads.append(_plain(f"r{i}", REF_LONG, s - 10))
+        cut = L0 + 30 + 2 * i  # the base each noisy read lacks, inside the event
+        seq = noisy_hap[s:cut] + noisy_hap[cut + 1 : s + READ_LEN + 1]
+        if kind == "insertion carriers":
+            reads.append(make_read(f"n{i}", seq, s, ((0, L0 - s), (4, READ_LEN - L0 + s))))
+        else:
+            reads.append(
+                make_read(f"n{i}", seq, s, ((0, cut - s), (2, 1), (0, READ_LEN - cut + s)))
+            )
+    [(rd, ad, _, partial)] = _run(tmp_path, REF_LONG, [row], reads, partial=True)
+    assert (rd, ad, partial) == ((6, 12, 0) if kind == "insertion carriers" else (12, 6, 0))
+
+
+def test_a_long_insertions_partial_spelling_stays_x_though_a_noisy_carrier_prefers_it(tmp_path):
+    """A 120-bp insertion: the downstream 119 bases with one base (e) after their first 60,
+    the next 10 bases repeating its first 10 but for one. 4 carriers ending inside it past
+    e, written as a 1-bp insertion of e (an allele their bases spell, X's over their span);
+    3 carriers reaching 10 bases past it (151 bp); 1 more with two errors, one turning it to that
+    spelling's haplotype there, so it fits the spelling one base better than X yet not
+    whole; 6 REF reads. The spelling is X's: one noisy read is no other allele. The 7
+    carriers count ALT, the noisy one neither: (6, 7, 0)."""
+    rng = random.Random(119)
+    left = "".join(rng.choice("ACGT") for _ in range(500))
+    d = [rng.choice("ACGT") for _ in range(400)]
+    d[119:129] = d[0:10]
+    q = 5  # the one base where the 10 after the insertion differ from its first 10
+    d[119 + q] = next(b for b in "ACGT" if b != d[q])
+    d = "".join(d)
+    e = next(b for b in "ACGT" if b not in (d[59], d[60]))
+    ins = d[:60] + e + d[60:119]
+    ref = left + d + "".join(rng.choice("ACGT") for _ in range(400))
+    a = len(left)  # 0-based start of d; the anchor is the base before it
+    row = (a, ref[a - 1], ref[a - 1] + ins)
+    alt = _apply(ref, [row])
+    reads = []
+    for i in range(4):  # end inside the insertion past e: REF + e as written
+        s = a - 30 - 2 * i
+        k = a + 60 - s
+        reads.append(
+            make_read(f"w{i}", alt[s : s + READ_LEN], s, ((0, k), (1, 1), (0, READ_LEN - k - 1)))
+        )
+    end = a + 120 + 10  # 10 bases past the insertion, on the alternate haplotype: 151-bp
+    for i in range(3):  # reads from the anchor's left
+        reads.append(_plain(f"c{i}", alt, end - 151 - i, length=151))
+    s = end - 151
+    noisy = list(alt[s : s + 151])
+    noisy[a + 120 + q - s] = d[119 + q]  # X's base after the insertion read as the spelling's
+    noisy[60] = next(b for b in "ACGT" if b != noisy[60])  # and one error elsewhere
+    reads.append(make_read("n0", "".join(noisy), s, ((0, 151),)))
+    reads += [_plain(f"r{i}", ref, a - 20 + 3 * i) for i in range(6)]  # past e's place
+    [(rd, ad, _, partial)] = _run(tmp_path, ref, [row], reads, partial=True)
+    assert (rd, ad, partial) == (6, 7, 0)
+
+
+# ── A sibling allele two of its reads write whole is another allele ──
+
+
+def test_a_sibling_two_reads_write_whole_is_another_allele(tmp_path):
+    """(AT)10 T23 on REF; the row makes it (AT)11 T28, a sibling (unlisted) (AT)12 T28 (the
+    chr4:71385191 shape). 5 row carriers and 4 REF reads span it. Of 6 sibling carriers, 2
+    span it, their alignment writing the sibling whole; 3 soft-clip the T run's last bases
+    and the flank, writing +ATAT (a short-T allele that fits none of them); 1 ends inside
+    the T run, written gapless, missing the row by one base and REF by two. Two reads
+    writing an allele make it a candidate; the reads telling it from the row and REF make
+    it a state: every sibling read is another allele, never the row's ALT: (4, 5, 6)."""
+    rng = random.Random(301)
+    left = "".join(rng.choice("ACGT") for _ in range(398)) + "GC"
+    right = "GAG" + "".join(rng.choice("ACGT") for _ in range(397))
+    ref = left + "AT" * 10 + "T" * 23 + right
+    a = len(left) + 20  # 1-based anchor: the run's last T
+    row = (a, "T", "T" + "AT" + "T" * 5)
+    sib_ins = "ATAT" + "T" * 5
+    sib = _apply(ref, [(a, "T", "T" + sib_ins)])
+    alt = _apply(ref, [row])
+    reads = [_plain(f"x{i}", alt, len(left) - 30 - 2 * i) for i in range(5)]
+    reads += [_plain(f"r{i}", ref, len(left) - 31 - 2 * i) for i in range(4)]
+    for i in range(2):  # the sibling written whole
+        reads.append(_gapped(f"w{i}", ref, a, sib_ins, len(left) - 35 - 3 * i))
+    for i in range(3):  # aligned through the run, +ATAT, then 23 T's, the rest clipped
+        s = len(left) - 40 + 2 * i
+        m = a - s
+        clip = READ_LEN - m - 4 - 23
+        reads.append(
+            make_read(f"s{i}", sib[s : s + READ_LEN], s, ((0, m), (1, 4), (0, 23), (4, clip)))
+        )
+    reads.append(_plain("t0", sib, a + 4 + 19 - READ_LEN))  # ends after 19 of its T's
+    [(rd, ad, _, partial)] = _run(tmp_path, ref, [row], reads, partial=True)
+    assert (rd, ad, partial) == (4, 5, 6)
 
 
 # ── Prep: the rows a read is weighed against come from the whole input ──
@@ -305,7 +453,8 @@ def test_prep_lists_every_other_row_within_a_reads_reach(tmp_path):
 
 A0 = 700
 REF_ADM = _contig(700, length=1600)
-INS30 = "".join(random.Random(30).choice("ACGT") for _ in range(30))
+_r30 = random.Random(30)
+INS30 = "".join(_r30.choice("ACGT") for _ in range(30))
 
 
 def test_reads_past_a_deletions_anchor_are_not_admitted(tmp_path):

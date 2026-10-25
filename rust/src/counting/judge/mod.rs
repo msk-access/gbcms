@@ -18,7 +18,7 @@ use std::collections::HashMap;
 use log::{debug, warn};
 use rust_htslib::bam::record::Record;
 
-use super::carrier::{bases_in, Guard, ReadRules, GUARD_MIN_READS, GUARD_REF_SHARE};
+use super::carrier::{bases_in, Guard, ReadRules, GUARD_REF_SHARE};
 use super::utils::ClassifyResult;
 use crate::normalize::fasta::CachedFasta;
 use crate::types::Variant;
@@ -163,21 +163,23 @@ pub(crate) fn site_for(v: &Variant, guard: Option<&Guard>, reference: &CachedFas
 }
 
 /// The alleles the reads' own bases spell at the indels their alignments write
-/// (`ReadView::spelled_indels`), on [`GUARD_MIN_READS`] reads or more and
-/// [`GUARD_REF_SHARE`] of them: alleles the reads show, whatever their length (a state
-/// where one lies at X's site). X's own carriers, however the aligner wrote them, spell X.
-fn found_indels(base: &dyn Fn(i64) -> Option<u8>, reads: &[ReadView], masked: &[i64]) -> Vec<Row> {
-    let mut tally: std::collections::BTreeMap<Row, u32> = std::collections::BTreeMap::new();
-    for r in reads {
+/// (`ReadView::spelled_indels`), on [`haplotypes::FOUND_MIN_READS`] reads or more and
+/// [`GUARD_REF_SHARE`] of them, each with the reads (indices into `reads`) spelling it:
+/// alleles the reads show, whatever their length (a state where one lies at X's site and
+/// the reads tell it apart from X and REF, `haplotypes::FoundRule`). X's own carriers,
+/// however the aligner wrote them, spell X, or, ending inside it, the part of X they hold.
+fn found_indels(base: &dyn Fn(i64) -> Option<u8>, reads: &[ReadView], masked: &[i64]) -> Vec<(Row, Vec<usize>)> {
+    let mut tally: std::collections::BTreeMap<Row, Vec<usize>> = std::collections::BTreeMap::new();
+    for (i, r) in reads.iter().enumerate() {
         let mut once = std::collections::BTreeSet::new();
         for row in r.spelled_indels(base, masked) {
             if once.insert(row.clone()) {
-                *tally.entry(row).or_insert(0) += 1;
+                tally.entry(row).or_default().push(i);
             }
         }
     }
-    let floor = (GUARD_REF_SHARE * reads.len() as f64).max(f64::from(GUARD_MIN_READS));
-    tally.into_iter().filter(|&(_, n)| f64::from(n) >= floor).map(|(row, _)| row).collect()
+    let floor = (GUARD_REF_SHARE * reads.len() as f64).max(f64::from(haplotypes::other_option().found_min));
+    tally.into_iter().filter(|(_, by)| by.len() as f64 >= floor).collect()
 }
 
 /// A recurring indel the reads' own alignments write (`Guard::indels`: the genome
@@ -496,5 +498,25 @@ mod tests {
         let s = site(&c, &snv, &[], 151);
         let v = judge(&s, &carrier, MIN_BQ, false);
         assert_eq!((v.call, v.qual), (Call::Alt, 25));
+    }
+
+    #[test]
+    fn two_reads_writing_an_indel_find_it_within_the_share_of_the_sites_reads() {
+        let c = random_seq(600, 17);
+        let base = |p: i64| c.get(p as usize).copied();
+        let ins = Row::new(299, &c[299..300], &[&c[299..300], b"GG"].concat());
+        let h = haplotype(&c, &[&ins]);
+        let writer = |s: usize| read(&h, s, 150, s as i64, &format!("{}M2I{}M", 300 - s, 148 - (300 - s)));
+        let plain = |s: usize| read(&c, s, 150, s as i64, "150M");
+        let found = |reads: &[ReadView]| found_indels(&base, reads, &[]).into_iter().map(|(r, by)| (r, by.len())).collect::<Vec<_>>();
+        // one read writing it is no candidate; two are, unless below the share of the site's
+        let one = [writer(220), plain(230)];
+        assert!(found(&one).is_empty());
+        let two = [writer(220), writer(230), plain(240)];
+        let got = found(&two);
+        assert_eq!(got.len(), 1);
+        assert_eq!(got[0].1, 2);
+        let deep: Vec<ReadView> = [writer(220), writer(230)].into_iter().chain((0..60).map(|i| plain(200 + i))).collect();
+        assert!(found(&deep).is_empty(), "2 of 62 is below the share");
     }
 }
