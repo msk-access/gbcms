@@ -591,6 +591,25 @@ mod tests {
     }
 
     #[test]
+    fn a_long_deletion_starting_within_a_reads_reach_is_a_context() {
+        use Call::*;
+        // X: a 1-base deletion in an A run at 300; a listed 113-base deletion from 16 bases
+        // on, its bases running past any read's reach of X. A read over X carrying the long
+        // deletion fits REF (or X) with it, and is judged by its bases at X.
+        let c = contig(97, 299, b"GAAAAAC");
+        let x = Row::new(299, b"GA", b"G");
+        let long = Row::new(316, &c[316..430], &c[316..317]);
+        let rows = vec![x.clone(), long.clone()];
+        let (h_ref, h_alt) = (haplotype(&c, &[&long]), haplotype(&c, &[&x, &long]));
+        let reads = vec![
+            read(&h_ref, 250, 100, 250, "67M113D33M"),
+            read(&h_alt, 250, 100, 250, "50M1D16M113D34M"),
+            read(&c, 251, 100, 251, "100M"),
+        ];
+        assert_eq!(calls(&c, &rows, &x, &reads), vec![Ref, Alt, Ref]);
+    }
+
+    #[test]
     fn a_tie_with_another_allele_the_read_never_reaches_is_no_evidence_of_it() {
         use Call::*;
         // A listed 60-base deletion from 80 bases into X's deleted bases to past X's end:

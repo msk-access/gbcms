@@ -1361,11 +1361,13 @@ impl Site {
             triage_mode: triage_mode(),
         };
 
-        // The context rows a read over X can reach: REF span within X's ± the longest read.
+        // The context rows a read over X can reach: REF span meeting X's ± the longest read
+        // (a long deletion starting there runs past it, yet a read over X can carry its
+        // junction).
         let l = reads.iter().map(|r| r.len() as i64).max().unwrap_or(0);
         let (xs, xe) = site.spans[0];
         let rest: Vec<usize> = (1 + site.n_states..site.rows.len())
-            .filter(|&r| site.spans[r].0 >= xs - l && site.spans[r].1 <= xe + l)
+            .filter(|&r| site.spans[r].1 > xs - l && site.spans[r].0 < xe + l)
             .collect();
         if scorer == ScorerKind::Graph {
             // Every context at once: one graph per state, no enumeration.
