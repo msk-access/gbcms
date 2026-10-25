@@ -4,7 +4,7 @@ Interactive HTML report for per-variant Mutant Fragment Size Distribution analys
 
 ## Overview
 
-The `--mfsd-report` flag generates a self-contained HTML file alongside the MAF output (it requires `--format maf`). The report provides an interactive visual diagnostic for evaluating fragment size distributions at each variant position, helping distinguish **tumor-derived cfDNA** from **clonal hematopoiesis (CH)** artifacts.
+The `--mfsd-report` flag generates a self-contained HTML file alongside the MAF output (it requires `--format maf`). The report provides an interactive visual diagnostic for evaluating fragment size distributions at each variant position, grading how far each variant's ALT fragments are shorter than its REF fragments. The grade is evidence toward a tumor origin, never an origin call; it does not separate tumor from **clonal hematopoiesis (CH)**, which matched-normal data decide.
 
 !!! tip "Quick Start"
     ```bash

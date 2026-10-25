@@ -241,8 +241,8 @@ class OutputConfig(BaseModel):
         default=False,
         description=(
             "Enable Mutant Fragment Size Distribution (mFSD) analysis. "
-            "Adds 34 mFSD columns (KS test, LLR, mean sizes, pairwise comparisons, "
-            "derived metrics) to MAF output and 7 MFSD INFO fields to VCF. "
+            "Adds 41 mFSD columns (KS test, LLR, mean sizes, pairwise comparisons, "
+            "derived metrics) to MAF output and 13 MFSD INFO fields to VCF. "
             "Required when mfsd_parquet=True."
         ),
     )
@@ -469,7 +469,8 @@ class GbcmsRnaConfig(GbcmsBaseConfig):
 
     Inherits all shared fields from GbcmsBaseConfig. Overrides:
     - mode = "rna"
-    - Default MAPQ = 1 (STAR assigns low MAPQ to novel splice junctions)
+    - Default MAPQ = 1 (keeps the primaries of reads STAR placed at two to four loci,
+      MAPQ 3 or 1; see docs/reference/read-filters.md)
     - Default alignment backend = pairhmm (WFA2 + marginalized PairHMM)
     - Gap penalties relaxed for RT stutter tolerance
     - Strandedness filtering enabled by default

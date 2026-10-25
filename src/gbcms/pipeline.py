@@ -221,7 +221,8 @@ def run_implications(cfg: Any) -> list[str]:
             "(WARN_HOMOPOLYMER_DECOMP)"
         )
     if o.mfsd:
-        out.append("--mfsd adds 40 fragment-size (mFSD) columns")
+        added = len(MafWriter.column_names(mfsd=True)) - len(MafWriter.column_names())
+        out.append(f"--mfsd adds {added} fragment-size (mFSD) columns")
     if cfg.show_normalization:
         out.append("--show-normalization adds the norm_* columns")
     if o.observations_parquet:

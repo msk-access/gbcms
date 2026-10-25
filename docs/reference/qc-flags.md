@@ -14,8 +14,8 @@ anywhere else in the docs.
 | [Verdict and status reasons](#verdict-and-status-reasons) | `gbcms_status`, `gbcms_status_reason` | INFO `GS`, `GSR` | all |
 | [Diagnostics](#diagnostics) | `gbcms_diagnostic` | INFO `GD` | all (some RNA, some PairHMM only) |
 | [MNP rescue](#mnp-rescue) | `gbcms_rescue` | INFO `GR` | `--rescue-mnp` |
-| [ASJD splice flags](#asjd-splice-flags) | `asjd_diagnostic`, `asjd_*_motif` | not in VCF | RNA with `--gtf` |
-| [QC columns](#qc-columns) | `rna_editing_site`, `asjd_flag`, `mfsd_ks_valid`, `mfsd_alt_confidence`, `mfsd_ch_flag` | INFO `RED`; mFSD INFO | RNA; `--mfsd` |
+| [ASJD splice flags](#asjd-splice-flags) | `asjd_diagnostic`, `asjd_*_motif` | INFO `ASJDD`, `ASJDRM`, `ASJDAM` | RNA with `--gtf` |
+| [QC columns](#qc-columns) | `rna_editing_site`, `asjd_flag`, `mfsd_ks_valid`, `mfsd_alt_confidence`, `mfsd_ch_flag` | INFO `RED`, `ASJD`; mFSD INFO | RNA; `--mfsd` |
 | [mFSD report classes](#mfsd-report-classes) | — (HTML report) | — | `--mfsd-report` |
 | [Record shapes in VCF output](#record-shapes-in-vcf-output) | — | ALT `<NON_SEQUENCE>`, INFO `MAF_*`, `NORM_*` | MAF input; `--show-normalization` |
 

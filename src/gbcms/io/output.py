@@ -420,7 +420,7 @@ class MafWriter(OutputWriter):
                 Only applies to MAF→MAF; VCF→MAF always uses BAM name.
             show_normalization: If True, append norm_* columns showing
                 left-aligned coordinates in the output.
-            mfsd: If True, append 34 mFSD columns (KS test, LLR, mean sizes,
+            mfsd: If True, append 41 mFSD columns (KS test, LLR, mean sizes,
                 pairwise comparisons, derived metrics). Controlled by --mfsd flag.
             mode: Counting mode ('dna' or 'rna'). In RNA mode, 5 RNA-specific
                 columns are appended instead of mFSD columns.
@@ -549,7 +549,7 @@ class MafWriter(OutputWriter):
             ]
         )
         if mfsd:
-            # ── mFSD: Mutant Fragment Size Distribution (40 columns) ──────────
+            # ── mFSD: Mutant Fragment Size Distribution (41 columns) ──────────
             # Only appended when --mfsd is set. Without the flag these columns
             # are completely absent from output (not NA-filled or zero-filled).
             cols += [
@@ -1039,7 +1039,7 @@ class VcfWriter(OutputWriter):
         ``<NON_SEQUENCE>`` ALT for MAF input).
 
         Includes provenance (version, command), reference, contig, and FILTER
-        headers per VCF 4.2 spec. mFSD ##INFO fields (7 lines) are only
+        headers per VCF 4.2 spec. mFSD ##INFO fields (13 lines) are only
         included when self.mfsd is True.
         """
         headers = [
@@ -1087,7 +1087,7 @@ class VcfWriter(OutputWriter):
             ]
         )
         if self.mfsd:
-            # mFSD INFO fields (7 primary diagnostics). VCF key = MAF column name uppercased.
+            # mFSD INFO fields (13). VCF key = MAF column name uppercased.
             # Only added when --mfsd is set — keeps VCF header minimal for standard runs.
             headers.extend(
                 [
@@ -1254,7 +1254,7 @@ class VcfWriter(OutputWriter):
         if variant.metadata:
             info_parts.extend(maf_origin_info(variant))
         if self.mfsd:
-            # mFSD primary diagnostic INFO fields (7 values).
+            # mFSD INFO fields (13 values).
             # Only populated when --mfsd is set; '.' for NaN per VCF spec.
             info_parts.extend(
                 [

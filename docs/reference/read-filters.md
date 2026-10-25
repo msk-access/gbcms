@@ -210,9 +210,9 @@ default), reads that fail the MAPQ threshold are checked for the `NH:i:1` tag
 flowchart TD
     Read(["📖 RNA Read"])
     Read -->|"read.mapq"| MAPQ{"MAPQ ≥ min_mapq?\n(default: 1)"}
-    MAPQ -->|"Yes — MAPQ=255\nunique alignment"| Pass(["✅ Pass"]):::pass
-    MAPQ -->|"No — MAPQ=0\n(check NH tag)"| NH{"NH:i:1?"}
-    NH -->|"Yes — novel junction\nunique but low MAPQ"| Rescue(["✅ Rescued"]):::rescue
+    MAPQ -->|"Yes — e.g. STAR 255\n(unique), 3 or 1"| Pass(["✅ Pass"]):::pass
+    MAPQ -->|"No — below min_mapq\n(check NH tag)"| NH{"NH:i:1?"}
+    NH -->|"Yes — uniquely aligned\nbut low MAPQ"| Rescue(["✅ Rescued"]):::rescue
     NH -->|"No — NH>1\nmulti-mapper"| Drop(["❌ Discard"]):::drop
 
     classDef pass fill:#27ae60,color:#fff,stroke:#1e8449,stroke-width:2px;
@@ -267,7 +267,9 @@ same strand (`forward` swaps them):
 | R2 | Reverse | + | Antisense |
 
 !!! tip
-    Disable strandedness filtering with `--no-strandedness` for unstranded RNA-seq libraries.
+    For an unstranded RNA-seq library pass `--strandedness unstranded`: it turns off both the filter and
+    ASJD's strand-discordance check. `--no-strandedness` alone only stops the filtering; reads are still
+    folded under the `reverse` protocol (see [`gbcms rna`](../cli/rna.md#strandedness-filtering)).
 
 ---
 
