@@ -28,7 +28,7 @@ pub(crate) const DELTA: i32 = 4;
 /// changes the haplotype carries there.
 pub(crate) const BAND_SLACK: i64 = 16;
 /// The length of the read's k-mers looked for off the band.
-const COPY_K: usize = 20;
+pub(crate) const COPY_K: usize = 20;
 
 /// Unreachable.
 const NEG: i32 = i32::MIN / 4;

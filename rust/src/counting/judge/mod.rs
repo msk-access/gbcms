@@ -4,13 +4,19 @@
 //! row's site) and counts ALT or REF only by one confident base; otherwise it is depth
 //! only. Design: `docs/proposals/haplotype-judge.md`.
 //!
-//! - [`score`]: the scorer, a read against one haplotype.
+//! - [`graph`]: the scorer, a read against each state's sequence graph holding every
+//!   context at once (the default).
+//! - [`score`]: a read against one haplotype (the enumerated scorer behind
+//!   `GBCMS_JUDGE_SCORER=enumerated`, and the alignments a call is examined on).
 //! - [`haplotypes`]: the window, the site's states and the contexts, built once per row.
 //! - [`decide`]: a read's call, mapped onto `ClassifyResult`.
+//! - [`triage`]: coloured k-mer triage in front of the graph scorer (off).
 
 mod decide;
+mod graph;
 mod haplotypes;
 mod score;
+mod triage;
 
 use std::cell::{OnceCell, RefCell};
 use std::collections::HashMap;
@@ -148,6 +154,12 @@ pub(crate) fn site_for(v: &Variant, guard: Option<&Guard>, reference: &CachedFas
     let candidates = Candidates { listed, discovered, background, masked, found };
     let site = Site::build(target, &candidates, (lo, window), reads);
     match &site {
+        Some(s) if s.scorer == haplotypes::ScorerKind::Graph => debug!(
+            "haplotype judge {}:{} {}>{}: {} state graphs ({} bases){} from {} reads; site {}-{}",
+            v.chrom, v.pos + 1, v.ref_allele, v.alt_allele, s.graphs.len(),
+            s.graphs.iter().map(|g| g.graph.len()).sum::<usize>(),
+            if s.triage.is_some() { ", triage on" } else { "" }, reads.len(), s.site_span().0 + 1, s.site_span().1,
+        ),
         Some(s) => debug!(
             "haplotype judge {}:{} {}>{}: {} haplotypes over {} contexts{} from {} reads; site {}-{}",
             v.chrom, v.pos + 1, v.ref_allele, v.alt_allele, s.haps.len(), s.n_contexts,
@@ -208,7 +220,7 @@ fn indel_row(p: i64, n: i64, base: &dyn Fn(i64) -> Option<u8>, reads: &[ReadView
 mod tests {
     use super::decide::{judge, Call};
     use super::haplotypes::tests::{contig, random_seq, row, site};
-    use super::haplotypes::ReadView;
+    use super::haplotypes::{ReadView, ScorerKind};
     use super::*;
     use rust_htslib::bam::record::Cigar;
 
@@ -415,7 +427,7 @@ mod tests {
             ..Candidates::default()
         };
         let reads = [read(&both, 220, 151, 220, "151M"), read(&h_snv, 221, 151, 221, "151M"), read(&c, 222, 151, 222, "151M")];
-        let s = Site::build(ins.clone(), &candidates, (0, c.clone()), &reads).unwrap();
+        let s = Site::build_with(ScorerKind::Enumerated, ins.clone(), &candidates, (0, c.clone()), &reads).unwrap();
         let got: Vec<Call> = reads.iter().map(|r| judge(&s, r, MIN_BQ, false).call).collect();
         assert_eq!(got, vec![Alt, Ref, Ref]);
         assert_eq!(s.haps.len(), 4, "REF, X, and each with the SNV: the spelled alleles are theirs");
@@ -481,7 +493,7 @@ mod tests {
         let x = rows[50].clone();
         let reads: Vec<ReadView> = (0..30).map(|i| read(&c, 380 + i, 150, 380 + i as i64, "150M")).collect();
         let candidates = Candidates { listed: rows.into_iter().filter(|r| *r != x).collect(), ..Candidates::default() };
-        let s = Site::build(x, &candidates, (0, c.clone()), &reads).unwrap();
+        let s = Site::build_with(ScorerKind::Enumerated, x, &candidates, (0, c.clone()), &reads).unwrap();
         assert!(s.haps.len() <= haplotypes::MAX_HAPS, "{} haplotypes", s.haps.len());
     }
 

@@ -27,6 +27,7 @@ use std::collections::{BTreeMap, BTreeSet, HashMap};
 
 use rust_htslib::bam::record::Cigar;
 
+use super::graph::{self, Graph, GraphBuilder, GraphRead, ShortReads, Workspace};
 use super::score::{self, Alignment, Band, Placed, BAND_SLACK, DELTA, WILD};
 use crate::counting::carrier::{GUARD_MIN_READS, GUARD_REF_SHARE};
 
@@ -362,6 +363,65 @@ pub(crate) struct Site {
     /// Contexts kept, and whether any candidate context was left out by the cap.
     pub(crate) n_contexts: usize,
     pub(crate) cap_exceeded: bool,
+    /// How reads are scored: against `haps` (enumerated) or against `graphs`.
+    pub(crate) scorer: ScorerKind,
+    /// The graph scorer's graphs, one per state of X's site: REF's bases, X, then the
+    /// other states.
+    pub(crate) graphs: Vec<StateGraph>,
+    /// The coloured k-mer index triage reads first, where it is on and the site allows it.
+    pub(crate) triage: Option<super::triage::Index>,
+    pub(crate) triage_mode: TriageMode,
+}
+
+/// Which scorer weighs a read (`GBCMS_JUDGE_SCORER`): `graph`, the judge's scorer and the
+/// default, one programme per site state over a sequence graph holding every context;
+/// `enumerated`, the contexts enumerated and each haplotype scored. TEMPORARY: the
+/// enumeration stays behind the switch for one round, as the reference the graph is
+/// checked against (identical scores and calls where it is exact, four context rows or
+/// fewer). Read when a site is built, so a process may switch it.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum ScorerKind {
+    Graph,
+    Enumerated,
+}
+
+pub(crate) fn scorer_kind() -> ScorerKind {
+    match std::env::var("GBCMS_JUDGE_SCORER").as_deref() {
+        Ok("enumerated") => ScorerKind::Enumerated,
+        _ => ScorerKind::Graph,
+    }
+}
+
+/// TEMPORARY, kept as a measured negative result: coloured k-mer triage in front of the
+/// graph scorer (`GBCMS_JUDGE_TRIAGE`): `off`, the default; `on`, a read triage decides is
+/// not scored; `check`, triage and the scorer both run, every triage-decided read is traced
+/// with both calls, and the scorer's call counts. As built it disagreed with the full
+/// programme on 0.1-0.6% of the reads it decided; confirmed exactly
+/// (`GBCMS_JUDGE_TRIAGE_EXACT`) it disagrees on none but saves only 2-18% of the time, so
+/// it stays off.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum TriageMode {
+    Off,
+    On,
+    Check,
+}
+
+pub(crate) fn triage_mode() -> TriageMode {
+    match std::env::var("GBCMS_JUDGE_TRIAGE").as_deref() {
+        Ok("on") => TriageMode::On,
+        Ok("check") => TriageMode::Check,
+        _ => TriageMode::Off,
+    }
+}
+
+/// One state of X's site and its graph: the window with the state's row applied (none for
+/// REF's bases) and every context row in reach that can lie with it as a bubble.
+#[derive(Debug, Clone)]
+pub(crate) struct StateGraph {
+    pub(crate) class: Class,
+    /// The state's row (X is 0), None for REF's bases.
+    pub(crate) row: Option<usize>,
+    pub(crate) graph: Graph,
 }
 
 /// The rows a site is built from, besides X: the input's other rows within reach (a
@@ -907,11 +967,23 @@ impl Site {
     /// from `candidates` and the variant's `reads`. None when the window does not hold
     /// the target's REF.
     pub(crate) fn build(target: Row, candidates: &Candidates, window: (i64, Vec<u8>), reads: &[ReadView]) -> Option<Site> {
-        Site::build_with(target, candidates, window, reads, other_option().rule)
+        Site::build_with(scorer_kind(), target, candidates, window, reads)
     }
 
-    /// [`Site::build`], the found alleles kept as states by `rule`.
-    fn build_with(
+    /// [`Site::build`] with the scorer named.
+    pub(crate) fn build_with(
+        scorer: ScorerKind,
+        target: Row,
+        candidates: &Candidates,
+        window: (i64, Vec<u8>),
+        reads: &[ReadView],
+    ) -> Option<Site> {
+        Site::build_ruled(scorer, target, candidates, window, reads, other_option().rule)
+    }
+
+    /// [`Site::build`] with the scorer named, the found alleles kept as states by `rule`.
+    fn build_ruled(
+        scorer: ScorerKind,
         target: Row,
         candidates: &Candidates,
         (start, reference): (i64, Vec<u8>),
@@ -1144,6 +1216,10 @@ impl Site {
             haps: Vec::new(),
             n_contexts: 0,
             cap_exceeded: false,
+            scorer,
+            graphs: Vec::new(),
+            triage: None,
+            triage_mode: triage_mode(),
         };
 
         // The context rows a read over X can reach: REF span within X's ± the longest read.
@@ -1152,6 +1228,16 @@ impl Site {
         let rest: Vec<usize> = (1 + site.n_states..site.rows.len())
             .filter(|&r| site.spans[r].0 >= xs - l && site.spans[r].1 <= xe + l)
             .collect();
+        if scorer == ScorerKind::Graph {
+            // Every context at once: one graph per state, no enumeration.
+            site.graphs = site.state_graphs(&rest);
+            site.drop_spelled_states(&rest);
+            site.drop_graph_spellings(&found_states, reads, rule);
+            if site.triage_mode != TriageMode::Off {
+                site.triage = super::triage::Index::build(&site, l);
+            }
+            return Some(site);
+        }
         let (ordered, cap) = if rest.len() <= ALL_SUBSETS {
             (site.subsets(&rest), ALL_SUBSETS_CAP)
         } else {
@@ -1940,6 +2026,405 @@ fn holds_bases(hay: &[u8], needle: &[u8]) -> bool {
     hay.windows(needle.len()).any(|w| w.iter().zip(needle).all(|(&h, &n)| h == n || h == WILD || n == WILD))
 }
 
+/// A zone's alternatives (the sets of its rows at one place that can lie together) up to
+/// which it is laid out as parallel copies; past it the zone's rows are plain bubbles, so
+/// two of them at one place may share a path (a haplotype more, never one fewer).
+const ZONE_MAX_ALTS: usize = 64;
+/// Rows inside an other state's span up to which every set of them is tried when asking
+/// whether the state spells X or REF beside them.
+const SPELL_MAX_ROWS: usize = 6;
+
+/// The graph scorer's side of a site.
+impl Site {
+    /// The graph per state of X's site: REF's bases, X, then each other state; each with
+    /// every row of `rest` (the context rows in the reads' reach) that can lie with the
+    /// state as a bubble.
+    fn state_graphs(&self, rest: &[usize]) -> Vec<StateGraph> {
+        let mut states: Vec<(Class, Option<usize>)> = vec![(Class::Ref, None), (Class::Alt, Some(0))];
+        states.extend((1..=self.n_states).map(|r| (Class::Other, Some(r))));
+        states
+            .into_iter()
+            .map(|(class, row)| {
+                let optional: Vec<usize> = rest.iter().copied().filter(|&c| row.is_none_or(|s| !self.conflict(s, c))).collect();
+                StateGraph { class, row, graph: self.graph_of(row, &optional) }
+            })
+            .collect()
+    }
+
+    fn spans_meet(&self, a: usize, b: usize) -> bool {
+        let ((s, e), (t, f)) = (self.spans[a], self.spans[b]);
+        s < f && t < e
+    }
+
+    /// The window's graph with `forced` applied and `optional` as bubbles. A path cannot
+    /// take two rows whose REF spans meet; two rows at one place whose spans do not meet
+    /// (two length changes in one repeat) are kept apart by a zone: the window over them
+    /// laid out once per set of them that can lie together, each copy with the zone's
+    /// other rows as bubbles.
+    pub(crate) fn graph_of(&self, forced: Option<usize>, optional: &[usize]) -> Graph {
+        let mut all: Vec<usize> = forced.into_iter().chain(optional.iter().copied()).collect();
+        all.sort_by_key(|&r| (self.spans[r], r));
+        all.dedup();
+        // rows at one place whose spans do not meet, joined
+        let mut parent: Vec<usize> = (0..all.len()).collect();
+        fn find(p: &mut [usize], x: usize) -> usize {
+            let mut r = x;
+            while p[r] != r {
+                r = p[r];
+            }
+            p[x] = r;
+            r
+        }
+        let mut paired = vec![false; all.len()];
+        for i in 0..all.len() {
+            for j in i + 1..all.len() {
+                let (a, b) = (all[i], all[j]);
+                if self.conflict(a, b) && !self.spans_meet(a, b) {
+                    let (ri, rj) = (find(&mut parent, i), find(&mut parent, j));
+                    parent[ri] = rj;
+                    paired[i] = true;
+                    paired[j] = true;
+                }
+            }
+        }
+        // zones: [lo, hi) and the rows at one place in it
+        let mut groups: BTreeMap<usize, Vec<usize>> = BTreeMap::new();
+        for i in 0..all.len() {
+            if paired[i] {
+                let r = find(&mut parent, i);
+                groups.entry(r).or_default().push(all[i]);
+            }
+        }
+        let mut zones: Vec<((i64, i64), Vec<usize>)> = groups
+            .into_values()
+            .map(|rows| {
+                let lo = rows.iter().map(|&r| self.spans[r].0).min().unwrap_or(0);
+                let hi = rows.iter().map(|&r| self.spans[r].1).max().unwrap_or(0);
+                ((lo, hi), rows)
+            })
+            .collect();
+        // merged where they meet, widened over every row reaching across an end
+        loop {
+            zones.sort_by_key(|z| z.0);
+            let mut merged: Vec<((i64, i64), Vec<usize>)> = Vec::new();
+            for z in zones {
+                match merged.last_mut() {
+                    Some(m) if z.0 .0 < m.0 .1 => {
+                        m.0 .1 = m.0 .1.max(z.0 .1);
+                        m.1.extend(z.1);
+                    }
+                    _ => merged.push(z),
+                }
+            }
+            let mut grew = false;
+            for z in merged.iter_mut() {
+                for &r in &all {
+                    let (s, e) = self.spans[r];
+                    if s < z.0 .1 && e > z.0 .0 && (s < z.0 .0 || e > z.0 .1) {
+                        z.0 = (z.0 .0.min(s), z.0 .1.max(e));
+                        grew = true;
+                    }
+                }
+            }
+            zones = merged;
+            if !grew {
+                break;
+            }
+        }
+        // each zone's alternatives; a zone with too many is left to plain bubbles
+        // per zone, its span and the sets of its rows at one place laid out side by side
+        type Zone = ((i64, i64), Vec<Vec<usize>>);
+        let laid: Vec<Zone> = zones
+            .into_iter()
+            .filter_map(|(span, at_one)| {
+                let alts = self.lying_together(&at_one, forced, ZONE_MAX_ALTS);
+                if alts.is_none() {
+                    log::debug!("haplotype judge: a zone of {} rows at one place has over {} sets; its rows are bubbles", at_one.len(), ZONE_MAX_ALTS);
+                }
+                alts.map(|a| (span, a))
+            })
+            .collect();
+        let wn = self.reference.len() as i64;
+        let inside = |r: usize, (lo, hi): (i64, i64)| self.spans[r].0 >= lo && self.spans[r].1 <= hi;
+        let mut gb = GraphBuilder::default();
+        let mut prev: Vec<usize> = Vec::new();
+        let mut pos = 0i64;
+        fn join(gb: &mut GraphBuilder, prev: &mut Vec<usize>, entry: Vec<usize>, exit: Vec<usize>) {
+            for &a in prev.iter() {
+                for &b in &entry {
+                    gb.edge(a, b);
+                }
+            }
+            *prev = exit;
+        }
+        for ((lo, hi), alts) in &laid {
+            if pos < *lo {
+                let f: Vec<usize> = forced.into_iter().filter(|&r| inside(r, (pos, *lo))).collect();
+                let o: Vec<usize> = all.iter().copied().filter(|&r| Some(r) != forced && inside(r, (pos, *lo))).collect();
+                let (entry, exit) = self.region(&mut gb, (pos, *lo), &f, &o);
+                join(&mut gb, &mut prev, entry, exit);
+            }
+            let zone_rows: Vec<usize> = all.iter().copied().filter(|&r| inside(r, (*lo, *hi))).collect();
+            let (mut entries, mut exits) = (Vec::new(), Vec::new());
+            for set in alts {
+                let mut f: Vec<usize> = set.clone();
+                if let Some(x) = forced.filter(|&x| inside(x, (*lo, *hi)) && !set.contains(&x)) {
+                    f.push(x);
+                }
+                // the zone's other rows: those at one place with none of the set's
+                let o: Vec<usize> = zone_rows
+                    .iter()
+                    .copied()
+                    .filter(|&r| !f.contains(&r) && !alts.iter().flatten().any(|&c| c == r))
+                    .filter(|&r| f.iter().all(|&c| !self.conflict(c, r)))
+                    .collect();
+                let (entry, exit) = self.region(&mut gb, (*lo, *hi), &f, &o);
+                entries.extend(entry);
+                exits.extend(exit);
+            }
+            join(&mut gb, &mut prev, entries, exits);
+            pos = *hi;
+        }
+        if pos < wn {
+            let f: Vec<usize> = forced.into_iter().filter(|&r| inside(r, (pos, wn))).collect();
+            let o: Vec<usize> = all.iter().copied().filter(|&r| Some(r) != forced && inside(r, (pos, wn))).collect();
+            let (entry, exit) = self.region(&mut gb, (pos, wn), &f, &o);
+            join(&mut gb, &mut prev, entry, exit);
+        }
+        gb.finish()
+    }
+
+    /// The sets of `rows` (rows at one place) that can lie together, `forced` in each
+    /// where it is one of them; None past `cap`.
+    fn lying_together(&self, rows: &[usize], forced: Option<usize>, cap: usize) -> Option<Vec<Vec<usize>>> {
+        let mut rows: Vec<usize> = rows.to_vec();
+        rows.sort_unstable();
+        rows.dedup();
+        let must = forced.filter(|f| rows.contains(f));
+        let mut out: Vec<Vec<usize>> = Vec::new();
+        fn rec(site: &Site, rows: &[usize], i: usize, chosen: &mut Vec<usize>, must: Option<usize>, out: &mut Vec<Vec<usize>>, cap: usize) -> bool {
+            if out.len() > cap {
+                return false;
+            }
+            if i == rows.len() {
+                if must.is_none_or(|m| chosen.contains(&m)) {
+                    out.push(chosen.clone());
+                }
+                return out.len() <= cap;
+            }
+            let r = rows[i];
+            if chosen.iter().all(|&c| !site.conflict(c, r)) {
+                chosen.push(r);
+                let ok = rec(site, rows, i + 1, chosen, must, out, cap);
+                chosen.pop();
+                if !ok {
+                    return false;
+                }
+            }
+            if Some(r) == must {
+                return true;
+            }
+            rec(site, rows, i + 1, chosen, must, out, cap)
+        }
+        rec(self, &rows, 0, &mut Vec::new(), must, &mut out, cap).then_some(out)
+    }
+
+    /// The window `[a, b)` as reference segments with `forced` applied (the reference cut
+    /// under them) and `optional` as bubbles (those meeting a forced row left out). Its
+    /// entry segments (starting at `a`) and exit segments (ending at `b`).
+    fn region(&self, gb: &mut GraphBuilder, (a, b): (i64, i64), forced: &[usize], optional: &[usize]) -> (Vec<usize>, Vec<usize>) {
+        let rows: Vec<usize> = forced
+            .iter()
+            .copied()
+            .chain(optional.iter().copied().filter(|&o| forced.iter().all(|&f| !self.spans_meet(f, o) && f != o)))
+            .collect();
+        let mut cuts: BTreeSet<i64> = BTreeSet::from([a, b]);
+        for &r in &rows {
+            cuts.insert(self.spans[r].0);
+            cuts.insert(self.spans[r].1);
+        }
+        let cuts: Vec<i64> = cuts.into_iter().collect();
+        let covered = |p: i64| forced.iter().any(|&f| self.spans[f].0 <= p && p < self.spans[f].1);
+        let (mut starting, mut ending): (BTreeMap<i64, Vec<usize>>, BTreeMap<i64, Vec<usize>>) = Default::default();
+        for w in cuts.windows(2) {
+            let (p, q) = (w[0], w[1]);
+            if covered(p) {
+                continue;
+            }
+            let bases: Vec<u8> = (p..q)
+                .map(|c| if self.masked.binary_search(&c).is_ok() { WILD } else { self.reference[c as usize] })
+                .collect();
+            let id = gb.segment(None, (p, q), bases);
+            starting.entry(p).or_default().push(id);
+            ending.entry(q).or_default().push(id);
+        }
+        for &r in &rows {
+            let (s, e) = self.spans[r];
+            if self.rows[r].alt_al.is_empty() {
+                continue;
+            }
+            let id = gb.segment(Some(r), (s, e), self.rows[r].alt_al.clone());
+            starting.entry(s).or_default().push(id);
+            ending.entry(e).or_default().push(id);
+        }
+        for (p, ins) in &ending {
+            if *p == b {
+                continue;
+            }
+            if let Some(outs) = starting.get(p) {
+                for &x in ins {
+                    for &y in outs {
+                        gb.edge(x, y);
+                    }
+                }
+            }
+        }
+        (starting.remove(&a).unwrap_or_default(), ending.remove(&b).unwrap_or_default())
+    }
+
+    /// The haplotype the graph of `state` spells along a path taking `rows`: the state's
+    /// row with them.
+    pub(crate) fn hap_on_path(&self, state: usize, rows: &[usize]) -> Hap {
+        let mut all: Vec<usize> = self.graphs[state].row.into_iter().chain(rows.iter().copied()).collect();
+        all.sort_unstable();
+        all.dedup();
+        Hap::build(self, &all)
+    }
+
+    /// The read as the graph scorer reads it: its aligned positions in window coordinates,
+    /// made non-decreasing.
+    pub(crate) fn graph_read<'r>(&self, read: &'r ReadView) -> GraphRead<'r> {
+        let mut rp: Vec<i64> = Vec::with_capacity(read.refpos.len());
+        let mut last = i64::MIN;
+        for &p in &read.refpos {
+            last = last.max(p - self.start);
+            rp.push(last);
+        }
+        let first = read.refpos.iter().copied().min().unwrap_or(read.ref_start).min(read.ref_start);
+        let end = read.refpos.iter().copied().max().unwrap_or(read.ref_end).max(read.ref_end);
+        GraphRead { seq: &read.seq, rp, span: (first - self.start, end - self.start) }
+    }
+
+    /// An other state whose allele spells X's haplotype (or REF's) with rows of the reads'
+    /// reach inside its place (an allele the reads spell over X with a listed neighbour
+    /// beside it) is that haplotype: X's or REF's, never another allele's. Its graph is
+    /// dropped, as the enumeration drops each haplotype of it spelling one of theirs.
+    fn drop_spelled_states(&mut self, rest: &[usize]) {
+        let mut dropped: Vec<usize> = Vec::new();
+        for (k, st) in self.graphs.iter().enumerate() {
+            let Some(o) = st.row.filter(|_| st.class == Class::Other) else { continue };
+            let (ps, pe) = (self.spans[o].0.min(self.places[o].0), self.spans[o].1.max(self.places[o].1));
+            let inside: Vec<usize> = rest.iter().copied().filter(|&r| self.spans[r].0 >= ps && self.spans[r].1 <= pe).take(SPELL_MAX_ROWS).collect();
+            let own = Hap::build(self, &[o]).seq;
+            let sets = self.lying_together(&inside, None, 1 << SPELL_MAX_ROWS).unwrap_or_else(|| vec![Vec::new()]);
+            let spells = sets.iter().any(|c| {
+                let with_x = c.iter().all(|&r| !self.conflict(0, r)) && {
+                    let mut h: Vec<usize> = std::iter::once(0).chain(c.iter().copied()).collect();
+                    h.sort_unstable();
+                    Hap::build(self, &h).seq == own
+                };
+                with_x || Hap::build(self, c).seq == own
+            });
+            if spells {
+                dropped.push(k);
+            }
+        }
+        for k in dropped.into_iter().rev() {
+            self.graphs.remove(k);
+        }
+    }
+
+    /// [`Site::drop_spellings`] on the graphs: a found allele stays a state only where the
+    /// reads tell it from X and from REF by [`DELTA`], the state's graph beating REF's and
+    /// X's, on the found floor of reads (`told`: [`GUARD_MIN_READS`] and
+    /// [`GUARD_REF_SHARE`] of the site's; `toldK`: K reads), those that write it first,
+    /// then the rest. The other rules read the enumerated haplotypes' bases and are
+    /// weighed under the enumerated scorer only; here they fall back to `told`, with a
+    /// warning.
+    fn drop_graph_spellings(&mut self, found: &[(Row, &[usize])], reads: &[ReadView], rule: FoundRule) {
+        let floor = match rule {
+            FoundRule::All => return,
+            FoundRule::Told(k) if k > 0 => k as f64,
+            FoundRule::Told(_) => (GUARD_REF_SHARE * reads.len() as f64).max(f64::from(GUARD_MIN_READS)),
+            other => {
+                static WARNED: std::sync::Once = std::sync::Once::new();
+                WARNED.call_once(|| {
+                    log::warn!(
+                        "haplotype judge: the found-allele rule {other:?} is weighed under the enumerated scorer only \
+                         (GBCMS_JUDGE_SCORER=enumerated); the graph scorer applies told"
+                    )
+                });
+                (GUARD_REF_SHARE * reads.len() as f64).max(f64::from(GUARD_MIN_READS))
+            }
+        };
+        let mut ws = Workspace::default();
+        let mut dropped: Vec<usize> = Vec::new();
+        let given: Vec<usize> = (0..self.graphs.len()).filter(|&k| self.graphs[k].class != Class::Other).collect();
+        for (row, by) in found {
+            let Some(o) = self.rows.iter().position(|r| r == row).filter(|&o| self.is_state(o)) else {
+                continue;
+            };
+            let Some(k) = self.graphs.iter().position(|g| g.row == Some(o)) else { continue };
+            let mut told = 0usize;
+            let rest = (0..reads.len()).filter(|i| by.binary_search(i).is_err());
+            for read in by.iter().copied().chain(rest).filter_map(|i| reads.get(i)) {
+                let gr = self.graph_read(read);
+                let own = graph::score(&ShortReads, &gr, &self.graphs[k].graph, &mut ws);
+                let tells = given.iter().all(|&g| graph::score(&ShortReads, &gr, &self.graphs[g].graph, &mut ws) <= own - DELTA);
+                if tells {
+                    told += 1;
+                    if told as f64 >= floor {
+                        break;
+                    }
+                }
+            }
+            let keep = told as f64 >= floor;
+            log::debug!(
+                "haplotype judge: the found allele {}:{}>{} at {}:{}>{} (written by {} of {} reads, told on {told}) → {}",
+                row.pos + 1,
+                String::from_utf8_lossy(&row.ref_al),
+                String::from_utf8_lossy(&row.alt_al),
+                self.rows[0].pos + 1,
+                String::from_utf8_lossy(&self.rows[0].ref_al),
+                String::from_utf8_lossy(&self.rows[0].alt_al),
+                by.len(),
+                reads.len(),
+                if keep { "another allele, a state" } else { "X's or REF's spelling, not a state" },
+            );
+            if !keep {
+                dropped.push(k);
+            }
+        }
+        dropped.sort_unstable();
+        dropped.dedup();
+        let gone: Vec<usize> = dropped.iter().filter_map(|&k| self.graphs[k].row).collect();
+        for k in dropped.into_iter().rev() {
+            self.graphs.remove(k);
+        }
+        if !gone.is_empty() {
+            self.max_shift = (0..self.rows.len())
+                .filter(|r| !gone.contains(r))
+                .map(|r| self.rows[r].ref_al.len().abs_diff(self.rows[r].alt_al.len()) as i64)
+                .sum();
+        }
+    }
+
+    /// X's site in window coordinates, `[s, e)`.
+    pub(crate) fn site_window(&self) -> (i64, i64) {
+        self.site_window
+    }
+
+    /// The reference window: its genome start and bases.
+    pub(crate) fn window(&self) -> (i64, &[u8]) {
+        (self.start, &self.reference)
+    }
+
+    /// X's REF span in window coordinates.
+    pub(crate) fn x_span(&self) -> (i64, i64) {
+        self.spans[0]
+    }
+}
+
 /// One read's evidence on the context rows (sorted row indices).
 #[derive(Default)]
 struct Evidence {
@@ -2144,12 +2629,23 @@ pub(crate) mod tests {
         Row::new(pos - 1, r.as_bytes(), a.as_bytes())
     }
 
-    /// The site of `target` among `listed` rows on `contig`, with reads of `l` bases.
+    /// The site of `target` among `listed` rows on `contig`, with reads of `l` bases, scored
+    /// as `GBCMS_JUDGE_SCORER` says (the graph by default).
     pub(crate) fn site(contig: &[u8], target: &Row, listed: &[Row], l: usize) -> Site {
+        site_with(scorer_kind(), contig, target, listed, l)
+    }
+
+    /// [`site`] with the scorer named.
+    pub(crate) fn site_with(scorer: ScorerKind, contig: &[u8], target: &Row, listed: &[Row], l: usize) -> Site {
         let others: Vec<Row> = listed.iter().filter(|r| *r != target).cloned().collect();
         let read = ReadView::new(&vec![b'A'; l], &vec![30; l], 0, &[Cigar::Match(l as u32)], (0, l), 20).unwrap();
         let candidates = Candidates { listed: others, ..Candidates::default() };
-        Site::build(target.clone(), &candidates, (0, contig.to_vec()), &[read]).unwrap()
+        Site::build_with(scorer, target.clone(), &candidates, (0, contig.to_vec()), &[read]).unwrap()
+    }
+
+    /// [`site`] under the enumerated scorer: the tests of its contexts.
+    pub(crate) fn enumerated_site(contig: &[u8], target: &Row, listed: &[Row], l: usize) -> Site {
+        site_with(ScorerKind::Enumerated, contig, target, listed, l)
     }
 
     #[test]
@@ -2159,7 +2655,7 @@ pub(crate) mod tests {
         let other = |p: i64| if c[p as usize - 1] == b'A' { "C".to_string() } else { "A".to_string() };
         let x = row(300, &base(300), &other(300));
         let near: Vec<Row> = [250, 270, 330, 360].iter().map(|&p| row(p, &base(p), &other(p))).collect();
-        let s = site(&c, &x, &near, 100);
+        let s = enumerated_site(&c, &x, &near, 100);
         // An SNV's site: REF, X and the two other bases; 16 contexts of four rows.
         assert_eq!(s.n_states, 2);
         assert_eq!(s.n_contexts, 16);
@@ -2169,7 +2665,7 @@ pub(crate) mod tests {
         assert_eq!((alt, reference), (16, 16), "every context with X and with REF");
         // A row out of the reads' reach is no context.
         let far = row(450, &base(450), &other(450));
-        let s = site(&c, &x, &[near[0].clone(), far], 100);
+        let s = enumerated_site(&c, &x, &[near[0].clone(), far], 100);
         assert_eq!(s.n_contexts, 2);
     }
 
@@ -2191,7 +2687,7 @@ pub(crate) mod tests {
         let reads: Vec<ReadView> =
             (0..3).map(|i| view(&both, 230 + i)).chain((0..2).map(|i| view(&lone, 300 + i))).chain([view(&c, 250)]).collect();
         let candidates = Candidates { listed: near, ..Candidates::default() };
-        let s = Site::build(x, &candidates, (0, c.clone()), &reads).unwrap();
+        let s = Site::build_with(ScorerKind::Enumerated, x, &candidates, (0, c.clone()), &reads).unwrap();
         // {}, six singletons and the pair: eight contexts, each with REF, X and two bases.
         assert_eq!((s.n_contexts, s.haps.len(), s.cap_exceeded), (8, 32, false));
     }
@@ -2228,7 +2724,7 @@ pub(crate) mod tests {
             carrier(&[&x, &rows[5]], 340),
         ];
         let candidates = Candidates { listed: rows, ..Candidates::default() };
-        let s = Site::build(x, &candidates, (0, c.clone()), &reads).unwrap();
+        let s = Site::build_with(ScorerKind::Enumerated, x, &candidates, (0, c.clone()), &reads).unwrap();
         assert!(s.haps.len() > 8);
         for read in &reads {
             let mut cached = Scorer::new(read);
@@ -2251,7 +2747,7 @@ pub(crate) mod tests {
         let del_at_x = row(298, &base(298, 5), &base(298, 1));
         let ctx_snv = row(340, &base(340, 1), &alt_of(340));
         let ctx_del = row(335, &base(335, 10), &base(335, 1));
-        let s = site(&c, &x, &[del_at_x.clone(), ctx_snv, ctx_del], 100);
+        let s = enumerated_site(&c, &x, &[del_at_x.clone(), ctx_snv, ctx_del], 100);
         assert_eq!(s.n_states, 3, "the two other bases and the deletion over X");
         // Contexts: {}, {snv}, {del} (the two context rows meet): 3 contexts × 5 states.
         assert_eq!(s.n_contexts, 3);
@@ -2260,7 +2756,7 @@ pub(crate) mod tests {
         let c = contig(23, 299, b"AC");
         let ins1 = row(300, "A", "AGT");
         let ins2 = row(300, "A", "ATTA");
-        let s = site(&c, &ins1, &[ins2], 100);
+        let s = enumerated_site(&c, &ins1, &[ins2], 100);
         assert_eq!((s.n_states, s.n_contexts, s.haps.len()), (1, 1, 3));
     }
 
@@ -2312,7 +2808,7 @@ pub(crate) mod tests {
         let reads = vec![teller, view(&apply(&x), 240, 100), view(&c, 245, 100)];
         let candidates = Candidates { found: vec![(found.clone(), vec![])], ..Candidates::default() };
         let states = |rule: FoundRule| {
-            let s = Site::build_with(x.clone(), &candidates, (0, c.clone()), &reads, rule).unwrap();
+            let s = Site::build_ruled(ScorerKind::Enumerated, x.clone(), &candidates, (0, c.clone()), &reads, rule).unwrap();
             s.haps.iter().filter(|h| h.class == Class::Other).count()
         };
         assert!(states(FoundRule::All) > 0, "the found allele is a state before any rule");
@@ -2323,7 +2819,200 @@ pub(crate) mod tests {
         let at = 301 + 24 + 19 - 100 + 10;
         noisy[at] = if noisy[at] == b'A' { b'C' } else { b'A' };
         let reads = vec![view(&noisy, 301 + 24 + 19 - 100, 100), view(&apply(&x), 240, 100), view(&c, 245, 100)];
-        let s = Site::build_with(x.clone(), &candidates, (0, c.clone()), &reads, FoundRule::Clean(1)).unwrap();
+        let s = Site::build_ruled(ScorerKind::Enumerated, x.clone(), &candidates, (0, c.clone()), &reads, FoundRule::Clean(1)).unwrap();
         assert_eq!(s.haps.iter().filter(|h| h.class == Class::Other).count(), 0);
     }
 }
+
+#[cfg(test)]
+mod graph_tests {
+    use super::super::decide::judge;
+    use super::tests::random_seq;
+    use super::*;
+
+    /// `c` with `rows` applied, and per base its reference offset (None inserted).
+    fn applied(c: &[u8], rows: &[&Row]) -> (Vec<u8>, Vec<Option<i64>>) {
+        let mut rows: Vec<&Row> = rows.to_vec();
+        rows.sort_by_key(|r| r.pos);
+        let (mut h, mut o, mut at) = (Vec::new(), Vec::new(), 0i64);
+        for r in rows {
+            h.extend_from_slice(&c[at as usize..r.pos as usize]);
+            o.extend((at..r.pos).map(Some));
+            let shared = r.ref_al.len().min(r.alt_al.len());
+            h.extend_from_slice(&r.alt_al);
+            o.extend((0..r.alt_al.len()).map(|k| (k < shared).then_some(r.pos + k as i64)));
+            at = r.end();
+        }
+        h.extend_from_slice(&c[at as usize..]);
+        o.extend((at..c.len() as i64).map(Some));
+        (h, o)
+    }
+
+    /// A read of `len` bases of a haplotype from offset `s`, its CIGAR from the bases'
+    /// origins (`gapless`: written with no gap at its first base's origin, as an aligner
+    /// without the indel would), its quality 2 at `masked` offsets.
+    fn read_on(h: &[u8], o: &[Option<i64>], s: usize, len: usize, gapless: bool, masked: &[usize]) -> Option<ReadView> {
+        let s = (s..h.len()).find(|&i| o[i].is_some())?;
+        let mut e = (s + len).min(h.len());
+        while e > s && o[e - 1].is_none() {
+            e -= 1;
+        }
+        let seq = &h[s..e];
+        let quals: Vec<u8> = (0..seq.len()).map(|i| if masked.contains(&i) { 2 } else { 30 }).collect();
+        let start = o[s]?;
+        let cigar = if gapless {
+            vec![Cigar::Match(seq.len() as u32)]
+        } else {
+            let mut ops: Vec<Cigar> = Vec::new();
+            let mut last: Option<i64> = None;
+            let push = |ops: &mut Vec<Cigar>, op: Cigar| match (ops.last_mut(), op) {
+                (Some(Cigar::Match(n)), Cigar::Match(1)) => *n += 1,
+                (Some(Cigar::Ins(n)), Cigar::Ins(1)) => *n += 1,
+                _ => ops.push(op),
+            };
+            for &x in &o[s..e] {
+                match x {
+                    None => push(&mut ops, Cigar::Ins(1)),
+                    Some(p) => {
+                        if let Some(l) = last.filter(|&l| p > l + 1) {
+                            ops.push(Cigar::Del((p - l - 1) as u32));
+                        }
+                        push(&mut ops, Cigar::Match(1));
+                        last = Some(p);
+                    }
+                }
+            }
+            ops
+        };
+        ReadView::new(seq, &quals, start, &cigar, (0, seq.len()), 20)
+    }
+
+    fn roll(state: &mut u64, n: u64) -> u64 {
+        *state = state.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+        (*state >> 33) % n
+    }
+
+    /// A random row at `p`: an SNV, an MNP, an insertion or a deletion.
+    fn random_row(c: &[u8], p: usize, st: &mut u64) -> Row {
+        let other = |b: u8, k: u64| *b"ACGT".iter().filter(|&&x| x != b).nth(k as usize % 3).unwrap();
+        match roll(st, 4) {
+            0 => Row::new(p as i64, &c[p..=p], &[other(c[p], roll(st, 3))]),
+            1 => {
+                let n = 2 + roll(st, 2) as usize;
+                let alt: Vec<u8> = c[p..p + n].iter().map(|&b| other(b, roll(st, 3))).collect();
+                Row::new(p as i64, &c[p..p + n], &alt)
+            }
+            2 => {
+                let n = 1 + roll(st, 6) as usize;
+                let ins: Vec<u8> = (0..n).map(|_| b"ACGT"[roll(st, 4) as usize]).collect();
+                Row::new(p as i64, &c[p..=p], &[&c[p..=p], &ins[..]].concat())
+            }
+            _ => {
+                let n = 1 + roll(st, 8) as usize;
+                Row::new(p as i64, &c[p..=p + n], &c[p..=p])
+            }
+        }
+    }
+
+    fn class_best(s: &Site, read: &ReadView) -> [Option<i32>; 3] {
+        let mut sc = Scorer::new(read);
+        let mut e = [None; 3];
+        for h in &s.haps {
+            let v = sc.score(s, h);
+            let b = &mut e[h.class as usize];
+            if b.is_none_or(|x| v > x) {
+                *b = Some(v);
+            }
+        }
+        e
+    }
+
+    fn graph_best(s: &Site, read: &ReadView) -> [Option<i32>; 3] {
+        let gr = s.graph_read(read);
+        let mut ws = Workspace::default();
+        let mut best = [None; 3];
+        for st in &s.graphs {
+            let v = graph::score(&ShortReads, &gr, &st.graph, &mut ws);
+            assert_eq!(v, graph::full_score(&ShortReads, &read.seq, &st.graph), "the band's score is the full programme's");
+            let b = &mut best[st.class as usize];
+            if b.is_none_or(|x| v > x) {
+                *b = Some(v);
+            }
+        }
+        best
+    }
+
+    #[test]
+    fn at_four_rows_or_fewer_the_graph_scores_and_calls_as_the_enumeration() {
+        // Sites of an SNV, an insertion or a deletion with one to four rows in reach of
+        // every kind (two length changes in one repeat among them, rows at one place the
+        // enumeration never applies together), and reads of random haplotypes with errors
+        // and masked bases, written with their gaps or without. Where the enumeration
+        // builds every combination, the graph's best per class is the enumeration's, and
+        // so is every call.
+        let mut st = 47u64;
+        let mut compared = 0usize;
+        for case in 0..96u64 {
+            let mut c = random_seq(700, 9000 + case);
+            if case % 3 == 0 {
+                // a CA repeat beside X: two length changes in it are at one place
+                c[372..392].copy_from_slice(b"CACACACACACACACACACA");
+            }
+            let x = match case % 3 {
+                0 => Row::new(350, &c[350..351], &[*b"ACGT".iter().find(|&&b| b != c[350]).unwrap()]),
+                1 => Row::new(350, &c[350..351], &[&c[350..351], b"TGA"].concat()),
+                _ => Row::new(350, &c[350..356], &c[350..351]),
+            };
+            let n_rows = 1 + roll(&mut st, 4) as usize;
+            let mut rows: Vec<Row> = Vec::new();
+            if case % 3 == 0 {
+                rows.push(Row::new(371, &c[371..372], &[&c[371..372], b"CA"].concat()));
+                rows.push(Row::new(385, &c[385..388], &c[385..386]));
+            }
+            while rows.len() < n_rows {
+                let side = if roll(&mut st, 2) == 0 { 290 + roll(&mut st, 45) } else { 375 + roll(&mut st, 45) };
+                let r = random_row(&c, side as usize, &mut st);
+                if !rows.contains(&r) && (r.end() < 345 || r.pos > 360) {
+                    rows.push(r);
+                }
+            }
+            // reads: haplotypes of random sets of the rows (that can lie together), with X or REF
+            let mut reads: Vec<ReadView> = Vec::new();
+            for k in 0..14 {
+                let mut on: Vec<&Row> = Vec::new();
+                for r in &rows {
+                    if roll(&mut st, 2) == 0 && on.iter().all(|o| o.end() <= r.pos || r.end() <= o.pos) {
+                        on.push(r);
+                    }
+                }
+                if k % 2 == 0 && on.iter().all(|o| o.end() <= x.pos || x.end() <= o.pos) {
+                    on.push(&x);
+                }
+                let (mut h, o) = applied(&c, &on);
+                let s = 210 + roll(&mut st, 140) as usize;
+                for _ in 0..roll(&mut st, 3) {
+                    let i = (s + roll(&mut st, 120) as usize).min(h.len() - 1);
+                    h[i] = b"ACGT"[roll(&mut st, 4) as usize];
+                }
+                let masked: Vec<usize> = (0..roll(&mut st, 3)).map(|_| roll(&mut st, 120) as usize).collect();
+                if let Some(r) = read_on(&h, &o, s, 100 + roll(&mut st, 52) as usize, k % 3 == 0, &masked) {
+                    reads.push(r);
+                }
+            }
+            let cand = Candidates { listed: rows.clone(), ..Candidates::default() };
+            let e = Site::build_with(ScorerKind::Enumerated, x.clone(), &cand, (0, c.clone()), &reads).unwrap();
+            let g = Site::build_with(ScorerKind::Graph, x.clone(), &cand, (0, c.clone()), &reads).unwrap();
+            if e.cap_exceeded {
+                continue;
+            }
+            for (i, read) in reads.iter().enumerate() {
+                let want = class_best(&e, read);
+                assert_eq!(graph_best(&g, read), want, "case {case} read {i}: best per class (ALT, REF, OTHER)");
+                assert_eq!(judge(&g, read, 20, true).call, judge(&e, read, 20, true).call, "case {case} read {i}: the call");
+                compared += 1;
+            }
+        }
+        assert!(compared > 800, "{compared} reads compared");
+    }
+}
+
