@@ -21,7 +21,7 @@
       
       
       <link rel="icon" href="../assets/images/favicon.png">
-      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.7">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.8.0">
     
     
       
@@ -29,10 +29,10 @@
       
     
     
-      <link rel="stylesheet" href="../assets/stylesheets/main.ec1eaa64.min.css">
+      <link rel="stylesheet" href="../assets/stylesheets/main.57a0d79d.min.css">
       
         
-        <link rel="stylesheet" href="../assets/stylesheets/palette.ab4e12ef.min.css">
+        <link rel="stylesheet" href="../assets/stylesheets/palette.fb2fffe2.min.css">
       
       
 
@@ -3356,7 +3356,7 @@ short-fragment enrichment associated with tumor-derived <abbr title="Cell-free D
 <tr>
 <td style="text-align: left;"><code>--mfsd-report</code></td>
 <td style="text-align: left;"><code>false</code></td>
-<td style="text-align: left;">Generate an interactive HTML report (<code>&lt;sample&gt;.mfsd_report.html</code>) with per-variant fragment size distributions, dual-axis histograms, and graded fragment-size evidence (leans somatic, no size evidence, insufficient). <strong>Implies <code>--mfsd</code> and <code>--mfsd-parquet</code></strong> (both are auto-enabled). See <a href="#reference-mfsd-report"><abbr title="Mutant Fragment Size Distribution - Insert-size analysis for REF vs ALT fragments">mFSD</abbr> Report</a>.</td>
+<td style="text-align: left;">Generate an interactive HTML report (<code>&lt;sample&gt;.mfsd_report.html</code>) with per-variant fragment size distributions, dual-axis histograms, and graded fragment-size evidence (leans somatic, no size evidence, insufficient). <strong>Implies <code>--mfsd</code> and <code>--mfsd-parquet</code></strong> (both are auto-enabled). <strong>Requires <code>--format maf</code></strong>: the report reads its statistics from the <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr>, so <code>--format vcf</code> is refused. See <a href="#reference-mfsd-report"><abbr title="Mutant Fragment Size Distribution - Insert-size analysis for REF vs ALT fragments">mFSD</abbr> Report</a>.</td>
 </tr>
 <tr>
 <td style="text-align: left;"><code>--mfsd-report-min-alt</code></td>
@@ -5569,7 +5569,7 @@ skip the merge step and output the single <abbr title="Mutation Annotation Forma
 <tr>
 <td style="text-align: left;"><code>--mfsd_report</code></td>
 <td style="text-align: left;"><code>false</code></td>
-<td style="text-align: left;">Generate an interactive HTML report with per-variant fragment size distributions. Implies <code>--mfsd</code> and <code>--mfsd_parquet</code>. See <a href="#reference-mfsd-report"><abbr title="Mutant Fragment Size Distribution - Insert-size analysis for REF vs ALT fragments">mFSD</abbr> Report</a>.</td>
+<td style="text-align: left;">Generate an interactive HTML report with per-variant fragment size distributions. Implies <code>--mfsd</code> and <code>--mfsd_parquet</code>; requires <code>--format maf</code> (the pipeline stops at launch otherwise). See <a href="#reference-mfsd-report"><abbr title="Mutant Fragment Size Distribution - Insert-size analysis for REF vs ALT fragments">mFSD</abbr> Report</a>.</td>
 </tr>
 <tr>
 <td style="text-align: left;"><code>--observations_parquet</code></td>
@@ -5702,8 +5702,13 @@ skip the merge step and output the single <abbr title="Mutation Annotation Forma
 </tr>
 <tr>
 <td style="text-align: left;"><code>--apply_baq</code></td>
-<td style="text-align: left;"><code>false</code> (DNA) / <code>true</code> (RNA)</td>
-<td style="text-align: left;">Apply Base Alignment Quality downgrade. Reduces false positives near indels and splice junctions (<abbr title="Compact Idiosyncratic Gapped Alignment Report - BAM alignment operation string">CIGAR</abbr> <code>N</code>). See <a href="#cli-dna-baq-options"><abbr title="Base Alignment Quality - Heuristic quality downgrade near indels and splice junctions">BAQ</abbr> Options</a>.</td>
+<td style="text-align: left;"><code>false</code></td>
+<td style="text-align: left;"><strong>DNA</strong> Base Alignment Quality downgrade (matches <code>gbcms dna</code>, off). Reduces false positives near indels. See <a href="#cli-dna-baq-options"><abbr title="Base Alignment Quality - Heuristic quality downgrade near indels and splice junctions">BAQ</abbr> Options</a>.</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>--rna_apply_baq</code></td>
+<td style="text-align: left;"><code>true</code></td>
+<td style="text-align: left;"><strong>RNA</strong> Base Alignment Quality downgrade (matches <code>gbcms rna</code>, on): RNA BAMs typically lack <abbr title="Base Quality Score Recalibration - GATK quality recalibration tool">BQSR</abbr>, and the penalty also applies near splice junctions (<abbr title="Compact Idiosyncratic Gapped Alignment Report - BAM alignment operation string">CIGAR</abbr> <code>N</code>). Set <code>false</code> to pass <code>--no-baq</code>.</td>
 </tr>
 </tbody>
 </table>
@@ -5742,7 +5747,7 @@ skip the merge step and output the single <abbr title="Mutation Annotation Forma
 </table>
 <div class="admonition tip">
 <p class="admonition-title">RNA mode defaults</p>
-<p>RNA mode uses different <abbr title="Pair Hidden Markov Model - Probabilistic alignment using base quality scores">PairHMM</abbr> gap penalties by default (<code>gap_open=5e-3</code>, <code>gap_extend=0.25</code>) to tolerate <abbr title="Reverse Transcriptase - Enzyme converting RNA to cDNA">RT</abbr>-induced stutter at homopolymers. These can be overridden via the alignment backend parameters below.</p>
+<p>RNA mode uses its own <abbr title="Pair Hidden Markov Model - Probabilistic alignment using base quality scores">PairHMM</abbr> gap penalties (<code>--rna_gap_open_prob 5e-3</code>, <code>--rna_gap_extend_prob 0.25</code>, the <code>gbcms rna</code> defaults) to tolerate <abbr title="Reverse Transcriptase - Enzyme converting RNA to cDNA">RT</abbr>-induced stutter at homopolymers, and its own <abbr title="Base Alignment Quality - Heuristic quality downgrade near indels and splice junctions">BAQ</abbr> switch (<code>--rna_apply_baq</code>, on). The <code>--gap_*</code> and <code>--apply_baq</code> params are DNA's and do not reach RNA tasks. See the alignment backend parameters below.</p>
 </div>
 <h2 id="nextflow-parameters-gtf-loading-rna">GTF loading (RNA)<a class="headerlink" href="#nextflow-parameters-gtf-loading-rna" title="Permanent link">¶</a></h2>
 <p>Each <code>GBCMS_RNA</code> task loads the GTF (plain or <code>.gtf.gz</code>) in a few seconds (2 s for a whole Ensembl GTF). There is no index cache: <code>--gtf_cache</code> and the <code>GBCMS_BUILD_GTF_CACHE</code> step were deprecated in 6.6.0 and removed in 6.7.0.</p>
@@ -5775,22 +5780,42 @@ what the old cache file was (96–125 MB) for about 0.4 s more decoding.</p>
 <tr>
 <td style="text-align: left;"><code>--gap_open_prob</code></td>
 <td style="text-align: left;"><code>1e-4</code></td>
-<td style="text-align: left;"><abbr title="Pair Hidden Markov Model - Probabilistic alignment using base quality scores">PairHMM</abbr> gap-open probability for non-repeat regions</td>
+<td style="text-align: left;"><strong>DNA</strong> <abbr title="Pair Hidden Markov Model - Probabilistic alignment using base quality scores">PairHMM</abbr> gap-open probability for non-repeat regions</td>
 </tr>
 <tr>
 <td style="text-align: left;"><code>--gap_extend_prob</code></td>
 <td style="text-align: left;"><code>0.1</code></td>
-<td style="text-align: left;"><abbr title="Pair Hidden Markov Model - Probabilistic alignment using base quality scores">PairHMM</abbr> gap-extend probability for non-repeat regions</td>
+<td style="text-align: left;"><strong>DNA</strong> <abbr title="Pair Hidden Markov Model - Probabilistic alignment using base quality scores">PairHMM</abbr> gap-extend probability for non-repeat regions</td>
 </tr>
 <tr>
 <td style="text-align: left;"><code>--gap_open_prob_repeat</code></td>
 <td style="text-align: left;"><code>1e-2</code></td>
-<td style="text-align: left;"><abbr title="Pair Hidden Markov Model - Probabilistic alignment using base quality scores">PairHMM</abbr> gap-open probability for tandem repeat regions</td>
+<td style="text-align: left;"><strong>DNA</strong> <abbr title="Pair Hidden Markov Model - Probabilistic alignment using base quality scores">PairHMM</abbr> gap-open probability for tandem repeat regions</td>
 </tr>
 <tr>
 <td style="text-align: left;"><code>--gap_extend_prob_repeat</code></td>
 <td style="text-align: left;"><code>0.5</code></td>
-<td style="text-align: left;"><abbr title="Pair Hidden Markov Model - Probabilistic alignment using base quality scores">PairHMM</abbr> gap-extend probability for tandem repeat regions</td>
+<td style="text-align: left;"><strong>DNA</strong> <abbr title="Pair Hidden Markov Model - Probabilistic alignment using base quality scores">PairHMM</abbr> gap-extend probability for tandem repeat regions</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>--rna_gap_open_prob</code></td>
+<td style="text-align: left;"><code>5e-3</code></td>
+<td style="text-align: left;"><strong>RNA</strong> <abbr title="Pair Hidden Markov Model - Probabilistic alignment using base quality scores">PairHMM</abbr> gap-open probability for non-repeat regions (the <code>gbcms rna</code> default; the <code>--gap_*</code> params above are DNA's)</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>--rna_gap_extend_prob</code></td>
+<td style="text-align: left;"><code>0.25</code></td>
+<td style="text-align: left;"><strong>RNA</strong> <abbr title="Pair Hidden Markov Model - Probabilistic alignment using base quality scores">PairHMM</abbr> gap-extend probability for non-repeat regions</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>--rna_gap_open_prob_repeat</code></td>
+<td style="text-align: left;"><code>1e-2</code></td>
+<td style="text-align: left;"><strong>RNA</strong> <abbr title="Pair Hidden Markov Model - Probabilistic alignment using base quality scores">PairHMM</abbr> gap-open probability for tandem repeat regions</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>--rna_gap_extend_prob_repeat</code></td>
+<td style="text-align: left;"><code>0.5</code></td>
+<td style="text-align: left;"><strong>RNA</strong> <abbr title="Pair Hidden Markov Model - Probabilistic alignment using base quality scores">PairHMM</abbr> gap-extend probability for tandem repeat regions</td>
 </tr>
 </tbody>
 </table>
@@ -9026,7 +9051,7 @@ Written natively by Rust — no pyarrow dependency required.</p>
 <summary>Companion Parquet file (<code>--observations-parquet</code>)</summary>
 <p>When <code>--observations-parquet</code> is set, a per-molecule file is written alongside
 the main output:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-9-1" name="__codelineno-9-1" href="#reference-output-formats-__codelineno-9-1"></a>{--output-dir}/{sample_name}.observations.parquet
+<div class="highlight"><pre><span></span><code><a id="__codelineno-9-1" name="__codelineno-9-1" href="#reference-output-formats-__codelineno-9-1"></a>{--output-dir}/{sample_name}{--suffix}.observations.parquet
 </code></pre></div>
 <p>One row per fragment per variant — <code>variant_index, chrom, pos, ref, alt,
 molecule_hash, allele, best_qual, min_mapq</code> — recording <strong>which molecule carried
@@ -15167,10 +15192,10 @@ absent from the <abbr title="Binary Alignment Map - Compressed sequence alignmen
         </head><body><div><h1 id="mfsd-report"><abbr title="Mutant Fragment Size Distribution - Insert-size analysis for REF vs ALT fragments">mFSD</abbr> Report<a class="headerlink" href="#reference-mfsd-report-mfsd-report" title="Permanent link">¶</a></h1>
 <p>Interactive HTML report for per-variant Mutant Fragment Size Distribution analysis.</p>
 <h2 id="reference-mfsd-report-overview">Overview<a class="headerlink" href="#reference-mfsd-report-overview" title="Permanent link">¶</a></h2>
-<p>The <code>--mfsd-report</code> flag generates a self-contained HTML file alongside standard <abbr title="Variant Call Format - Standard variant call file format">VCF</abbr>/<abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> output. The report provides an interactive visual diagnostic for evaluating fragment size distributions at each variant position, helping distinguish <strong>tumor-derived <abbr title="Cell-free DNA - Circulating DNA fragments in blood plasma">cfDNA</abbr></strong> from <strong>clonal hematopoiesis (CH)</strong> artifacts.</p>
+<p>The <code>--mfsd-report</code> flag generates a self-contained HTML file alongside the <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> output (it requires <code>--format maf</code>). The report provides an interactive visual diagnostic for evaluating fragment size distributions at each variant position, helping distinguish <strong>tumor-derived <abbr title="Cell-free DNA - Circulating DNA fragments in blood plasma">cfDNA</abbr></strong> from <strong>clonal hematopoiesis (CH)</strong> artifacts.</p>
 <div class="admonition tip">
 <p class="admonition-title">Quick Start</p>
-<p></p><div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#reference-mfsd-report-__codelineno-0-1"></a>gbcms<span class="w"> </span>dna<span class="w"> </span>--mfsd<span class="w"> </span>--mfsd-parquet<span class="w"> </span>--mfsd-report<span class="w"> </span><span class="se">\</span>
+<p></p><div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#reference-mfsd-report-__codelineno-0-1"></a>gbcms<span class="w"> </span>dna<span class="w"> </span>--mfsd<span class="w"> </span>--mfsd-parquet<span class="w"> </span>--mfsd-report<span class="w"> </span>--format<span class="w"> </span>maf<span class="w"> </span><span class="se">\</span>
 <a id="__codelineno-0-2" name="__codelineno-0-2" href="#reference-mfsd-report-__codelineno-0-2"></a><span class="w">  </span>-v<span class="w"> </span>variants.maf<span class="w"> </span>-b<span class="w"> </span>sample.bam<span class="w"> </span>-f<span class="w"> </span>ref.fa<span class="w"> </span>-o<span class="w"> </span>output/
 </code></pre></div>
 This produces three outputs: a <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> with 41 <abbr title="Mutant Fragment Size Distribution - Insert-size analysis for REF vs ALT fragments">mFSD</abbr> columns, a <code>.fsd.parquet</code> with raw fragment arrays, and a <code>.mfsd_report.html</code> for interactive visualization.
@@ -15189,7 +15214,7 @@ This produces three outputs: a <abbr title="Mutation Annotation Format - Standar
 <tr>
 <td style="text-align: left;"><code>--mfsd-report</code></td>
 <td style="text-align: left;"><code>false</code></td>
-<td style="text-align: left;">Generate an interactive HTML report. Implies <code>--mfsd</code> and <code>--mfsd-parquet</code> (both are auto-enabled).</td>
+<td style="text-align: left;">Generate an interactive HTML report. Implies <code>--mfsd</code> and <code>--mfsd-parquet</code> (both are auto-enabled). Requires <code>--format maf</code>: the report reads its statistics from the <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr>.</td>
 </tr>
 <tr>
 <td style="text-align: left;"><code>--mfsd-report-min-alt</code></td>
@@ -18661,6 +18686,36 @@ count-affecting merge since the previous release, run on the changed rows only.<
 <p>The format is based on <a href="https://keepachangelog.com/en/1.0.0/">Keep a Changelog</a>,
 and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semantic Versioning</a>.</p>
 <h2 id="development-changelog-unreleased">[Unreleased]<a class="headerlink" href="#development-changelog-unreleased" title="Permanent link">¶</a></h2>
+<h3 id="development-changelog-fixed-companion-file-names-vcfbgz-in-normalize-the-amplicon-rule-nextflow-rna-defaults-309">Fixed — companion file names, <code>.vcf.bgz</code> in normalize, the amplicon rule, Nextflow RNA defaults (#309)<a class="headerlink" href="#development-changelog-fixed-companion-file-names-vcfbgz-in-normalize-the-amplicon-rule-nextflow-rna-defaults-309" title="Permanent link">¶</a></h3>
+<ul>
+<li><strong>Companion files keep every dot of the output name.</strong> The <abbr title="Mutant Fragment Size Distribution - Insert-size analysis for REF vs ALT fragments">mFSD</abbr> Parquet and report
+  were named by swapping the main output's extension, which dropped a dotted
+  <code>--suffix</code> (<code>S1.genotyped.maf</code> → <code>S1.fsd.parquet</code>) and a dotted sample name, so two
+  samples (<code>S.1</code>, <code>S.2</code>) wrote the same file. They are now
+  <code>{sample}{suffix}.fsd.parquet</code> / <code>.mfsd_report.html</code>, as documented, and the
+  observations Parquet honours <code>--suffix</code> (<code>{sample}{suffix}.observations.parquet</code>).</li>
+<li><strong><code>gbcms normalize</code> reads <code>.vcf.bgz</code></strong>, which the <abbr title="Command Line Interface - Terminal-based program interface">CLI</abbr> already accepted: one
+  <code>variant_format()</code> in <code>gbcms.io.input</code> now reads a variant file's extension for the
+  <abbr title="Command Line Interface - Terminal-based program interface">CLI</abbr>, the pipeline and normalize.</li>
+<li><strong>The amplicon rule applies to programmatic callers too.</strong> <code>GbcmsRnaConfig</code> with
+  <code>library_type="amplicon"</code> now reads the library unstranded, and an unstranded
+  protocol disables strand enforcement, as the <abbr title="Command Line Interface - Terminal-based program interface">CLI</abbr> already did.</li>
+<li><strong><code>--mfsd-report</code> requires <code>--format maf</code>.</strong> The report reads its statistics from
+  the <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> output; with <code>--format vcf</code> the run is refused at configuration time.</li>
+<li><strong>A read calling no base over a row's window is depth only at a contig end.</strong> Where
+  the exact-carrier rule cannot judge a row (its repeat runs to the contig end), the
+  <abbr title="Compact Idiosyncratic Gapped Alignment Report - BAM alignment operation string">CIGAR</abbr> checks' reference-coverage rules (a deletion's anchor covered with no gap; a
+  deletion-direction delins' anchor covered by a clean match) counted a read whose
+  bases there are all N as REF. Such a read is now neither (N class), as the
+  exact-carrier rule counts it elsewhere. No existing test's counts change.</li>
+<li><strong>Nextflow RNA tasks pass the RNA <abbr title="Command Line Interface - Terminal-based program interface">CLI</abbr> defaults.</strong> The RNA module passed DNA's
+  <abbr title="Pair Hidden Markov Model - Probabilistic alignment using base quality scores">PairHMM</abbr> gap penalties (1e-4/0.1 over RNA's 5e-3/0.25) and <code>--no-baq</code> (<abbr title="Base Alignment Quality - Heuristic quality downgrade near indels and splice junctions">BAQ</abbr> is on in
+  <code>gbcms rna</code>). RNA now reads its own params, <code>rna_gap_*</code> and <code>rna_apply_baq</code> (on), as
+  it already did <code>rna_min_mapq</code>; a test pins every module's param defaults to its
+  <abbr title="Command Line Interface - Terminal-based program interface">CLI</abbr>'s. Measured on the 33 local FORTE slices (94 rows), old module arguments against
+  the <abbr title="Command Line Interface - Terminal-based program interface">CLI</abbr> defaults: with the GTF no row changes; without it one row's REF count was 5
+  reads (3 fragments) higher under the old arguments; <abbr title="Alternate Depth - Reads supporting the alternate allele">AD</abbr> and depth unchanged.</li>
+</ul>
 <h3 id="development-changelog-changed-a-co-annotated-sibling-contests-an-exact-carrier-alt-read-by-its-bases-300">Changed — a co-annotated sibling contests an exact-carrier ALT read by its bases (#300)<a class="headerlink" href="#development-changelog-changed-a-co-annotated-sibling-contests-an-exact-carrier-alt-read-by-its-bases-300" title="Permanent link">¶</a></h3>
 <ul>
 <li>The <abbr title="Alternate Depth - Reads supporting the alternate allele">AD</abbr>-claiming sibling guard re-tested every non-anchor ALT call against REF on the
@@ -23289,10 +23344,10 @@ Built with <a href="https://antigravity.google/">Antigravity</a> |
     
       
       
-      <script id="__config" type="application/json">{"annotate": null, "base": "/gbcms/dev", "features": ["navigation.instant", "navigation.tracking", "navigation.sections", "navigation.expand", "navigation.top", "navigation.indexes", "navigation.path", "toc.follow", "content.code.copy", "content.code.annotate", "search.suggest", "search.highlight"], "search": "../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": {"default": "stable", "provider": "mike"}}</script>
+      <script id="__config" type="application/json">{"annotate": null, "base": "/gbcms/dev", "features": ["navigation.instant", "navigation.tracking", "navigation.sections", "navigation.expand", "navigation.top", "navigation.indexes", "navigation.path", "toc.follow", "content.code.copy", "content.code.annotate", "search.suggest", "search.highlight"], "search": "../assets/javascripts/workers/search.a7633da7.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": {"default": "stable", "provider": "mike"}}</script>
     
     
-      <script src="../assets/javascripts/bundle.d7400e89.min.js"></script>
+      <script src="../assets/javascripts/bundle.c21346df.min.js"></script>
       
         <script src="../js/print-site.js"></script>
       

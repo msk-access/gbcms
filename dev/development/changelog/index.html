@@ -7,10 +7,10 @@
 <link href="../regression-panel/" rel="prev">
 <link href="../contributing/" rel="next">
 <link href="../../assets/images/favicon.png" rel="icon">
-<meta content="mkdocs-1.6.1, mkdocs-material-9.7.7" name="generator">
+<meta content="mkdocs-1.6.1, mkdocs-material-9.8.0" name="generator">
 <title>Changelog - gbcms</title>
-<link href="../../assets/stylesheets/main.ec1eaa64.min.css" rel="stylesheet">
-<link href="../../assets/stylesheets/palette.ab4e12ef.min.css" rel="stylesheet">
+<link href="../../assets/stylesheets/main.57a0d79d.min.css" rel="stylesheet">
+<link href="../../assets/stylesheets/palette.fb2fffe2.min.css" rel="stylesheet">
 <link crossorigin="" href="https://fonts.gstatic.com" rel="preconnect">
 <link href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&amp;display=fallback" rel="stylesheet">
 <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
@@ -780,6 +780,36 @@
 <p>The format is based on <a href="https://keepachangelog.com/en/1.0.0/">Keep a Changelog</a>,
 and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semantic Versioning</a>.</p>
 <h2 id="unreleased">[Unreleased]<a class="headerlink" href="#unreleased" title="Permanent link">¶</a></h2>
+<h3 id="fixed-companion-file-names-vcfbgz-in-normalize-the-amplicon-rule-nextflow-rna-defaults-309">Fixed — companion file names, <code>.vcf.bgz</code> in normalize, the amplicon rule, Nextflow RNA defaults (#309)<a class="headerlink" href="#fixed-companion-file-names-vcfbgz-in-normalize-the-amplicon-rule-nextflow-rna-defaults-309" title="Permanent link">¶</a></h3>
+<ul>
+<li><strong>Companion files keep every dot of the output name.</strong> The <abbr title="Mutant Fragment Size Distribution - Insert-size analysis for REF vs ALT fragments">mFSD</abbr> Parquet and report
+  were named by swapping the main output's extension, which dropped a dotted
+  <code>--suffix</code> (<code>S1.genotyped.maf</code> → <code>S1.fsd.parquet</code>) and a dotted sample name, so two
+  samples (<code>S.1</code>, <code>S.2</code>) wrote the same file. They are now
+  <code>{sample}{suffix}.fsd.parquet</code> / <code>.mfsd_report.html</code>, as documented, and the
+  observations Parquet honours <code>--suffix</code> (<code>{sample}{suffix}.observations.parquet</code>).</li>
+<li><strong><code>gbcms normalize</code> reads <code>.vcf.bgz</code></strong>, which the <abbr title="Command Line Interface - Terminal-based program interface">CLI</abbr> already accepted: one
+  <code>variant_format()</code> in <code>gbcms.io.input</code> now reads a variant file's extension for the
+  <abbr title="Command Line Interface - Terminal-based program interface">CLI</abbr>, the pipeline and normalize.</li>
+<li><strong>The amplicon rule applies to programmatic callers too.</strong> <code>GbcmsRnaConfig</code> with
+  <code>library_type="amplicon"</code> now reads the library unstranded, and an unstranded
+  protocol disables strand enforcement, as the <abbr title="Command Line Interface - Terminal-based program interface">CLI</abbr> already did.</li>
+<li><strong><code>--mfsd-report</code> requires <code>--format maf</code>.</strong> The report reads its statistics from
+  the <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> output; with <code>--format vcf</code> the run is refused at configuration time.</li>
+<li><strong>A read calling no base over a row's window is depth only at a contig end.</strong> Where
+  the exact-carrier rule cannot judge a row (its repeat runs to the contig end), the
+  <abbr title="Compact Idiosyncratic Gapped Alignment Report - BAM alignment operation string">CIGAR</abbr> checks' reference-coverage rules (a deletion's anchor covered with no gap; a
+  deletion-direction delins' anchor covered by a clean match) counted a read whose
+  bases there are all N as REF. Such a read is now neither (N class), as the
+  exact-carrier rule counts it elsewhere. No existing test's counts change.</li>
+<li><strong>Nextflow RNA tasks pass the RNA <abbr title="Command Line Interface - Terminal-based program interface">CLI</abbr> defaults.</strong> The RNA module passed DNA's
+  <abbr title="Pair Hidden Markov Model - Probabilistic alignment using base quality scores">PairHMM</abbr> gap penalties (1e-4/0.1 over RNA's 5e-3/0.25) and <code>--no-baq</code> (<abbr title="Base Alignment Quality - Heuristic quality downgrade near indels and splice junctions">BAQ</abbr> is on in
+  <code>gbcms rna</code>). RNA now reads its own params, <code>rna_gap_*</code> and <code>rna_apply_baq</code> (on), as
+  it already did <code>rna_min_mapq</code>; a test pins every module's param defaults to its
+  <abbr title="Command Line Interface - Terminal-based program interface">CLI</abbr>'s. Measured on the 33 local FORTE slices (94 rows), old module arguments against
+  the <abbr title="Command Line Interface - Terminal-based program interface">CLI</abbr> defaults: with the GTF no row changes; without it one row's REF count was 5
+  reads (3 fragments) higher under the old arguments; <abbr title="Alternate Depth - Reads supporting the alternate allele">AD</abbr> and depth unchanged.</li>
+</ul>
 <h3 id="changed-a-co-annotated-sibling-contests-an-exact-carrier-alt-read-by-its-bases-300">Changed — a co-annotated sibling contests an exact-carrier ALT read by its bases (#300)<a class="headerlink" href="#changed-a-co-annotated-sibling-contests-an-exact-carrier-alt-read-by-its-bases-300" title="Permanent link">¶</a></h3>
 <ul>
 <li>The <abbr title="Alternate Depth - Reads supporting the alternate allele">AD</abbr>-claiming sibling guard re-tested every non-anchor ALT call against REF on the
@@ -4535,8 +4565,8 @@ Built with <a href="https://antigravity.google/">Antigravity</a> |
 <div class="md-dialog" data-md-component="dialog">
 <div class="md-dialog__inner md-typeset"></div>
 </div>
-<script id="__config" type="application/json">{"annotate": null, "base": "../..", "features": ["navigation.instant", "navigation.tracking", "navigation.sections", "navigation.expand", "navigation.top", "navigation.indexes", "navigation.path", "toc.follow", "content.code.copy", "content.code.annotate", "search.suggest", "search.highlight"], "search": "../../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": {"default": "stable", "provider": "mike"}}</script>
-<script src="../../assets/javascripts/bundle.d7400e89.min.js"></script>
+<script id="__config" type="application/json">{"annotate": null, "base": "../..", "features": ["navigation.instant", "navigation.tracking", "navigation.sections", "navigation.expand", "navigation.top", "navigation.indexes", "navigation.path", "toc.follow", "content.code.copy", "content.code.annotate", "search.suggest", "search.highlight"], "search": "../../assets/javascripts/workers/search.a7633da7.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": {"default": "stable", "provider": "mike"}}</script>
+<script src="../../assets/javascripts/bundle.c21346df.min.js"></script>
 <script src="../../js/print-site.js"></script>
 <script src="../../js/timeago.min.js"></script>
 <script src="../../js/timeago_mkdocs_material.js"></script>

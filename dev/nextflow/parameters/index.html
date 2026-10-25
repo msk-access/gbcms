@@ -22,7 +22,7 @@
       
       
       <link rel="icon" href="../../assets/images/favicon.png">
-      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.7">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.8.0">
     
     
       
@@ -30,10 +30,10 @@
       
     
     
-      <link rel="stylesheet" href="../../assets/stylesheets/main.ec1eaa64.min.css">
+      <link rel="stylesheet" href="../../assets/stylesheets/main.57a0d79d.min.css">
       
         
-        <link rel="stylesheet" href="../../assets/stylesheets/palette.ab4e12ef.min.css">
+        <link rel="stylesheet" href="../../assets/stylesheets/palette.fb2fffe2.min.css">
       
       
 
@@ -2316,7 +2316,7 @@
 <tr>
 <td style="text-align: left;"><code>--mfsd_report</code></td>
 <td style="text-align: left;"><code>false</code></td>
-<td style="text-align: left;">Generate an interactive HTML report with per-variant fragment size distributions. Implies <code>--mfsd</code> and <code>--mfsd_parquet</code>. See <a href="../../reference/mfsd-report/"><abbr title="Mutant Fragment Size Distribution - Insert-size analysis for REF vs ALT fragments">mFSD</abbr> Report</a>.</td>
+<td style="text-align: left;">Generate an interactive HTML report with per-variant fragment size distributions. Implies <code>--mfsd</code> and <code>--mfsd_parquet</code>; requires <code>--format maf</code> (the pipeline stops at launch otherwise). See <a href="../../reference/mfsd-report/"><abbr title="Mutant Fragment Size Distribution - Insert-size analysis for REF vs ALT fragments">mFSD</abbr> Report</a>.</td>
 </tr>
 <tr>
 <td style="text-align: left;"><code>--observations_parquet</code></td>
@@ -2449,8 +2449,13 @@
 </tr>
 <tr>
 <td style="text-align: left;"><code>--apply_baq</code></td>
-<td style="text-align: left;"><code>false</code> (DNA) / <code>true</code> (RNA)</td>
-<td style="text-align: left;">Apply Base Alignment Quality downgrade. Reduces false positives near indels and splice junctions (<abbr title="Compact Idiosyncratic Gapped Alignment Report - BAM alignment operation string">CIGAR</abbr> <code>N</code>). See <a href="../../cli/dna/#baq-options"><abbr title="Base Alignment Quality - Heuristic quality downgrade near indels and splice junctions">BAQ</abbr> Options</a>.</td>
+<td style="text-align: left;"><code>false</code></td>
+<td style="text-align: left;"><strong>DNA</strong> Base Alignment Quality downgrade (matches <code>gbcms dna</code>, off). Reduces false positives near indels. See <a href="../../cli/dna/#baq-options"><abbr title="Base Alignment Quality - Heuristic quality downgrade near indels and splice junctions">BAQ</abbr> Options</a>.</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>--rna_apply_baq</code></td>
+<td style="text-align: left;"><code>true</code></td>
+<td style="text-align: left;"><strong>RNA</strong> Base Alignment Quality downgrade (matches <code>gbcms rna</code>, on): RNA BAMs typically lack <abbr title="Base Quality Score Recalibration - GATK quality recalibration tool">BQSR</abbr>, and the penalty also applies near splice junctions (<abbr title="Compact Idiosyncratic Gapped Alignment Report - BAM alignment operation string">CIGAR</abbr> <code>N</code>). Set <code>false</code> to pass <code>--no-baq</code>.</td>
 </tr>
 </tbody>
 </table>
@@ -2489,7 +2494,7 @@
 </table>
 <div class="admonition tip">
 <p class="admonition-title">RNA mode defaults</p>
-<p>RNA mode uses different <abbr title="Pair Hidden Markov Model - Probabilistic alignment using base quality scores">PairHMM</abbr> gap penalties by default (<code>gap_open=5e-3</code>, <code>gap_extend=0.25</code>) to tolerate <abbr title="Reverse Transcriptase - Enzyme converting RNA to cDNA">RT</abbr>-induced stutter at homopolymers. These can be overridden via the alignment backend parameters below.</p>
+<p>RNA mode uses its own <abbr title="Pair Hidden Markov Model - Probabilistic alignment using base quality scores">PairHMM</abbr> gap penalties (<code>--rna_gap_open_prob 5e-3</code>, <code>--rna_gap_extend_prob 0.25</code>, the <code>gbcms rna</code> defaults) to tolerate <abbr title="Reverse Transcriptase - Enzyme converting RNA to cDNA">RT</abbr>-induced stutter at homopolymers, and its own <abbr title="Base Alignment Quality - Heuristic quality downgrade near indels and splice junctions">BAQ</abbr> switch (<code>--rna_apply_baq</code>, on). The <code>--gap_*</code> and <code>--apply_baq</code> params are DNA's and do not reach RNA tasks. See the alignment backend parameters below.</p>
 </div>
 <h2 id="gtf-loading-rna">GTF loading (RNA)<a class="headerlink" href="#gtf-loading-rna" title="Permanent link">¶</a></h2>
 <p>Each <code>GBCMS_RNA</code> task loads the GTF (plain or <code>.gtf.gz</code>) in a few seconds (2 s for a whole Ensembl GTF). There is no index cache: <code>--gtf_cache</code> and the <code>GBCMS_BUILD_GTF_CACHE</code> step were deprecated in 6.6.0 and removed in 6.7.0.</p>
@@ -2522,22 +2527,42 @@ what the old cache file was (96–125 MB) for about 0.4 s more decoding.</p>
 <tr>
 <td style="text-align: left;"><code>--gap_open_prob</code></td>
 <td style="text-align: left;"><code>1e-4</code></td>
-<td style="text-align: left;"><abbr title="Pair Hidden Markov Model - Probabilistic alignment using base quality scores">PairHMM</abbr> gap-open probability for non-repeat regions</td>
+<td style="text-align: left;"><strong>DNA</strong> <abbr title="Pair Hidden Markov Model - Probabilistic alignment using base quality scores">PairHMM</abbr> gap-open probability for non-repeat regions</td>
 </tr>
 <tr>
 <td style="text-align: left;"><code>--gap_extend_prob</code></td>
 <td style="text-align: left;"><code>0.1</code></td>
-<td style="text-align: left;"><abbr title="Pair Hidden Markov Model - Probabilistic alignment using base quality scores">PairHMM</abbr> gap-extend probability for non-repeat regions</td>
+<td style="text-align: left;"><strong>DNA</strong> <abbr title="Pair Hidden Markov Model - Probabilistic alignment using base quality scores">PairHMM</abbr> gap-extend probability for non-repeat regions</td>
 </tr>
 <tr>
 <td style="text-align: left;"><code>--gap_open_prob_repeat</code></td>
 <td style="text-align: left;"><code>1e-2</code></td>
-<td style="text-align: left;"><abbr title="Pair Hidden Markov Model - Probabilistic alignment using base quality scores">PairHMM</abbr> gap-open probability for tandem repeat regions</td>
+<td style="text-align: left;"><strong>DNA</strong> <abbr title="Pair Hidden Markov Model - Probabilistic alignment using base quality scores">PairHMM</abbr> gap-open probability for tandem repeat regions</td>
 </tr>
 <tr>
 <td style="text-align: left;"><code>--gap_extend_prob_repeat</code></td>
 <td style="text-align: left;"><code>0.5</code></td>
-<td style="text-align: left;"><abbr title="Pair Hidden Markov Model - Probabilistic alignment using base quality scores">PairHMM</abbr> gap-extend probability for tandem repeat regions</td>
+<td style="text-align: left;"><strong>DNA</strong> <abbr title="Pair Hidden Markov Model - Probabilistic alignment using base quality scores">PairHMM</abbr> gap-extend probability for tandem repeat regions</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>--rna_gap_open_prob</code></td>
+<td style="text-align: left;"><code>5e-3</code></td>
+<td style="text-align: left;"><strong>RNA</strong> <abbr title="Pair Hidden Markov Model - Probabilistic alignment using base quality scores">PairHMM</abbr> gap-open probability for non-repeat regions (the <code>gbcms rna</code> default; the <code>--gap_*</code> params above are DNA's)</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>--rna_gap_extend_prob</code></td>
+<td style="text-align: left;"><code>0.25</code></td>
+<td style="text-align: left;"><strong>RNA</strong> <abbr title="Pair Hidden Markov Model - Probabilistic alignment using base quality scores">PairHMM</abbr> gap-extend probability for non-repeat regions</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>--rna_gap_open_prob_repeat</code></td>
+<td style="text-align: left;"><code>1e-2</code></td>
+<td style="text-align: left;"><strong>RNA</strong> <abbr title="Pair Hidden Markov Model - Probabilistic alignment using base quality scores">PairHMM</abbr> gap-open probability for tandem repeat regions</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>--rna_gap_extend_prob_repeat</code></td>
+<td style="text-align: left;"><code>0.5</code></td>
+<td style="text-align: left;"><strong>RNA</strong> <abbr title="Pair Hidden Markov Model - Probabilistic alignment using base quality scores">PairHMM</abbr> gap-extend probability for tandem repeat regions</td>
 </tr>
 </tbody>
 </table>
@@ -2696,7 +2721,7 @@ what the old cache file was (96–125 MB) for about 0.4 s more decoding.</p>
     <span class="md-icon" title="Last update">
       <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M21 13.1c-.1 0-.3.1-.4.2l-1 1 2.1 2.1 1-1c.2-.2.2-.6 0-.8l-1.3-1.3c-.1-.1-.2-.2-.4-.2m-1.9 1.8-6.1 6V23h2.1l6.1-6.1zM12.5 7v5.2l4 2.4-1 1L11 13V7zM11 21.9c-5.1-.5-9-4.8-9-9.9C2 6.5 6.5 2 12 2c5.3 0 9.6 4.1 10 9.3-.3-.1-.6-.2-1-.2s-.7.1-1 .2C19.6 7.2 16.2 4 12 4c-4.4 0-8 3.6-8 8 0 4.1 3.1 7.5 7.1 7.9l-.1.2z"></path></svg>
     </span>
-    <span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-timeago" title="October 9, 2026 05:04:32 UTC"><span class="timeago" datetime="2026-10-09T05:04:32+00:00" locale="en"></span></span><span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-iso_date" title="October 9, 2026 05:04:32 UTC">2026-10-09</span>
+    <span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-timeago" title="October 24, 2026 05:32:11 UTC"><span class="timeago" datetime="2026-10-24T05:32:11+00:00" locale="en"></span></span><span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-iso_date" title="October 24, 2026 05:32:11 UTC">2026-10-24</span>
   </span>
 
     
@@ -2780,10 +2805,10 @@ Built with <a href="https://antigravity.google/">Antigravity</a> |
     
       
       
-      <script id="__config" type="application/json">{"annotate": null, "base": "../..", "features": ["navigation.instant", "navigation.tracking", "navigation.sections", "navigation.expand", "navigation.top", "navigation.indexes", "navigation.path", "toc.follow", "content.code.copy", "content.code.annotate", "search.suggest", "search.highlight"], "search": "../../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": {"default": "stable", "provider": "mike"}}</script>
+      <script id="__config" type="application/json">{"annotate": null, "base": "../..", "features": ["navigation.instant", "navigation.tracking", "navigation.sections", "navigation.expand", "navigation.top", "navigation.indexes", "navigation.path", "toc.follow", "content.code.copy", "content.code.annotate", "search.suggest", "search.highlight"], "search": "../../assets/javascripts/workers/search.a7633da7.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": {"default": "stable", "provider": "mike"}}</script>
     
     
-      <script src="../../assets/javascripts/bundle.d7400e89.min.js"></script>
+      <script src="../../assets/javascripts/bundle.c21346df.min.js"></script>
       
         <script src="../../js/print-site.js"></script>
       
