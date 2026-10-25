@@ -34,6 +34,8 @@ For a row X and each admitted read:
     reaches past where the two haplotypes differ; a read short of it shows REF.
   - An MNP's ALT call needs every changed base covered and none read as another base; one
     below `--min-baseq` weighs nothing (RJ-25), and `mnp_confirmed` needs all read.
+  - A context row is one whose REF span meets X's span widened by the longest read, so a
+    long deletion starting within reach (and running past it) is a context too.
 
 Measured (HG002 phased truth, R2): see #304. The prototype is `plan670/r2/hapjudge` (local).
 
