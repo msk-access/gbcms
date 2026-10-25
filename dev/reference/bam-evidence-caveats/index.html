@@ -1526,6 +1526,17 @@
 </li>
         
           <li class="md-nav__item">
+  <a href="#sequencing-errors-inside-or-beside-the-event" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Sequencing errors inside or beside the event
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#adapter-read-through" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -2189,6 +2200,17 @@
 </li>
         
           <li class="md-nav__item">
+  <a href="#sequencing-errors-inside-or-beside-the-event" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Sequencing errors inside or beside the event
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#adapter-read-through" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -2389,9 +2411,9 @@ caveat in gbcms's output.</p>
 </tr>
 <tr>
 <td style="text-align: left;">Allele soft-clipped at a read end</td>
-<td style="text-align: left;">Counted for complex/<abbr title="Multi-Nucleotide Polymorphism - Multiple adjacent base substitutions">MNP</abbr> in DNA</td>
-<td style="text-align: left;">Decided (extend)</td>
-<td style="text-align: left;">#173, C7 #144</td>
+<td style="text-align: left;">Counted in DNA by every rule that reads clips (complex, <abbr title="Multi-Nucleotide Polymorphism - Multiple adjacent base substitutions">MNP</abbr>, pure indels, deletions of 50 bp or more); an RNA clip at an exon edge or junction end is not evidence</td>
+<td style="text-align: left;">Decided (done); clip-borne ITD insertions open</td>
+<td style="text-align: left;">C15 #173 (closed), C7 #144</td>
 </tr>
 <tr>
 <td style="text-align: left;">Long event split across alignments</td>
@@ -2414,13 +2436,13 @@ caveat in gbcms's output.</p>
 <tr>
 <td style="text-align: left;">Reads from paralogs or segmental duplications</td>
 <td style="text-align: left;"><abbr title="Mapping Quality - Confidence score for read alignment">MAPQ</abbr> ≥ 20; <code>mq0_count</code></td>
-<td style="text-align: left;">To measure</td>
+<td style="text-align: left;">Proposed (diagnostic, 6.7.0); validate on paralog-rich loci</td>
 <td style="text-align: left;">O5 #179</td>
 </tr>
 <tr>
 <td style="text-align: left;">Reference bias: ALT reads map worse, clip, or go unmapped</td>
 <td style="text-align: left;">Counts what maps</td>
-<td style="text-align: left;">Proposed (diagnostic)</td>
+<td style="text-align: left;">Proposed (diagnostic in <code>gbcms_diagnostic</code>; no filter, no new column; 6.7.0)</td>
 <td style="text-align: left;">O5 #179</td>
 </tr>
 <tr>
@@ -2442,6 +2464,24 @@ caveat in gbcms's output.</p>
 <td style="text-align: left;">C17 #176</td>
 </tr>
 <tr>
+<td style="text-align: left;">A mate's soft-clipped 5' end makes the fragment end (TLEN) short</td>
+<td style="text-align: left;">The read's own soft clips past that end are clipped as adapter</td>
+<td style="text-align: left;">Proposed (measure from the mate's unclipped end with MC)</td>
+<td style="text-align: left;">C31 #212</td>
+</tr>
+<tr>
+<td style="text-align: left;">Exact-length insertion with a sequencing error inside; truncated copies</td>
+<td style="text-align: left;">One error inside the insert is tolerated; a truncated copy counts <code>partial_alt</code></td>
+<td style="text-align: left;">Decided (done); the identity band for truncated inserts was not adopted</td>
+<td style="text-align: left;">C6 #143</td>
+</tr>
+<tr>
+<td style="text-align: left;">A REF molecule with one error beside the event reads ALT</td>
+<td style="text-align: left;">Both alleles' windows are read from one anchor</td>
+<td style="text-align: left;">Decided (done, RJ-23)</td>
+<td style="text-align: left;">C33 #214</td>
+</tr>
+<tr>
 <td style="text-align: left;">Stutter in repeats</td>
 <td style="text-align: left;">Counted exactly; named by a diagnostic</td>
 <td style="text-align: left;">Decided (done)</td>
@@ -2450,7 +2490,7 @@ caveat in gbcms's output.</p>
 <tr>
 <td style="text-align: left;">OxoG / FFPE orientation artifacts</td>
 <td style="text-align: left;">Strand counts only</td>
-<td style="text-align: left;">To measure (decide)</td>
+<td style="text-align: left;">To decide: optional F1R2/F2R1 counts or an orientation-imbalance diagnostic; measure first on FFPE-rich data (6.7.0)</td>
 <td style="text-align: left;">O6 #180</td>
 </tr>
 <tr>
@@ -2496,6 +2536,18 @@ caveat in gbcms's output.</p>
 <td style="text-align: left;">R2 #114</td>
 </tr>
 <tr>
+<td style="text-align: left;">RNA: a GTF transcript ID reused on another chromosome or strand</td>
+<td style="text-align: left;">Exons and introns merge by ID</td>
+<td style="text-align: left;">Proposed</td>
+<td style="text-align: left;">C34 #216</td>
+</tr>
+<tr>
+<td style="text-align: left;">Variant not prepared against the reference (direct API use, failed reference fetch)</td>
+<td style="text-align: left;">The alignment fallback's tail reads stale scores (<code>partial_alt</code> only)</td>
+<td style="text-align: left;">Open (6.7.0)</td>
+<td style="text-align: left;">C24 #195</td>
+</tr>
+<tr>
 <td style="text-align: left;">Reads ending inside the event; low depth</td>
 <td style="text-align: left;">Depth only until a read holds the shorter allele's window</td>
 <td style="text-align: left;">Decided (done)</td>
@@ -2534,15 +2586,22 @@ caveat in gbcms's output.</p>
 <li><strong>In the <abbr title="Binary Alignment Map - Compressed sequence alignment file format">BAM</abbr>:</strong> an ALT read whose allele sits near its end is clipped from there,
   while the REF reads beside it align in full. Excluding clipped reads biases <abbr title="Variant Allele Frequency - Fraction of reads supporting the variant allele">VAF</abbr>
   down.</li>
-<li><strong>gbcms now:</strong> complex variants and MNPs in DNA count a read whose clipped bases
-  carry the exact allele, inside a well-defined fragment
-  (<a href="../counting-metrics/">carriers in soft-clipped bases</a>).</li>
-<li><strong>Should do:</strong> decided. Extend to pure deletions and to clip-borne ITD
-  insertions (#173, #144). In RNA, clipped bases may come from the next exon
-  (<abbr title="Spliced Transcripts Alignment to a Reference - RNA-seq aligner">STAR</abbr> clips a junction overhang it cannot splice), so an RNA read's clip that
-  reaches an exon edge or junction end is not allele evidence; other clips are
-  the read's own bases (RJ-18; measured on FORTE splice probes: 3 of 19 spurious
-  ALT reads removed).</li>
+<li><strong>gbcms now:</strong> in DNA, a read whose clipped bases carry the allele is counted
+  when the rule that judges the variant reads them, inside a well-defined
+  fragment (RJ-13; <a href="../counting-metrics/">carriers in soft-clipped bases</a>):<ul>
+<li>complex variants and MNPs, and pure indels (those under 50 bp are judged by
+  their bases with soft-clipped bases read, clip-admitted where the rule decides
+  them), and pure deletions of 50 bp or more;</li>
+<li>a read clipped before the flank is placed from the other flank (RJ-23).</li>
+</ul>
+</li>
+<li><strong>Should do:</strong> decided; done for everything above (C15 #173, closed after an
+  audit on 2026-10-23). Open: clipped duplication carriers, the clip-borne ITD
+  insertions (C7 #144); split reads stay on #177. In RNA, clipped bases may come
+  from the next exon (<abbr title="Spliced Transcripts Alignment to a Reference - RNA-seq aligner">STAR</abbr> clips a junction overhang it cannot splice), so an RNA
+  read's clip that reaches an exon edge or junction end is not allele evidence;
+  other clips are the read's own bases (RJ-18; measured on FORTE splice probes: 3
+  of 19 spurious ALT reads removed).</li>
 <li><strong>Community</strong> (verified in source):<ul>
 <li>GATK HaplotypeCaller and Mutect2 revert clips and realign reads, but only
   with a well-defined fragment;</li>
@@ -2595,8 +2654,10 @@ caveat in gbcms's output.</p>
   were variants.</li>
 <li><strong>gbcms now:</strong> minimum <abbr title="Mapping Quality - Confidence score for read alignment">MAPQ</abbr> 20; <code>mq0_count</code> is reported. There is no paralog
   awareness: gbcms reports what is at the locus.</li>
-<li><strong>Should do:</strong> to measure. Find how often low-mappability loci carry
-  paralog-derived ALT reads, then decide on a diagnostic (O5 #179).</li>
+<li><strong>Should do:</strong> proposed (O5 #179, 6.7.0): a diagnostic in <code>gbcms_diagnostic</code>,
+  never a filter, no new column. The target is settled by measurement first: how
+  often ALT reads at low-mappability and segmental-duplication loci are
+  paralog-derived, validated on paralog-rich loci and the paired panel/WES loci.</li>
 <li><strong>Community:</strong><ul>
 <li>GIAB stratifies benchmarks by low mappability and segmental duplications;</li>
 <li>callers annotate mapping-quality rank-sum statistics (GATK <code>MQRankSum</code>, to
@@ -2612,8 +2673,11 @@ caveat in gbcms's output.</p>
   capture REF molecules better.</li>
 <li><strong>gbcms now:</strong> counts every read that maps; clipped-carrier admission recovers
   part of the loss.</li>
-<li><strong>Should do:</strong> proposed. A diagnostic when ALT reads map or clip clearly worse
-  than REF reads; no filtering (O5 #179).</li>
+<li><strong>Should do:</strong> proposed. Per variant, compare the <abbr title="Mapping Quality - Confidence score for read alignment">MAPQ</abbr>, clip rate and
+  outside-depth rate of ALT-like reads against REF reads (and the MQ0 fraction),
+  and flag a clear imbalance in <code>gbcms_diagnostic</code>; no filtering, no new column
+  (O5 #179). Validate on the paired panel/WES loci (realignment removes most of the
+  bias) and on paralog-rich loci.</li>
 <li><strong>Community:</strong> clip- and <abbr title="Mapping Quality - Confidence score for read alignment">MAPQ</abbr>-bias annotations, as above; graph and
   alt-aware references reduce the bias upstream. To survey.</li>
 <li><strong>See it:</strong> <code>alt_dist_end_median</code> against <code>ref_dist_end_median</code>; per-allele
@@ -2649,6 +2713,35 @@ caveat in gbcms's output.</p>
 <li><strong>Community:</strong> GATK <abbr title="Base Quality Score Recalibration - GATK quality recalibration tool">BQSR</abbr>; bcftools and samtools <abbr title="Base Alignment Quality - Heuristic quality downgrade near indels and splice junctions">BAQ</abbr> (<code>-B</code>/<code>-E</code>).</li>
 <li><strong>See it:</strong> <code>n_count</code>; the per-read trace.</li>
 </ul>
+<h3 id="sequencing-errors-inside-or-beside-the-event">Sequencing errors inside or beside the event<a class="headerlink" href="#sequencing-errors-inside-or-beside-the-event" title="Permanent link">¶</a></h3>
+<ul>
+<li><strong>In the <abbr title="Binary Alignment Map - Compressed sequence alignment file format">BAM</abbr>:</strong> an exact-length insertion read with one sequencing error inside the
+  inserted bases; a REF molecule with one clear error just outside the window of the
+  allele it is anchored to; a truncated copy of an insertion (the read holds part of
+  the insert).</li>
+<li><strong>gbcms now:</strong><ul>
+<li>one substitution in a read is an error on REF and ALT reads alike: an
+  exact-length insertion with one error inside is judged by its bases, the error
+  tolerated where the other allele mismatches the same base, unless it recurs
+  inside the event (RJ-26; C6 #143);</li>
+<li>both alleles' windows are read from one anchor, so an error any reading sees
+  counts against the allele it contradicts and a REF molecule with one flank
+  error is not credited ALT (RJ-23; C33 #214, a limit of the first exact-carrier
+  rule, where the two windows were read from different anchors);</li>
+<li>a truncated copy counts <code>partial_alt</code>, not ALT. An identity band for truncated
+  inserts (the truncation rule's 90% identity and non-low-complexity gates) was
+  measured and not adopted for the exact-carrier rule (operator, 2026-10-16): it
+  added 158 ALT reads on HG002 long insertions with truth concordance unchanged;
+  on the panel it added 13 ALT calls the bases oracle agrees with, against 111 it
+  does not. The band stays only where the rule cannot judge (no prepared
+  reference, the <abbr title="Compact Idiosyncratic Gapped Alignment Report - BAM alignment operation string">CIGAR</abbr> path).</li>
+</ul>
+</li>
+<li><strong>Should do:</strong> decided and done (the band: decided against). See
+  <a href="../read-judgment/">Read Judgment</a>.</li>
+<li><strong>Community:</strong> not surveyed for this caveat.</li>
+<li><strong>See it:</strong> <code>partial_alt</code>; the <code>rule=</code> of each <code>--trace</code> read call.</li>
+</ul>
 <h3 id="adapter-read-through">Adapter read-through<a class="headerlink" href="#adapter-read-through" title="Permanent link">¶</a></h3>
 <ul>
 <li><strong>In the <abbr title="Binary Alignment Map - Compressed sequence alignment file format">BAM</abbr>:</strong> when the fragment is shorter than the read, bases past the mate's
@@ -2658,10 +2751,30 @@ caveat in gbcms's output.</p>
   in every rule (RJ-10, C17 #176), when they look like adapter (soft-clipped, or
   at most two aligned). Bases that go on aligning, or an insertion past the
   boundary, are kept: TLEN understates a molecule carrying an ITD.</li>
-<li><strong>Should do:</strong> decided and done.</li>
+<li><strong>A limit (C31 #212):</strong> the boundary is TLEN, measured between the pair's
+  <em>aligned</em> 5' ends. When the mate's 5' end is soft-clipped, TLEN understates the
+  molecule, and a read's own soft-clipped bases past the boundary can be molecule
+  bases that are clipped as adapter. The adversarial review of the rule built a
+  failing case: an anchor-changing insertion that <abbr title="Burrows-Wheeler Aligner - Standard short-read DNA aligner (mem/aln)">BWA</abbr>-MEM soft-clips near the read
+  end, with a mate whose 5' clip holds the same bases; R1 loses its ALT (<abbr title="Alternate Depth - Reads supporting the alternate allele">AD</abbr> 8 to 4).
+  Measured on the group 1 data, when only complex and <abbr title="Multi-Nucleotide Polymorphism - Multiple adjacent base substitutions">MNP</abbr> windows read soft clips:<ul>
+<li>203 of 1,782 clipped reads with soft-clipped bases past the boundary have a
+  mate with a 5' soft clip (about 2,100 bases; for insertions, 71 of 416 reads);</li>
+<li>no count moved on RC DNA, FORTE or WES;</li>
+<li>the <code>CLIP_CANDIDATES</code> diagnostic can drop for such reads.</li>
+</ul>
+</li>
+<li><strong>Should do:</strong> the boundary rule is decided and done. The mate-clip refinement is
+  proposed (C31 #212): measure the fragment end from the mate's <em>unclipped</em> 5' end
+  when the MC tag (mate <abbr title="Compact Idiosyncratic Gapped Alignment Report - BAM alignment operation string">CIGAR</abbr>) is present, and keep today's rule without MC. MC is
+  a per-record tag, so the count stays binning-invariant (using the mate record
+  from the bin would not be). MC is on all WES reads and part of the RC DNA here;
+  FORTE and the probes have none. Decide together with C15 #173 and C7 #144, and
+  measure on ITD loci first (the FLT3 ITD row is on the watchlist).</li>
 <li><strong>Community:</strong> GATK hard-clips adapter at the insert-size boundary; fgbio
-  ClipBam clips bases past the mate (<code>--clip-bases-past-mate</code>). Adapter trimming
-  upstream (fastp, cutadapt) is common but not universal.</li>
+  ClipBam clips bases past the mate (<code>--clip-bases-past-mate</code>), measuring the
+  mate's end from its unclipped coordinates. Adapter trimming upstream (fastp,
+  cutadapt) is common but not universal.</li>
 </ul>
 <h3 id="stutter-and-polymerase-slippage-in-repeats">Stutter and polymerase slippage in repeats<a class="headerlink" href="#stutter-and-polymerase-slippage-in-repeats" title="Permanent link">¶</a></h3>
 <ul>
@@ -2677,8 +2790,10 @@ caveat in gbcms's output.</p>
 <li><strong>In the <abbr title="Binary Alignment Map - Compressed sequence alignment file format">BAM</abbr>:</strong> artifacts concentrated in one read orientation (F1R2 or F2R1),
   which strand counts do not separate.</li>
 <li><strong>gbcms now:</strong> forward and reverse counts per allele.</li>
-<li><strong>Should do:</strong> to measure. Decide between optional F1R2/F2R1 counts and an
-  orientation-imbalance diagnostic (O6 #180).</li>
+<li><strong>Should do:</strong> to decide (O6 #180, 6.7.0): optional per-allele F1R2/F2R1 counts, or
+  an orientation-imbalance diagnostic only (the project prefers no new columns).
+  Measure first on FFPE-rich data: orientation skew at oxoG/FFPE-prone contexts
+  against true variants on the validation matrix.</li>
 <li><strong>Community:</strong> Mutect2's read-orientation model uses F1R2 counts (to verify).</li>
 </ul>
 <h3 id="duplicates-and-umi-consensus">Duplicates and <abbr title="Unique Molecular Identifier - Molecular barcode for deduplication">UMI</abbr> consensus<a class="headerlink" href="#duplicates-and-umi-consensus" title="Permanent link">¶</a></h3>
@@ -2710,8 +2825,10 @@ caveat in gbcms's output.</p>
 </ul>
 <p>See <a href="../rna-splice-handling/">RNA splice handling</a>. Decided and done.
 - <strong><abbr title="Spliced Transcripts Alignment to a Reference - RNA-seq aligner">STAR</abbr> clips:</strong> a short overhang into the next exon is clipped, so its bases
-  come from that exon, not the intron. Clipped-carrier admission is off in RNA.
-  To measure, including a junction-aware reading (#173).
+  come from that exon, not the intron. A clip that reaches an exon edge or a
+  junction end (annotated, or one the variant's reads splice at), or whose aligned
+  bases end within five bases of one, is not allele evidence; any other clip is
+  the read's own bases and is read as in DNA (RJ-18, C15 #173). Decided and done.
 - <strong>RNA editing (A-to-I):</strong> a catalogued editing site inside a window makes an ALT
   carrier look like partial evidence. Proposed: treat the edited base as matching
   inside windows (R3 #178). Today <code>rna_editing_site</code> flags only variants that are
@@ -2719,8 +2836,28 @@ caveat in gbcms's output.</p>
 - <strong>Allele-specific expression and NMD:</strong> RNA <abbr title="Variant Allele Frequency - Fraction of reads supporting the variant allele">VAF</abbr> is expression-weighted and is
   not a DNA <abbr title="Variant Allele Frequency - Fraction of reads supporting the variant allele">VAF</abbr>. It is reported as is: an interpretation caveat.
 - <strong>Strandedness:</strong> antisense reads are gated when enforced, and <code>rna_antisense_depth</code>
-  still tallies them (R2 #114). Loci without a resolved gene strand (intronic,
-  opposite-strand overlaps) are not gated yet (R4 #185).</p>
+  still tallies them (R2 #114). An intronic position takes the strand of the
+  transcripts spanning it (R4 #185). Loci with no gene strand (no <code>--gtf</code>, no gene,
+  or genes of both strands over the locus) are not gated: every read there counts as
+  sense. A library that is not stranded needs <code>--strandedness unstranded</code>; see
+  <a href="../../cli/rna/#strandedness-filtering"><code>gbcms rna</code></a>.
+- <strong>A GTF transcript ID used at more than one place (C34 #216):</strong> the GTF parser
+  groups exons by transcript ID alone, after stripping a numeric version suffix, so
+  an ID used on more than one chromosome or strand merges into one transcript. Exons
+  of different chromosomes are sorted together, which makes introns that do not exist
+  and misses real ones, and the transcript's introns sit on one chromosome only. That
+  feeds the intron boundaries (<code>RETENTION_DOMINANT</code>, the exon-edge <abbr title="Base Alignment Quality - Heuristic quality downgrade near indels and splice junctions">BAQ</abbr> rule, the RNA
+  clip edges of RJ-18), per-transcript counts and junction compatibility, and ASJD.
+  The strand spans are already keyed by transcript, chromosome and strand. It can
+  bite on GTFs that reuse an ID (UCSC/RefSeq: the same NM_ on chrX and chrY in the
+  PARs, alternate loci) and on versions that differ only by suffix (NM_x.1 and
+  NM_x.2); GENCODE's <code>_PAR_Y</code> IDs are not stripped and stay distinct. Measured on the
+  production GTF (Ensembl GRCh38.111, used for FORTE): 0 of 252,989 transcript IDs
+  occur on more than one chromosome or strand, so no production row is affected
+  today, and RJ-18's clip edges also take every junction the reads splice at, which
+  covers a missing annotated edge in most cases. Proposed: key transcripts by (ID,
+  chromosome, strand), report a per-transcript count under its ID with the locus where
+  an ID occurs twice, and warn once when the GTF reuses an ID.</p>
 <h2 id="5-not-the-bam-but-easy-to-misread-from-counts">5. Not the <abbr title="Binary Alignment Map - Compressed sequence alignment file format">BAM</abbr>, but easy to misread from counts<a class="headerlink" href="#5-not-the-bam-but-easy-to-misread-from-counts" title="Permanent link">¶</a></h2>
 <ul>
 <li><strong>Reads ending inside the event, and low depth:</strong> a read that ends before
@@ -2728,6 +2865,16 @@ caveat in gbcms's output.</p>
   toward depth only, since it cannot show either allele; one that holds it and
   ends inside the longer allele is judged by the bases it has (RJ-23). At low
   depth, informative reads are few, so compare <code>alt_count + ref_count</code> with depth.</li>
+<li><strong>Variants not prepared against the reference (direct API use, or a failed
+  reference fetch) (C24 #195):</strong> when the semiglobal alignment is judged unreliable,
+  <code>classify_by_alignment</code> re-scores with a local alignment, but its tail (the REF
+  branch's nearby-evidence check and the tie branch) still reads the semiglobal
+  scores. REF and ALT calls use the local scores correctly; only
+  <code>has_nearby_evidence</code>, so <code>partial_alt</code>, can be affected. It runs only where the
+  exact-carrier rule returns nothing (no <code>ref_context</code> or <code>event_ref</code> holding the
+  event and its flank), which prepared variants have. Not reproduced end to end (it
+  needs a Rust test). Open for 6.7.0: use the fallback's own scores in the tail, or
+  retire the fallback and flag the leftover path through <code>SW_FALLBACK</code>.</li>
 <li><strong>Purity, clonality, contamination, clonal haematopoiesis, germline vs
   somatic:</strong> counts are evidence, not calls. A matched normal and, for <abbr title="Cell-free DNA - Circulating DNA fragments in blood plasma">cfDNA</abbr>,
   <a href="../mfsd-report/"><abbr title="Mutant Fragment Size Distribution - Insert-size analysis for REF vs ALT fragments">mFSD</abbr></a> help interpret them.</li>
@@ -2757,7 +2904,7 @@ caveat in gbcms's output.</p>
     <span class="md-icon" title="Last update">
       <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M21 13.1c-.1 0-.3.1-.4.2l-1 1 2.1 2.1 1-1c.2-.2.2-.6 0-.8l-1.3-1.3c-.1-.1-.2-.2-.4-.2m-1.9 1.8-6.1 6V23h2.1l6.1-6.1zM12.5 7v5.2l4 2.4-1 1L11 13V7zM11 21.9c-5.1-.5-9-4.8-9-9.9C2 6.5 6.5 2 12 2c5.3 0 9.6 4.1 10 9.3-.3-.1-.6-.2-1-.2s-.7.1-1 .2C19.6 7.2 16.2 4 12 4c-4.4 0-8 3.6-8 8 0 4.1 3.1 7.5 7.1 7.9l-.1.2z"></path></svg>
     </span>
-    <span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-timeago" title="October 9, 2026 13:32:39 UTC"><span class="timeago" datetime="2026-10-09T13:32:39+00:00" locale="en"></span></span><span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-iso_date" title="October 9, 2026 13:32:39 UTC">2026-10-09</span>
+    <span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-timeago" title="October 24, 2026 05:32:22 UTC"><span class="timeago" datetime="2026-10-24T05:32:22+00:00" locale="en"></span></span><span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-iso_date" title="October 24, 2026 05:32:22 UTC">2026-10-24</span>
   </span>
 
     

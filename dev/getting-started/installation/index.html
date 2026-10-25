@@ -485,6 +485,34 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#platform-support" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Platform support
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Platform support">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#building-from-source" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Building from source
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#legacy-linux-rhel-8-hpc" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1961,6 +1989,34 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#platform-support" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Platform support
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Platform support">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#building-from-source" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Building from source
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#legacy-linux-rhel-8-hpc" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -2096,16 +2152,19 @@
 
 <div><h1 id="installation">Installation<a class="headerlink" href="#installation" title="Permanent link">¶</a></h1>
 <h2 id="quick-install">Quick Install<a class="headerlink" href="#quick-install" title="Permanent link">¶</a></h2>
-<div class="tabbed-set tabbed-alternate" data-tabs="1:3"><input checked="" id="__tabbed_1_1" name="__tabbed_1" type="radio"><input id="__tabbed_1_2" name="__tabbed_1" type="radio"><input id="__tabbed_1_3" name="__tabbed_1" type="radio"><div class="tabbed-labels"><label for="__tabbed_1_1">PyPI (Recommended)</label><label for="__tabbed_1_2">Docker</label><label for="__tabbed_1_3">From Source</label></div>
+<div class="tabbed-set tabbed-alternate" data-tabs="1:3"><input checked="" id="__tabbed_1_1" name="__tabbed_1" type="radio"><input id="__tabbed_1_2" name="__tabbed_1" type="radio"><input id="__tabbed_1_3" name="__tabbed_1" type="radio"><div class="tabbed-labels"><label for="__tabbed_1_1">PyPI</label><label for="__tabbed_1_2">Docker</label><label for="__tabbed_1_3">From Source</label></div>
 <div class="tabbed-content">
 <div class="tabbed-block">
 <div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>pip<span class="w"> </span>install<span class="w"> </span>gbcms
 <a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>gbcms<span class="w"> </span>--version
 </code></pre></div>
 <div class="admonition info">
-<p class="admonition-title">System Requirements</p>
-<p>PyPI wheels require <strong>glibc 2.34+</strong> (Ubuntu 22.04+, RHEL 9+, Debian 12+).
-For older systems, see <a href="#legacy-linux-rhel-8-hpc">Legacy Linux</a>.</p>
+<p class="admonition-title">One prebuilt wheel</p>
+<p>A release publishes one wheel, for <strong>CPython 3.11 on Linux x86_64 with glibc
+2.34+</strong> (Ubuntu 22.04+, RHEL 9+, Debian 12+), and the source distribution. On
+any other platform or Python, <code>pip install gbcms</code> compiles the source
+distribution on your machine, which needs a Rust toolchain and a C compiler.
+See <a href="#platform-support">Platform support</a>.</p>
 </div>
 </div>
 <div class="tabbed-block">
@@ -2116,7 +2175,7 @@ For older systems, see <a href="#legacy-linux-rhel-8-hpc">Legacy Linux</a>.</p>
 <div class="tabbed-block">
 <div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a>git<span class="w"> </span>clone<span class="w"> </span>https://github.com/msk-access/gbcms.git
 <a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a><span class="nb">cd</span><span class="w"> </span>gbcms
-<a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a>pip<span class="w"> </span>install<span class="w"> </span>.<span class="w">   </span><span class="c1"># builds the Rust extension: needs a Rust toolchain</span>
+<a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a>pip<span class="w"> </span>install<span class="w"> </span>.<span class="w">   </span><span class="c1"># builds the Rust extension: needs a Rust toolchain and a C compiler</span>
 <a id="__codelineno-2-4" name="__codelineno-2-4" href="#__codelineno-2-4"></a>
 <a id="__codelineno-2-5" name="__codelineno-2-5" href="#__codelineno-2-5"></a><span class="c1"># Contributors: an editable install with the test, lint and docs tools</span>
 <a id="__codelineno-2-6" name="__codelineno-2-6" href="#__codelineno-2-6"></a><span class="c1"># (a PEP 735 dependency group, which needs pip&gt;=25.1)</span>
@@ -2138,11 +2197,11 @@ For older systems, see <a href="#legacy-linux-rhel-8-hpc">Legacy Linux</a>.</p>
 <tbody>
 <tr>
 <td style="text-align: left;">Python</td>
-<td style="text-align: left;">3.10+</td>
+<td style="text-align: left;">3.10+ (<abbr title="Continuous Integration - Automated build and test system">CI</abbr> runs 3.10, 3.11 and 3.14 on every change, and 3.10 to 3.14 monthly)</td>
 </tr>
 <tr>
 <td style="text-align: left;">OS</td>
-<td style="text-align: left;">Linux (glibc 2.34+), macOS, Windows (WSL2)</td>
+<td style="text-align: left;">Linux (x86_64 wheel needs glibc 2.34+), macOS (built from source), Windows through WSL2</td>
 </tr>
 <tr>
 <td style="text-align: left;">Memory</td>
@@ -2152,9 +2211,59 @@ For older systems, see <a href="#legacy-linux-rhel-8-hpc">Legacy Linux</a>.</p>
 </table>
 <h3 id="for-nextflow-workflow">For Nextflow Workflow<a class="headerlink" href="#for-nextflow-workflow" title="Permanent link">¶</a></h3>
 <ul>
-<li>Nextflow 21.10.3+</li>
+<li>Nextflow 24.04.0 or later (the pipeline manifest enforces it: <code>nextflowVersion = '!&gt;=24.04.0'</code>)</li>
 <li>Docker or Singularity</li>
 </ul>
+<hr>
+<h2 id="platform-support">Platform support<a class="headerlink" href="#platform-support" title="Permanent link">¶</a></h2>
+<p>What a release builds is exactly what <code>.github/workflows/release.yml</code> builds: the
+<code>linux</code> job (<code>ubuntu-latest</code>, <code>--release -i python3.11</code>, <code>manylinux_2_34</code>) and the
+<code>sdist</code> job. So <code>pip install gbcms</code> gives:</p>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">Your platform</th>
+<th style="text-align: left;">What <code>pip install gbcms</code> does</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;">Linux x86_64, glibc 2.34+, Python 3.11</td>
+<td style="text-align: left;">Installs the prebuilt wheel (<code>cp311</code>, <code>manylinux_2_34_x86_64</code>)</td>
+</tr>
+<tr>
+<td style="text-align: left;">Linux x86_64, glibc 2.34+, another Python (3.10, 3.12 to 3.14)</td>
+<td style="text-align: left;">Builds the source distribution</td>
+</tr>
+<tr>
+<td style="text-align: left;">Linux with glibc below 2.34 (RHEL 8, CentOS 8), or Linux aarch64</td>
+<td style="text-align: left;">Builds the source distribution; see <a href="#legacy-linux-rhel-8-hpc">Legacy Linux</a></td>
+</tr>
+<tr>
+<td style="text-align: left;">macOS, Intel or Apple Silicon</td>
+<td style="text-align: left;">Builds the source distribution (<abbr title="Continuous Integration - Automated build and test system">CI</abbr> builds and tests it on macOS with Python 3.12)</td>
+</tr>
+<tr>
+<td style="text-align: left;">Windows (native)</td>
+<td style="text-align: left;">Not built or tested; use WSL2, which is the Linux row</td>
+</tr>
+</tbody>
+</table>
+<p>The Docker image (<code>ghcr.io/msk-access/gbcms</code>) is built by the same workflow for
+<code>linux/amd64</code> and carries Python 3.11.</p>
+<h3 id="building-from-source">Building from source<a class="headerlink" href="#building-from-source" title="Permanent link">¶</a></h3>
+<p>Every row above that builds from source needs, on your machine:</p>
+<ul>
+<li>a <strong>Rust toolchain</strong> (<code>rustup</code>, stable);</li>
+<li>a <strong>C compiler</strong> (the bundled htslib is compiled from C);</li>
+<li><strong>libclang</strong>, which <code>bindgen</code> uses for the htslib headers (set <code>LIBCLANG_PATH</code> if it
+  is not found);</li>
+<li>the development headers for <strong>zlib, bzip2, xz, libcurl and OpenSSL</strong>.</li>
+</ul>
+<p>The release build installs <code>zlib-devel bzip2-devel xz-devel libcurl-devel
+openssl-devel clang llvm-devel</code> (the Debian names are <code>zlib1g-dev libbz2-dev
+liblzma-dev libcurl4-openssl-dev libssl-dev clang libclang-dev</code>). <abbr title="Continuous Integration - Automated build and test system">CI</abbr>'s macOS jobs
+install <code>htslib</code>, <code>autoconf</code> and <code>automake</code> with Homebrew before building.</p>
 <hr>
 <h2 id="legacy-linux-rhel-8-hpc">Legacy Linux (RHEL 8 / <abbr title="High-Performance Computing - Cluster computing environment">HPC</abbr>)<a class="headerlink" href="#legacy-linux-rhel-8-hpc" title="Permanent link">¶</a></h2>
 <p>For RHEL 8, CentOS 8, or <abbr title="High-Performance Computing - Cluster computing environment">HPC</abbr> systems with glibc &lt; 2.34:</p>
@@ -2204,15 +2313,15 @@ For older systems, see <a href="#legacy-linux-rhel-8-hpc">Legacy Linux</a>.</p>
 </div>
 <div class="admonition note">
 <p class="admonition-title">Why not pip install?</p>
-<p>PyPI wheels require glibc 2.34+. On RHEL 8 (glibc 2.28), pip falls back to 
-source compilation which requires Rust and clang headers. The conda environment
+<p>The one prebuilt wheel requires glibc 2.34+. On RHEL 8 (glibc 2.28), pip falls back
+to source compilation, which requires Rust and clang headers. The conda environment
 provides these dependencies.</p>
 </div>
 <hr>
 <h2 id="verification">Verification<a class="headerlink" href="#verification" title="Permanent link">¶</a></h2>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a><span class="c1"># Check installation</span>
 <a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a>gbcms<span class="w"> </span>--version
-<a id="__codelineno-7-3" name="__codelineno-7-3" href="#__codelineno-7-3"></a><span class="c1"># Expected: X.Y.Z (your installed version)</span>
+<a id="__codelineno-7-3" name="__codelineno-7-3" href="#__codelineno-7-3"></a><span class="c1"># Expected: gbcms vX.Y.Z (commit)   (the version, and the commit of the build when known)</span>
 <a id="__codelineno-7-4" name="__codelineno-7-4" href="#__codelineno-7-4"></a>
 <a id="__codelineno-7-5" name="__codelineno-7-5" href="#__codelineno-7-5"></a><span class="c1"># Test help</span>
 <a id="__codelineno-7-6" name="__codelineno-7-6" href="#__codelineno-7-6"></a>gbcms<span class="w"> </span>--help
@@ -2285,7 +2394,7 @@ provides these dependencies.</p>
     <span class="md-icon" title="Last update">
       <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M21 13.1c-.1 0-.3.1-.4.2l-1 1 2.1 2.1 1-1c.2-.2.2-.6 0-.8l-1.3-1.3c-.1-.1-.2-.2-.4-.2m-1.9 1.8-6.1 6V23h2.1l6.1-6.1zM12.5 7v5.2l4 2.4-1 1L11 13V7zM11 21.9c-5.1-.5-9-4.8-9-9.9C2 6.5 6.5 2 12 2c5.3 0 9.6 4.1 10 9.3-.3-.1-.6-.2-1-.2s-.7.1-1 .2C19.6 7.2 16.2 4 12 4c-4.4 0-8 3.6-8 8 0 4.1 3.1 7.5 7.1 7.9l-.1.2z"></path></svg>
     </span>
-    <span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-timeago" title="October 6, 2026 11:17:08 UTC"><span class="timeago" datetime="2026-10-06T11:17:08+00:00" locale="en"></span></span><span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-iso_date" title="October 6, 2026 11:17:08 UTC">2026-10-06</span>
+    <span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-timeago" title="October 24, 2026 05:32:22 UTC"><span class="timeago" datetime="2026-10-24T05:32:22+00:00" locale="en"></span></span><span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-iso_date" title="October 24, 2026 05:32:22 UTC">2026-10-24</span>
   </span>
 
     

@@ -2603,7 +2603,7 @@ Use mouse to pan and zoom
 
     Start --&gt;|"cfDNA · IMPACT · WGS\nWES · Panel"| DNA(["gbcms dna"]):::dna
     Start --&gt;|"STAR-aligned RNA-seq\ndUTP stranded"| RNA(["gbcms rna"]):::rna
-    Start --&gt;|"Unstranded RNA-seq\n(random orientation)"| RNAL(["gbcms rna\n--no-strandedness"]):::rnal
+    Start --&gt;|"Unstranded RNA-seq\n(random orientation)"| RNAL(["gbcms rna\n--strandedness unstranded"]):::rnal
 
     classDef start fill:#9b59b6,color:#fff,stroke:#7d3c98,stroke-width:2px;
     classDef dna fill:#27ae60,color:#fff,stroke:#1e8449,stroke-width:2px;
@@ -2632,10 +2632,10 @@ Use mouse to pan and zoom
 <p><strong>Use for:</strong> <abbr title="Spliced Transcripts Alignment to a Reference - RNA-seq aligner">STAR</abbr>-aligned RNA-seq (<abbr title="Deoxyuridine Triphosphate - Used in strand-specific RNA-seq protocols">dUTP</abbr> stranded or unstranded)</p>
 <p><strong>Key capabilities:</strong></p>
 <ul>
-<li><abbr title="Number of Hits - BAM tag indicating number of reported alignments">NH</abbr>:i:1 <abbr title="Mapping Quality - Confidence score for read alignment">MAPQ</abbr> rescue for novel splice junction reads</li>
-<li><abbr title="Deoxyuridine Triphosphate - Used in strand-specific RNA-seq protocols">dUTP</abbr> strandedness filtering (disable with <code>--no-strandedness</code> for unstranded libraries)</li>
+<li><code>NH:i:1</code> rescue of uniquely aligned reads whose <abbr title="Mapping Quality - Confidence score for read alignment">MAPQ</abbr> falls below <code>--min-mapq</code>; <abbr title="Mapping Quality - Confidence score for read alignment">MAPQ</abbr> 1 default keeps <abbr title="Spliced Transcripts Alignment to a Reference - RNA-seq aligner">STAR</abbr>'s two-to-four-locus primaries</li>
+<li><abbr title="Deoxyuridine Triphosphate - Used in strand-specific RNA-seq protocols">dUTP</abbr> strandedness filtering (<code>--strandedness unstranded</code> for unstranded libraries; <code>forward</code> for fr-secondstrand)</li>
 <li>A-to-I RNA editing site flagging via REDIportal (<code>--rna-editing-db</code>)</li>
-<li>Splice junction tracking (<code>rna_splice_spanning_count</code>)</li>
+<li>Splice junction tracking (<code>rna_splice_spanning</code>)</li>
 </ul>
 <p><strong>Defaults:</strong> <abbr title="Mapping Quality - Confidence score for read alignment">MAPQ</abbr> 1 · base quality 20 · secondary/supplementary/QC-failed reads filtered · <abbr title="Pair Hidden Markov Model - Probabilistic alignment using base quality scores">PairHMM</abbr> relaxed <abbr title="Reverse Transcriptase - Enzyme converting RNA to cDNA">RT</abbr> gap penalties</p>
 <p>→ <a href="#getting-started-quickstart">Quick Start</a> | <a href="#cli-rna">Full <abbr title="Command Line Interface - Terminal-based program interface">CLI</abbr> Reference</a></p>
@@ -2679,9 +2679,9 @@ Use mouse to pan and zoom
 <td style="text-align: center;">✅</td>
 </tr>
 <tr>
-<td style="text-align: left;">Gene strand annotation in <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> (<code>gene_strand</code> column)</td>
+<td style="text-align: left;">GTF annotation (<code>--gtf</code>), the source of each variant's gene strand</td>
 <td style="text-align: center;">—</td>
-<td style="text-align: center;">Recommended</td>
+<td style="text-align: center;">Needed for strand-aware counting</td>
 </tr>
 <tr>
 <td style="text-align: left;">REDIportal TABLE1 file</td>
@@ -2716,16 +2716,19 @@ Use mouse to pan and zoom
         </script>
         </head><body><div><h1 id="installation">Installation<a class="headerlink" href="#getting-started-installation-installation" title="Permanent link">¶</a></h1>
 <h2 id="getting-started-installation-quick-install">Quick Install<a class="headerlink" href="#getting-started-installation-quick-install" title="Permanent link">¶</a></h2>
-<div class="tabbed-set tabbed-alternate" data-tabs="1:3"><input checked="" id="getting-started-installation-__tabbed_1_1" name="getting-started-installation-__tabbed_1" type="radio"><input id="getting-started-installation-__tabbed_1_2" name="getting-started-installation-__tabbed_1" type="radio"><input id="getting-started-installation-__tabbed_1_3" name="getting-started-installation-__tabbed_1" type="radio"><div class="tabbed-labels"><label for="getting-started-installation-__tabbed_1_1">PyPI (Recommended)</label><label for="getting-started-installation-__tabbed_1_2">Docker</label><label for="getting-started-installation-__tabbed_1_3">From Source</label></div>
+<div class="tabbed-set tabbed-alternate" data-tabs="1:3"><input checked="" id="getting-started-installation-__tabbed_1_1" name="getting-started-installation-__tabbed_1" type="radio"><input id="getting-started-installation-__tabbed_1_2" name="getting-started-installation-__tabbed_1" type="radio"><input id="getting-started-installation-__tabbed_1_3" name="getting-started-installation-__tabbed_1" type="radio"><div class="tabbed-labels"><label for="getting-started-installation-__tabbed_1_1">PyPI</label><label for="getting-started-installation-__tabbed_1_2">Docker</label><label for="getting-started-installation-__tabbed_1_3">From Source</label></div>
 <div class="tabbed-content">
 <div class="tabbed-block">
 <div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#getting-started-installation-__codelineno-0-1"></a>pip<span class="w"> </span>install<span class="w"> </span>gbcms
 <a id="__codelineno-0-2" name="__codelineno-0-2" href="#getting-started-installation-__codelineno-0-2"></a>gbcms<span class="w"> </span>--version
 </code></pre></div>
 <div class="admonition info">
-<p class="admonition-title">System Requirements</p>
-<p>PyPI wheels require <strong>glibc 2.34+</strong> (Ubuntu 22.04+, RHEL 9+, Debian 12+).
-For older systems, see <a href="#getting-started-installation-legacy-linux-rhel-8-hpc">Legacy Linux</a>.</p>
+<p class="admonition-title">One prebuilt wheel</p>
+<p>A release publishes one wheel, for <strong>CPython 3.11 on Linux x86_64 with glibc
+2.34+</strong> (Ubuntu 22.04+, RHEL 9+, Debian 12+), and the source distribution. On
+any other platform or Python, <code>pip install gbcms</code> compiles the source
+distribution on your machine, which needs a Rust toolchain and a C compiler.
+See <a href="#getting-started-installation-platform-support">Platform support</a>.</p>
 </div>
 </div>
 <div class="tabbed-block">
@@ -2736,7 +2739,7 @@ For older systems, see <a href="#getting-started-installation-legacy-linux-rhel-
 <div class="tabbed-block">
 <div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#getting-started-installation-__codelineno-2-1"></a>git<span class="w"> </span>clone<span class="w"> </span>https://github.com/msk-access/gbcms.git
 <a id="__codelineno-2-2" name="__codelineno-2-2" href="#getting-started-installation-__codelineno-2-2"></a><span class="nb">cd</span><span class="w"> </span>gbcms
-<a id="__codelineno-2-3" name="__codelineno-2-3" href="#getting-started-installation-__codelineno-2-3"></a>pip<span class="w"> </span>install<span class="w"> </span>.<span class="w">   </span><span class="c1"># builds the Rust extension: needs a Rust toolchain</span>
+<a id="__codelineno-2-3" name="__codelineno-2-3" href="#getting-started-installation-__codelineno-2-3"></a>pip<span class="w"> </span>install<span class="w"> </span>.<span class="w">   </span><span class="c1"># builds the Rust extension: needs a Rust toolchain and a C compiler</span>
 <a id="__codelineno-2-4" name="__codelineno-2-4" href="#getting-started-installation-__codelineno-2-4"></a>
 <a id="__codelineno-2-5" name="__codelineno-2-5" href="#getting-started-installation-__codelineno-2-5"></a><span class="c1"># Contributors: an editable install with the test, lint and docs tools</span>
 <a id="__codelineno-2-6" name="__codelineno-2-6" href="#getting-started-installation-__codelineno-2-6"></a><span class="c1"># (a PEP 735 dependency group, which needs pip&gt;=25.1)</span>
@@ -2758,11 +2761,11 @@ For older systems, see <a href="#getting-started-installation-legacy-linux-rhel-
 <tbody>
 <tr>
 <td style="text-align: left;">Python</td>
-<td style="text-align: left;">3.10+</td>
+<td style="text-align: left;">3.10+ (<abbr title="Continuous Integration - Automated build and test system">CI</abbr> runs 3.10, 3.11 and 3.14 on every change, and 3.10 to 3.14 monthly)</td>
 </tr>
 <tr>
 <td style="text-align: left;">OS</td>
-<td style="text-align: left;">Linux (glibc 2.34+), macOS, Windows (WSL2)</td>
+<td style="text-align: left;">Linux (x86_64 wheel needs glibc 2.34+), macOS (built from source), Windows through WSL2</td>
 </tr>
 <tr>
 <td style="text-align: left;">Memory</td>
@@ -2772,9 +2775,59 @@ For older systems, see <a href="#getting-started-installation-legacy-linux-rhel-
 </table>
 <h3 id="getting-started-installation-for-nextflow-workflow">For Nextflow Workflow<a class="headerlink" href="#getting-started-installation-for-nextflow-workflow" title="Permanent link">¶</a></h3>
 <ul>
-<li>Nextflow 21.10.3+</li>
+<li>Nextflow 24.04.0 or later (the pipeline manifest enforces it: <code>nextflowVersion = '!&gt;=24.04.0'</code>)</li>
 <li>Docker or Singularity</li>
 </ul>
+<hr>
+<h2 id="getting-started-installation-platform-support">Platform support<a class="headerlink" href="#getting-started-installation-platform-support" title="Permanent link">¶</a></h2>
+<p>What a release builds is exactly what <code>.github/workflows/release.yml</code> builds: the
+<code>linux</code> job (<code>ubuntu-latest</code>, <code>--release -i python3.11</code>, <code>manylinux_2_34</code>) and the
+<code>sdist</code> job. So <code>pip install gbcms</code> gives:</p>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">Your platform</th>
+<th style="text-align: left;">What <code>pip install gbcms</code> does</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;">Linux x86_64, glibc 2.34+, Python 3.11</td>
+<td style="text-align: left;">Installs the prebuilt wheel (<code>cp311</code>, <code>manylinux_2_34_x86_64</code>)</td>
+</tr>
+<tr>
+<td style="text-align: left;">Linux x86_64, glibc 2.34+, another Python (3.10, 3.12 to 3.14)</td>
+<td style="text-align: left;">Builds the source distribution</td>
+</tr>
+<tr>
+<td style="text-align: left;">Linux with glibc below 2.34 (RHEL 8, CentOS 8), or Linux aarch64</td>
+<td style="text-align: left;">Builds the source distribution; see <a href="#getting-started-installation-legacy-linux-rhel-8-hpc">Legacy Linux</a></td>
+</tr>
+<tr>
+<td style="text-align: left;">macOS, Intel or Apple Silicon</td>
+<td style="text-align: left;">Builds the source distribution (<abbr title="Continuous Integration - Automated build and test system">CI</abbr> builds and tests it on macOS with Python 3.12)</td>
+</tr>
+<tr>
+<td style="text-align: left;">Windows (native)</td>
+<td style="text-align: left;">Not built or tested; use WSL2, which is the Linux row</td>
+</tr>
+</tbody>
+</table>
+<p>The Docker image (<code>ghcr.io/msk-access/gbcms</code>) is built by the same workflow for
+<code>linux/amd64</code> and carries Python 3.11.</p>
+<h3 id="getting-started-installation-building-from-source">Building from source<a class="headerlink" href="#getting-started-installation-building-from-source" title="Permanent link">¶</a></h3>
+<p>Every row above that builds from source needs, on your machine:</p>
+<ul>
+<li>a <strong>Rust toolchain</strong> (<code>rustup</code>, stable);</li>
+<li>a <strong>C compiler</strong> (the bundled htslib is compiled from C);</li>
+<li><strong>libclang</strong>, which <code>bindgen</code> uses for the htslib headers (set <code>LIBCLANG_PATH</code> if it
+  is not found);</li>
+<li>the development headers for <strong>zlib, bzip2, xz, libcurl and OpenSSL</strong>.</li>
+</ul>
+<p>The release build installs <code>zlib-devel bzip2-devel xz-devel libcurl-devel
+openssl-devel clang llvm-devel</code> (the Debian names are <code>zlib1g-dev libbz2-dev
+liblzma-dev libcurl4-openssl-dev libssl-dev clang libclang-dev</code>). <abbr title="Continuous Integration - Automated build and test system">CI</abbr>'s macOS jobs
+install <code>htslib</code>, <code>autoconf</code> and <code>automake</code> with Homebrew before building.</p>
 <hr>
 <h2 id="getting-started-installation-legacy-linux-rhel-8-hpc">Legacy Linux (RHEL 8 / <abbr title="High-Performance Computing - Cluster computing environment">HPC</abbr>)<a class="headerlink" href="#getting-started-installation-legacy-linux-rhel-8-hpc" title="Permanent link">¶</a></h2>
 <p>For RHEL 8, CentOS 8, or <abbr title="High-Performance Computing - Cluster computing environment">HPC</abbr> systems with glibc &lt; 2.34:</p>
@@ -2824,15 +2877,15 @@ For older systems, see <a href="#getting-started-installation-legacy-linux-rhel-
 </div>
 <div class="admonition note">
 <p class="admonition-title">Why not pip install?</p>
-<p>PyPI wheels require glibc 2.34+. On RHEL 8 (glibc 2.28), pip falls back to 
-source compilation which requires Rust and clang headers. The conda environment
+<p>The one prebuilt wheel requires glibc 2.34+. On RHEL 8 (glibc 2.28), pip falls back
+to source compilation, which requires Rust and clang headers. The conda environment
 provides these dependencies.</p>
 </div>
 <hr>
 <h2 id="getting-started-installation-verification">Verification<a class="headerlink" href="#getting-started-installation-verification" title="Permanent link">¶</a></h2>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-7-1" name="__codelineno-7-1" href="#getting-started-installation-__codelineno-7-1"></a><span class="c1"># Check installation</span>
 <a id="__codelineno-7-2" name="__codelineno-7-2" href="#getting-started-installation-__codelineno-7-2"></a>gbcms<span class="w"> </span>--version
-<a id="__codelineno-7-3" name="__codelineno-7-3" href="#getting-started-installation-__codelineno-7-3"></a><span class="c1"># Expected: X.Y.Z (your installed version)</span>
+<a id="__codelineno-7-3" name="__codelineno-7-3" href="#getting-started-installation-__codelineno-7-3"></a><span class="c1"># Expected: gbcms vX.Y.Z (commit)   (the version, and the commit of the build when known)</span>
 <a id="__codelineno-7-4" name="__codelineno-7-4" href="#getting-started-installation-__codelineno-7-4"></a>
 <a id="__codelineno-7-5" name="__codelineno-7-5" href="#getting-started-installation-__codelineno-7-5"></a><span class="c1"># Test help</span>
 <a id="__codelineno-7-6" name="__codelineno-7-6" href="#getting-started-installation-__codelineno-7-6"></a>gbcms<span class="w"> </span>--help
@@ -3041,7 +3094,7 @@ provides these dependencies.</p>
 <a id="__codelineno-10-2" name="__codelineno-10-2" href="#getting-started-quickstart-__codelineno-10-2"></a><span class="w">    </span>--variants<span class="w"> </span>variants.vcf<span class="w"> </span><span class="se">\</span>
 <a id="__codelineno-10-3" name="__codelineno-10-3" href="#getting-started-quickstart-__codelineno-10-3"></a><span class="w">    </span>--bam<span class="w"> </span>unstranded:aligned.bam<span class="w"> </span><span class="se">\</span>
 <a id="__codelineno-10-4" name="__codelineno-10-4" href="#getting-started-quickstart-__codelineno-10-4"></a><span class="w">    </span>--fasta<span class="w"> </span>reference.fa<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-10-5" name="__codelineno-10-5" href="#getting-started-quickstart-__codelineno-10-5"></a><span class="w">    </span>--no-strandedness<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-10-5" name="__codelineno-10-5" href="#getting-started-quickstart-__codelineno-10-5"></a><span class="w">    </span>--strandedness<span class="w"> </span>unstranded<span class="w"> </span><span class="se">\</span>
 <a id="__codelineno-10-6" name="__codelineno-10-6" href="#getting-started-quickstart-__codelineno-10-6"></a><span class="w">    </span>--output-dir<span class="w"> </span>results/
 </code></pre></div>
 </div>
@@ -3230,8 +3283,10 @@ provides these dependencies.</p>
 <p>The deprecated <code>gbcms run</code> command was removed in v4.1.0. Use <code>gbcms dna</code> instead — all arguments are identical.</p>
 </div>
 <h2 id="cli-dna-synopsis">Synopsis<a class="headerlink" href="#cli-dna-synopsis" title="Permanent link">¶</a></h2>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#cli-dna-__codelineno-0-1"></a>gbcms<span class="w"> </span>dna<span class="w"> </span><span class="o">[</span>OPTIONS<span class="o">]</span><span class="w"> </span>--variants<span class="w"> </span>&lt;FILE&gt;<span class="w"> </span>--bam<span class="w"> </span>&lt;NAME:PATH&gt;...<span class="w"> </span>--fasta<span class="w"> </span>&lt;FILE&gt;
+<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#cli-dna-__codelineno-0-1"></a>gbcms<span class="w"> </span>dna<span class="w"> </span><span class="o">[</span>OPTIONS<span class="o">]</span><span class="w"> </span>--variants<span class="w"> </span>&lt;FILE&gt;<span class="w"> </span>--bam<span class="w"> </span>&lt;NAME:PATH&gt;...<span class="w"> </span>--fasta<span class="w"> </span>&lt;FILE&gt;<span class="w"> </span>--output-dir<span class="w"> </span>&lt;DIR&gt;
 </code></pre></div>
+<p><code>--variants</code>, <code>--fasta</code> and <code>--output-dir</code> are required, and so is one of <code>--bam</code> or
+<code>--bam-list</code>; a command without them exits with a usage error.</p>
 <h2 id="cli-dna-required-arguments">Required Arguments<a class="headerlink" href="#cli-dna-required-arguments" title="Permanent link">¶</a></h2>
 <table>
 <thead>
@@ -3708,7 +3763,8 @@ given allele, <code>COEXISTING_ALLELE</code> when it is present beside a more fr
 <a id="__codelineno-5-3" name="__codelineno-5-3" href="#cli-dna-__codelineno-5-3"></a><span class="w">    </span>--bam<span class="w"> </span>tumor:tumor.bam<span class="w"> </span><span class="se">\</span>
 <a id="__codelineno-5-4" name="__codelineno-5-4" href="#cli-dna-__codelineno-5-4"></a><span class="w">    </span>--bam<span class="w"> </span>normal:normal.bam<span class="w"> </span><span class="se">\</span>
 <a id="__codelineno-5-5" name="__codelineno-5-5" href="#cli-dna-__codelineno-5-5"></a><span class="w">    </span>--fasta<span class="w"> </span>reference.fa<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-5-6" name="__codelineno-5-6" href="#cli-dna-__codelineno-5-6"></a><span class="w">    </span>--format<span class="w"> </span>maf<span class="w"> </span><span class="c1"># (1)!</span>
+<a id="__codelineno-5-6" name="__codelineno-5-6" href="#cli-dna-__codelineno-5-6"></a><span class="w">    </span>--format<span class="w"> </span>maf<span class="w"> </span><span class="se">\ </span><span class="c1"># (1)!</span>
+<a id="__codelineno-5-7" name="__codelineno-5-7" href="#cli-dna-__codelineno-5-7"></a><span class="w">    </span>--output-dir<span class="w"> </span>results/
 </code></pre></div>
 <ol>
 <li><abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> output preserves all input <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> columns and appends gbcms count columns.</li>
@@ -3720,7 +3776,8 @@ given allele, <code>COEXISTING_ALLELE</code> when it is present beside a more fr
 <a id="__codelineno-6-3" name="__codelineno-6-3" href="#cli-dna-__codelineno-6-3"></a><span class="w">    </span>--bam<span class="w"> </span>sample:sample.bam<span class="w"> </span><span class="se">\</span>
 <a id="__codelineno-6-4" name="__codelineno-6-4" href="#cli-dna-__codelineno-6-4"></a><span class="w">    </span>--fasta<span class="w"> </span>reference.fa<span class="w"> </span><span class="se">\</span>
 <a id="__codelineno-6-5" name="__codelineno-6-5" href="#cli-dna-__codelineno-6-5"></a><span class="w">    </span>--filter-duplicates<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-6-6" name="__codelineno-6-6" href="#cli-dna-__codelineno-6-6"></a><span class="w">    </span>--min-mapq<span class="w"> </span><span class="m">30</span>
+<a id="__codelineno-6-6" name="__codelineno-6-6" href="#cli-dna-__codelineno-6-6"></a><span class="w">    </span>--min-mapq<span class="w"> </span><span class="m">30</span><span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-6-7" name="__codelineno-6-7" href="#cli-dna-__codelineno-6-7"></a><span class="w">    </span>--output-dir<span class="w"> </span>results/
 </code></pre></div>
 </div>
 <div class="tabbed-block">
@@ -3729,10 +3786,11 @@ given allele, <code>COEXISTING_ALLELE</code> when it is present beside a more fr
 <a id="__codelineno-7-3" name="__codelineno-7-3" href="#cli-dna-__codelineno-7-3"></a><span class="w">    </span>--bam<span class="w"> </span>sample:sample.bam<span class="w"> </span><span class="se">\</span>
 <a id="__codelineno-7-4" name="__codelineno-7-4" href="#cli-dna-__codelineno-7-4"></a><span class="w">    </span>--fasta<span class="w"> </span>reference.fa<span class="w"> </span><span class="se">\</span>
 <a id="__codelineno-7-5" name="__codelineno-7-5" href="#cli-dna-__codelineno-7-5"></a><span class="w">    </span>--format<span class="w"> </span>maf<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-7-6" name="__codelineno-7-6" href="#cli-dna-__codelineno-7-6"></a><span class="w">    </span>--show-normalization<span class="w"> </span><span class="c1"># (1)!</span>
+<a id="__codelineno-7-6" name="__codelineno-7-6" href="#cli-dna-__codelineno-7-6"></a><span class="w">    </span>--show-normalization<span class="w"> </span><span class="se">\ </span><span class="c1"># (1)!</span>
+<a id="__codelineno-7-7" name="__codelineno-7-7" href="#cli-dna-__codelineno-7-7"></a><span class="w">    </span>--output-dir<span class="w"> </span>results/
 </code></pre></div>
 <ol>
-<li>Appends <code>norm_chrom</code>, <code>norm_pos</code>, <code>norm_ref</code>, <code>norm_alt</code> columns showing left-aligned coordinates.</li>
+<li><abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> output appends <code>norm_Start_Position</code>, <code>norm_End_Position</code>, <code>norm_Reference_Allele</code> and <code>norm_Tumor_Seq_Allele2</code> (after any <code>--column-prefix</code>) showing the left-aligned variant; <abbr title="Variant Call Format - Standard variant call file format">VCF</abbr> output carries <code>NORM_POS</code>, <code>NORM_REF</code> and <code>NORM_ALT</code> INFO fields.</li>
 </ol>
 </div>
 <div class="tabbed-block">
@@ -3819,8 +3877,10 @@ given allele, <code>COEXISTING_ALLELE</code> when it is present beside a more fr
 </tbody>
 </table>
 <h2 id="cli-rna-synopsis">Synopsis<a class="headerlink" href="#cli-rna-synopsis" title="Permanent link">¶</a></h2>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#cli-rna-__codelineno-0-1"></a>gbcms<span class="w"> </span>rna<span class="w"> </span><span class="o">[</span>OPTIONS<span class="o">]</span><span class="w"> </span>--variants<span class="w"> </span>&lt;FILE&gt;<span class="w"> </span>--bam<span class="w"> </span>&lt;NAME:PATH&gt;...<span class="w"> </span>--fasta<span class="w"> </span>&lt;FILE&gt;
+<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#cli-rna-__codelineno-0-1"></a>gbcms<span class="w"> </span>rna<span class="w"> </span><span class="o">[</span>OPTIONS<span class="o">]</span><span class="w"> </span>--variants<span class="w"> </span>&lt;FILE&gt;<span class="w"> </span>--bam<span class="w"> </span>&lt;NAME:PATH&gt;...<span class="w"> </span>--fasta<span class="w"> </span>&lt;FILE&gt;<span class="w"> </span>--output-dir<span class="w"> </span>&lt;DIR&gt;
 </code></pre></div>
+<p><code>--variants</code>, <code>--fasta</code> and <code>--output-dir</code> are required, and so is one of <code>--bam</code> or
+<code>--bam-list</code>, as in <code>gbcms dna</code>.</p>
 <h2 id="cli-rna-rna-pipeline-overview">RNA Pipeline Overview<a class="headerlink" href="#cli-rna-rna-pipeline-overview" title="Permanent link">¶</a></h2>
 <div class="panzoom-box" data-key="none" id="panzoom0" oncontextmenu="return false;">
     
@@ -3956,7 +4016,7 @@ transparently.  See <a href="#cli-dna-required-arguments">CRAM Support</a> for d
 <tr>
 <td style="text-align: left;"><code>--gtf</code></td>
 <td style="text-align: left;"><em>(none)</em></td>
-<td style="text-align: left;">Path to Ensembl/GENCODE GTF annotation file, plain or gzip/BGZF (<code>.gtf</code> or <code>.gtf.gz</code>). Enables exon boundary distance, per-transcript counting, and aberrant splice junction detection. Also back-fills each variant's <code>gene_strand</code> — required for <code>--enforce_strandedness</code> and ASJD strand-discordance to do anything.</td>
+<td style="text-align: left;">Path to Ensembl/GENCODE GTF annotation file, plain or gzip/BGZF (<code>.gtf</code> or <code>.gtf.gz</code>). Enables exon boundary distance, per-transcript counting, and aberrant splice junction detection. Also resolves each variant's gene strand from the annotation (a <code>gene_strand</code> column in the input <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> is not read) — required for <code>--enforce-strandedness</code> and ASJD strand-discordance to do anything.</td>
 </tr>
 </tbody>
 </table>
@@ -3998,7 +4058,8 @@ transparently.  See <a href="#cli-dna-required-arguments">CRAM Support</a> for d
 </table>
 <p>Controls how a read's genomic orientation folds to the <strong>transcript strand</strong> it
 originated from. This fold drives both <code>--enforce-strandedness</code> filtering and ASJD
-strand-discordance detection.</p>
+strand-discordance detection. For an unstranded library use <code>--strandedness
+unstranded</code> (see <a href="#cli-rna-strandedness-filtering">Strandedness Filtering</a>).</p>
 <table>
 <thead>
 <tr>
@@ -4061,7 +4122,7 @@ defaulting.</p>
 <p>In <strong>amplicon</strong> libraries, R1 and R2 reads are PCR duplicates of the same template molecule — they are <strong>not</strong> independent fragment ends like in capture libraries. When <code>--library-type amplicon</code> is set:</p>
 <ol>
 <li><strong>Fragment consensus bypass</strong>: R1 and R2 are treated as independent observations (XOR trick on <code>mol_hash</code>), preventing incorrect merging.</li>
-<li><strong>Strandedness auto-disabled</strong>: Amplicon libraries are not strand-specific, so <code>--enforce-strandedness</code> is automatically set to <code>False</code> with a warning.</li>
+<li><strong>Strandedness forced to <code>unstranded</code></strong>: Amplicon libraries are not strand-specific, so the <abbr title="Command Line Interface - Terminal-based program interface">CLI</abbr> sets <code>--strandedness unstranded</code> (logged), which turns off <code>--enforce-strandedness</code> and ASJD's strand-discordance check together.</li>
 <li><strong>Effect on counts</strong>: <code>dpf ≈ dp</code> (fragment counts approach read counts) because no R1/R2 merging occurs.</li>
 </ol>
 </div>
@@ -4078,18 +4139,27 @@ defaulting.</p>
 <tr>
 <td style="text-align: left;"><code>--enforce-strandedness/--no-strandedness</code></td>
 <td style="text-align: left;"><code>true</code></td>
-<td style="text-align: left;">Filter reads by <abbr title="Deoxyuridine Triphosphate - Used in strand-specific RNA-seq protocols">dUTP</abbr> strand orientation relative to gene strand</td>
+<td style="text-align: left;">Filter reads by their orientation relative to the gene strand, folded under the <code>--strandedness</code> protocol</td>
 </tr>
 </tbody>
 </table>
 <div class="admonition info">
 <p class="admonition-title">Biological Context: <abbr title="Deoxyuridine Triphosphate - Used in strand-specific RNA-seq protocols">dUTP</abbr> Stranded Libraries</p>
 <p>In <abbr title="Deoxyuridine Triphosphate - Used in strand-specific RNA-seq protocols">dUTP</abbr>-stranded RNA-seq, the second strand (synthesized with <abbr title="Deoxyuridine Triphosphate - Used in strand-specific RNA-seq protocols">dUTP</abbr>) is degraded, so sequenced reads reflect the <strong>antisense</strong> strand of the original mRNA. The strandedness filter uses the variant's gene strand, resolved from the <code>--gtf</code> exons at its position, to determine whether each read's orientation is consistent with the expected transcript direction.</p>
-<p><strong>Disable</strong> with <code>--no-strandedness</code> for unstranded RNA-seq libraries where read orientation is random.</p>
+<p><strong>For an unstranded library, pass <code>--strandedness unstranded</code>.</strong> It turns off the
+filter and ASJD's strand-discordance check together, and every read counts as sense
+(<code>rna_antisense_depth</code> is 0). <code>--no-strandedness</code> alone only stops the filtering: reads
+are still folded to a transcript strand under the default <code>reverse</code> protocol, so an
+unstranded library's reads are split into <code>rna_sense_depth</code> and <code>rna_antisense_depth</code>
+by a strand that does not exist, and ASJD's <code>STRAND_DISCORDANT</code> check runs on that
+fold. Use <code>--no-strandedness</code> to keep a stranded library's antisense reads in the
+counts while still tallying them in <code>rna_antisense_depth</code>.</p>
 </div>
 <div class="admonition warning">
 <p class="admonition-title">Amplicon Override</p>
-<p>When <code>--library-type amplicon</code> is used, <code>--enforce-strandedness</code> is <strong>automatically disabled</strong> regardless of the <abbr title="Command Line Interface - Terminal-based program interface">CLI</abbr> flag value. Amplicon libraries are not strand-specific by design.</p>
+<p>When <code>--library-type amplicon</code> is used, the <abbr title="Command Line Interface - Terminal-based program interface">CLI</abbr> sets <code>--strandedness unstranded</code>, and
+<code>--enforce-strandedness</code> is <strong>automatically disabled</strong> regardless of the flag value.
+Amplicon libraries are not strand-specific by design.</p>
 </div>
 <div class="panzoom-box" data-key="none" id="panzoom0" oncontextmenu="return false;">
     
@@ -4175,14 +4245,12 @@ The file is loaded once at startup and stored as a hash set for O(1) lookup per 
 </tbody>
 </table>
 <h2 id="cli-rna-quality-thresholds">Quality Thresholds<a class="headerlink" href="#cli-rna-quality-thresholds" title="Permanent link">¶</a></h2>
-<p>RNA mode uses <strong>different <abbr title="Mapping Quality - Confidence score for read alignment">MAPQ</abbr> default</strong> to accommodate <abbr title="Spliced Transcripts Alignment to a Reference - RNA-seq aligner">STAR</abbr> aligner behavior:</p>
 <table>
 <thead>
 <tr>
 <th style="text-align: left;">Option</th>
 <th style="text-align: left;">DNA Default</th>
 <th style="text-align: left;">RNA Default</th>
-<th style="text-align: left;">Rationale</th>
 </tr>
 </thead>
 <tbody>
@@ -4190,73 +4258,29 @@ The file is loaded once at startup and stored as a hash set for O(1) lookup per 
 <td style="text-align: left;"><code>--min-mapq</code></td>
 <td style="text-align: left;">20</td>
 <td style="text-align: left;"><strong>1</strong></td>
-<td style="text-align: left;"><abbr title="Spliced Transcripts Alignment to a Reference - RNA-seq aligner">STAR</abbr> assigns <abbr title="Mapping Quality - Confidence score for read alignment">MAPQ</abbr> 255 to unique, 0–3 to multi-mappers. Low <abbr title="Mapping Quality - Confidence score for read alignment">MAPQ</abbr> threshold with <abbr title="Number of Hits - BAM tag indicating number of reported alignments">NH</abbr>:i:1 rescue captures novel splice junctions.</td>
 </tr>
 <tr>
 <td style="text-align: left;"><code>--min-baseq</code></td>
 <td style="text-align: left;">20</td>
 <td style="text-align: left;">20</td>
-<td style="text-align: left;">Same</td>
 </tr>
 <tr>
 <td style="text-align: left;"><code>--fragment-qual-threshold</code></td>
 <td style="text-align: left;">10</td>
 <td style="text-align: left;">10</td>
-<td style="text-align: left;">Same</td>
 </tr>
 </tbody>
 </table>
+<p>The RNA <code>--min-mapq 1</code> default keeps the primary alignments of reads <abbr title="Spliced Transcripts Alignment to a Reference - RNA-seq aligner">STAR</abbr> placed at two
+to four loci (<abbr title="Mapping Quality - Confidence score for read alignment">MAPQ</abbr> 3 or 1); the measurement behind it and the cost of unique-only
+counting are in <a href="#reference-read-filters-why-the-rna-default-is-min-mapq-1">Read Filters → Why the RNA default is
+<code>--min-mapq 1</code></a>.</p>
 <hr>
 <h2 id="cli-rna-rna-read-filters">RNA Read Filters<a class="headerlink" href="#cli-rna-rna-read-filters" title="Permanent link">¶</a></h2>
-<p>RNA mode extends the standard <a href="#reference-read-filters">read filter cascade</a> with two additional checks:</p>
-<h3 id="cli-rna-nhi1-mapq-rescue"><abbr title="Number of Hits - BAM tag indicating number of reported alignments">NH</abbr>:i:1 <abbr title="Mapping Quality - Confidence score for read alignment">MAPQ</abbr> Rescue<a class="headerlink" href="#cli-rna-nhi1-mapq-rescue" title="Permanent link">¶</a></h3>
-<p><abbr title="Spliced Transcripts Alignment to a Reference - RNA-seq aligner">STAR</abbr> assigns <abbr title="Mapping Quality - Confidence score for read alignment">MAPQ</abbr>=0 to reads that map to multiple loci. However, reads with <code>NH:i:1</code> (Number of Hits = 1) are uniquely mapped despite low <abbr title="Mapping Quality - Confidence score for read alignment">MAPQ</abbr> — they were assigned low scores because <abbr title="Spliced Transcripts Alignment to a Reference - RNA-seq aligner">STAR</abbr> hadn't observed the splice junction before.</p>
-<div class="panzoom-box" data-key="none" id="panzoom0" oncontextmenu="return false;">
-    
-    <nav class="panzoom-nav">
-    <button class="panzoom-info panzoom-button">
-    <svg class="panzoom-icon" viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg">
-        <path d="M464 256A208 208 0 1 0 48 256a208 208 0 1 0 416 0zM0 256a256 256 0 1 1 512 0A256 256 0 1 1 0 256zm169.8-90.7c7.9-22.3 29.1-37.3 52.8-37.3l58.3 0c34.9 0 63.1 28.3 63.1 63.1c0 22.6-12.1 43.5-31.7 54.8L280 264.4c-.2 13-10.9 23.6-24 23.6c-13.3 0-24-10.7-24-24l0-13.5c0-8.6 4.6-16.5 12.1-20.8l44.3-25.4c4.7-2.7 7.6-7.7 7.6-13.1c0-8.4-6.8-15.1-15.1-15.1l-58.3 0c-3.4 0-6.4 2.1-7.5 5.3l-.4 1.2c-4.4 12.5-18.2 19-30.6 14.6s-19-18.2-14.6-30.6l.4-1.2zM224 352a32 32 0 1 1 64 0 32 32 0 1 1 -64 0z"></path>
-    </svg>
-</button><button class="panzoom-reset panzoom-button">
-    <svg class="panzoom-icon" viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg">
-        <path d="M125.7 160l50.3 0c17.7 0 32 14.3 32 32s-14.3 32-32 32L48 224c-17.7 0-32-14.3-32-32L16 64c0-17.7 14.3-32 32-32s32 14.3 32 32l0 51.2L97.6 97.6c87.5-87.5 229.3-87.5 316.8 0s87.5 229.3 0 316.8s-229.3 87.5-316.8 0c-12.5-12.5-12.5-32.8 0-45.3s32.8-12.5 45.3 0c62.5 62.5 163.8 62.5 226.3 0s62.5-163.8 0-226.3s-163.8-62.5-226.3 0L125.7 160z"></path>
-    </svg>
-</button><button class="panzoom-max panzoom-button">
-    <svg class="panzoom-icon" viewBox="0 0 448 512" xmlns="http://www.w3.org/2000/svg">
-        <path d="M32 32C14.3 32 0 46.3 0 64l0 96c0 17.7 14.3 32 32 32s32-14.3 32-32l0-64 64 0c17.7 0 32-14.3 32-32s-14.3-32-32-32L32 32zM64 352c0-17.7-14.3-32-32-32s-32 14.3-32 32l0 96c0 17.7 14.3 32 32 32l96 0c17.7 0 32-14.3 32-32s-14.3-32-32-32l-64 0 0-64zM320 32c-17.7 0-32 14.3-32 32s14.3 32 32 32l64 0 0 64c0 17.7 14.3 32 32 32s32-14.3 32-32l0-96c0-17.7-14.3-32-32-32l-96 0zM448 352c0-17.7-14.3-32-32-32s-32 14.3-32 32l0 64-64 0c-17.7 0-32 14.3-32 32s14.3 32 32 32l96 0c17.7 0 32-14.3 32-32l0-96z"></path>
-    </svg>
-</button><button class="panzoom-min panzoom-button panzoom-hidden">
-    <svg class="panzoom-icon" viewBox="0 0 448 512" xmlns="http://www.w3.org/2000/svg">
-        <path d="M160 64c0-17.7-14.3-32-32-32s-32 14.3-32 32l0 64-64 0c-17.7 0-32 14.3-32 32s14.3 32 32 32l96 0c17.7 0 32-14.3 32-32l0-96zM32 320c-17.7 0-32 14.3-32 32s14.3 32 32 32l64 0 0 64c0 17.7 14.3 32 32 32s32-14.3 32-32l0-96c0-17.7-14.3-32-32-32l-96 0zM352 64c0-17.7-14.3-32-32-32s-32 14.3-32 32l0 96c0 17.7 14.3 32 32 32l96 0c17.7 0 32-14.3 32-32s-14.3-32-32-32l-64 0 0-64zM320 320c-17.7 0-32 14.3-32 32l0 96c0 17.7 14.3 32 32 32s32-14.3 32-32l0-64 64 0c17.7 0 32-14.3 32-32s-14.3-32-32-32l-96 0z"></path>
-    </svg>
-</button>
-    </nav>
-    <pre class="mermaid"><code>flowchart TD
-    Read(["📖 RNA Read"])
-    Read --&gt;|"read.mapq"| MAPQ{"MAPQ ≥ min_mapq?\n(default: 1)"}
-    MAPQ --&gt;|"Yes — MAPQ=255\nunique alignment"| Pass(["✅ Pass"]):::pass
-    MAPQ --&gt;|"No — MAPQ=0\n(check NH tag)"| NH{"NH:i:1?"}
-    NH --&gt;|"Yes — novel junction\nunique but low MAPQ"| Rescue(["✅ Rescued"]):::rescue
-    NH --&gt;|"No — NH&gt;1\nmulti-mapper"| Drop(["❌ Discard"]):::drop
-
-    classDef pass fill:#27ae60,color:#fff,stroke:#1e8449,stroke-width:2px;
-    classDef rescue fill:#f39c12,color:#fff,stroke:#d68910,stroke-width:2px;
-    classDef drop fill:#e74c3c,color:#fff,stroke:#c0392b,stroke-width:2px;
-</code></pre> 
-    <div class="panzoom-info-box panzoom-info-box-bottom panzoom-hidden">
-Use mouse to pan and zoom
-</div>
-</div>
-<div class="admonition info">
-<p class="admonition-title">Why <abbr title="Mapping Quality - Confidence score for read alignment">MAPQ</abbr>=1 Default?</p>
-<p>Setting <code>--min-mapq 1</code> together with <abbr title="Number of Hits - BAM tag indicating number of reported alignments">NH</abbr> rescue ensures:</p>
-<ul>
-<li><strong>Uniquely mapped</strong> reads (<abbr title="Mapping Quality - Confidence score for read alignment">MAPQ</abbr>=255): ✅ always pass</li>
-<li><strong>Novel junction</strong> reads (<abbr title="Mapping Quality - Confidence score for read alignment">MAPQ</abbr>=0, <abbr title="Number of Hits - BAM tag indicating number of reported alignments">NH</abbr>=1): ✅ rescued</li>
-<li><strong>True multi-mappers</strong> (<abbr title="Mapping Quality - Confidence score for read alignment">MAPQ</abbr>=0, <abbr title="Number of Hits - BAM tag indicating number of reported alignments">NH</abbr>&gt;1): ❌ filtered</li>
-</ul>
-</div>
+<p>RNA mode extends the standard <a href="#reference-read-filters">read filter cascade</a> with
+an <code>NH:i:1</code> rescue of reads that fail the <abbr title="Mapping Quality - Confidence score for read alignment">MAPQ</abbr> threshold, described in
+<a href="#reference-read-filters-nhi1-mapq-rescue">Read Filters → <abbr title="Number of Hits - BAM tag indicating number of reported alignments">NH</abbr>:i:1 <abbr title="Mapping Quality - Confidence score for read alignment">MAPQ</abbr> Rescue</a>, and
+the <a href="#cli-rna-strandedness-filtering">strandedness filter</a> above.</p>
 <h3 id="cli-rna-filter-defaults">Filter Defaults<a class="headerlink" href="#cli-rna-filter-defaults" title="Permanent link">¶</a></h3>
 <p>RNA mode uses the <strong>same filter defaults</strong> as DNA mode — duplicates, secondary, supplementary, and QC-failed reads are all filtered by default in both modes:</p>
 <table>
@@ -4527,11 +4551,11 @@ asserting splicing over the span outnumber confirmed ALT are flagged
 <a id="__codelineno-8-2" name="__codelineno-8-2" href="#cli-rna-__codelineno-8-2"></a><span class="w">    </span>--variants<span class="w"> </span>mutations.vcf<span class="w"> </span><span class="se">\</span>
 <a id="__codelineno-8-3" name="__codelineno-8-3" href="#cli-rna-__codelineno-8-3"></a><span class="w">    </span>--bam<span class="w"> </span>unstranded:aligned.bam<span class="w"> </span><span class="se">\</span>
 <a id="__codelineno-8-4" name="__codelineno-8-4" href="#cli-rna-__codelineno-8-4"></a><span class="w">    </span>--fasta<span class="w"> </span>reference.fa<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-8-5" name="__codelineno-8-5" href="#cli-rna-__codelineno-8-5"></a><span class="w">    </span>--no-strandedness<span class="w"> </span><span class="se">\ </span><span class="c1"># (1)!</span>
+<a id="__codelineno-8-5" name="__codelineno-8-5" href="#cli-rna-__codelineno-8-5"></a><span class="w">    </span>--strandedness<span class="w"> </span>unstranded<span class="w"> </span><span class="se">\ </span><span class="c1"># (1)!</span>
 <a id="__codelineno-8-6" name="__codelineno-8-6" href="#cli-rna-__codelineno-8-6"></a><span class="w">    </span>--output-dir<span class="w"> </span>results/
 </code></pre></div>
 <ol>
-<li>Disables <abbr title="Deoxyuridine Triphosphate - Used in strand-specific RNA-seq protocols">dUTP</abbr> strand filtering for unstranded RNA-seq protocols.</li>
+<li>Unstranded RNA-seq protocol: no strand filtering and no ASJD strand-discordance check. <code>--no-strandedness</code> is not the same: it only stops the filtering.</li>
 </ol>
 </div>
 <div class="tabbed-block">
@@ -5213,6 +5237,8 @@ and worked examples are in <a href="#reference-output-formats">Output Formats</a
 <li><strong>Containerization</strong> with Docker/Singularity</li>
 <li><strong>Resume capability</strong> for failed runs</li>
 </ul>
+<p>Requires Nextflow 24.04.0 or later (the pipeline manifest enforces it) and Docker or
+Singularity; see <a href="#getting-started-installation-requirements">Installation</a>.</p>
 <h2 id="nextflow-pipeline-architecture">Pipeline Architecture<a class="headerlink" href="#nextflow-pipeline-architecture" title="Permanent link">¶</a></h2>
 <div class="panzoom-box" data-key="none" id="panzoom0" oncontextmenu="return false;">
     
@@ -5544,6 +5570,16 @@ skip the merge step and output the single <abbr title="Mutation Annotation Forma
 <td style="text-align: left;"><code>false</code></td>
 <td style="text-align: left;">Keep original Tumor_Sample_Barcode from input <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr></td>
 </tr>
+<tr>
+<td style="text-align: left;"><code>--publish_dir_mode</code></td>
+<td style="text-align: left;"><code>copy</code></td>
+<td style="text-align: left;">How Nextflow stages results into <code>--outdir</code> (<code>publishDir</code> mode: <code>copy</code>, <code>symlink</code>, <code>link</code>, <code>move</code>, ...)</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>--tracedir</code></td>
+<td style="text-align: left;"><code>${params.outdir}/pipeline_info</code></td>
+<td style="text-align: left;">Directory for the execution trace, report, timeline and DAG files</td>
+</tr>
 </tbody>
 </table>
 <h2 id="nextflow-parameters-mfsd-options-dna-only"><abbr title="Mutant Fragment Size Distribution - Insert-size analysis for REF vs ALT fragments">mFSD</abbr> Options (DNA only)<a class="headerlink" href="#nextflow-parameters-mfsd-options-dna-only" title="Permanent link">¶</a></h2>
@@ -5724,6 +5760,11 @@ skip the merge step and output the single <abbr title="Mutation Annotation Forma
 </thead>
 <tbody>
 <tr>
+<td style="text-align: left;"><code>--gtf</code></td>
+<td style="text-align: left;"><code>''</code></td>
+<td style="text-align: left;">Path to an Ensembl/GENCODE GTF, plain or <code>.gtf.gz</code>. Enables exon-boundary distance, per-transcript counts and ASJD, and supplies each variant's gene strand, which <code>--enforce_strandedness</code> needs (without it every read counts as sense). See <a href="#nextflow-parameters-gtf-loading-rna">GTF loading</a>.</td>
+</tr>
+<tr>
 <td style="text-align: left;"><code>--rna_editing_db</code></td>
 <td style="text-align: left;"><code>''</code></td>
 <td style="text-align: left;">Path to <a href="http://srv00.recas.ba.infn.it/atlas/index.html">REDIportal</a> editing database file (e.g., <code>TABLE1_hg38_v3.txt</code>). Flags ALT sites that overlap known A→I RNA editing positions.</td>
@@ -5731,7 +5772,7 @@ skip the merge step and output the single <abbr title="Mutation Annotation Forma
 <tr>
 <td style="text-align: left;"><code>--enforce_strandedness</code></td>
 <td style="text-align: left;"><code>true</code></td>
-<td style="text-align: left;">Enforce strand-specific library prep. Disable with <code>false</code> for unstranded RNA-seq libraries (<code>--no-strandedness</code> equivalent).</td>
+<td style="text-align: left;">Filter reads by orientation relative to the gene strand (needs <code>--gtf</code> for the strand). <code>false</code> passes <code>--no-strandedness</code>, which only stops the filtering. For an unstranded RNA-seq library set <code>--strandedness unstranded</code> instead.</td>
 </tr>
 <tr>
 <td style="text-align: left;"><code>--strandedness</code></td>
@@ -6003,67 +6044,82 @@ what the old cache file was (96–125 MB) for about 0.4 s more decoding.</p>
 <a id="__codelineno-4-5" name="__codelineno-4-5" href="#nextflow-examples-__codelineno-4-5"></a><span class="w">    </span>--mode<span class="w"> </span>rna<span class="w"> </span><span class="se">\</span>
 <a id="__codelineno-4-6" name="__codelineno-4-6" href="#nextflow-examples-__codelineno-4-6"></a><span class="w">    </span>--format<span class="w"> </span>maf<span class="w"> </span><span class="se">\</span>
 <a id="__codelineno-4-7" name="__codelineno-4-7" href="#nextflow-examples-__codelineno-4-7"></a><span class="w">    </span>--rna_editing_db<span class="w"> </span>/path/to/TABLE1_hg38_v3.txt<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-4-8" name="__codelineno-4-8" href="#nextflow-examples-__codelineno-4-8"></a><span class="w">    </span>--enforce_strandedness<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-4-9" name="__codelineno-4-9" href="#nextflow-examples-__codelineno-4-9"></a><span class="w">    </span>-profile<span class="w"> </span>docker
+<a id="__codelineno-4-8" name="__codelineno-4-8" href="#nextflow-examples-__codelineno-4-8"></a><span class="w">    </span>--gtf<span class="w"> </span>/path/to/Homo_sapiens.GRCh38.111.gtf.gz<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-4-9" name="__codelineno-4-9" href="#nextflow-examples-__codelineno-4-9"></a><span class="w">    </span>--enforce_strandedness<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-4-10" name="__codelineno-4-10" href="#nextflow-examples-__codelineno-4-10"></a><span class="w">    </span>-profile<span class="w"> </span>docker
 </code></pre></div>
-<h2 id="nextflow-examples-maf-output"><abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> Output<a class="headerlink" href="#nextflow-examples-maf-output" title="Permanent link">¶</a></h2>
+<p>Strand enforcement needs the <code>--gtf</code>, which supplies each variant's gene strand; without it
+every read counts as sense.</p>
+<h3 id="nextflow-examples-unstranded-rna">Unstranded RNA<a class="headerlink" href="#nextflow-examples-unstranded-rna" title="Permanent link">¶</a></h3>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#nextflow-examples-__codelineno-5-1"></a>nextflow<span class="w"> </span>run<span class="w"> </span>nextflow/main.nf<span class="w"> </span><span class="se">\</span>
 <a id="__codelineno-5-2" name="__codelineno-5-2" href="#nextflow-examples-__codelineno-5-2"></a><span class="w">    </span>--input<span class="w"> </span>samplesheet.csv<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-5-3" name="__codelineno-5-3" href="#nextflow-examples-__codelineno-5-3"></a><span class="w">    </span>--variants<span class="w"> </span>input.maf<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-5-3" name="__codelineno-5-3" href="#nextflow-examples-__codelineno-5-3"></a><span class="w">    </span>--variants<span class="w"> </span>variants.maf<span class="w"> </span><span class="se">\</span>
 <a id="__codelineno-5-4" name="__codelineno-5-4" href="#nextflow-examples-__codelineno-5-4"></a><span class="w">    </span>--fasta<span class="w"> </span>reference.fa<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-5-5" name="__codelineno-5-5" href="#nextflow-examples-__codelineno-5-5"></a><span class="w">    </span>--format<span class="w"> </span>maf<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-5-6" name="__codelineno-5-6" href="#nextflow-examples-__codelineno-5-6"></a><span class="w">    </span>-profile<span class="w"> </span>docker
+<a id="__codelineno-5-5" name="__codelineno-5-5" href="#nextflow-examples-__codelineno-5-5"></a><span class="w">    </span>--mode<span class="w"> </span>rna<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-5-6" name="__codelineno-5-6" href="#nextflow-examples-__codelineno-5-6"></a><span class="w">    </span>--format<span class="w"> </span>maf<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-5-7" name="__codelineno-5-7" href="#nextflow-examples-__codelineno-5-7"></a><span class="w">    </span>--strandedness<span class="w"> </span>unstranded<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-5-8" name="__codelineno-5-8" href="#nextflow-examples-__codelineno-5-8"></a><span class="w">    </span>-profile<span class="w"> </span>docker
+</code></pre></div>
+<p><code>--strandedness unstranded</code> also turns off ASJD's strand-discordance check, which
+<code>--enforce_strandedness false</code> does not.</p>
+<h2 id="nextflow-examples-maf-output"><abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> Output<a class="headerlink" href="#nextflow-examples-maf-output" title="Permanent link">¶</a></h2>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#nextflow-examples-__codelineno-6-1"></a>nextflow<span class="w"> </span>run<span class="w"> </span>nextflow/main.nf<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-6-2" name="__codelineno-6-2" href="#nextflow-examples-__codelineno-6-2"></a><span class="w">    </span>--input<span class="w"> </span>samplesheet.csv<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-6-3" name="__codelineno-6-3" href="#nextflow-examples-__codelineno-6-3"></a><span class="w">    </span>--variants<span class="w"> </span>input.maf<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-6-4" name="__codelineno-6-4" href="#nextflow-examples-__codelineno-6-4"></a><span class="w">    </span>--fasta<span class="w"> </span>reference.fa<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-6-5" name="__codelineno-6-5" href="#nextflow-examples-__codelineno-6-5"></a><span class="w">    </span>--format<span class="w"> </span>maf<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-6-6" name="__codelineno-6-6" href="#nextflow-examples-__codelineno-6-6"></a><span class="w">    </span>-profile<span class="w"> </span>docker
 </code></pre></div>
 <h2 id="nextflow-examples-strict-filtering">Strict Filtering<a class="headerlink" href="#nextflow-examples-strict-filtering" title="Permanent link">¶</a></h2>
 <p>Enable additional read filters beyond the defaults (duplicates, secondary, supplementary, and QC-failed are already on by default):</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#nextflow-examples-__codelineno-6-1"></a>nextflow<span class="w"> </span>run<span class="w"> </span>nextflow/main.nf<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-6-2" name="__codelineno-6-2" href="#nextflow-examples-__codelineno-6-2"></a><span class="w">    </span>--input<span class="w"> </span>samplesheet.csv<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-6-3" name="__codelineno-6-3" href="#nextflow-examples-__codelineno-6-3"></a><span class="w">    </span>--variants<span class="w"> </span>variants.vcf<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-6-4" name="__codelineno-6-4" href="#nextflow-examples-__codelineno-6-4"></a><span class="w">    </span>--fasta<span class="w"> </span>reference.fa<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-6-5" name="__codelineno-6-5" href="#nextflow-examples-__codelineno-6-5"></a><span class="w">    </span>--filter_improper_pair<span class="w"> </span><span class="nb">true</span><span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-6-6" name="__codelineno-6-6" href="#nextflow-examples-__codelineno-6-6"></a><span class="w">    </span>--filter_indel<span class="w"> </span><span class="nb">true</span><span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-6-7" name="__codelineno-6-7" href="#nextflow-examples-__codelineno-6-7"></a><span class="w">    </span>-profile<span class="w"> </span>docker
-</code></pre></div>
-<h2 id="nextflow-examples-umi-aware-counting"><abbr title="Unique Molecular Identifier - Molecular barcode for deduplication">UMI</abbr>-Aware Counting<a class="headerlink" href="#nextflow-examples-umi-aware-counting" title="Permanent link">¶</a></h2>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-7-1" name="__codelineno-7-1" href="#nextflow-examples-__codelineno-7-1"></a>nextflow<span class="w"> </span>run<span class="w"> </span>nextflow/main.nf<span class="w"> </span><span class="se">\</span>
 <a id="__codelineno-7-2" name="__codelineno-7-2" href="#nextflow-examples-__codelineno-7-2"></a><span class="w">    </span>--input<span class="w"> </span>samplesheet.csv<span class="w"> </span><span class="se">\</span>
 <a id="__codelineno-7-3" name="__codelineno-7-3" href="#nextflow-examples-__codelineno-7-3"></a><span class="w">    </span>--variants<span class="w"> </span>variants.vcf<span class="w"> </span><span class="se">\</span>
 <a id="__codelineno-7-4" name="__codelineno-7-4" href="#nextflow-examples-__codelineno-7-4"></a><span class="w">    </span>--fasta<span class="w"> </span>reference.fa<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-7-5" name="__codelineno-7-5" href="#nextflow-examples-__codelineno-7-5"></a><span class="w">    </span>--umi_tag<span class="w"> </span>XM<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-7-6" name="__codelineno-7-6" href="#nextflow-examples-__codelineno-7-6"></a><span class="w">    </span>-profile<span class="w"> </span>docker
+<a id="__codelineno-7-5" name="__codelineno-7-5" href="#nextflow-examples-__codelineno-7-5"></a><span class="w">    </span>--filter_improper_pair<span class="w"> </span><span class="nb">true</span><span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-7-6" name="__codelineno-7-6" href="#nextflow-examples-__codelineno-7-6"></a><span class="w">    </span>--filter_indel<span class="w"> </span><span class="nb">true</span><span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-7-7" name="__codelineno-7-7" href="#nextflow-examples-__codelineno-7-7"></a><span class="w">    </span>-profile<span class="w"> </span>docker
+</code></pre></div>
+<h2 id="nextflow-examples-umi-aware-counting"><abbr title="Unique Molecular Identifier - Molecular barcode for deduplication">UMI</abbr>-Aware Counting<a class="headerlink" href="#nextflow-examples-umi-aware-counting" title="Permanent link">¶</a></h2>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-8-1" name="__codelineno-8-1" href="#nextflow-examples-__codelineno-8-1"></a>nextflow<span class="w"> </span>run<span class="w"> </span>nextflow/main.nf<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-8-2" name="__codelineno-8-2" href="#nextflow-examples-__codelineno-8-2"></a><span class="w">    </span>--input<span class="w"> </span>samplesheet.csv<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-8-3" name="__codelineno-8-3" href="#nextflow-examples-__codelineno-8-3"></a><span class="w">    </span>--variants<span class="w"> </span>variants.vcf<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-8-4" name="__codelineno-8-4" href="#nextflow-examples-__codelineno-8-4"></a><span class="w">    </span>--fasta<span class="w"> </span>reference.fa<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-8-5" name="__codelineno-8-5" href="#nextflow-examples-__codelineno-8-5"></a><span class="w">    </span>--umi_tag<span class="w"> </span>XM<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-8-6" name="__codelineno-8-6" href="#nextflow-examples-__codelineno-8-6"></a><span class="w">    </span>-profile<span class="w"> </span>docker
 </code></pre></div>
 <h2 id="nextflow-examples-multi-sample-maf-filtering">Multi-Sample <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> Filtering<a class="headerlink" href="#nextflow-examples-multi-sample-maf-filtering" title="Permanent link">¶</a></h2>
 <p>Filter a multi-sample <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> so each <abbr title="Binary Alignment Map - Compressed sequence alignment file format">BAM</abbr>/CRAM only processes its own variants:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-8-1" name="__codelineno-8-1" href="#nextflow-examples-__codelineno-8-1"></a>nextflow<span class="w"> </span>run<span class="w"> </span>nextflow/main.nf<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-8-2" name="__codelineno-8-2" href="#nextflow-examples-__codelineno-8-2"></a><span class="w">    </span>--input<span class="w"> </span>samplesheet.csv<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-8-3" name="__codelineno-8-3" href="#nextflow-examples-__codelineno-8-3"></a><span class="w">    </span>--variants<span class="w"> </span>multi_sample.maf<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-8-4" name="__codelineno-8-4" href="#nextflow-examples-__codelineno-8-4"></a><span class="w">    </span>--fasta<span class="w"> </span>reference.fa<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-8-5" name="__codelineno-8-5" href="#nextflow-examples-__codelineno-8-5"></a><span class="w">    </span>--format<span class="w"> </span>maf<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-8-6" name="__codelineno-8-6" href="#nextflow-examples-__codelineno-8-6"></a><span class="w">    </span>--filter_by_sample<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-8-7" name="__codelineno-8-7" href="#nextflow-examples-__codelineno-8-7"></a><span class="w">    </span>-profile<span class="w"> </span>docker
+<div class="highlight"><pre><span></span><code><a id="__codelineno-9-1" name="__codelineno-9-1" href="#nextflow-examples-__codelineno-9-1"></a>nextflow<span class="w"> </span>run<span class="w"> </span>nextflow/main.nf<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-9-2" name="__codelineno-9-2" href="#nextflow-examples-__codelineno-9-2"></a><span class="w">    </span>--input<span class="w"> </span>samplesheet.csv<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-9-3" name="__codelineno-9-3" href="#nextflow-examples-__codelineno-9-3"></a><span class="w">    </span>--variants<span class="w"> </span>multi_sample.maf<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-9-4" name="__codelineno-9-4" href="#nextflow-examples-__codelineno-9-4"></a><span class="w">    </span>--fasta<span class="w"> </span>reference.fa<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-9-5" name="__codelineno-9-5" href="#nextflow-examples-__codelineno-9-5"></a><span class="w">    </span>--format<span class="w"> </span>maf<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-9-6" name="__codelineno-9-6" href="#nextflow-examples-__codelineno-9-6"></a><span class="w">    </span>--filter_by_sample<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-9-7" name="__codelineno-9-7" href="#nextflow-examples-__codelineno-9-7"></a><span class="w">    </span>-profile<span class="w"> </span>docker
 </code></pre></div>
 <p>With patient-level filtering via <code>tsb</code> column in samplesheet:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-9-1" name="__codelineno-9-1" href="#nextflow-examples-__codelineno-9-1"></a>sample,bam,tsb
-<a id="__codelineno-9-2" name="__codelineno-9-2" href="#nextflow-examples-__codelineno-9-2"></a>patient_A,/path/to/A.bam,P-0012345
-<a id="__codelineno-9-3" name="__codelineno-9-3" href="#nextflow-examples-__codelineno-9-3"></a>patient_B,/path/to/B.cram,"P-0067890-T01,P-0067890-T02"
+<div class="highlight"><pre><span></span><code><a id="__codelineno-10-1" name="__codelineno-10-1" href="#nextflow-examples-__codelineno-10-1"></a>sample,bam,tsb
+<a id="__codelineno-10-2" name="__codelineno-10-2" href="#nextflow-examples-__codelineno-10-2"></a>patient_A,/path/to/A.bam,P-0012345
+<a id="__codelineno-10-3" name="__codelineno-10-3" href="#nextflow-examples-__codelineno-10-3"></a>patient_B,/path/to/B.cram,"P-0067890-T01,P-0067890-T02"
 </code></pre></div>
 <p>See <a href="#nextflow-samplesheet-multi-sample-maf-filtering">Samplesheet — Multi-Sample <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> Filtering</a> for details.</p>
 <h2 id="nextflow-examples-resume-failed-run">Resume Failed Run<a class="headerlink" href="#nextflow-examples-resume-failed-run" title="Permanent link">¶</a></h2>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-10-1" name="__codelineno-10-1" href="#nextflow-examples-__codelineno-10-1"></a>nextflow<span class="w"> </span>run<span class="w"> </span>nextflow/main.nf<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-10-2" name="__codelineno-10-2" href="#nextflow-examples-__codelineno-10-2"></a><span class="w">    </span>--input<span class="w"> </span>samplesheet.csv<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-10-3" name="__codelineno-10-3" href="#nextflow-examples-__codelineno-10-3"></a><span class="w">    </span>--variants<span class="w"> </span>variants.vcf<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-10-4" name="__codelineno-10-4" href="#nextflow-examples-__codelineno-10-4"></a><span class="w">    </span>--fasta<span class="w"> </span>reference.fa<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-10-5" name="__codelineno-10-5" href="#nextflow-examples-__codelineno-10-5"></a><span class="w">    </span>-profile<span class="w"> </span>docker<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-10-6" name="__codelineno-10-6" href="#nextflow-examples-__codelineno-10-6"></a><span class="w">    </span>-resume
-</code></pre></div>
-<h2 id="nextflow-examples-custom-resource-limits">Custom Resource Limits<a class="headerlink" href="#nextflow-examples-custom-resource-limits" title="Permanent link">¶</a></h2>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-11-1" name="__codelineno-11-1" href="#nextflow-examples-__codelineno-11-1"></a>nextflow<span class="w"> </span>run<span class="w"> </span>nextflow/main.nf<span class="w"> </span><span class="se">\</span>
 <a id="__codelineno-11-2" name="__codelineno-11-2" href="#nextflow-examples-__codelineno-11-2"></a><span class="w">    </span>--input<span class="w"> </span>samplesheet.csv<span class="w"> </span><span class="se">\</span>
 <a id="__codelineno-11-3" name="__codelineno-11-3" href="#nextflow-examples-__codelineno-11-3"></a><span class="w">    </span>--variants<span class="w"> </span>variants.vcf<span class="w"> </span><span class="se">\</span>
 <a id="__codelineno-11-4" name="__codelineno-11-4" href="#nextflow-examples-__codelineno-11-4"></a><span class="w">    </span>--fasta<span class="w"> </span>reference.fa<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-11-5" name="__codelineno-11-5" href="#nextflow-examples-__codelineno-11-5"></a><span class="w">    </span>--max_cpus<span class="w"> </span><span class="m">8</span><span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-11-6" name="__codelineno-11-6" href="#nextflow-examples-__codelineno-11-6"></a><span class="w">    </span>--max_memory<span class="w"> </span><span class="m">32</span>.GB<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-11-7" name="__codelineno-11-7" href="#nextflow-examples-__codelineno-11-7"></a><span class="w">    </span>-profile<span class="w"> </span>docker
+<a id="__codelineno-11-5" name="__codelineno-11-5" href="#nextflow-examples-__codelineno-11-5"></a><span class="w">    </span>-profile<span class="w"> </span>docker<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-11-6" name="__codelineno-11-6" href="#nextflow-examples-__codelineno-11-6"></a><span class="w">    </span>-resume
+</code></pre></div>
+<h2 id="nextflow-examples-custom-resource-limits">Custom Resource Limits<a class="headerlink" href="#nextflow-examples-custom-resource-limits" title="Permanent link">¶</a></h2>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-12-1" name="__codelineno-12-1" href="#nextflow-examples-__codelineno-12-1"></a>nextflow<span class="w"> </span>run<span class="w"> </span>nextflow/main.nf<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-12-2" name="__codelineno-12-2" href="#nextflow-examples-__codelineno-12-2"></a><span class="w">    </span>--input<span class="w"> </span>samplesheet.csv<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-12-3" name="__codelineno-12-3" href="#nextflow-examples-__codelineno-12-3"></a><span class="w">    </span>--variants<span class="w"> </span>variants.vcf<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-12-4" name="__codelineno-12-4" href="#nextflow-examples-__codelineno-12-4"></a><span class="w">    </span>--fasta<span class="w"> </span>reference.fa<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-12-5" name="__codelineno-12-5" href="#nextflow-examples-__codelineno-12-5"></a><span class="w">    </span>--max_cpus<span class="w"> </span><span class="m">8</span><span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-12-6" name="__codelineno-12-6" href="#nextflow-examples-__codelineno-12-6"></a><span class="w">    </span>--max_memory<span class="w"> </span><span class="m">32</span>.GB<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-12-7" name="__codelineno-12-7" href="#nextflow-examples-__codelineno-12-7"></a><span class="w">    </span>-profile<span class="w"> </span>docker
 </code></pre></div>
 <h2 id="nextflow-examples-related">Related<a class="headerlink" href="#nextflow-examples-related" title="Permanent link">¶</a></h2>
 <ul>
@@ -6548,7 +6604,7 @@ the odds ratio for the size of the imbalance.</p>
 Use mouse to pan and zoom
 </div>
 </div>
-<p>See <a href="../reference/architecture/file:/src/gbcms/models/core.py">models/core.py</a> for definitions.</p>
+<p>See <a href="https://github.com/msk-access/gbcms/blob/main/src/gbcms/models/core.py">models/core.py</a> for definitions.</p>
 <hr>
 <h2 id="reference-architecture-full-pipeline-end-to-end-example">Full Pipeline: End-to-End Example<a class="headerlink" href="#reference-architecture-full-pipeline-end-to-end-example" title="Permanent link">¶</a></h2>
 <p>Here's how a single variant is processed through the complete pipeline:</p>
@@ -7288,12 +7344,14 @@ Use mouse to pan and zoom
 written once. Provenance metadata (<code>##gbcms_command</code>, <code>##reference</code>,
 <code>##contig</code>, <code>##FILTER</code>) is included when available. RNA-specific
 meta-lines are only included when running <code>gbcms rna</code> — the header is
-self-describing.</p>
+self-describing. The <code>GR</code> INFO line follows
+<code>GD</code> only with <code>--rescue-mnp</code>, and the <abbr title="Mutant Fragment Size Distribution - Insert-size analysis for REF vs ALT fragments">mFSD</abbr>, normalization and GTF lines only
+with their options (see <a href="#reference-output-formats-info-fields">INFO Fields</a>).</p>
 <div class="tabbed-set tabbed-alternate" data-tabs="1:2"><input checked="" id="reference-output-formats-__tabbed_1_1" name="reference-output-formats-__tabbed_1" type="radio"><input id="reference-output-formats-__tabbed_1_2" name="reference-output-formats-__tabbed_1" type="radio"><div class="tabbed-labels"><label for="reference-output-formats-__tabbed_1_1">DNA mode</label><label for="reference-output-formats-__tabbed_1_2">RNA mode</label></div>
 <div class="tabbed-content">
 <div class="tabbed-block">
 <div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#reference-output-formats-__codelineno-0-1"></a>##fileformat=VCFv4.2
-<a id="__codelineno-0-2" name="__codelineno-0-2" href="#reference-output-formats-__codelineno-0-2"></a>##source=gbcms v5.3.0
+<a id="__codelineno-0-2" name="__codelineno-0-2" href="#reference-output-formats-__codelineno-0-2"></a>##source=gbcms vX.Y.Z (a1b2c3d4)
 <a id="__codelineno-0-3" name="__codelineno-0-3" href="#reference-output-formats-__codelineno-0-3"></a>##gbcms_command=gbcms dna --bam tumor:tumor.bam --fasta ref.fa --threads 4
 <a id="__codelineno-0-4" name="__codelineno-0-4" href="#reference-output-formats-__codelineno-0-4"></a>##reference=file:///path/to/ref.fa
 <a id="__codelineno-0-5" name="__codelineno-0-5" href="#reference-output-formats-__codelineno-0-5"></a>##contig=&lt;ID=chr1,length=248956422&gt;
@@ -7303,28 +7361,27 @@ self-describing.</p>
 <a id="__codelineno-0-9" name="__codelineno-0-9" href="#reference-output-formats-__codelineno-0-9"></a>##INFO=&lt;ID=GS,Number=1,Type=String,Description="gbcms verdict: PASS or FAIL"&gt;
 <a id="__codelineno-0-10" name="__codelineno-0-10" href="#reference-output-formats-__codelineno-0-10"></a>##INFO=&lt;ID=GSR,Number=1,Type=String,Description="gbcms status reason tags, |-separated (. when none)"&gt;
 <a id="__codelineno-0-11" name="__codelineno-0-11" href="#reference-output-formats-__codelineno-0-11"></a>##INFO=&lt;ID=GD,Number=1,Type=String,Description="gbcms post-counting diagnostic flags"&gt;
-<a id="__codelineno-0-12" name="__codelineno-0-12" href="#reference-output-formats-__codelineno-0-12"></a>##INFO=&lt;ID=GR,Number=1,Type=String,Description="gbcms rescue audit trail"&gt;
-<a id="__codelineno-0-13" name="__codelineno-0-13" href="#reference-output-formats-__codelineno-0-13"></a>##INFO=&lt;ID=AAD,Number=1,Type=Integer,Description="Any ALT Depth (any_alt = ad + partial_alt)"&gt;
-<a id="__codelineno-0-14" name="__codelineno-0-14" href="#reference-output-formats-__codelineno-0-14"></a>##INFO=&lt;ID=PAD,Number=1,Type=Integer,Description="Partial ALT Depth"&gt;
-<a id="__codelineno-0-15" name="__codelineno-0-15" href="#reference-output-formats-__codelineno-0-15"></a>##INFO=&lt;ID=NAD,Number=1,Type=Integer,Description="N-base Depth (duplex masking QC)"&gt;
-<a id="__codelineno-0-16" name="__codelineno-0-16" href="#reference-output-formats-__codelineno-0-16"></a>##INFO=&lt;ID=SB_PVAL,Number=1,Type=Float,Description="Fisher strand bias p-value"&gt;
-<a id="__codelineno-0-17" name="__codelineno-0-17" href="#reference-output-formats-__codelineno-0-17"></a>##INFO=&lt;ID=SB_OR,Number=1,Type=Float,Description="Fisher strand bias odds ratio"&gt;
-<a id="__codelineno-0-18" name="__codelineno-0-18" href="#reference-output-formats-__codelineno-0-18"></a>##INFO=&lt;ID=FSB_PVAL,Number=1,Type=Float,Description="Fisher fragment strand bias p-value"&gt;
-<a id="__codelineno-0-19" name="__codelineno-0-19" href="#reference-output-formats-__codelineno-0-19"></a>##INFO=&lt;ID=FSB_OR,Number=1,Type=Float,Description="Fisher fragment strand bias odds ratio"&gt;
-<a id="__codelineno-0-20" name="__codelineno-0-20" href="#reference-output-formats-__codelineno-0-20"></a>##FORMAT=&lt;ID=GT,Number=1,Type=String,Description="Genotype"&gt;
-<a id="__codelineno-0-21" name="__codelineno-0-21" href="#reference-output-formats-__codelineno-0-21"></a>##FORMAT=&lt;ID=DP,Number=1,Type=Integer,Description="Total read depth"&gt;
-<a id="__codelineno-0-22" name="__codelineno-0-22" href="#reference-output-formats-__codelineno-0-22"></a>##FORMAT=&lt;ID=AD,Number=R,Type=Integer,Description="Allelic depths (ref,alt)"&gt;
-<a id="__codelineno-0-23" name="__codelineno-0-23" href="#reference-output-formats-__codelineno-0-23"></a>##FORMAT=&lt;ID=ADF,Number=R,Type=Integer,Description="Allelic depths on forward strand (ref_fwd,alt_fwd)"&gt;
-<a id="__codelineno-0-24" name="__codelineno-0-24" href="#reference-output-formats-__codelineno-0-24"></a>##FORMAT=&lt;ID=ADR,Number=R,Type=Integer,Description="Allelic depths on reverse strand (ref_rev,alt_rev)"&gt;
-<a id="__codelineno-0-25" name="__codelineno-0-25" href="#reference-output-formats-__codelineno-0-25"></a>##FORMAT=&lt;ID=VAF,Number=1,Type=Float,Description="Variant allele fraction (read level)"&gt;
-<a id="__codelineno-0-26" name="__codelineno-0-26" href="#reference-output-formats-__codelineno-0-26"></a>##FORMAT=&lt;ID=FAD,Number=R,Type=Integer,Description="Fragment allelic depths (ref_frag,alt_frag)"&gt;
-<a id="__codelineno-0-27" name="__codelineno-0-27" href="#reference-output-formats-__codelineno-0-27"></a>##FORMAT=&lt;ID=FADF,Number=R,Type=Integer,Description="Fragment depths on forward strand"&gt;
-<a id="__codelineno-0-28" name="__codelineno-0-28" href="#reference-output-formats-__codelineno-0-28"></a>##FORMAT=&lt;ID=FADR,Number=R,Type=Integer,Description="Fragment depths on reverse strand"&gt;
-<a id="__codelineno-0-29" name="__codelineno-0-29" href="#reference-output-formats-__codelineno-0-29"></a>##FORMAT=&lt;ID=FAF,Number=1,Type=Float,Description="Variant allele fraction (fragment level)"&gt;
-<a id="__codelineno-0-30" name="__codelineno-0-30" href="#reference-output-formats-__codelineno-0-30"></a>##FORMAT=&lt;ID=AAD,Number=1,Type=Integer,Description="Any ALT depth (alt + partial_alt)"&gt;
-<a id="__codelineno-0-31" name="__codelineno-0-31" href="#reference-output-formats-__codelineno-0-31"></a>##FORMAT=&lt;ID=PAD,Number=1,Type=Integer,Description="Partial ALT depth"&gt;
-<a id="__codelineno-0-32" name="__codelineno-0-32" href="#reference-output-formats-__codelineno-0-32"></a>##FORMAT=&lt;ID=NAD,Number=1,Type=Integer,Description="N-base depth"&gt;
-<a id="__codelineno-0-33" name="__codelineno-0-33" href="#reference-output-formats-__codelineno-0-33"></a>#CHROM  POS  ID  REF  ALT  QUAL  FILTER  INFO  FORMAT  &lt;sample_name&gt;
+<a id="__codelineno-0-12" name="__codelineno-0-12" href="#reference-output-formats-__codelineno-0-12"></a>##INFO=&lt;ID=AAD,Number=1,Type=Integer,Description="Any ALT Depth (any_alt = ad + partial_alt)"&gt;
+<a id="__codelineno-0-13" name="__codelineno-0-13" href="#reference-output-formats-__codelineno-0-13"></a>##INFO=&lt;ID=PAD,Number=1,Type=Integer,Description="Partial ALT Depth"&gt;
+<a id="__codelineno-0-14" name="__codelineno-0-14" href="#reference-output-formats-__codelineno-0-14"></a>##INFO=&lt;ID=NAD,Number=1,Type=Integer,Description="N-base Depth (duplex masking QC)"&gt;
+<a id="__codelineno-0-15" name="__codelineno-0-15" href="#reference-output-formats-__codelineno-0-15"></a>##INFO=&lt;ID=SB_PVAL,Number=1,Type=Float,Description="Fisher strand bias p-value"&gt;
+<a id="__codelineno-0-16" name="__codelineno-0-16" href="#reference-output-formats-__codelineno-0-16"></a>##INFO=&lt;ID=SB_OR,Number=1,Type=Float,Description="Fisher strand bias odds ratio"&gt;
+<a id="__codelineno-0-17" name="__codelineno-0-17" href="#reference-output-formats-__codelineno-0-17"></a>##INFO=&lt;ID=FSB_PVAL,Number=1,Type=Float,Description="Fisher fragment strand bias p-value"&gt;
+<a id="__codelineno-0-18" name="__codelineno-0-18" href="#reference-output-formats-__codelineno-0-18"></a>##INFO=&lt;ID=FSB_OR,Number=1,Type=Float,Description="Fisher fragment strand bias odds ratio"&gt;
+<a id="__codelineno-0-19" name="__codelineno-0-19" href="#reference-output-formats-__codelineno-0-19"></a>##FORMAT=&lt;ID=GT,Number=1,Type=String,Description="Genotype"&gt;
+<a id="__codelineno-0-20" name="__codelineno-0-20" href="#reference-output-formats-__codelineno-0-20"></a>##FORMAT=&lt;ID=DP,Number=1,Type=Integer,Description="Total read depth"&gt;
+<a id="__codelineno-0-21" name="__codelineno-0-21" href="#reference-output-formats-__codelineno-0-21"></a>##FORMAT=&lt;ID=AD,Number=R,Type=Integer,Description="Allelic depths (ref,alt)"&gt;
+<a id="__codelineno-0-22" name="__codelineno-0-22" href="#reference-output-formats-__codelineno-0-22"></a>##FORMAT=&lt;ID=ADF,Number=R,Type=Integer,Description="Allelic depths on forward strand (ref_fwd,alt_fwd)"&gt;
+<a id="__codelineno-0-23" name="__codelineno-0-23" href="#reference-output-formats-__codelineno-0-23"></a>##FORMAT=&lt;ID=ADR,Number=R,Type=Integer,Description="Allelic depths on reverse strand (ref_rev,alt_rev)"&gt;
+<a id="__codelineno-0-24" name="__codelineno-0-24" href="#reference-output-formats-__codelineno-0-24"></a>##FORMAT=&lt;ID=VAF,Number=1,Type=Float,Description="Variant allele fraction (read level)"&gt;
+<a id="__codelineno-0-25" name="__codelineno-0-25" href="#reference-output-formats-__codelineno-0-25"></a>##FORMAT=&lt;ID=FAD,Number=R,Type=Integer,Description="Fragment allelic depths (ref_frag,alt_frag)"&gt;
+<a id="__codelineno-0-26" name="__codelineno-0-26" href="#reference-output-formats-__codelineno-0-26"></a>##FORMAT=&lt;ID=FADF,Number=R,Type=Integer,Description="Fragment depths on forward strand"&gt;
+<a id="__codelineno-0-27" name="__codelineno-0-27" href="#reference-output-formats-__codelineno-0-27"></a>##FORMAT=&lt;ID=FADR,Number=R,Type=Integer,Description="Fragment depths on reverse strand"&gt;
+<a id="__codelineno-0-28" name="__codelineno-0-28" href="#reference-output-formats-__codelineno-0-28"></a>##FORMAT=&lt;ID=FAF,Number=1,Type=Float,Description="Variant allele fraction (fragment level)"&gt;
+<a id="__codelineno-0-29" name="__codelineno-0-29" href="#reference-output-formats-__codelineno-0-29"></a>##FORMAT=&lt;ID=AAD,Number=1,Type=Integer,Description="Any ALT depth (alt + partial_alt)"&gt;
+<a id="__codelineno-0-30" name="__codelineno-0-30" href="#reference-output-formats-__codelineno-0-30"></a>##FORMAT=&lt;ID=PAD,Number=1,Type=Integer,Description="Partial ALT depth"&gt;
+<a id="__codelineno-0-31" name="__codelineno-0-31" href="#reference-output-formats-__codelineno-0-31"></a>##FORMAT=&lt;ID=NAD,Number=1,Type=Integer,Description="N-base depth"&gt;
+<a id="__codelineno-0-32" name="__codelineno-0-32" href="#reference-output-formats-__codelineno-0-32"></a>#CHROM  POS  ID  REF  ALT  QUAL  FILTER  INFO  FORMAT  &lt;sample_name&gt;
 </code></pre></div>
 <div class="admonition note">
 <p class="admonition-title">Provenance headers (v5.3.0)</p>
@@ -7339,7 +7396,7 @@ without a length.</p>
 </div>
 <div class="tabbed-block">
 <div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#reference-output-formats-__codelineno-1-1"></a>##fileformat=VCFv4.2
-<a id="__codelineno-1-2" name="__codelineno-1-2" href="#reference-output-formats-__codelineno-1-2"></a>##source=gbcms v5.3.0
+<a id="__codelineno-1-2" name="__codelineno-1-2" href="#reference-output-formats-__codelineno-1-2"></a>##source=gbcms vX.Y.Z (a1b2c3d4)
 <a id="__codelineno-1-3" name="__codelineno-1-3" href="#reference-output-formats-__codelineno-1-3"></a>##gbcms_command=gbcms rna --bam rna_sample.bam --fasta ref.fa
 <a id="__codelineno-1-4" name="__codelineno-1-4" href="#reference-output-formats-__codelineno-1-4"></a>##reference=file:///path/to/ref.fa
 <a id="__codelineno-1-5" name="__codelineno-1-5" href="#reference-output-formats-__codelineno-1-5"></a>##contig=&lt;ID=chr1,length=248956422&gt;
@@ -7347,37 +7404,36 @@ without a length.</p>
 <a id="__codelineno-1-7" name="__codelineno-1-7" href="#reference-output-formats-__codelineno-1-7"></a>##INFO=&lt;ID=DP,...&gt;
 <a id="__codelineno-1-8" name="__codelineno-1-8" href="#reference-output-formats-__codelineno-1-8"></a>##INFO=&lt;ID=GS,...&gt;
 <a id="__codelineno-1-9" name="__codelineno-1-9" href="#reference-output-formats-__codelineno-1-9"></a>##INFO=&lt;ID=GD,...&gt;
-<a id="__codelineno-1-10" name="__codelineno-1-10" href="#reference-output-formats-__codelineno-1-10"></a>##INFO=&lt;ID=GR,...&gt;
-<a id="__codelineno-1-11" name="__codelineno-1-11" href="#reference-output-formats-__codelineno-1-11"></a>##INFO=&lt;ID=AAD,...&gt;
-<a id="__codelineno-1-12" name="__codelineno-1-12" href="#reference-output-formats-__codelineno-1-12"></a>##INFO=&lt;ID=PAD,...&gt;
-<a id="__codelineno-1-13" name="__codelineno-1-13" href="#reference-output-formats-__codelineno-1-13"></a>##INFO=&lt;ID=NAD,...&gt;
-<a id="__codelineno-1-14" name="__codelineno-1-14" href="#reference-output-formats-__codelineno-1-14"></a>##INFO=&lt;ID=SB_PVAL,...&gt;
-<a id="__codelineno-1-15" name="__codelineno-1-15" href="#reference-output-formats-__codelineno-1-15"></a>##INFO=&lt;ID=SB_OR,...&gt;
-<a id="__codelineno-1-16" name="__codelineno-1-16" href="#reference-output-formats-__codelineno-1-16"></a>##INFO=&lt;ID=FSB_PVAL,...&gt;
-<a id="__codelineno-1-17" name="__codelineno-1-17" href="#reference-output-formats-__codelineno-1-17"></a>##INFO=&lt;ID=FSB_OR,...&gt;
-<a id="__codelineno-1-18" name="__codelineno-1-18" href="#reference-output-formats-__codelineno-1-18"></a>##INFO=&lt;ID=SEN,Number=1,Type=Integer,Description="Reads on the transcript sense strand"&gt;
-<a id="__codelineno-1-19" name="__codelineno-1-19" href="#reference-output-formats-__codelineno-1-19"></a>##INFO=&lt;ID=ANT,Number=1,Type=Integer,Description="REF and ALT reads on the antisense strand, tallied even where strandedness enforcement keeps them out of every count"&gt;
-<a id="__codelineno-1-20" name="__codelineno-1-20" href="#reference-output-formats-__codelineno-1-20"></a>##INFO=&lt;ID=ASEN,Number=1,Type=Integer,Description="ALT reads on the transcript sense strand"&gt;
-<a id="__codelineno-1-21" name="__codelineno-1-21" href="#reference-output-formats-__codelineno-1-21"></a>##INFO=&lt;ID=RED,Number=0,Type=Flag,Description="Locus is a candidate A-to-I RNA editing site"&gt;
-<a id="__codelineno-1-22" name="__codelineno-1-22" href="#reference-output-formats-__codelineno-1-22"></a>##INFO=&lt;ID=SPL,Number=1,Type=Integer,Description="ALT reads spanning a splice junction (CIGAR N)"&gt;
-<a id="__codelineno-1-23" name="__codelineno-1-23" href="#reference-output-formats-__codelineno-1-23"></a>##FORMAT=&lt;ID=GT,...&gt;
-<a id="__codelineno-1-24" name="__codelineno-1-24" href="#reference-output-formats-__codelineno-1-24"></a>##FORMAT=&lt;ID=DP,...&gt;
-<a id="__codelineno-1-25" name="__codelineno-1-25" href="#reference-output-formats-__codelineno-1-25"></a>##FORMAT=&lt;ID=AD,...&gt;
-<a id="__codelineno-1-26" name="__codelineno-1-26" href="#reference-output-formats-__codelineno-1-26"></a>##FORMAT=&lt;ID=ADF,...&gt;
-<a id="__codelineno-1-27" name="__codelineno-1-27" href="#reference-output-formats-__codelineno-1-27"></a>##FORMAT=&lt;ID=ADR,...&gt;
-<a id="__codelineno-1-28" name="__codelineno-1-28" href="#reference-output-formats-__codelineno-1-28"></a>##FORMAT=&lt;ID=VAF,...&gt;
-<a id="__codelineno-1-29" name="__codelineno-1-29" href="#reference-output-formats-__codelineno-1-29"></a>##FORMAT=&lt;ID=FAD,...&gt;
-<a id="__codelineno-1-30" name="__codelineno-1-30" href="#reference-output-formats-__codelineno-1-30"></a>##FORMAT=&lt;ID=FADF,...&gt;
-<a id="__codelineno-1-31" name="__codelineno-1-31" href="#reference-output-formats-__codelineno-1-31"></a>##FORMAT=&lt;ID=FADR,...&gt;
-<a id="__codelineno-1-32" name="__codelineno-1-32" href="#reference-output-formats-__codelineno-1-32"></a>##FORMAT=&lt;ID=FAF,...&gt;
-<a id="__codelineno-1-33" name="__codelineno-1-33" href="#reference-output-formats-__codelineno-1-33"></a>##FORMAT=&lt;ID=AAD,...&gt;
-<a id="__codelineno-1-34" name="__codelineno-1-34" href="#reference-output-formats-__codelineno-1-34"></a>##FORMAT=&lt;ID=PAD,...&gt;
-<a id="__codelineno-1-35" name="__codelineno-1-35" href="#reference-output-formats-__codelineno-1-35"></a>##FORMAT=&lt;ID=NAD,...&gt;
-<a id="__codelineno-1-36" name="__codelineno-1-36" href="#reference-output-formats-__codelineno-1-36"></a>##FORMAT=&lt;ID=SEN,Number=1,Type=Integer,Description="Sense strand depth"&gt;
-<a id="__codelineno-1-37" name="__codelineno-1-37" href="#reference-output-formats-__codelineno-1-37"></a>##FORMAT=&lt;ID=ANT,Number=1,Type=Integer,Description="REF and ALT reads on the antisense strand, tallied even where strandedness enforcement keeps them out of every count"&gt;
-<a id="__codelineno-1-38" name="__codelineno-1-38" href="#reference-output-formats-__codelineno-1-38"></a>##FORMAT=&lt;ID=ASEN,Number=1,Type=Integer,Description="ALT sense strand count"&gt;
-<a id="__codelineno-1-39" name="__codelineno-1-39" href="#reference-output-formats-__codelineno-1-39"></a>##FORMAT=&lt;ID=SPL,Number=1,Type=Integer,Description="Splice-spanning ALT count"&gt;
-<a id="__codelineno-1-40" name="__codelineno-1-40" href="#reference-output-formats-__codelineno-1-40"></a>#CHROM  POS  ID  REF  ALT  QUAL  FILTER  INFO  FORMAT  &lt;sample_name&gt;
+<a id="__codelineno-1-10" name="__codelineno-1-10" href="#reference-output-formats-__codelineno-1-10"></a>##INFO=&lt;ID=AAD,...&gt;
+<a id="__codelineno-1-11" name="__codelineno-1-11" href="#reference-output-formats-__codelineno-1-11"></a>##INFO=&lt;ID=PAD,...&gt;
+<a id="__codelineno-1-12" name="__codelineno-1-12" href="#reference-output-formats-__codelineno-1-12"></a>##INFO=&lt;ID=NAD,...&gt;
+<a id="__codelineno-1-13" name="__codelineno-1-13" href="#reference-output-formats-__codelineno-1-13"></a>##INFO=&lt;ID=SB_PVAL,...&gt;
+<a id="__codelineno-1-14" name="__codelineno-1-14" href="#reference-output-formats-__codelineno-1-14"></a>##INFO=&lt;ID=SB_OR,...&gt;
+<a id="__codelineno-1-15" name="__codelineno-1-15" href="#reference-output-formats-__codelineno-1-15"></a>##INFO=&lt;ID=FSB_PVAL,...&gt;
+<a id="__codelineno-1-16" name="__codelineno-1-16" href="#reference-output-formats-__codelineno-1-16"></a>##INFO=&lt;ID=FSB_OR,...&gt;
+<a id="__codelineno-1-17" name="__codelineno-1-17" href="#reference-output-formats-__codelineno-1-17"></a>##INFO=&lt;ID=SEN,Number=1,Type=Integer,Description="Reads on the transcript sense strand"&gt;
+<a id="__codelineno-1-18" name="__codelineno-1-18" href="#reference-output-formats-__codelineno-1-18"></a>##INFO=&lt;ID=ANT,Number=1,Type=Integer,Description="REF and ALT reads on the antisense strand, tallied even where strandedness enforcement keeps them out of every count"&gt;
+<a id="__codelineno-1-19" name="__codelineno-1-19" href="#reference-output-formats-__codelineno-1-19"></a>##INFO=&lt;ID=ASEN,Number=1,Type=Integer,Description="ALT reads on the transcript sense strand"&gt;
+<a id="__codelineno-1-20" name="__codelineno-1-20" href="#reference-output-formats-__codelineno-1-20"></a>##INFO=&lt;ID=RED,Number=0,Type=Flag,Description="Locus is a candidate A-to-I RNA editing site"&gt;
+<a id="__codelineno-1-21" name="__codelineno-1-21" href="#reference-output-formats-__codelineno-1-21"></a>##INFO=&lt;ID=SPL,Number=1,Type=Integer,Description="ALT reads spanning a splice junction (CIGAR N)"&gt;
+<a id="__codelineno-1-22" name="__codelineno-1-22" href="#reference-output-formats-__codelineno-1-22"></a>##FORMAT=&lt;ID=GT,...&gt;
+<a id="__codelineno-1-23" name="__codelineno-1-23" href="#reference-output-formats-__codelineno-1-23"></a>##FORMAT=&lt;ID=DP,...&gt;
+<a id="__codelineno-1-24" name="__codelineno-1-24" href="#reference-output-formats-__codelineno-1-24"></a>##FORMAT=&lt;ID=AD,...&gt;
+<a id="__codelineno-1-25" name="__codelineno-1-25" href="#reference-output-formats-__codelineno-1-25"></a>##FORMAT=&lt;ID=ADF,...&gt;
+<a id="__codelineno-1-26" name="__codelineno-1-26" href="#reference-output-formats-__codelineno-1-26"></a>##FORMAT=&lt;ID=ADR,...&gt;
+<a id="__codelineno-1-27" name="__codelineno-1-27" href="#reference-output-formats-__codelineno-1-27"></a>##FORMAT=&lt;ID=VAF,...&gt;
+<a id="__codelineno-1-28" name="__codelineno-1-28" href="#reference-output-formats-__codelineno-1-28"></a>##FORMAT=&lt;ID=FAD,...&gt;
+<a id="__codelineno-1-29" name="__codelineno-1-29" href="#reference-output-formats-__codelineno-1-29"></a>##FORMAT=&lt;ID=FADF,...&gt;
+<a id="__codelineno-1-30" name="__codelineno-1-30" href="#reference-output-formats-__codelineno-1-30"></a>##FORMAT=&lt;ID=FADR,...&gt;
+<a id="__codelineno-1-31" name="__codelineno-1-31" href="#reference-output-formats-__codelineno-1-31"></a>##FORMAT=&lt;ID=FAF,...&gt;
+<a id="__codelineno-1-32" name="__codelineno-1-32" href="#reference-output-formats-__codelineno-1-32"></a>##FORMAT=&lt;ID=AAD,...&gt;
+<a id="__codelineno-1-33" name="__codelineno-1-33" href="#reference-output-formats-__codelineno-1-33"></a>##FORMAT=&lt;ID=PAD,...&gt;
+<a id="__codelineno-1-34" name="__codelineno-1-34" href="#reference-output-formats-__codelineno-1-34"></a>##FORMAT=&lt;ID=NAD,...&gt;
+<a id="__codelineno-1-35" name="__codelineno-1-35" href="#reference-output-formats-__codelineno-1-35"></a>##FORMAT=&lt;ID=SEN,Number=1,Type=Integer,Description="Sense strand depth"&gt;
+<a id="__codelineno-1-36" name="__codelineno-1-36" href="#reference-output-formats-__codelineno-1-36"></a>##FORMAT=&lt;ID=ANT,Number=1,Type=Integer,Description="REF and ALT reads on the antisense strand, tallied even where strandedness enforcement keeps them out of every count"&gt;
+<a id="__codelineno-1-37" name="__codelineno-1-37" href="#reference-output-formats-__codelineno-1-37"></a>##FORMAT=&lt;ID=ASEN,Number=1,Type=Integer,Description="ALT sense strand count"&gt;
+<a id="__codelineno-1-38" name="__codelineno-1-38" href="#reference-output-formats-__codelineno-1-38"></a>##FORMAT=&lt;ID=SPL,Number=1,Type=Integer,Description="Splice-spanning ALT count"&gt;
+<a id="__codelineno-1-39" name="__codelineno-1-39" href="#reference-output-formats-__codelineno-1-39"></a>#CHROM  POS  ID  REF  ALT  QUAL  FILTER  INFO  FORMAT  &lt;sample_name&gt;
 </code></pre></div>
 </div>
 </div>
@@ -7487,7 +7543,7 @@ writes these records without counting.</p>
 <hr>
 <h3 id="reference-output-formats-info-fields">INFO Fields<a class="headerlink" href="#reference-output-formats-info-fields" title="Permanent link">¶</a></h3>
 <p>The <code>INFO</code> column is a semicolon-separated list of <code>KEY=VALUE</code> pairs.</p>
-<div class="tabbed-set tabbed-alternate" data-tabs="2:6"><input checked="" id="reference-output-formats-__tabbed_2_1" name="reference-output-formats-__tabbed_2" type="radio"><input id="reference-output-formats-__tabbed_2_2" name="reference-output-formats-__tabbed_2" type="radio"><input id="reference-output-formats-__tabbed_2_3" name="reference-output-formats-__tabbed_2" type="radio"><input id="reference-output-formats-__tabbed_2_4" name="reference-output-formats-__tabbed_2" type="radio"><input id="reference-output-formats-__tabbed_2_5" name="reference-output-formats-__tabbed_2" type="radio"><input id="reference-output-formats-__tabbed_2_6" name="reference-output-formats-__tabbed_2" type="radio"><div class="tabbed-labels"><label for="reference-output-formats-__tabbed_2_1">Always present (DNA + RNA)</label><label for="reference-output-formats-__tabbed_2_2">RNA mode only</label><label for="reference-output-formats-__tabbed_2_3">--mfsd only</label><label for="reference-output-formats-__tabbed_2_4">--gtf only (RNA mode)</label><label for="reference-output-formats-__tabbed_2_5">--show-normalization only</label><label for="reference-output-formats-__tabbed_2_6"><abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> input</label></div>
+<div class="tabbed-set tabbed-alternate" data-tabs="2:7"><input checked="" id="reference-output-formats-__tabbed_2_1" name="reference-output-formats-__tabbed_2" type="radio"><input id="reference-output-formats-__tabbed_2_2" name="reference-output-formats-__tabbed_2" type="radio"><input id="reference-output-formats-__tabbed_2_3" name="reference-output-formats-__tabbed_2" type="radio"><input id="reference-output-formats-__tabbed_2_4" name="reference-output-formats-__tabbed_2" type="radio"><input id="reference-output-formats-__tabbed_2_5" name="reference-output-formats-__tabbed_2" type="radio"><input id="reference-output-formats-__tabbed_2_6" name="reference-output-formats-__tabbed_2" type="radio"><input id="reference-output-formats-__tabbed_2_7" name="reference-output-formats-__tabbed_2" type="radio"><div class="tabbed-labels"><label for="reference-output-formats-__tabbed_2_1">Always present (DNA + RNA)</label><label for="reference-output-formats-__tabbed_2_2">--rescue-mnp only</label><label for="reference-output-formats-__tabbed_2_3">RNA mode only</label><label for="reference-output-formats-__tabbed_2_4">--mfsd only</label><label for="reference-output-formats-__tabbed_2_5">--gtf only (RNA mode)</label><label for="reference-output-formats-__tabbed_2_6">--show-normalization only</label><label for="reference-output-formats-__tabbed_2_7"><abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> input</label></div>
 <div class="tabbed-content">
 <div class="tabbed-block">
 <table>
@@ -7518,11 +7574,6 @@ writes these records without counting.</p>
 <td style="text-align: left;"><code>GD</code></td>
 <td style="text-align: left;">String</td>
 <td style="text-align: left;">Diagnostic flags (the <code>gbcms_diagnostic</code> value), <code>\|</code>-separated; <code>.</code> when none. Each flag: <a href="#reference-qc-flags-diagnostics">QC Flags → Diagnostics</a>.</td>
-</tr>
-<tr>
-<td style="text-align: left;"><code>GR</code></td>
-<td style="text-align: left;">String</td>
-<td style="text-align: left;">Rescue audit trail (the <code>gbcms_rescue</code> value with <code>;</code> written as <code>\|</code>); <code>.</code> for non-candidates. Outcomes: <a href="#reference-qc-flags-mnp-rescue">QC Flags → <abbr title="Multi-Nucleotide Polymorphism - Multiple adjacent base substitutions">MNP</abbr> rescue</a>.</td>
 </tr>
 <tr>
 <td style="text-align: left;"><code>AAD</code></td>
@@ -7573,6 +7624,24 @@ writes these records without counting.</p>
 </thead>
 <tbody>
 <tr>
+<td style="text-align: left;"><code>GR</code></td>
+<td style="text-align: left;">String</td>
+<td style="text-align: left;">Rescue audit trail (the <code>gbcms_rescue</code> value with <code>;</code> written as <code>\|</code>); <code>.</code> for non-candidates. Outcomes: <a href="#reference-qc-flags-mnp-rescue">QC Flags → <abbr title="Multi-Nucleotide Polymorphism - Multiple adjacent base substitutions">MNP</abbr> rescue</a>.</td>
+</tr>
+</tbody>
+</table>
+</div>
+<div class="tabbed-block">
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">Field</th>
+<th style="text-align: left;">Type</th>
+<th style="text-align: left;">Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
 <td style="text-align: left;"><code>SEN</code></td>
 <td style="text-align: left;">Integer</td>
 <td style="text-align: left;">Total reads on the transcript <strong>sense</strong> strand</td>
@@ -7601,6 +7670,7 @@ writes these records without counting.</p>
 </table>
 </div>
 <div class="tabbed-block">
+<p>13 fields, each the uppercased name of a <code>mfsd_*</code> <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> column.</p>
 <table>
 <thead>
 <tr>
@@ -7624,6 +7694,11 @@ writes these records without counting.</p>
 <td style="text-align: left;"><code>MFSD_PVAL_ALT_REF</code></td>
 <td style="text-align: left;">Float</td>
 <td style="text-align: left;">KS test p-value (ALT vs REF)</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>MFSD_QVAL_ALT_REF</code></td>
+<td style="text-align: left;">Float</td>
+<td style="text-align: left;">Benjamini-Hochberg FDR q-value of the ALT-vs-REF KS p-value, across the variants of the sample</td>
 </tr>
 <tr>
 <td style="text-align: left;"><code>MFSD_ALT_LLR</code></td>
@@ -7965,13 +8040,13 @@ metadata for reproducibility:</p>
 <div class="tabbed-set tabbed-alternate" data-tabs="4:2"><input checked="" id="reference-output-formats-__tabbed_4_1" name="reference-output-formats-__tabbed_4" type="radio"><input id="reference-output-formats-__tabbed_4_2" name="reference-output-formats-__tabbed_4" type="radio"><div class="tabbed-labels"><label for="reference-output-formats-__tabbed_4_1">DNA mode</label><label for="reference-output-formats-__tabbed_4_2">RNA mode</label></div>
 <div class="tabbed-content">
 <div class="tabbed-block">
-<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#reference-output-formats-__codelineno-3-1"></a>#gbcms v6.6.0 (9c371263)
+<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#reference-output-formats-__codelineno-3-1"></a>#gbcms vX.Y.Z (a1b2c3d4)
 <a id="__codelineno-3-2" name="__codelineno-3-2" href="#reference-output-formats-__codelineno-3-2"></a>#command gbcms dna --bam tumor:tumor.bam --fasta ref.fa --threads 4
 <a id="__codelineno-3-3" name="__codelineno-3-3" href="#reference-output-formats-__codelineno-3-3"></a>Hugo_Symbol Chromosome  Start_Position  ...
 </code></pre></div>
 </div>
 <div class="tabbed-block">
-<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#reference-output-formats-__codelineno-4-1"></a>#gbcms v6.6.0 (9c371263)
+<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#reference-output-formats-__codelineno-4-1"></a>#gbcms vX.Y.Z (a1b2c3d4)
 <a id="__codelineno-4-2" name="__codelineno-4-2" href="#reference-output-formats-__codelineno-4-2"></a>#command gbcms rna --bam rna_sample:star.bam --fasta ref.fa --gtf genes.gtf
 <a id="__codelineno-4-3" name="__codelineno-4-3" href="#reference-output-formats-__codelineno-4-3"></a>Hugo_Symbol Chromosome  Start_Position  ...
 </code></pre></div>
@@ -8427,7 +8502,7 @@ appear at all in DNA mode output.</p>
 <tr>
 <td style="text-align: left;"><code>rna_antisense_depth</code></td>
 <td style="text-align: left;">Integer</td>
-<td style="text-align: left;">REF and ALT reads on the antisense strand (first-class, over the anchor). Under <code>--enforce-strandedness</code> (the RNA default) these reads are kept out of REF, ALT, depth, fragments and the other counts, but are still classified and tallied here, so the column is the same with <code>--no-strandedness</code>. Exceptions: <code>--rescue-homopolymer</code> and <code>--rescue-mnp</code> choose between counts by ALT depth, so the adopted form (and this column) can differ between the modes; loci without a gene strand (intergenic, or genes of both strands over the locus) report 0, as every read there counts as sense.</td>
+<td style="text-align: left;">REF and ALT reads on the antisense strand (first-class, over the anchor). Under <code>--enforce-strandedness</code> (the RNA default) these reads are kept out of REF, ALT, depth, fragments and the other counts, but are still classified and tallied here, so the column is the same with <code>--no-strandedness</code>. Exceptions: <code>--rescue-homopolymer</code> and <code>--rescue-mnp</code> choose between counts by ALT depth, so the adopted form (and this column) can differ between the modes; loci without a gene strand (intergenic, or genes of both strands over the locus) report 0, as every read there counts as sense, and so does a whole run with <code>--strandedness unstranded</code>.</td>
 </tr>
 <tr>
 <td style="text-align: left;"><code>rna_alt_sense_count</code></td>
@@ -8998,8 +9073,8 @@ the pipeline does not fail.</p>
 </div>
 <h3 id="reference-output-formats-provenance-and-versions">Provenance and versions<a class="headerlink" href="#reference-output-formats-provenance-and-versions" title="Permanent link">¶</a></h3>
 <p>The merged <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> starts with its own provenance (<code>#gbcms v…</code>, <code>#command …</code>) and one
-line per input with that input's version line: <code>#input duplex: gbcms v6.6.0
-(9c371263) (/path/to/duplex.maf)</code>. Merge warns when the inputs come from
+line per input with that input's version line: <code>#input duplex: gbcms vX.Y.Z
+(a1b2c3d4) (/path/to/duplex.maf)</code>. Merge warns when the inputs come from
 different gbcms versions or builds (their counts may follow different rules),
 and stops when one input is a <abbr title="Variant Call Format - Standard variant call file format">VCF</abbr>-input <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> from before 6.5.0 (<code>vcf_pos</code> without
 <code>vcf_ref</code>/<code>vcf_alt</code>) and another is not: 6.5.0 changed the coordinates and
@@ -9153,13 +9228,13 @@ anywhere else in the docs.</p>
 <tr>
 <td style="text-align: left;"><a href="#reference-qc-flags-asjd-splice-flags">ASJD splice flags</a></td>
 <td style="text-align: left;"><code>asjd_diagnostic</code>, <code>asjd_*_motif</code></td>
-<td style="text-align: left;">not in <abbr title="Variant Call Format - Standard variant call file format">VCF</abbr></td>
+<td style="text-align: left;">INFO <code>ASJDD</code>, <code>ASJDRM</code>, <code>ASJDAM</code></td>
 <td style="text-align: left;">RNA with <code>--gtf</code></td>
 </tr>
 <tr>
 <td style="text-align: left;"><a href="#reference-qc-flags-qc-columns">QC columns</a></td>
 <td style="text-align: left;"><code>rna_editing_site</code>, <code>asjd_flag</code>, <code>mfsd_ks_valid</code>, <code>mfsd_alt_confidence</code>, <code>mfsd_ch_flag</code></td>
-<td style="text-align: left;">INFO <code>RED</code>; <abbr title="Mutant Fragment Size Distribution - Insert-size analysis for REF vs ALT fragments">mFSD</abbr> INFO</td>
+<td style="text-align: left;">INFO <code>RED</code>, <code>ASJD</code>; <abbr title="Mutant Fragment Size Distribution - Insert-size analysis for REF vs ALT fragments">mFSD</abbr> INFO</td>
 <td style="text-align: left;">RNA; <code>--mfsd</code></td>
 </tr>
 <tr>
@@ -10555,9 +10630,9 @@ default), reads that fail the <abbr title="Mapping Quality - Confidence score fo
     <pre class="mermaid"><code>flowchart TD
     Read(["📖 RNA Read"])
     Read --&gt;|"read.mapq"| MAPQ{"MAPQ ≥ min_mapq?\n(default: 1)"}
-    MAPQ --&gt;|"Yes — MAPQ=255\nunique alignment"| Pass(["✅ Pass"]):::pass
-    MAPQ --&gt;|"No — MAPQ=0\n(check NH tag)"| NH{"NH:i:1?"}
-    NH --&gt;|"Yes — novel junction\nunique but low MAPQ"| Rescue(["✅ Rescued"]):::rescue
+    MAPQ --&gt;|"Yes — e.g. STAR 255\n(unique), 3 or 1"| Pass(["✅ Pass"]):::pass
+    MAPQ --&gt;|"No — below min_mapq\n(check NH tag)"| NH{"NH:i:1?"}
+    NH --&gt;|"Yes — uniquely aligned\nbut low MAPQ"| Rescue(["✅ Rescued"]):::rescue
     NH --&gt;|"No — NH&gt;1\nmulti-mapper"| Drop(["❌ Discard"]):::drop
 
     classDef pass fill:#27ae60,color:#fff,stroke:#1e8449,stroke-width:2px;
@@ -10669,7 +10744,9 @@ same strand (<code>forward</code> swaps them):</p>
 </table>
 <div class="admonition tip">
 <p class="admonition-title">Tip</p>
-<p>Disable strandedness filtering with <code>--no-strandedness</code> for unstranded RNA-seq libraries.</p>
+<p>For an unstranded RNA-seq library pass <code>--strandedness unstranded</code>: it turns off both the filter and
+ASJD's strand-discordance check. <code>--no-strandedness</code> alone only stops the filtering; reads are still
+folded under the <code>reverse</code> protocol (see <a href="#cli-rna-strandedness-filtering"><code>gbcms rna</code></a>).</p>
 </div>
 <hr>
 <h2 id="reference-read-filters-baq-quality-downgrade"><abbr title="Base Alignment Quality - Heuristic quality downgrade near indels and splice junctions">BAQ</abbr> Quality Downgrade<a class="headerlink" href="#reference-read-filters-baq-quality-downgrade" title="Permanent link">¶</a></h2>
@@ -11096,7 +11173,7 @@ operates identically to v4.2.0 — no annotation columns are added.</p>
 <p class="admonition-title"><code>gene_strand</code> is the keystone</p>
 <p>Parsing the GTF also back-fills each variant's <strong><code>gene_strand</code></strong> (the transcript's
 <code>+</code>/<code>-</code> strand). This is what makes strand-aware features work: without it,
-<code>--enforce_strandedness</code> and the ASJD strand-discordance test are silent no-ops
+<code>--enforce-strandedness</code> and the ASJD strand-discordance test are silent no-ops
 (every read reads as sense, so <code>antisense_depth</code> stays 0). Strand-specific counting
 therefore requires <code>--gtf</code>, not just <code>--strandedness</code>.</p>
 <p>The strand comes from the exons over the variant's position, all stranded
@@ -14604,7 +14681,7 @@ testing; gbcms reports the exact p of the observed table.</p>
 </ul>
 <hr>
 <h2 id="reference-counting-metrics-mfsd"><abbr title="Mutant Fragment Size Distribution - Insert-size analysis for REF vs ALT fragments">mFSD</abbr> — Mutant Fragment Size Distribution<a class="headerlink" href="#reference-counting-metrics-mfsd" title="Permanent link">¶</a></h2>
-<p><abbr title="Mutant Fragment Size Distribution - Insert-size analysis for REF vs ALT fragments">mFSD</abbr> compares insert-size distributions for <strong>REF-classified</strong> vs <strong>ALT-classified</strong> fragments at each variant position. Short-fragment enrichment in the ALT class indicates tumor-derived <abbr title="Cell-free DNA - Circulating DNA fragments in blood plasma">cfDNA</abbr>.</p>
+<p><abbr title="Mutant Fragment Size Distribution - Insert-size analysis for REF vs ALT fragments">mFSD</abbr> compares insert-size distributions for <strong>REF-classified</strong> vs <strong>ALT-classified</strong> fragments at each variant position. Short-fragment enrichment in the ALT class is graded evidence toward a tumor origin, never an origin call (<a href="#reference-qc-flags-mfsd-report-classes"><abbr title="Mutant Fragment Size Distribution - Insert-size analysis for REF vs ALT fragments">mFSD</abbr> report classes</a>).</p>
 <p>Enabled with <code>--mfsd</code>. All 41 columns (and their <abbr title="Variant Call Format - Standard variant call file format">VCF</abbr> INFO equivalents) are absent from output without this flag.</p>
 <h3 id="reference-counting-metrics-fragment-classes">Fragment Classes<a class="headerlink" href="#reference-counting-metrics-fragment-classes" title="Permanent link">¶</a></h3>
 <table>
@@ -15192,7 +15269,7 @@ absent from the <abbr title="Binary Alignment Map - Compressed sequence alignmen
         </head><body><div><h1 id="mfsd-report"><abbr title="Mutant Fragment Size Distribution - Insert-size analysis for REF vs ALT fragments">mFSD</abbr> Report<a class="headerlink" href="#reference-mfsd-report-mfsd-report" title="Permanent link">¶</a></h1>
 <p>Interactive HTML report for per-variant Mutant Fragment Size Distribution analysis.</p>
 <h2 id="reference-mfsd-report-overview">Overview<a class="headerlink" href="#reference-mfsd-report-overview" title="Permanent link">¶</a></h2>
-<p>The <code>--mfsd-report</code> flag generates a self-contained HTML file alongside the <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> output (it requires <code>--format maf</code>). The report provides an interactive visual diagnostic for evaluating fragment size distributions at each variant position, helping distinguish <strong>tumor-derived <abbr title="Cell-free DNA - Circulating DNA fragments in blood plasma">cfDNA</abbr></strong> from <strong>clonal hematopoiesis (CH)</strong> artifacts.</p>
+<p>The <code>--mfsd-report</code> flag generates a self-contained HTML file alongside the <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> output (it requires <code>--format maf</code>). The report provides an interactive visual diagnostic for evaluating fragment size distributions at each variant position, grading how far each variant's ALT fragments are shorter than its REF fragments. The grade is evidence toward a tumor origin, never an origin call; it does not separate tumor from <strong>clonal hematopoiesis (CH)</strong>, which matched-normal data decide.</p>
 <div class="admonition tip">
 <p class="admonition-title">Quick Start</p>
 <p></p><div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#reference-mfsd-report-__codelineno-0-1"></a>gbcms<span class="w"> </span>dna<span class="w"> </span>--mfsd<span class="w"> </span>--mfsd-parquet<span class="w"> </span>--mfsd-report<span class="w"> </span>--format<span class="w"> </span>maf<span class="w"> </span><span class="se">\</span>
@@ -16291,9 +16368,9 @@ caveat in gbcms's output.</p>
 </tr>
 <tr>
 <td style="text-align: left;">Allele soft-clipped at a read end</td>
-<td style="text-align: left;">Counted for complex/<abbr title="Multi-Nucleotide Polymorphism - Multiple adjacent base substitutions">MNP</abbr> in DNA</td>
-<td style="text-align: left;">Decided (extend)</td>
-<td style="text-align: left;">#173, C7 #144</td>
+<td style="text-align: left;">Counted in DNA by every rule that reads clips (complex, <abbr title="Multi-Nucleotide Polymorphism - Multiple adjacent base substitutions">MNP</abbr>, pure indels, deletions of 50 bp or more); an RNA clip at an exon edge or junction end is not evidence</td>
+<td style="text-align: left;">Decided (done); clip-borne ITD insertions open</td>
+<td style="text-align: left;">C15 #173 (closed), C7 #144</td>
 </tr>
 <tr>
 <td style="text-align: left;">Long event split across alignments</td>
@@ -16316,13 +16393,13 @@ caveat in gbcms's output.</p>
 <tr>
 <td style="text-align: left;">Reads from paralogs or segmental duplications</td>
 <td style="text-align: left;"><abbr title="Mapping Quality - Confidence score for read alignment">MAPQ</abbr> ≥ 20; <code>mq0_count</code></td>
-<td style="text-align: left;">To measure</td>
+<td style="text-align: left;">Proposed (diagnostic, 6.7.0); validate on paralog-rich loci</td>
 <td style="text-align: left;">O5 #179</td>
 </tr>
 <tr>
 <td style="text-align: left;">Reference bias: ALT reads map worse, clip, or go unmapped</td>
 <td style="text-align: left;">Counts what maps</td>
-<td style="text-align: left;">Proposed (diagnostic)</td>
+<td style="text-align: left;">Proposed (diagnostic in <code>gbcms_diagnostic</code>; no filter, no new column; 6.7.0)</td>
 <td style="text-align: left;">O5 #179</td>
 </tr>
 <tr>
@@ -16344,6 +16421,24 @@ caveat in gbcms's output.</p>
 <td style="text-align: left;">C17 #176</td>
 </tr>
 <tr>
+<td style="text-align: left;">A mate's soft-clipped 5' end makes the fragment end (TLEN) short</td>
+<td style="text-align: left;">The read's own soft clips past that end are clipped as adapter</td>
+<td style="text-align: left;">Proposed (measure from the mate's unclipped end with MC)</td>
+<td style="text-align: left;">C31 #212</td>
+</tr>
+<tr>
+<td style="text-align: left;">Exact-length insertion with a sequencing error inside; truncated copies</td>
+<td style="text-align: left;">One error inside the insert is tolerated; a truncated copy counts <code>partial_alt</code></td>
+<td style="text-align: left;">Decided (done); the identity band for truncated inserts was not adopted</td>
+<td style="text-align: left;">C6 #143</td>
+</tr>
+<tr>
+<td style="text-align: left;">A REF molecule with one error beside the event reads ALT</td>
+<td style="text-align: left;">Both alleles' windows are read from one anchor</td>
+<td style="text-align: left;">Decided (done, RJ-23)</td>
+<td style="text-align: left;">C33 #214</td>
+</tr>
+<tr>
 <td style="text-align: left;">Stutter in repeats</td>
 <td style="text-align: left;">Counted exactly; named by a diagnostic</td>
 <td style="text-align: left;">Decided (done)</td>
@@ -16352,7 +16447,7 @@ caveat in gbcms's output.</p>
 <tr>
 <td style="text-align: left;">OxoG / FFPE orientation artifacts</td>
 <td style="text-align: left;">Strand counts only</td>
-<td style="text-align: left;">To measure (decide)</td>
+<td style="text-align: left;">To decide: optional F1R2/F2R1 counts or an orientation-imbalance diagnostic; measure first on FFPE-rich data (6.7.0)</td>
 <td style="text-align: left;">O6 #180</td>
 </tr>
 <tr>
@@ -16398,6 +16493,18 @@ caveat in gbcms's output.</p>
 <td style="text-align: left;">R2 #114</td>
 </tr>
 <tr>
+<td style="text-align: left;">RNA: a GTF transcript ID reused on another chromosome or strand</td>
+<td style="text-align: left;">Exons and introns merge by ID</td>
+<td style="text-align: left;">Proposed</td>
+<td style="text-align: left;">C34 #216</td>
+</tr>
+<tr>
+<td style="text-align: left;">Variant not prepared against the reference (direct API use, failed reference fetch)</td>
+<td style="text-align: left;">The alignment fallback's tail reads stale scores (<code>partial_alt</code> only)</td>
+<td style="text-align: left;">Open (6.7.0)</td>
+<td style="text-align: left;">C24 #195</td>
+</tr>
+<tr>
 <td style="text-align: left;">Reads ending inside the event; low depth</td>
 <td style="text-align: left;">Depth only until a read holds the shorter allele's window</td>
 <td style="text-align: left;">Decided (done)</td>
@@ -16436,15 +16543,22 @@ caveat in gbcms's output.</p>
 <li><strong>In the <abbr title="Binary Alignment Map - Compressed sequence alignment file format">BAM</abbr>:</strong> an ALT read whose allele sits near its end is clipped from there,
   while the REF reads beside it align in full. Excluding clipped reads biases <abbr title="Variant Allele Frequency - Fraction of reads supporting the variant allele">VAF</abbr>
   down.</li>
-<li><strong>gbcms now:</strong> complex variants and MNPs in DNA count a read whose clipped bases
-  carry the exact allele, inside a well-defined fragment
-  (<a href="#reference-counting-metrics">carriers in soft-clipped bases</a>).</li>
-<li><strong>Should do:</strong> decided. Extend to pure deletions and to clip-borne ITD
-  insertions (#173, #144). In RNA, clipped bases may come from the next exon
-  (<abbr title="Spliced Transcripts Alignment to a Reference - RNA-seq aligner">STAR</abbr> clips a junction overhang it cannot splice), so an RNA read's clip that
-  reaches an exon edge or junction end is not allele evidence; other clips are
-  the read's own bases (RJ-18; measured on FORTE splice probes: 3 of 19 spurious
-  ALT reads removed).</li>
+<li><strong>gbcms now:</strong> in DNA, a read whose clipped bases carry the allele is counted
+  when the rule that judges the variant reads them, inside a well-defined
+  fragment (RJ-13; <a href="#reference-counting-metrics">carriers in soft-clipped bases</a>):<ul>
+<li>complex variants and MNPs, and pure indels (those under 50 bp are judged by
+  their bases with soft-clipped bases read, clip-admitted where the rule decides
+  them), and pure deletions of 50 bp or more;</li>
+<li>a read clipped before the flank is placed from the other flank (RJ-23).</li>
+</ul>
+</li>
+<li><strong>Should do:</strong> decided; done for everything above (C15 #173, closed after an
+  audit on 2026-10-23). Open: clipped duplication carriers, the clip-borne ITD
+  insertions (C7 #144); split reads stay on #177. In RNA, clipped bases may come
+  from the next exon (<abbr title="Spliced Transcripts Alignment to a Reference - RNA-seq aligner">STAR</abbr> clips a junction overhang it cannot splice), so an RNA
+  read's clip that reaches an exon edge or junction end is not allele evidence;
+  other clips are the read's own bases (RJ-18; measured on FORTE splice probes: 3
+  of 19 spurious ALT reads removed).</li>
 <li><strong>Community</strong> (verified in source):<ul>
 <li>GATK HaplotypeCaller and Mutect2 revert clips and realign reads, but only
   with a well-defined fragment;</li>
@@ -16497,8 +16611,10 @@ caveat in gbcms's output.</p>
   were variants.</li>
 <li><strong>gbcms now:</strong> minimum <abbr title="Mapping Quality - Confidence score for read alignment">MAPQ</abbr> 20; <code>mq0_count</code> is reported. There is no paralog
   awareness: gbcms reports what is at the locus.</li>
-<li><strong>Should do:</strong> to measure. Find how often low-mappability loci carry
-  paralog-derived ALT reads, then decide on a diagnostic (O5 #179).</li>
+<li><strong>Should do:</strong> proposed (O5 #179, 6.7.0): a diagnostic in <code>gbcms_diagnostic</code>,
+  never a filter, no new column. The target is settled by measurement first: how
+  often ALT reads at low-mappability and segmental-duplication loci are
+  paralog-derived, validated on paralog-rich loci and the paired panel/WES loci.</li>
 <li><strong>Community:</strong><ul>
 <li>GIAB stratifies benchmarks by low mappability and segmental duplications;</li>
 <li>callers annotate mapping-quality rank-sum statistics (GATK <code>MQRankSum</code>, to
@@ -16514,8 +16630,11 @@ caveat in gbcms's output.</p>
   capture REF molecules better.</li>
 <li><strong>gbcms now:</strong> counts every read that maps; clipped-carrier admission recovers
   part of the loss.</li>
-<li><strong>Should do:</strong> proposed. A diagnostic when ALT reads map or clip clearly worse
-  than REF reads; no filtering (O5 #179).</li>
+<li><strong>Should do:</strong> proposed. Per variant, compare the <abbr title="Mapping Quality - Confidence score for read alignment">MAPQ</abbr>, clip rate and
+  outside-depth rate of ALT-like reads against REF reads (and the MQ0 fraction),
+  and flag a clear imbalance in <code>gbcms_diagnostic</code>; no filtering, no new column
+  (O5 #179). Validate on the paired panel/WES loci (realignment removes most of the
+  bias) and on paralog-rich loci.</li>
 <li><strong>Community:</strong> clip- and <abbr title="Mapping Quality - Confidence score for read alignment">MAPQ</abbr>-bias annotations, as above; graph and
   alt-aware references reduce the bias upstream. To survey.</li>
 <li><strong>See it:</strong> <code>alt_dist_end_median</code> against <code>ref_dist_end_median</code>; per-allele
@@ -16551,6 +16670,35 @@ caveat in gbcms's output.</p>
 <li><strong>Community:</strong> GATK <abbr title="Base Quality Score Recalibration - GATK quality recalibration tool">BQSR</abbr>; bcftools and samtools <abbr title="Base Alignment Quality - Heuristic quality downgrade near indels and splice junctions">BAQ</abbr> (<code>-B</code>/<code>-E</code>).</li>
 <li><strong>See it:</strong> <code>n_count</code>; the per-read trace.</li>
 </ul>
+<h3 id="reference-bam-evidence-caveats-sequencing-errors-inside-or-beside-the-event">Sequencing errors inside or beside the event<a class="headerlink" href="#reference-bam-evidence-caveats-sequencing-errors-inside-or-beside-the-event" title="Permanent link">¶</a></h3>
+<ul>
+<li><strong>In the <abbr title="Binary Alignment Map - Compressed sequence alignment file format">BAM</abbr>:</strong> an exact-length insertion read with one sequencing error inside the
+  inserted bases; a REF molecule with one clear error just outside the window of the
+  allele it is anchored to; a truncated copy of an insertion (the read holds part of
+  the insert).</li>
+<li><strong>gbcms now:</strong><ul>
+<li>one substitution in a read is an error on REF and ALT reads alike: an
+  exact-length insertion with one error inside is judged by its bases, the error
+  tolerated where the other allele mismatches the same base, unless it recurs
+  inside the event (RJ-26; C6 #143);</li>
+<li>both alleles' windows are read from one anchor, so an error any reading sees
+  counts against the allele it contradicts and a REF molecule with one flank
+  error is not credited ALT (RJ-23; C33 #214, a limit of the first exact-carrier
+  rule, where the two windows were read from different anchors);</li>
+<li>a truncated copy counts <code>partial_alt</code>, not ALT. An identity band for truncated
+  inserts (the truncation rule's 90% identity and non-low-complexity gates) was
+  measured and not adopted for the exact-carrier rule (operator, 2026-10-16): it
+  added 158 ALT reads on HG002 long insertions with truth concordance unchanged;
+  on the panel it added 13 ALT calls the bases oracle agrees with, against 111 it
+  does not. The band stays only where the rule cannot judge (no prepared
+  reference, the <abbr title="Compact Idiosyncratic Gapped Alignment Report - BAM alignment operation string">CIGAR</abbr> path).</li>
+</ul>
+</li>
+<li><strong>Should do:</strong> decided and done (the band: decided against). See
+  <a href="#reference-read-judgment">Read Judgment</a>.</li>
+<li><strong>Community:</strong> not surveyed for this caveat.</li>
+<li><strong>See it:</strong> <code>partial_alt</code>; the <code>rule=</code> of each <code>--trace</code> read call.</li>
+</ul>
 <h3 id="reference-bam-evidence-caveats-adapter-read-through">Adapter read-through<a class="headerlink" href="#reference-bam-evidence-caveats-adapter-read-through" title="Permanent link">¶</a></h3>
 <ul>
 <li><strong>In the <abbr title="Binary Alignment Map - Compressed sequence alignment file format">BAM</abbr>:</strong> when the fragment is shorter than the read, bases past the mate's
@@ -16560,10 +16708,30 @@ caveat in gbcms's output.</p>
   in every rule (RJ-10, C17 #176), when they look like adapter (soft-clipped, or
   at most two aligned). Bases that go on aligning, or an insertion past the
   boundary, are kept: TLEN understates a molecule carrying an ITD.</li>
-<li><strong>Should do:</strong> decided and done.</li>
+<li><strong>A limit (C31 #212):</strong> the boundary is TLEN, measured between the pair's
+  <em>aligned</em> 5' ends. When the mate's 5' end is soft-clipped, TLEN understates the
+  molecule, and a read's own soft-clipped bases past the boundary can be molecule
+  bases that are clipped as adapter. The adversarial review of the rule built a
+  failing case: an anchor-changing insertion that <abbr title="Burrows-Wheeler Aligner - Standard short-read DNA aligner (mem/aln)">BWA</abbr>-MEM soft-clips near the read
+  end, with a mate whose 5' clip holds the same bases; R1 loses its ALT (<abbr title="Alternate Depth - Reads supporting the alternate allele">AD</abbr> 8 to 4).
+  Measured on the group 1 data, when only complex and <abbr title="Multi-Nucleotide Polymorphism - Multiple adjacent base substitutions">MNP</abbr> windows read soft clips:<ul>
+<li>203 of 1,782 clipped reads with soft-clipped bases past the boundary have a
+  mate with a 5' soft clip (about 2,100 bases; for insertions, 71 of 416 reads);</li>
+<li>no count moved on RC DNA, FORTE or WES;</li>
+<li>the <code>CLIP_CANDIDATES</code> diagnostic can drop for such reads.</li>
+</ul>
+</li>
+<li><strong>Should do:</strong> the boundary rule is decided and done. The mate-clip refinement is
+  proposed (C31 #212): measure the fragment end from the mate's <em>unclipped</em> 5' end
+  when the MC tag (mate <abbr title="Compact Idiosyncratic Gapped Alignment Report - BAM alignment operation string">CIGAR</abbr>) is present, and keep today's rule without MC. MC is
+  a per-record tag, so the count stays binning-invariant (using the mate record
+  from the bin would not be). MC is on all WES reads and part of the RC DNA here;
+  FORTE and the probes have none. Decide together with C15 #173 and C7 #144, and
+  measure on ITD loci first (the FLT3 ITD row is on the watchlist).</li>
 <li><strong>Community:</strong> GATK hard-clips adapter at the insert-size boundary; fgbio
-  ClipBam clips bases past the mate (<code>--clip-bases-past-mate</code>). Adapter trimming
-  upstream (fastp, cutadapt) is common but not universal.</li>
+  ClipBam clips bases past the mate (<code>--clip-bases-past-mate</code>), measuring the
+  mate's end from its unclipped coordinates. Adapter trimming upstream (fastp,
+  cutadapt) is common but not universal.</li>
 </ul>
 <h3 id="reference-bam-evidence-caveats-stutter-and-polymerase-slippage-in-repeats">Stutter and polymerase slippage in repeats<a class="headerlink" href="#reference-bam-evidence-caveats-stutter-and-polymerase-slippage-in-repeats" title="Permanent link">¶</a></h3>
 <ul>
@@ -16579,8 +16747,10 @@ caveat in gbcms's output.</p>
 <li><strong>In the <abbr title="Binary Alignment Map - Compressed sequence alignment file format">BAM</abbr>:</strong> artifacts concentrated in one read orientation (F1R2 or F2R1),
   which strand counts do not separate.</li>
 <li><strong>gbcms now:</strong> forward and reverse counts per allele.</li>
-<li><strong>Should do:</strong> to measure. Decide between optional F1R2/F2R1 counts and an
-  orientation-imbalance diagnostic (O6 #180).</li>
+<li><strong>Should do:</strong> to decide (O6 #180, 6.7.0): optional per-allele F1R2/F2R1 counts, or
+  an orientation-imbalance diagnostic only (the project prefers no new columns).
+  Measure first on FFPE-rich data: orientation skew at oxoG/FFPE-prone contexts
+  against true variants on the validation matrix.</li>
 <li><strong>Community:</strong> Mutect2's read-orientation model uses F1R2 counts (to verify).</li>
 </ul>
 <h3 id="reference-bam-evidence-caveats-duplicates-and-umi-consensus">Duplicates and <abbr title="Unique Molecular Identifier - Molecular barcode for deduplication">UMI</abbr> consensus<a class="headerlink" href="#reference-bam-evidence-caveats-duplicates-and-umi-consensus" title="Permanent link">¶</a></h3>
@@ -16612,8 +16782,10 @@ caveat in gbcms's output.</p>
 </ul>
 <p>See <a href="#reference-rna-splice-handling">RNA splice handling</a>. Decided and done.
 - <strong><abbr title="Spliced Transcripts Alignment to a Reference - RNA-seq aligner">STAR</abbr> clips:</strong> a short overhang into the next exon is clipped, so its bases
-  come from that exon, not the intron. Clipped-carrier admission is off in RNA.
-  To measure, including a junction-aware reading (#173).
+  come from that exon, not the intron. A clip that reaches an exon edge or a
+  junction end (annotated, or one the variant's reads splice at), or whose aligned
+  bases end within five bases of one, is not allele evidence; any other clip is
+  the read's own bases and is read as in DNA (RJ-18, C15 #173). Decided and done.
 - <strong>RNA editing (A-to-I):</strong> a catalogued editing site inside a window makes an ALT
   carrier look like partial evidence. Proposed: treat the edited base as matching
   inside windows (R3 #178). Today <code>rna_editing_site</code> flags only variants that are
@@ -16621,8 +16793,28 @@ caveat in gbcms's output.</p>
 - <strong>Allele-specific expression and NMD:</strong> RNA <abbr title="Variant Allele Frequency - Fraction of reads supporting the variant allele">VAF</abbr> is expression-weighted and is
   not a DNA <abbr title="Variant Allele Frequency - Fraction of reads supporting the variant allele">VAF</abbr>. It is reported as is: an interpretation caveat.
 - <strong>Strandedness:</strong> antisense reads are gated when enforced, and <code>rna_antisense_depth</code>
-  still tallies them (R2 #114). Loci without a resolved gene strand (intronic,
-  opposite-strand overlaps) are not gated yet (R4 #185).</p>
+  still tallies them (R2 #114). An intronic position takes the strand of the
+  transcripts spanning it (R4 #185). Loci with no gene strand (no <code>--gtf</code>, no gene,
+  or genes of both strands over the locus) are not gated: every read there counts as
+  sense. A library that is not stranded needs <code>--strandedness unstranded</code>; see
+  <a href="#cli-rna-strandedness-filtering"><code>gbcms rna</code></a>.
+- <strong>A GTF transcript ID used at more than one place (C34 #216):</strong> the GTF parser
+  groups exons by transcript ID alone, after stripping a numeric version suffix, so
+  an ID used on more than one chromosome or strand merges into one transcript. Exons
+  of different chromosomes are sorted together, which makes introns that do not exist
+  and misses real ones, and the transcript's introns sit on one chromosome only. That
+  feeds the intron boundaries (<code>RETENTION_DOMINANT</code>, the exon-edge <abbr title="Base Alignment Quality - Heuristic quality downgrade near indels and splice junctions">BAQ</abbr> rule, the RNA
+  clip edges of RJ-18), per-transcript counts and junction compatibility, and ASJD.
+  The strand spans are already keyed by transcript, chromosome and strand. It can
+  bite on GTFs that reuse an ID (UCSC/RefSeq: the same NM_ on chrX and chrY in the
+  PARs, alternate loci) and on versions that differ only by suffix (NM_x.1 and
+  NM_x.2); GENCODE's <code>_PAR_Y</code> IDs are not stripped and stay distinct. Measured on the
+  production GTF (Ensembl GRCh38.111, used for FORTE): 0 of 252,989 transcript IDs
+  occur on more than one chromosome or strand, so no production row is affected
+  today, and RJ-18's clip edges also take every junction the reads splice at, which
+  covers a missing annotated edge in most cases. Proposed: key transcripts by (ID,
+  chromosome, strand), report a per-transcript count under its ID with the locus where
+  an ID occurs twice, and warn once when the GTF reuses an ID.</p>
 <h2 id="reference-bam-evidence-caveats-5-not-the-bam-but-easy-to-misread-from-counts">5. Not the <abbr title="Binary Alignment Map - Compressed sequence alignment file format">BAM</abbr>, but easy to misread from counts<a class="headerlink" href="#reference-bam-evidence-caveats-5-not-the-bam-but-easy-to-misread-from-counts" title="Permanent link">¶</a></h2>
 <ul>
 <li><strong>Reads ending inside the event, and low depth:</strong> a read that ends before
@@ -16630,6 +16822,16 @@ caveat in gbcms's output.</p>
   toward depth only, since it cannot show either allele; one that holds it and
   ends inside the longer allele is judged by the bases it has (RJ-23). At low
   depth, informative reads are few, so compare <code>alt_count + ref_count</code> with depth.</li>
+<li><strong>Variants not prepared against the reference (direct API use, or a failed
+  reference fetch) (C24 #195):</strong> when the semiglobal alignment is judged unreliable,
+  <code>classify_by_alignment</code> re-scores with a local alignment, but its tail (the REF
+  branch's nearby-evidence check and the tie branch) still reads the semiglobal
+  scores. REF and ALT calls use the local scores correctly; only
+  <code>has_nearby_evidence</code>, so <code>partial_alt</code>, can be affected. It runs only where the
+  exact-carrier rule returns nothing (no <code>ref_context</code> or <code>event_ref</code> holding the
+  event and its flank), which prepared variants have. Not reproduced end to end (it
+  needs a Rust test). Open for 6.7.0: use the fallback's own scores in the tail, or
+  retire the fallback and flag the leftover path through <code>SW_FALLBACK</code>.</li>
 <li><strong>Purity, clonality, contamination, clonal haematopoiesis, germline vs
   somatic:</strong> counts are evidence, not calls. A matched normal and, for <abbr title="Cell-free DNA - Circulating DNA fragments in blood plasma">cfDNA</abbr>,
   <a href="#reference-mfsd-report"><abbr title="Mutant Fragment Size Distribution - Insert-size analysis for REF vs ALT fragments">mFSD</abbr></a> help interpret them.</li>
@@ -17123,8 +17325,8 @@ run against the <abbr title="Binary Alignment Map - Compressed sequence alignmen
 <a id="__codelineno-7-9" name="__codelineno-7-9" href="#development-developer-guide-__codelineno-7-9"></a><span class="w">    </span>--format<span class="w"> </span>maf<span class="w"> </span><span class="se">\</span>
 <a id="__codelineno-7-10" name="__codelineno-7-10" href="#development-developer-guide-__codelineno-7-10"></a><span class="w">    </span>--output-dir<span class="w"> </span>/tmp/regression_out/
 <a id="__codelineno-7-11" name="__codelineno-7-11" href="#development-developer-guide-__codelineno-7-11"></a>
-<a id="__codelineno-7-12" name="__codelineno-7-12" href="#development-developer-guide-__codelineno-7-12"></a><span class="c1"># Diff against baseline</span>
-<a id="__codelineno-7-13" name="__codelineno-7-13" href="#development-developer-guide-__codelineno-7-13"></a>python<span class="w"> </span>scripts/concordance.py<span class="w"> </span>/tmp/regression_baseline/<span class="w"> </span>/tmp/regression_out/
+<a id="__codelineno-7-12" name="__codelineno-7-12" href="#development-developer-guide-__codelineno-7-12"></a><span class="c1"># Diff against baseline: match rows by locus, never by position. The release gate's</span>
+<a id="__codelineno-7-13" name="__codelineno-7-13" href="#development-developer-guide-__codelineno-7-13"></a><span class="c1"># comparison is scripts/regression_panel/compare_panel.py (see Regression Panel).</span>
 </code></pre></div>
 <p>Key invariants to check:</p>
 <table>
@@ -17160,8 +17362,8 @@ run against the <abbr title="Binary Alignment Map - Compressed sequence alignmen
 <td style="text-align: left;">Should be low (&lt;5%) for clean sites; high ratios flag duplex masking hotspots</td>
 </tr>
 <tr>
-<td style="text-align: left;"><code>gbcms_status</code> starts with <code>PASS</code> or <code>FAIL_</code></td>
-<td style="text-align: left;">First token is always the verdict; no empty values</td>
+<td style="text-align: left;"><code>gbcms_status</code> is exactly <code>PASS</code> or <code>FAIL</code></td>
+<td style="text-align: left;">The verdict is never empty; the reason of a <code>FAIL</code> (or a <code>PASS</code> with a warning) is in <code>gbcms_status_reason</code></td>
 </tr>
 <tr>
 <td style="text-align: left;"><code>gbcms_diagnostic</code> empty for FAIL variants</td>
@@ -18715,6 +18917,28 @@ and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semant
   <abbr title="Command Line Interface - Terminal-based program interface">CLI</abbr>'s. Measured on the 33 local FORTE slices (94 rows), old module arguments against
   the <abbr title="Command Line Interface - Terminal-based program interface">CLI</abbr> defaults: with the GTF no row changes; without it one row's REF count was 5
   reads (3 fragments) higher under the old arguments; <abbr title="Alternate Depth - Reads supporting the alternate allele">AD</abbr> and depth unchanged.</li>
+</ul>
+<h3 id="development-changelog-fixed-user-docs-that-were-wrong-or-failed-310">Fixed — user docs that were wrong or failed (#310)<a class="headerlink" href="#development-changelog-fixed-user-docs-that-were-wrong-or-failed-310" title="Permanent link">¶</a></h3>
+<ul>
+<li><strong>Install.</strong> One page states what the release builds (one cp311 <code>manylinux_2_34</code>
+  x86_64 wheel and the sdist; every other platform builds from source with a Rust
+  toolchain and a C compiler); the README links to it. Nextflow 24.04.0 or later, as
+  the manifest enforces.</li>
+<li><strong>Examples.</strong> Every <code>gbcms dna|rna|merge|normalize|convert</code> example in the docs parses
+  against the <abbr title="Command Line Interface - Terminal-based program interface">CLI</abbr> (the synopses and three DNA examples lacked the required
+  <code>--output-dir</code>).</li>
+<li><strong>Unstranded RNA</strong> is <code>--strandedness unstranded</code>; <code>--no-strandedness</code> alone only stops
+  the filtering. The RNA <abbr title="Mapping Quality - Confidence score for read alignment">MAPQ</abbr> text links to the measured default.</li>
+<li><strong>Output reference.</strong> <code>MFSD_QVAL_ALT_REF</code> (13 <abbr title="Mutant Fragment Size Distribution - Insert-size analysis for REF vs ALT fragments">mFSD</abbr> INFO fields), <code>GR</code> only with
+  <code>--rescue-mnp</code>, ASJD fields in the <abbr title="Variant Call Format - Standard variant call file format">VCF</abbr>, the real <code>norm_*</code> and <code>rna_splice_spanning</code>
+  names, no <code>gene_strand</code> <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> column (the GTF supplies the strand), version examples.</li>
+<li><strong>Nextflow.</strong> <code>--gtf</code>, <code>--publish_dir_mode</code> and <code>--tracedir</code> documented;
+  <code>GBCMS_NORMALIZE</code> is in no workflow.</li>
+<li><strong>Release gate.</strong> <abbr title="Binary Alignment Map - Compressed sequence alignment file format">BAM</abbr> Evidence Caveats lists C6 #143, C24 #195, C33 #214, C34 #216 and
+  all of C31 #212, with the status their issues give.</li>
+<li><strong>Guard tests</strong> (<code>tests/test_docs_contract.py</code>): the fenced examples, the documented
+  <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> columns and <abbr title="Variant Call Format - Standard variant call file format">VCF</abbr> INFO/FORMAT names against the writers, and the Nextflow parameters
+  table against <code>nextflow.config</code>.</li>
 </ul>
 <h3 id="development-changelog-changed-a-co-annotated-sibling-contests-an-exact-carrier-alt-read-by-its-bases-300">Changed — a co-annotated sibling contests an exact-carrier ALT read by its bases (#300)<a class="headerlink" href="#development-changelog-changed-a-co-annotated-sibling-contests-an-exact-carrier-alt-read-by-its-bases-300" title="Permanent link">¶</a></h3>
 <ul>
@@ -22655,7 +22879,7 @@ should get a narrow public wrapper (see <code>src/gbcms/observations.py</code>) 
 </details>
 <details class="question">
 <summary><code>GLIBC_2.34 not found</code> when installing via pip</summary>
-<p>Your system has an older glibc (RHEL 8 / CentOS 8 / <abbr title="High-Performance Computing - Cluster computing environment">HPC</abbr>). PyPI wheels require glibc 2.34+.
+<p>Your system has an older glibc (RHEL 8 / CentOS 8 / <abbr title="High-Performance Computing - Cluster computing environment">HPC</abbr>). The one prebuilt wheel (CPython 3.11, Linux x86_64) requires glibc 2.34+; other platforms build from source (<a href="#getting-started-installation-platform-support">Platform support</a>).
 Use the <a href="#getting-started-installation-legacy-linux-rhel-8-hpc">Legacy Linux</a> install path
 (micromamba + clangdev + source install).</p>
 </details>
@@ -22731,7 +22955,7 @@ not a <abbr title="Binary Alignment Map - Compressed sequence alignment file for
    the <abbr title="Compact Idiosyncratic Gapped Alignment Report - BAM alignment operation string">CIGAR</abbr> <code>D</code> position may be several bases right of the anchor.
    Run normalization to see the left-aligned coordinates:
    </p><div class="highlight"><pre><span></span><code><a id="__codelineno-8-1" name="__codelineno-8-1" href="#resources-troubleshooting-__codelineno-8-1"></a>gbcms<span class="w"> </span>normalize<span class="w"> </span>--variants<span class="w"> </span>variants.maf<span class="w"> </span>--fasta<span class="w"> </span>ref.fa<span class="w"> </span>--output<span class="w"> </span>/tmp/norm/normalized.tsv
-<a id="__codelineno-8-2" name="__codelineno-8-2" href="#resources-troubleshooting-__codelineno-8-2"></a><span class="c1"># Check norm_pos vs original Start_Position</span>
+<a id="__codelineno-8-2" name="__codelineno-8-2" href="#resources-troubleshooting-__codelineno-8-2"></a><span class="c1"># Compare original_pos with norm_pos in the output TSV</span>
 </code></pre></div>
 </li>
 <li>
@@ -22770,8 +22994,10 @@ read's bases spell the ALT across the window.</p>
 <p>For deletions &lt;5bp failing S3 sequence validation, <abbr title="Compact Idiosyncratic Gapped Alignment Report - BAM alignment operation string">CIGAR</abbr>-definitive REF is used — this is
 intentional. A 1-4bp deletion in the wrong reference context is almost certainly spurious noise,
 not a left-alignment artifact.</p>
-<p>To diagnose deletion ≥5bp still returning low alt:
-</p><div class="highlight"><pre><span></span><code><a id="__codelineno-11-1" name="__codelineno-11-1" href="#resources-troubleshooting-__codelineno-11-1"></a>gbcms<span class="w"> </span>dna<span class="w"> </span>--trace<span class="w"> </span>...<span class="w"> </span><span class="m">2</span>&gt;<span class="p">&amp;</span><span class="m">1</span><span class="w"> </span><span class="p">|</span><span class="w"> </span>grep<span class="w"> </span><span class="s2">"S3 reject\|falling back to phase3_classify"</span>
+<p>To diagnose deletion ≥5bp still returning low alt, read the per-read calls: each
+<code>read call</code> line names the rule that decided the read (<code>rule=</code>), and <code>--verbose</code>
+adds a <code>Phase stats</code> line per variant:
+</p><div class="highlight"><pre><span></span><code><a id="__codelineno-11-1" name="__codelineno-11-1" href="#resources-troubleshooting-__codelineno-11-1"></a>gbcms<span class="w"> </span>dna<span class="w"> </span>--trace<span class="w"> </span>...<span class="w"> </span><span class="m">2</span>&gt;<span class="p">&amp;</span><span class="m">1</span><span class="w"> </span><span class="p">|</span><span class="w"> </span>grep<span class="w"> </span><span class="s2">"read call"</span>
 </code></pre></div>
 </details>
 <details class="question">
@@ -22976,7 +23202,7 @@ index or a Rust panic surfaced as an error), whether all samples failed or only 
 Successful runs exit <strong>0</strong>.</p>
 <p>An <strong>empty or fully-rejected variant set is not a failure</strong>: a sample that legitimately
 has no variants called (or whose variants are all rejected at prep) still exits <strong>0</strong>, and
-the rejected variants are written to the output with their <code>FAIL_*</code> <code>gbcms_status</code>. This
+the rejected variants are written to the output with <code>gbcms_status</code> <code>FAIL</code> and the reason in <code>gbcms_status_reason</code>. This
 lets a per-sample workflow keep going instead of failing the whole cohort on a sample that
 genuinely has nothing to count.</p>
 </details>

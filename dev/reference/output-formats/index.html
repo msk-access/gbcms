@@ -1387,12 +1387,14 @@ Use mouse to pan and zoom
 written once. Provenance metadata (<code>##gbcms_command</code>, <code>##reference</code>,
 <code>##contig</code>, <code>##FILTER</code>) is included when available. RNA-specific
 meta-lines are only included when running <code>gbcms rna</code> — the header is
-self-describing.</p>
+self-describing. The <code>GR</code> INFO line follows
+<code>GD</code> only with <code>--rescue-mnp</code>, and the <abbr title="Mutant Fragment Size Distribution - Insert-size analysis for REF vs ALT fragments">mFSD</abbr>, normalization and GTF lines only
+with their options (see <a href="#info-fields">INFO Fields</a>).</p>
 <div class="tabbed-set tabbed-alternate" data-tabs="1:2"><input checked="" id="__tabbed_1_1" name="__tabbed_1" type="radio"><input id="__tabbed_1_2" name="__tabbed_1" type="radio"><div class="tabbed-labels"><label for="__tabbed_1_1">DNA mode</label><label for="__tabbed_1_2">RNA mode</label></div>
 <div class="tabbed-content">
 <div class="tabbed-block">
 <div class="highlight"><pre><span></span><code><a href="#__codelineno-0-1" id="__codelineno-0-1" name="__codelineno-0-1"></a>##fileformat=VCFv4.2
-<a href="#__codelineno-0-2" id="__codelineno-0-2" name="__codelineno-0-2"></a>##source=gbcms v5.3.0
+<a href="#__codelineno-0-2" id="__codelineno-0-2" name="__codelineno-0-2"></a>##source=gbcms vX.Y.Z (a1b2c3d4)
 <a href="#__codelineno-0-3" id="__codelineno-0-3" name="__codelineno-0-3"></a>##gbcms_command=gbcms dna --bam tumor:tumor.bam --fasta ref.fa --threads 4
 <a href="#__codelineno-0-4" id="__codelineno-0-4" name="__codelineno-0-4"></a>##reference=file:///path/to/ref.fa
 <a href="#__codelineno-0-5" id="__codelineno-0-5" name="__codelineno-0-5"></a>##contig=&lt;ID=chr1,length=248956422&gt;
@@ -1402,28 +1404,27 @@ self-describing.</p>
 <a href="#__codelineno-0-9" id="__codelineno-0-9" name="__codelineno-0-9"></a>##INFO=&lt;ID=GS,Number=1,Type=String,Description="gbcms verdict: PASS or FAIL"&gt;
 <a href="#__codelineno-0-10" id="__codelineno-0-10" name="__codelineno-0-10"></a>##INFO=&lt;ID=GSR,Number=1,Type=String,Description="gbcms status reason tags, |-separated (. when none)"&gt;
 <a href="#__codelineno-0-11" id="__codelineno-0-11" name="__codelineno-0-11"></a>##INFO=&lt;ID=GD,Number=1,Type=String,Description="gbcms post-counting diagnostic flags"&gt;
-<a href="#__codelineno-0-12" id="__codelineno-0-12" name="__codelineno-0-12"></a>##INFO=&lt;ID=GR,Number=1,Type=String,Description="gbcms rescue audit trail"&gt;
-<a href="#__codelineno-0-13" id="__codelineno-0-13" name="__codelineno-0-13"></a>##INFO=&lt;ID=AAD,Number=1,Type=Integer,Description="Any ALT Depth (any_alt = ad + partial_alt)"&gt;
-<a href="#__codelineno-0-14" id="__codelineno-0-14" name="__codelineno-0-14"></a>##INFO=&lt;ID=PAD,Number=1,Type=Integer,Description="Partial ALT Depth"&gt;
-<a href="#__codelineno-0-15" id="__codelineno-0-15" name="__codelineno-0-15"></a>##INFO=&lt;ID=NAD,Number=1,Type=Integer,Description="N-base Depth (duplex masking QC)"&gt;
-<a href="#__codelineno-0-16" id="__codelineno-0-16" name="__codelineno-0-16"></a>##INFO=&lt;ID=SB_PVAL,Number=1,Type=Float,Description="Fisher strand bias p-value"&gt;
-<a href="#__codelineno-0-17" id="__codelineno-0-17" name="__codelineno-0-17"></a>##INFO=&lt;ID=SB_OR,Number=1,Type=Float,Description="Fisher strand bias odds ratio"&gt;
-<a href="#__codelineno-0-18" id="__codelineno-0-18" name="__codelineno-0-18"></a>##INFO=&lt;ID=FSB_PVAL,Number=1,Type=Float,Description="Fisher fragment strand bias p-value"&gt;
-<a href="#__codelineno-0-19" id="__codelineno-0-19" name="__codelineno-0-19"></a>##INFO=&lt;ID=FSB_OR,Number=1,Type=Float,Description="Fisher fragment strand bias odds ratio"&gt;
-<a href="#__codelineno-0-20" id="__codelineno-0-20" name="__codelineno-0-20"></a>##FORMAT=&lt;ID=GT,Number=1,Type=String,Description="Genotype"&gt;
-<a href="#__codelineno-0-21" id="__codelineno-0-21" name="__codelineno-0-21"></a>##FORMAT=&lt;ID=DP,Number=1,Type=Integer,Description="Total read depth"&gt;
-<a href="#__codelineno-0-22" id="__codelineno-0-22" name="__codelineno-0-22"></a>##FORMAT=&lt;ID=AD,Number=R,Type=Integer,Description="Allelic depths (ref,alt)"&gt;
-<a href="#__codelineno-0-23" id="__codelineno-0-23" name="__codelineno-0-23"></a>##FORMAT=&lt;ID=ADF,Number=R,Type=Integer,Description="Allelic depths on forward strand (ref_fwd,alt_fwd)"&gt;
-<a href="#__codelineno-0-24" id="__codelineno-0-24" name="__codelineno-0-24"></a>##FORMAT=&lt;ID=ADR,Number=R,Type=Integer,Description="Allelic depths on reverse strand (ref_rev,alt_rev)"&gt;
-<a href="#__codelineno-0-25" id="__codelineno-0-25" name="__codelineno-0-25"></a>##FORMAT=&lt;ID=VAF,Number=1,Type=Float,Description="Variant allele fraction (read level)"&gt;
-<a href="#__codelineno-0-26" id="__codelineno-0-26" name="__codelineno-0-26"></a>##FORMAT=&lt;ID=FAD,Number=R,Type=Integer,Description="Fragment allelic depths (ref_frag,alt_frag)"&gt;
-<a href="#__codelineno-0-27" id="__codelineno-0-27" name="__codelineno-0-27"></a>##FORMAT=&lt;ID=FADF,Number=R,Type=Integer,Description="Fragment depths on forward strand"&gt;
-<a href="#__codelineno-0-28" id="__codelineno-0-28" name="__codelineno-0-28"></a>##FORMAT=&lt;ID=FADR,Number=R,Type=Integer,Description="Fragment depths on reverse strand"&gt;
-<a href="#__codelineno-0-29" id="__codelineno-0-29" name="__codelineno-0-29"></a>##FORMAT=&lt;ID=FAF,Number=1,Type=Float,Description="Variant allele fraction (fragment level)"&gt;
-<a href="#__codelineno-0-30" id="__codelineno-0-30" name="__codelineno-0-30"></a>##FORMAT=&lt;ID=AAD,Number=1,Type=Integer,Description="Any ALT depth (alt + partial_alt)"&gt;
-<a href="#__codelineno-0-31" id="__codelineno-0-31" name="__codelineno-0-31"></a>##FORMAT=&lt;ID=PAD,Number=1,Type=Integer,Description="Partial ALT depth"&gt;
-<a href="#__codelineno-0-32" id="__codelineno-0-32" name="__codelineno-0-32"></a>##FORMAT=&lt;ID=NAD,Number=1,Type=Integer,Description="N-base depth"&gt;
-<a href="#__codelineno-0-33" id="__codelineno-0-33" name="__codelineno-0-33"></a>#CHROM  POS  ID  REF  ALT  QUAL  FILTER  INFO  FORMAT  &lt;sample_name&gt;
+<a href="#__codelineno-0-12" id="__codelineno-0-12" name="__codelineno-0-12"></a>##INFO=&lt;ID=AAD,Number=1,Type=Integer,Description="Any ALT Depth (any_alt = ad + partial_alt)"&gt;
+<a href="#__codelineno-0-13" id="__codelineno-0-13" name="__codelineno-0-13"></a>##INFO=&lt;ID=PAD,Number=1,Type=Integer,Description="Partial ALT Depth"&gt;
+<a href="#__codelineno-0-14" id="__codelineno-0-14" name="__codelineno-0-14"></a>##INFO=&lt;ID=NAD,Number=1,Type=Integer,Description="N-base Depth (duplex masking QC)"&gt;
+<a href="#__codelineno-0-15" id="__codelineno-0-15" name="__codelineno-0-15"></a>##INFO=&lt;ID=SB_PVAL,Number=1,Type=Float,Description="Fisher strand bias p-value"&gt;
+<a href="#__codelineno-0-16" id="__codelineno-0-16" name="__codelineno-0-16"></a>##INFO=&lt;ID=SB_OR,Number=1,Type=Float,Description="Fisher strand bias odds ratio"&gt;
+<a href="#__codelineno-0-17" id="__codelineno-0-17" name="__codelineno-0-17"></a>##INFO=&lt;ID=FSB_PVAL,Number=1,Type=Float,Description="Fisher fragment strand bias p-value"&gt;
+<a href="#__codelineno-0-18" id="__codelineno-0-18" name="__codelineno-0-18"></a>##INFO=&lt;ID=FSB_OR,Number=1,Type=Float,Description="Fisher fragment strand bias odds ratio"&gt;
+<a href="#__codelineno-0-19" id="__codelineno-0-19" name="__codelineno-0-19"></a>##FORMAT=&lt;ID=GT,Number=1,Type=String,Description="Genotype"&gt;
+<a href="#__codelineno-0-20" id="__codelineno-0-20" name="__codelineno-0-20"></a>##FORMAT=&lt;ID=DP,Number=1,Type=Integer,Description="Total read depth"&gt;
+<a href="#__codelineno-0-21" id="__codelineno-0-21" name="__codelineno-0-21"></a>##FORMAT=&lt;ID=AD,Number=R,Type=Integer,Description="Allelic depths (ref,alt)"&gt;
+<a href="#__codelineno-0-22" id="__codelineno-0-22" name="__codelineno-0-22"></a>##FORMAT=&lt;ID=ADF,Number=R,Type=Integer,Description="Allelic depths on forward strand (ref_fwd,alt_fwd)"&gt;
+<a href="#__codelineno-0-23" id="__codelineno-0-23" name="__codelineno-0-23"></a>##FORMAT=&lt;ID=ADR,Number=R,Type=Integer,Description="Allelic depths on reverse strand (ref_rev,alt_rev)"&gt;
+<a href="#__codelineno-0-24" id="__codelineno-0-24" name="__codelineno-0-24"></a>##FORMAT=&lt;ID=VAF,Number=1,Type=Float,Description="Variant allele fraction (read level)"&gt;
+<a href="#__codelineno-0-25" id="__codelineno-0-25" name="__codelineno-0-25"></a>##FORMAT=&lt;ID=FAD,Number=R,Type=Integer,Description="Fragment allelic depths (ref_frag,alt_frag)"&gt;
+<a href="#__codelineno-0-26" id="__codelineno-0-26" name="__codelineno-0-26"></a>##FORMAT=&lt;ID=FADF,Number=R,Type=Integer,Description="Fragment depths on forward strand"&gt;
+<a href="#__codelineno-0-27" id="__codelineno-0-27" name="__codelineno-0-27"></a>##FORMAT=&lt;ID=FADR,Number=R,Type=Integer,Description="Fragment depths on reverse strand"&gt;
+<a href="#__codelineno-0-28" id="__codelineno-0-28" name="__codelineno-0-28"></a>##FORMAT=&lt;ID=FAF,Number=1,Type=Float,Description="Variant allele fraction (fragment level)"&gt;
+<a href="#__codelineno-0-29" id="__codelineno-0-29" name="__codelineno-0-29"></a>##FORMAT=&lt;ID=AAD,Number=1,Type=Integer,Description="Any ALT depth (alt + partial_alt)"&gt;
+<a href="#__codelineno-0-30" id="__codelineno-0-30" name="__codelineno-0-30"></a>##FORMAT=&lt;ID=PAD,Number=1,Type=Integer,Description="Partial ALT depth"&gt;
+<a href="#__codelineno-0-31" id="__codelineno-0-31" name="__codelineno-0-31"></a>##FORMAT=&lt;ID=NAD,Number=1,Type=Integer,Description="N-base depth"&gt;
+<a href="#__codelineno-0-32" id="__codelineno-0-32" name="__codelineno-0-32"></a>#CHROM  POS  ID  REF  ALT  QUAL  FILTER  INFO  FORMAT  &lt;sample_name&gt;
 </code></pre></div>
 <div class="admonition note">
 <p class="admonition-title">Provenance headers (v5.3.0)</p>
@@ -1438,7 +1439,7 @@ without a length.</p>
 </div>
 <div class="tabbed-block">
 <div class="highlight"><pre><span></span><code><a href="#__codelineno-1-1" id="__codelineno-1-1" name="__codelineno-1-1"></a>##fileformat=VCFv4.2
-<a href="#__codelineno-1-2" id="__codelineno-1-2" name="__codelineno-1-2"></a>##source=gbcms v5.3.0
+<a href="#__codelineno-1-2" id="__codelineno-1-2" name="__codelineno-1-2"></a>##source=gbcms vX.Y.Z (a1b2c3d4)
 <a href="#__codelineno-1-3" id="__codelineno-1-3" name="__codelineno-1-3"></a>##gbcms_command=gbcms rna --bam rna_sample.bam --fasta ref.fa
 <a href="#__codelineno-1-4" id="__codelineno-1-4" name="__codelineno-1-4"></a>##reference=file:///path/to/ref.fa
 <a href="#__codelineno-1-5" id="__codelineno-1-5" name="__codelineno-1-5"></a>##contig=&lt;ID=chr1,length=248956422&gt;
@@ -1446,37 +1447,36 @@ without a length.</p>
 <a href="#__codelineno-1-7" id="__codelineno-1-7" name="__codelineno-1-7"></a>##INFO=&lt;ID=DP,...&gt;
 <a href="#__codelineno-1-8" id="__codelineno-1-8" name="__codelineno-1-8"></a>##INFO=&lt;ID=GS,...&gt;
 <a href="#__codelineno-1-9" id="__codelineno-1-9" name="__codelineno-1-9"></a>##INFO=&lt;ID=GD,...&gt;
-<a href="#__codelineno-1-10" id="__codelineno-1-10" name="__codelineno-1-10"></a>##INFO=&lt;ID=GR,...&gt;
-<a href="#__codelineno-1-11" id="__codelineno-1-11" name="__codelineno-1-11"></a>##INFO=&lt;ID=AAD,...&gt;
-<a href="#__codelineno-1-12" id="__codelineno-1-12" name="__codelineno-1-12"></a>##INFO=&lt;ID=PAD,...&gt;
-<a href="#__codelineno-1-13" id="__codelineno-1-13" name="__codelineno-1-13"></a>##INFO=&lt;ID=NAD,...&gt;
-<a href="#__codelineno-1-14" id="__codelineno-1-14" name="__codelineno-1-14"></a>##INFO=&lt;ID=SB_PVAL,...&gt;
-<a href="#__codelineno-1-15" id="__codelineno-1-15" name="__codelineno-1-15"></a>##INFO=&lt;ID=SB_OR,...&gt;
-<a href="#__codelineno-1-16" id="__codelineno-1-16" name="__codelineno-1-16"></a>##INFO=&lt;ID=FSB_PVAL,...&gt;
-<a href="#__codelineno-1-17" id="__codelineno-1-17" name="__codelineno-1-17"></a>##INFO=&lt;ID=FSB_OR,...&gt;
-<a href="#__codelineno-1-18" id="__codelineno-1-18" name="__codelineno-1-18"></a>##INFO=&lt;ID=SEN,Number=1,Type=Integer,Description="Reads on the transcript sense strand"&gt;
-<a href="#__codelineno-1-19" id="__codelineno-1-19" name="__codelineno-1-19"></a>##INFO=&lt;ID=ANT,Number=1,Type=Integer,Description="REF and ALT reads on the antisense strand, tallied even where strandedness enforcement keeps them out of every count"&gt;
-<a href="#__codelineno-1-20" id="__codelineno-1-20" name="__codelineno-1-20"></a>##INFO=&lt;ID=ASEN,Number=1,Type=Integer,Description="ALT reads on the transcript sense strand"&gt;
-<a href="#__codelineno-1-21" id="__codelineno-1-21" name="__codelineno-1-21"></a>##INFO=&lt;ID=RED,Number=0,Type=Flag,Description="Locus is a candidate A-to-I RNA editing site"&gt;
-<a href="#__codelineno-1-22" id="__codelineno-1-22" name="__codelineno-1-22"></a>##INFO=&lt;ID=SPL,Number=1,Type=Integer,Description="ALT reads spanning a splice junction (CIGAR N)"&gt;
-<a href="#__codelineno-1-23" id="__codelineno-1-23" name="__codelineno-1-23"></a>##FORMAT=&lt;ID=GT,...&gt;
-<a href="#__codelineno-1-24" id="__codelineno-1-24" name="__codelineno-1-24"></a>##FORMAT=&lt;ID=DP,...&gt;
-<a href="#__codelineno-1-25" id="__codelineno-1-25" name="__codelineno-1-25"></a>##FORMAT=&lt;ID=AD,...&gt;
-<a href="#__codelineno-1-26" id="__codelineno-1-26" name="__codelineno-1-26"></a>##FORMAT=&lt;ID=ADF,...&gt;
-<a href="#__codelineno-1-27" id="__codelineno-1-27" name="__codelineno-1-27"></a>##FORMAT=&lt;ID=ADR,...&gt;
-<a href="#__codelineno-1-28" id="__codelineno-1-28" name="__codelineno-1-28"></a>##FORMAT=&lt;ID=VAF,...&gt;
-<a href="#__codelineno-1-29" id="__codelineno-1-29" name="__codelineno-1-29"></a>##FORMAT=&lt;ID=FAD,...&gt;
-<a href="#__codelineno-1-30" id="__codelineno-1-30" name="__codelineno-1-30"></a>##FORMAT=&lt;ID=FADF,...&gt;
-<a href="#__codelineno-1-31" id="__codelineno-1-31" name="__codelineno-1-31"></a>##FORMAT=&lt;ID=FADR,...&gt;
-<a href="#__codelineno-1-32" id="__codelineno-1-32" name="__codelineno-1-32"></a>##FORMAT=&lt;ID=FAF,...&gt;
-<a href="#__codelineno-1-33" id="__codelineno-1-33" name="__codelineno-1-33"></a>##FORMAT=&lt;ID=AAD,...&gt;
-<a href="#__codelineno-1-34" id="__codelineno-1-34" name="__codelineno-1-34"></a>##FORMAT=&lt;ID=PAD,...&gt;
-<a href="#__codelineno-1-35" id="__codelineno-1-35" name="__codelineno-1-35"></a>##FORMAT=&lt;ID=NAD,...&gt;
-<a href="#__codelineno-1-36" id="__codelineno-1-36" name="__codelineno-1-36"></a>##FORMAT=&lt;ID=SEN,Number=1,Type=Integer,Description="Sense strand depth"&gt;
-<a href="#__codelineno-1-37" id="__codelineno-1-37" name="__codelineno-1-37"></a>##FORMAT=&lt;ID=ANT,Number=1,Type=Integer,Description="REF and ALT reads on the antisense strand, tallied even where strandedness enforcement keeps them out of every count"&gt;
-<a href="#__codelineno-1-38" id="__codelineno-1-38" name="__codelineno-1-38"></a>##FORMAT=&lt;ID=ASEN,Number=1,Type=Integer,Description="ALT sense strand count"&gt;
-<a href="#__codelineno-1-39" id="__codelineno-1-39" name="__codelineno-1-39"></a>##FORMAT=&lt;ID=SPL,Number=1,Type=Integer,Description="Splice-spanning ALT count"&gt;
-<a href="#__codelineno-1-40" id="__codelineno-1-40" name="__codelineno-1-40"></a>#CHROM  POS  ID  REF  ALT  QUAL  FILTER  INFO  FORMAT  &lt;sample_name&gt;
+<a href="#__codelineno-1-10" id="__codelineno-1-10" name="__codelineno-1-10"></a>##INFO=&lt;ID=AAD,...&gt;
+<a href="#__codelineno-1-11" id="__codelineno-1-11" name="__codelineno-1-11"></a>##INFO=&lt;ID=PAD,...&gt;
+<a href="#__codelineno-1-12" id="__codelineno-1-12" name="__codelineno-1-12"></a>##INFO=&lt;ID=NAD,...&gt;
+<a href="#__codelineno-1-13" id="__codelineno-1-13" name="__codelineno-1-13"></a>##INFO=&lt;ID=SB_PVAL,...&gt;
+<a href="#__codelineno-1-14" id="__codelineno-1-14" name="__codelineno-1-14"></a>##INFO=&lt;ID=SB_OR,...&gt;
+<a href="#__codelineno-1-15" id="__codelineno-1-15" name="__codelineno-1-15"></a>##INFO=&lt;ID=FSB_PVAL,...&gt;
+<a href="#__codelineno-1-16" id="__codelineno-1-16" name="__codelineno-1-16"></a>##INFO=&lt;ID=FSB_OR,...&gt;
+<a href="#__codelineno-1-17" id="__codelineno-1-17" name="__codelineno-1-17"></a>##INFO=&lt;ID=SEN,Number=1,Type=Integer,Description="Reads on the transcript sense strand"&gt;
+<a href="#__codelineno-1-18" id="__codelineno-1-18" name="__codelineno-1-18"></a>##INFO=&lt;ID=ANT,Number=1,Type=Integer,Description="REF and ALT reads on the antisense strand, tallied even where strandedness enforcement keeps them out of every count"&gt;
+<a href="#__codelineno-1-19" id="__codelineno-1-19" name="__codelineno-1-19"></a>##INFO=&lt;ID=ASEN,Number=1,Type=Integer,Description="ALT reads on the transcript sense strand"&gt;
+<a href="#__codelineno-1-20" id="__codelineno-1-20" name="__codelineno-1-20"></a>##INFO=&lt;ID=RED,Number=0,Type=Flag,Description="Locus is a candidate A-to-I RNA editing site"&gt;
+<a href="#__codelineno-1-21" id="__codelineno-1-21" name="__codelineno-1-21"></a>##INFO=&lt;ID=SPL,Number=1,Type=Integer,Description="ALT reads spanning a splice junction (CIGAR N)"&gt;
+<a href="#__codelineno-1-22" id="__codelineno-1-22" name="__codelineno-1-22"></a>##FORMAT=&lt;ID=GT,...&gt;
+<a href="#__codelineno-1-23" id="__codelineno-1-23" name="__codelineno-1-23"></a>##FORMAT=&lt;ID=DP,...&gt;
+<a href="#__codelineno-1-24" id="__codelineno-1-24" name="__codelineno-1-24"></a>##FORMAT=&lt;ID=AD,...&gt;
+<a href="#__codelineno-1-25" id="__codelineno-1-25" name="__codelineno-1-25"></a>##FORMAT=&lt;ID=ADF,...&gt;
+<a href="#__codelineno-1-26" id="__codelineno-1-26" name="__codelineno-1-26"></a>##FORMAT=&lt;ID=ADR,...&gt;
+<a href="#__codelineno-1-27" id="__codelineno-1-27" name="__codelineno-1-27"></a>##FORMAT=&lt;ID=VAF,...&gt;
+<a href="#__codelineno-1-28" id="__codelineno-1-28" name="__codelineno-1-28"></a>##FORMAT=&lt;ID=FAD,...&gt;
+<a href="#__codelineno-1-29" id="__codelineno-1-29" name="__codelineno-1-29"></a>##FORMAT=&lt;ID=FADF,...&gt;
+<a href="#__codelineno-1-30" id="__codelineno-1-30" name="__codelineno-1-30"></a>##FORMAT=&lt;ID=FADR,...&gt;
+<a href="#__codelineno-1-31" id="__codelineno-1-31" name="__codelineno-1-31"></a>##FORMAT=&lt;ID=FAF,...&gt;
+<a href="#__codelineno-1-32" id="__codelineno-1-32" name="__codelineno-1-32"></a>##FORMAT=&lt;ID=AAD,...&gt;
+<a href="#__codelineno-1-33" id="__codelineno-1-33" name="__codelineno-1-33"></a>##FORMAT=&lt;ID=PAD,...&gt;
+<a href="#__codelineno-1-34" id="__codelineno-1-34" name="__codelineno-1-34"></a>##FORMAT=&lt;ID=NAD,...&gt;
+<a href="#__codelineno-1-35" id="__codelineno-1-35" name="__codelineno-1-35"></a>##FORMAT=&lt;ID=SEN,Number=1,Type=Integer,Description="Sense strand depth"&gt;
+<a href="#__codelineno-1-36" id="__codelineno-1-36" name="__codelineno-1-36"></a>##FORMAT=&lt;ID=ANT,Number=1,Type=Integer,Description="REF and ALT reads on the antisense strand, tallied even where strandedness enforcement keeps them out of every count"&gt;
+<a href="#__codelineno-1-37" id="__codelineno-1-37" name="__codelineno-1-37"></a>##FORMAT=&lt;ID=ASEN,Number=1,Type=Integer,Description="ALT sense strand count"&gt;
+<a href="#__codelineno-1-38" id="__codelineno-1-38" name="__codelineno-1-38"></a>##FORMAT=&lt;ID=SPL,Number=1,Type=Integer,Description="Splice-spanning ALT count"&gt;
+<a href="#__codelineno-1-39" id="__codelineno-1-39" name="__codelineno-1-39"></a>#CHROM  POS  ID  REF  ALT  QUAL  FILTER  INFO  FORMAT  &lt;sample_name&gt;
 </code></pre></div>
 </div>
 </div>
@@ -1586,7 +1586,7 @@ writes these records without counting.</p>
 <hr>
 <h3 id="info-fields">INFO Fields<a class="headerlink" href="#info-fields" title="Permanent link">¶</a></h3>
 <p>The <code>INFO</code> column is a semicolon-separated list of <code>KEY=VALUE</code> pairs.</p>
-<div class="tabbed-set tabbed-alternate" data-tabs="2:6"><input checked="" id="__tabbed_2_1" name="__tabbed_2" type="radio"><input id="__tabbed_2_2" name="__tabbed_2" type="radio"><input id="__tabbed_2_3" name="__tabbed_2" type="radio"><input id="__tabbed_2_4" name="__tabbed_2" type="radio"><input id="__tabbed_2_5" name="__tabbed_2" type="radio"><input id="__tabbed_2_6" name="__tabbed_2" type="radio"><div class="tabbed-labels"><label for="__tabbed_2_1">Always present (DNA + RNA)</label><label for="__tabbed_2_2">RNA mode only</label><label for="__tabbed_2_3">--mfsd only</label><label for="__tabbed_2_4">--gtf only (RNA mode)</label><label for="__tabbed_2_5">--show-normalization only</label><label for="__tabbed_2_6"><abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> input</label></div>
+<div class="tabbed-set tabbed-alternate" data-tabs="2:7"><input checked="" id="__tabbed_2_1" name="__tabbed_2" type="radio"><input id="__tabbed_2_2" name="__tabbed_2" type="radio"><input id="__tabbed_2_3" name="__tabbed_2" type="radio"><input id="__tabbed_2_4" name="__tabbed_2" type="radio"><input id="__tabbed_2_5" name="__tabbed_2" type="radio"><input id="__tabbed_2_6" name="__tabbed_2" type="radio"><input id="__tabbed_2_7" name="__tabbed_2" type="radio"><div class="tabbed-labels"><label for="__tabbed_2_1">Always present (DNA + RNA)</label><label for="__tabbed_2_2">--rescue-mnp only</label><label for="__tabbed_2_3">RNA mode only</label><label for="__tabbed_2_4">--mfsd only</label><label for="__tabbed_2_5">--gtf only (RNA mode)</label><label for="__tabbed_2_6">--show-normalization only</label><label for="__tabbed_2_7"><abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> input</label></div>
 <div class="tabbed-content">
 <div class="tabbed-block">
 <table>
@@ -1617,11 +1617,6 @@ writes these records without counting.</p>
 <td style="text-align: left;"><code>GD</code></td>
 <td style="text-align: left;">String</td>
 <td style="text-align: left;">Diagnostic flags (the <code>gbcms_diagnostic</code> value), <code>\|</code>-separated; <code>.</code> when none. Each flag: <a href="../qc-flags/#diagnostics">QC Flags → Diagnostics</a>.</td>
-</tr>
-<tr>
-<td style="text-align: left;"><code>GR</code></td>
-<td style="text-align: left;">String</td>
-<td style="text-align: left;">Rescue audit trail (the <code>gbcms_rescue</code> value with <code>;</code> written as <code>\|</code>); <code>.</code> for non-candidates. Outcomes: <a href="../qc-flags/#mnp-rescue">QC Flags → <abbr title="Multi-Nucleotide Polymorphism - Multiple adjacent base substitutions">MNP</abbr> rescue</a>.</td>
 </tr>
 <tr>
 <td style="text-align: left;"><code>AAD</code></td>
@@ -1672,6 +1667,24 @@ writes these records without counting.</p>
 </thead>
 <tbody>
 <tr>
+<td style="text-align: left;"><code>GR</code></td>
+<td style="text-align: left;">String</td>
+<td style="text-align: left;">Rescue audit trail (the <code>gbcms_rescue</code> value with <code>;</code> written as <code>\|</code>); <code>.</code> for non-candidates. Outcomes: <a href="../qc-flags/#mnp-rescue">QC Flags → <abbr title="Multi-Nucleotide Polymorphism - Multiple adjacent base substitutions">MNP</abbr> rescue</a>.</td>
+</tr>
+</tbody>
+</table>
+</div>
+<div class="tabbed-block">
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">Field</th>
+<th style="text-align: left;">Type</th>
+<th style="text-align: left;">Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
 <td style="text-align: left;"><code>SEN</code></td>
 <td style="text-align: left;">Integer</td>
 <td style="text-align: left;">Total reads on the transcript <strong>sense</strong> strand</td>
@@ -1700,6 +1713,7 @@ writes these records without counting.</p>
 </table>
 </div>
 <div class="tabbed-block">
+<p>13 fields, each the uppercased name of a <code>mfsd_*</code> <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> column.</p>
 <table>
 <thead>
 <tr>
@@ -1723,6 +1737,11 @@ writes these records without counting.</p>
 <td style="text-align: left;"><code>MFSD_PVAL_ALT_REF</code></td>
 <td style="text-align: left;">Float</td>
 <td style="text-align: left;">KS test p-value (ALT vs REF)</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>MFSD_QVAL_ALT_REF</code></td>
+<td style="text-align: left;">Float</td>
+<td style="text-align: left;">Benjamini-Hochberg FDR q-value of the ALT-vs-REF KS p-value, across the variants of the sample</td>
 </tr>
 <tr>
 <td style="text-align: left;"><code>MFSD_ALT_LLR</code></td>
@@ -2064,13 +2083,13 @@ metadata for reproducibility:</p>
 <div class="tabbed-set tabbed-alternate" data-tabs="4:2"><input checked="" id="__tabbed_4_1" name="__tabbed_4" type="radio"><input id="__tabbed_4_2" name="__tabbed_4" type="radio"><div class="tabbed-labels"><label for="__tabbed_4_1">DNA mode</label><label for="__tabbed_4_2">RNA mode</label></div>
 <div class="tabbed-content">
 <div class="tabbed-block">
-<div class="highlight"><pre><span></span><code><a href="#__codelineno-3-1" id="__codelineno-3-1" name="__codelineno-3-1"></a>#gbcms v6.6.0 (9c371263)
+<div class="highlight"><pre><span></span><code><a href="#__codelineno-3-1" id="__codelineno-3-1" name="__codelineno-3-1"></a>#gbcms vX.Y.Z (a1b2c3d4)
 <a href="#__codelineno-3-2" id="__codelineno-3-2" name="__codelineno-3-2"></a>#command gbcms dna --bam tumor:tumor.bam --fasta ref.fa --threads 4
 <a href="#__codelineno-3-3" id="__codelineno-3-3" name="__codelineno-3-3"></a>Hugo_Symbol Chromosome  Start_Position  ...
 </code></pre></div>
 </div>
 <div class="tabbed-block">
-<div class="highlight"><pre><span></span><code><a href="#__codelineno-4-1" id="__codelineno-4-1" name="__codelineno-4-1"></a>#gbcms v6.6.0 (9c371263)
+<div class="highlight"><pre><span></span><code><a href="#__codelineno-4-1" id="__codelineno-4-1" name="__codelineno-4-1"></a>#gbcms vX.Y.Z (a1b2c3d4)
 <a href="#__codelineno-4-2" id="__codelineno-4-2" name="__codelineno-4-2"></a>#command gbcms rna --bam rna_sample:star.bam --fasta ref.fa --gtf genes.gtf
 <a href="#__codelineno-4-3" id="__codelineno-4-3" name="__codelineno-4-3"></a>Hugo_Symbol Chromosome  Start_Position  ...
 </code></pre></div>
@@ -2526,7 +2545,7 @@ appear at all in DNA mode output.</p>
 <tr>
 <td style="text-align: left;"><code>rna_antisense_depth</code></td>
 <td style="text-align: left;">Integer</td>
-<td style="text-align: left;">REF and ALT reads on the antisense strand (first-class, over the anchor). Under <code>--enforce-strandedness</code> (the RNA default) these reads are kept out of REF, ALT, depth, fragments and the other counts, but are still classified and tallied here, so the column is the same with <code>--no-strandedness</code>. Exceptions: <code>--rescue-homopolymer</code> and <code>--rescue-mnp</code> choose between counts by ALT depth, so the adopted form (and this column) can differ between the modes; loci without a gene strand (intergenic, or genes of both strands over the locus) report 0, as every read there counts as sense.</td>
+<td style="text-align: left;">REF and ALT reads on the antisense strand (first-class, over the anchor). Under <code>--enforce-strandedness</code> (the RNA default) these reads are kept out of REF, ALT, depth, fragments and the other counts, but are still classified and tallied here, so the column is the same with <code>--no-strandedness</code>. Exceptions: <code>--rescue-homopolymer</code> and <code>--rescue-mnp</code> choose between counts by ALT depth, so the adopted form (and this column) can differ between the modes; loci without a gene strand (intergenic, or genes of both strands over the locus) report 0, as every read there counts as sense, and so does a whole run with <code>--strandedness unstranded</code>.</td>
 </tr>
 <tr>
 <td style="text-align: left;"><code>rna_alt_sense_count</code></td>
@@ -3097,8 +3116,8 @@ the pipeline does not fail.</p>
 </div>
 <h3 id="provenance-and-versions">Provenance and versions<a class="headerlink" href="#provenance-and-versions" title="Permanent link">¶</a></h3>
 <p>The merged <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> starts with its own provenance (<code>#gbcms v…</code>, <code>#command …</code>) and one
-line per input with that input's version line: <code>#input duplex: gbcms v6.6.0
-(9c371263) (/path/to/duplex.maf)</code>. Merge warns when the inputs come from
+line per input with that input's version line: <code>#input duplex: gbcms vX.Y.Z
+(a1b2c3d4) (/path/to/duplex.maf)</code>. Merge warns when the inputs come from
 different gbcms versions or builds (their counts may follow different rules),
 and stops when one input is a <abbr title="Variant Call Format - Standard variant call file format">VCF</abbr>-input <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> from before 6.5.0 (<code>vcf_pos</code> without
 <code>vcf_ref</code>/<code>vcf_alt</code>) and another is not: 6.5.0 changed the coordinates and
@@ -3213,7 +3232,7 @@ or <code>0.0</code> (incorrect p-value due to floating-point underflow).</p>
 <span class="md-icon" title="Last update">
 <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M21 13.1c-.1 0-.3.1-.4.2l-1 1 2.1 2.1 1-1c.2-.2.2-.6 0-.8l-1.3-1.3c-.1-.1-.2-.2-.4-.2m-1.9 1.8-6.1 6V23h2.1l6.1-6.1zM12.5 7v5.2l4 2.4-1 1L11 13V7zM11 21.9c-5.1-.5-9-4.8-9-9.9C2 6.5 6.5 2 12 2c5.3 0 9.6 4.1 10 9.3-.3-.1-.6-.2-1-.2s-.7.1-1 .2C19.6 7.2 16.2 4 12 4c-4.4 0-8 3.6-8 8 0 4.1 3.1 7.5 7.1 7.9l-.1.2z"></path></svg>
 </span>
-<span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-timeago" title="October 24, 2026 05:32:11 UTC"><span class="timeago" datetime="2026-10-24T05:32:11+00:00" locale="en"></span></span><span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-iso_date" title="October 24, 2026 05:32:11 UTC">2026-10-24</span>
+<span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-timeago" title="October 24, 2026 05:32:22 UTC"><span class="timeago" datetime="2026-10-24T05:32:22+00:00" locale="en"></span></span><span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-iso_date" title="October 24, 2026 05:32:22 UTC">2026-10-24</span>
 </span>
 <span class="md-source-file__fact">
 <span class="md-icon" title="Created">
