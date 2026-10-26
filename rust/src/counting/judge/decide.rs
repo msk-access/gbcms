@@ -12,7 +12,7 @@ use rust_htslib::bam::record::{Aux, Cigar, Record};
 use std::borrow::Cow;
 
 use super::graph::{self, ShortReads, Workspace};
-use super::haplotypes::{other_option, AlnTags, Class, Hap, ReadView, Scorer, ScorerKind, Site, TriageMode};
+use super::haplotypes::{other_option, AlnTags, Class, Hap, NeitherRule, ReadView, Scorer, ScorerKind, Site, TriageMode};
 use super::score::{Alignment, Placed, DELTA, WILD};
 use crate::counting::carrier::{readable_range, ReadRules};
 use crate::counting::utils::{soft_clips, ClassifyPhase, ClassifyResult};
@@ -545,6 +545,28 @@ fn conclude<'h>(
     };
     let hap_w: &Hap = &hap_w;
     let (wa, off) = scorer.align(site, hap_w);
+    // Measurement only (GBCMS_JUDGE_NEITHER=other): a covered telling base read confidently
+    // as neither allele makes a REF or ALT call another allele.
+    let neither = || {
+        if site.changed_bases() >= 2 {
+            return read_at_x(site, read, hap_w, &wa, off).third;
+        }
+        // a delins: the called allele's telling bases (none for a pure indel)
+        !site.is_substitution()
+            && site.telling_in(hap_w).into_iter().any(|(col, base)| {
+                wa.placed
+                    .iter()
+                    .position(|p| matches!(*p, Placed::At(c) if (c + off) as i64 == col))
+                    .is_some_and(|i| read.seq[i] != WILD && read.seq[i] != base)
+            })
+    };
+    if matches!(call, Call::Alt | Call::Ref) && site.neither == NeitherRule::Other && neither() {
+        trace!("haplotype judge: a {call:?} call on a read with a telling base read as neither allele → another allele");
+        call = Call::Other;
+        if !ask_anchor {
+            return Verdict { call, qual: 0, best: scores, holds_anchor: false, placed: None, triage: None, confirmed: false, spells: 0, clip: None, fits: FitsTrace::default(), fits_none: false };
+        }
+    }
     if matches!(call, Call::Alt | Call::Ref) && site.changed_bases() >= 2 && read_at_x(site, read, hap_w, &wa, off).mixed() {
         trace!("haplotype judge: a {call:?} call on a read carrying some of X's changes → another allele");
         call = Call::Other;

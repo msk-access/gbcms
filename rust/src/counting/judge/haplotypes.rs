@@ -430,6 +430,9 @@ pub(crate) struct Site {
     /// The coloured k-mer index triage reads first, where it is on and the site allows it.
     pub(crate) triage: Option<super::triage::Index>,
     pub(crate) triage_mode: TriageMode,
+    /// What a covered telling base read confidently as neither allele does to a REF or ALT
+    /// call ([`neither_rule`]).
+    pub(crate) neither: NeitherRule,
 }
 
 /// Which scorer weighs a read (`GBCMS_JUDGE_SCORER`): `graph`, the judge's scorer and the
@@ -470,6 +473,27 @@ pub(crate) fn triage_mode() -> TriageMode {
         Ok("on") => TriageMode::On,
         Ok("check") => TriageMode::Check,
         _ => TriageMode::Off,
+    }
+}
+
+/// Measurement only, TEMPORARY: what a covered telling base read confidently as neither
+/// of the row's alleles there does to a REF or ALT call on a substitution of two bases or
+/// more or a delins (`GBCMS_JUDGE_NEITHER`): `margin` (the default, decided 2026-10-24: the
+/// margin alone decides, so a read one confident base from REF there is REF, and an ALT
+/// call needing every changed base read leaves it depth only), or `other` (such a base
+/// makes the read another allele, partial evidence, as an MNV read whose block is neither
+/// allele counts under the rules and in GetBaseCounts). An SNV's third base is a state of
+/// its site under either. Read when a site is built.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum NeitherRule {
+    Margin,
+    Other,
+}
+
+pub(crate) fn neither_rule() -> NeitherRule {
+    match std::env::var("GBCMS_JUDGE_NEITHER").as_deref() {
+        Ok("other") => NeitherRule::Other,
+        _ => NeitherRule::Margin,
     }
 }
 
@@ -2078,6 +2102,7 @@ impl Site {
             graphs: Vec::new(),
             triage: None,
             triage_mode: triage_mode(),
+            neither: neither_rule(),
         };
 
         // The context rows a read over X can reach: REF span meeting X's ± the longest read

@@ -937,6 +937,45 @@ mod tests {
     }
 
     #[test]
+    fn a_covered_telling_base_read_as_neither_allele_is_another_allele_under_the_switch() {
+        use haplotypes::NeitherRule::{Margin, Other as Neither};
+        use Call::*;
+        // CCG>TTA-like: a read with a confident third base at one of X's changed bases and
+        // REF's at the others is REF by a base under the margin (the default), and another
+        // allele when the switch says such a base makes it one. X's carriers with a third
+        // base are depth only under the margin. A delins likewise at REF's telling bases.
+        let c = random_seq(600, 5);
+        let other = |b: u8| if b == b'A' { b'C' } else { b'A' };
+        let alt: Vec<u8> = c[300..303].iter().map(|&b| other(b)).collect();
+        let third = |b: u8, a: u8| *b"ACGT".iter().find(|&&t| t != b && t != a).unwrap();
+        let with = |h: &[u8], i: usize| {
+            let mut h = h.to_vec();
+            h[300 + i] = third(c[300 + i], alt[i]);
+            h
+        };
+        let calls_under = |x: &Row, reads: &[ReadView], rule| {
+            let mut s = site(&c, x, &[], 100);
+            s.neither = rule;
+            reads.iter().map(|r| judge(&s, r, MIN_BQ, false).call).collect::<Vec<_>>()
+        };
+        let tnp = Row::new(300, &c[300..303], &alt);
+        let h_x = haplotype(&c, &[&tnp]);
+        let reads = vec![
+            read(&with(&c, 1), 250, 100, 250, "100M"),
+            read(&with(&h_x, 1), 251, 100, 251, "100M"),
+            read(&c, 252, 100, 252, "100M"),
+            read(&h_x, 253, 100, 253, "100M"),
+        ];
+        assert_eq!(calls_under(&tnp, &reads, Margin), vec![Ref, Depth, Ref, Alt], "the margin");
+        assert_eq!(calls_under(&tnp, &reads, Neither), vec![Other, Other, Ref, Alt], "the switch");
+        let delins = Row::new(300, &c[300..304], b"GG");
+        let h = haplotype(&c, &[&delins]);
+        let reads = vec![read(&with(&c, 1), 250, 100, 250, "100M"), read(&c, 251, 100, 251, "100M"), read(&h, 252, 100, 252, "100M")];
+        assert_eq!(calls_under(&delins, &reads, Margin), vec![Ref, Ref, Alt], "delins, the margin");
+        assert_eq!(calls_under(&delins, &reads, Neither), vec![Other, Ref, Alt], "delins, the switch");
+    }
+
+    #[test]
     fn two_reads_writing_an_indel_find_it_within_the_share_of_the_sites_reads() {
         let c = random_seq(600, 17);
         let base = |p: i64| c.get(p as usize).copied();
