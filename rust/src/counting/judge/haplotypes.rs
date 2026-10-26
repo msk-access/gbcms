@@ -1691,23 +1691,10 @@ impl Site {
         // A pure indel anchored on a substitution X's last base changes no base X names:
         // anchored on the base after it instead (the same haplotype), it is beside X, so it
         // can lie with X and is weighed with every state (a germline indel written right
-        // after the block). Not a listed or found one with which X's alleles respell each
-        // other: where X's REF bases followed by the indel's own bases end in X's ALT bases
-        // (an MNV moving a base from one run to the next, a G inserted after its last
-        // base), REF with an inserted copy reads as X's ALT with one inserted before it, and
-        // X's ALT with a deleted copy as REF with one deleted before it. Such an indel is
-        // one of the two X's change is made of: at X's site (its span is its anchor), never
-        // beside it. The guard's recurring indels keep the move: the respelling refinement
-        // (`GBCMS_JUDGE_BACKGROUND`) reads such an item with the background's other items (a
-        // carrier's event the aligner wrote as indels on either side of X).
-        let respells_x = |r: &Row| {
-            let own = if r.alt_al.len() > r.ref_al.len() { &r.alt_al[1..] } else { &r.ref_al[1..] };
-            let joined = [&target.ref_al[..], own].concat();
-            joined[own.len()..] == target.alt_al[..]
-        };
-        let placed = |r: &Row, at_site_if_respelling: bool| -> Row {
+        // after the block).
+        let beside = |r: &Row| -> Row {
             let xe = target.end();
-            if target.changes_length() || r.pos != xe - 1 || !pure(r) || (at_site_if_respelling && respells_x(r)) {
+            if target.changes_length() || r.pos != xe - 1 || !pure(r) {
                 return r.clone();
             }
             let at = |g: i64| usize::try_from(g - start).ok().filter(|&i| i < reference.len());
@@ -1719,7 +1706,6 @@ impl Site {
             };
             moved.unwrap_or_else(|| r.clone())
         };
-        let beside = |r: &Row| placed(r, true);
         for r in candidates.listed.iter().map(beside) {
             let state = meets(&target, &r) && !in_deleted(&r);
             if state || sources.listed() {
@@ -1791,23 +1777,10 @@ impl Site {
         // `GBCMS_JUDGE_BACKGROUND=respell` an item of the guard's background or of the found
         // contexts that respells the site's own candidate sequences ([`respellings`]) is
         // left out, change or mask.
-        // A recurring indel of the guard's that spells a state's sequence (a listed allele at
-        // X's site whose reads make it recur) is that state, never also a context beside X.
         let bg_rule = if sources.background() { bg_rule } else { BackgroundRule::Off };
-        let spell_of = |r: &Row| -> Vec<u8> {
-            let (s0, e0) = ((r.pos - start) as usize, (r.end() - start) as usize);
-            [&reference[..s0], &r.alt_al[..], &reference[e0..]].concat()
-        };
-        let state_spellings: BTreeSet<Vec<u8>> = states.iter().filter(|r| holds(r)).map(spell_of).collect();
         let background: Vec<Row> = match bg_rule {
             BackgroundRule::Off => Vec::new(),
-            _ => candidates
-                .background
-                .iter()
-                .map(|r| placed(r, false))
-                .filter(|r| !meets(&target, r))
-                .filter(|r| !(holds(r) && state_spellings.contains(&spell_of(r))))
-                .collect(),
+            _ => candidates.background.iter().map(beside).filter(|r| !meets(&target, r)).collect(),
         };
         let nb = background.len();
         let items: Vec<Row> = background.iter().chain(&found_contexts).cloned().collect();
