@@ -52,6 +52,27 @@ For a row X and each admitted read:
   where its aligner also doubts it (XS ≥ AS, or MAPQ 0 with no XS), otherwise its margin
   decides it. `UNEXPLAINED_READS(n/m)` names how many of a row's depth reads fit none. The
   other options measured stay behind `GBCMS_JUDGE_FITS` (measurement only).
+- **Second fix round (2026-10-26), each red-first:**
+  - A substitution's read whose confident bases at X's telling bases show some of X's
+    changes and REF's bases at others is another allele (RJ-28's components), whichever of
+    REF and X the margin favours, or where they tie.
+  - At a substitution X, a recurring guard indel with which REF reads as X over a read
+    reaching X's site (a repeat X lengthens, written as more units beside X) is left out
+    where no reads need it: the single-item, REF-to-X part of the background refinement,
+    for indels only.
+  - A tie of REF with another allele, X beaten, is REF where the read writes an indel of its
+    own across that allele's change (as where it never reaches it).
+  - At a substitution X, a tie of X with another allele, REF beaten, is X's where the read
+    never reads the two apart (a carrier inside the bases a duplication allele repeats) and
+    reads X's telling bases as X's.
+  - Measured and dropped: an indel on an MNV's last base taken as at X's site (its REF
+    losses were an oracle v3 artefact); containment for states that change the length (a
+    carrier of a listed delins ending in X's base is that delins's, oracle v3); and X with
+    a listed change on a tandem duplication's inserted copy as a candidate (23 true-REF
+    reads lost at HG002's 1 kb+ insertions, truth v2db; open for the operator).
+  - `GBCMS_JUDGE_NEITHER=other` (measurement only; default `margin`): a covered telling base
+    read confidently as neither allele makes a REF or ALT call on an MNV or a delins another
+    allele.
 - **The background refinement (measured 2026-10-26, not adopted; `GBCMS_JUDGE_BACKGROUND`,
   default `asis`):** `respell` leaves out a context item of the guard's background or the
   found alleles that respells the site's own candidate sequences: one that turns one
