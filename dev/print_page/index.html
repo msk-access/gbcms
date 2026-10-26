@@ -3173,7 +3173,7 @@ provides these dependencies.</p>
 <tr>
 <td style="text-align: left;"><code>--min-baseq</code></td>
 <td style="text-align: left;">20</td>
-<td style="text-align: left;">Minimum base quality</td>
+<td style="text-align: left;">Minimum base quality; a base below it is read as unknown, like <code>N</code> (reads are kept)</td>
 </tr>
 <tr>
 <td style="text-align: left;"><code>--threads</code></td>
@@ -3472,7 +3472,7 @@ flag is passed.</p>
 <tr>
 <td style="text-align: left;"><code>--min-baseq</code></td>
 <td style="text-align: left;"><code>20</code></td>
-<td style="text-align: left;">Minimum <abbr title="Base Quality - Phred-scaled base call confidence">BASEQ</abbr></td>
+<td style="text-align: left;">Minimum base quality. A base below it is read as unknown, like <code>N</code>: it supports no allele and counts against none. Reads are not dropped: a read still counts toward depth and is judged on its other bases. <code>0</code> masks only <code>N</code> bases. See <a href="#reference-read-filters-quality-thresholds">Read Filters → Quality Thresholds</a></td>
 </tr>
 <tr>
 <td style="text-align: left;"><code>--filter-duplicates</code></td>
@@ -4271,6 +4271,10 @@ The file is loaded once at startup and stored as a hash set for O(1) lookup per 
 </tr>
 </tbody>
 </table>
+<p><code>--min-baseq</code> masks bases, never reads: a base below it is read as unknown, like <code>N</code>, and
+the read still counts toward depth, judged on its other bases (see <a href="#reference-read-filters-quality-thresholds">Read Filters → Quality
+Thresholds</a>). <abbr title="Base Alignment Quality - Heuristic quality downgrade near indels and splice junctions">BAQ</abbr>, on by default in RNA
+mode, lowers qualities near splice junctions and indels before this threshold applies.</p>
 <p>The RNA <code>--min-mapq 1</code> default keeps the primary alignments of reads <abbr title="Spliced Transcripts Alignment to a Reference - RNA-seq aligner">STAR</abbr> placed at two
 to four loci (<abbr title="Mapping Quality - Confidence score for read alignment">MAPQ</abbr> 3 or 1); the measurement behind it and the cost of unique-only
 counting are in <a href="#reference-read-filters-why-the-rna-default-is-min-mapq-1">Read Filters → Why the RNA default is
@@ -5647,7 +5651,7 @@ skip the merge step and output the single <abbr title="Mutation Annotation Forma
 <tr>
 <td style="text-align: left;"><code>--min_baseq</code></td>
 <td style="text-align: left;"><code>20</code></td>
-<td style="text-align: left;">Minimum base quality</td>
+<td style="text-align: left;">Minimum base quality, passed to <code>--min-baseq</code>: a base below it is read as unknown, like <code>N</code>; reads still count toward depth (see <a href="#reference-read-filters-quality-thresholds">Read Filters → Quality Thresholds</a>)</td>
 </tr>
 <tr>
 <td style="text-align: left;"><code>--fragment_qual_threshold</code></td>
@@ -10518,7 +10522,7 @@ to off for that reason.</p>
 <td style="text-align: left;">Min base quality</td>
 <td style="text-align: left;"><code>--min-baseq</code></td>
 <td style="text-align: left;"><strong>20</strong></td>
-<td style="text-align: left;">Bases below this are masked or rejected</td>
+<td style="text-align: left;">Bases below this are read as unknown (like <code>N</code>); reads are kept</td>
 </tr>
 <tr>
 <td style="text-align: left;">Fragment consensus threshold</td>
@@ -10529,15 +10533,30 @@ to off for that reason.</p>
 </tbody>
 </table>
 <div class="admonition info">
-<p class="admonition-title">How Base Quality Is Used</p>
-<p>The effect of <code>--min-baseq</code> varies by variant type:</p>
+<p class="admonition-title">What <code>--min-baseq</code> does</p>
+<p>A base below <code>--min-baseq</code> is read as unknown, exactly like an <code>N</code>: it supports no
+allele and counts against none. The threshold masks bases, never reads. A read with
+masked bases still counts toward depth (<code>DP</code>, <code>DPF</code>) and is classified on its other
+bases; when those cannot tell REF from ALT, it counts toward depth only (neither REF
+nor ALT). <code>--min-baseq 0</code> masks only <code>N</code> bases. With <code>--apply-baq</code>, qualities near
+indels and splice junctions are lowered first, then compared with the threshold
+(see <a href="#reference-read-filters-baq-quality-downgrade"><abbr title="Base Alignment Quality - Heuristic quality downgrade near indels and splice junctions">BAQ</abbr></a>).</p>
+<p>By variant type:</p>
 <ul>
-<li><strong><abbr title="Single Nucleotide Polymorphism - Single base substitution">SNP</abbr></strong>: Read is rejected if the base at the variant position has quality &lt; threshold</li>
-<li><strong><abbr title="Multi-Nucleotide Polymorphism - Multiple adjacent base substitutions">MNP</abbr></strong>: Read is rejected if <strong>any</strong> base in the <abbr title="Multi-Nucleotide Polymorphism - Multiple adjacent base substitutions">MNP</abbr> region has quality &lt; threshold</li>
-<li><strong>Insertion/Deletion (windowed scan)</strong>: Inserted/deleted bases below threshold are <strong>masked</strong> (treated as wildcards) rather than rejecting the entire read</li>
+<li><strong><abbr title="Single Nucleotide Polymorphism - Single base substitution">SNP</abbr></strong>: a masked base at the variant position leaves the read neither REF nor ALT.</li>
+<li><strong><abbr title="Multi-Nucleotide Polymorphism - Multiple adjacent base substitutions">MNP</abbr></strong>: each position where REF and ALT differ is judged on its own. Masked
+  positions are skipped and the confident ones decide; a read with every differing
+  position masked counts toward depth only.</li>
+<li><strong>Insertion/Deletion</strong>: masked bases match any base when the read is compared with
+  each allele. An insertion read with no readable inserted base carries the
+  insertion's length but not its sequence: neither REF nor ALT, counted in
+  <code>partial_alt</code> (see <a href="#reference-allele-classification-wrong-length-pure-indels-partial_alt">Wrong-Length Pure Indels</a>).</li>
 <li><strong>Complex (exact carriers)</strong>: Bases at or above the threshold must match the allele; every base is also weighed by its quality, and an ALT call needs the read's evidence for ALT over REF to reach at least what one base at the threshold gives (about 2.5 log10 at 20), so a read whose window is mostly low quality cannot be called ALT on one clear base</li>
 <li><strong>Complex (Phase 3 <abbr title="Smith-Waterman - Edit-distance based local sequence alignment algorithm">SW</abbr>)</strong>: Low-quality bases are replaced with <code>N</code>, which scores 0 against any base</li>
 </ul>
+<p>The original <abbr title="Get Base Count Multi Sample - Multi-BAM variant counting tool">GBCMS</abbr> applies no base-quality threshold by default; when one is set, a
+read whose deciding base falls below it is left out of depth (<code>DP</code>) as well. gbcms
+keeps such a read in depth.</p>
 </div>
 <hr>
 <h2 id="reference-read-filters-comparison-with-original-gbcms">Comparison with Original <abbr title="Get Base Count Multi Sample - Multi-BAM variant counting tool">GBCMS</abbr><a class="headerlink" href="#reference-read-filters-comparison-with-original-gbcms" title="Permanent link">¶</a></h2>
@@ -18888,6 +18907,16 @@ count-affecting merge since the previous release, run on the changed rows only.<
 <p>The format is based on <a href="https://keepachangelog.com/en/1.0.0/">Keep a Changelog</a>,
 and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semantic Versioning</a>.</p>
 <h2 id="development-changelog-unreleased">[Unreleased]<a class="headerlink" href="#development-changelog-unreleased" title="Permanent link">¶</a></h2>
+<h3 id="development-changelog-fixed-min-baseq-help-and-docs-say-what-it-does-304">Fixed — <code>--min-baseq</code> help and docs say what it does (#304)<a class="headerlink" href="#development-changelog-fixed-min-baseq-help-and-docs-say-what-it-does-304" title="Permanent link">¶</a></h3>
+<ul>
+<li><strong><code>--min-baseq</code> masks bases, never reads.</strong> The <abbr title="Command Line Interface - Terminal-based program interface">CLI</abbr> help ("Minimum base quality") and
+  the docs did not say what happens below the threshold, and Read Filters said an <abbr title="Single Nucleotide Polymorphism - Single base substitution">SNP</abbr> or
+  <abbr title="Multi-Nucleotide Polymorphism - Multiple adjacent base substitutions">MNP</abbr> read was "rejected". A base below it is read as unknown, like <code>N</code>: it supports no
+  allele and counts against none, and the read still counts toward depth, judged on its
+  other bases. An <abbr title="Multi-Nucleotide Polymorphism - Multiple adjacent base substitutions">MNP</abbr>'s differing positions are judged one by one (masked ones skipped),
+  not by the block's lowest quality. The help text, the DNA, RNA, quickstart and
+  Nextflow parameter tables, and Read Filters now say so. Counts are unchanged.</li>
+</ul>
 <h3 id="development-changelog-fixed-companion-file-names-vcfbgz-in-normalize-the-amplicon-rule-nextflow-rna-defaults-309">Fixed — companion file names, <code>.vcf.bgz</code> in normalize, the amplicon rule, Nextflow RNA defaults (#309)<a class="headerlink" href="#development-changelog-fixed-companion-file-names-vcfbgz-in-normalize-the-amplicon-rule-nextflow-rna-defaults-309" title="Permanent link">¶</a></h3>
 <ul>
 <li><strong>Companion files keep every dot of the output name.</strong> The <abbr title="Mutant Fragment Size Distribution - Insert-size analysis for REF vs ALT fragments">mFSD</abbr> Parquet and report

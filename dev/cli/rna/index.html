@@ -31,7 +31,7 @@
             body[data-md-color-scheme="slate"] .gslide-title { color: var(--md-default-fg-color); }
             body[data-md-color-scheme="slate"] .gslide-desc { color: var(--md-default-fg-color); }
         </style><meta name="panzoom-theme" content="material">
-<meta name="panzoom-data" content='{"selectors": [".d2", ".mermaid"], "initial_zoom_level": 1.0}'> </head>
+<meta name="panzoom-data" content='{"selectors": [".mermaid", ".d2"], "initial_zoom_level": 1.0}'> </head>
 <body data-md-color-accent="custom" data-md-color-primary="custom" data-md-color-scheme="default" dir="ltr">
 <input autocomplete="off" class="md-toggle" data-md-toggle="drawer" id="__drawer" type="checkbox">
 <input autocomplete="off" class="md-toggle" data-md-toggle="search" id="__search" type="checkbox">
@@ -1649,6 +1649,10 @@ The file is loaded once at startup and stored as a hash set for O(1) lookup per 
 </tr>
 </tbody>
 </table>
+<p><code>--min-baseq</code> masks bases, never reads: a base below it is read as unknown, like <code>N</code>, and
+the read still counts toward depth, judged on its other bases (see <a href="../../reference/read-filters/#quality-thresholds">Read Filters → Quality
+Thresholds</a>). <abbr title="Base Alignment Quality - Heuristic quality downgrade near indels and splice junctions">BAQ</abbr>, on by default in RNA
+mode, lowers qualities near splice junctions and indels before this threshold applies.</p>
 <p>The RNA <code>--min-mapq 1</code> default keeps the primary alignments of reads <abbr title="Spliced Transcripts Alignment to a Reference - RNA-seq aligner">STAR</abbr> placed at two
 to four loci (<abbr title="Mapping Quality - Confidence score for read alignment">MAPQ</abbr> 3 or 1); the measurement behind it and the cost of unique-only
 counting are in <a href="../../reference/read-filters/#why-the-rna-default-is-min-mapq-1">Read Filters → Why the RNA default is
@@ -2048,7 +2052,7 @@ asserting splicing over the span outnumber confirmed ALT are flagged
 <span class="md-icon" title="Last update">
 <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M21 13.1c-.1 0-.3.1-.4.2l-1 1 2.1 2.1 1-1c.2-.2.2-.6 0-.8l-1.3-1.3c-.1-.1-.2-.2-.4-.2m-1.9 1.8-6.1 6V23h2.1l6.1-6.1zM12.5 7v5.2l4 2.4-1 1L11 13V7zM11 21.9c-5.1-.5-9-4.8-9-9.9C2 6.5 6.5 2 12 2c5.3 0 9.6 4.1 10 9.3-.3-.1-.6-.2-1-.2s-.7.1-1 .2C19.6 7.2 16.2 4 12 4c-4.4 0-8 3.6-8 8 0 4.1 3.1 7.5 7.1 7.9l-.1.2z"></path></svg>
 </span>
-<span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-timeago" title="October 24, 2026 05:32:22 UTC"><span class="timeago" datetime="2026-10-24T05:32:22+00:00" locale="en"></span></span><span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-iso_date" title="October 24, 2026 05:32:22 UTC">2026-10-24</span>
+<span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-timeago" title="October 26, 2026 15:33:47 UTC"><span class="timeago" datetime="2026-10-26T15:33:47+00:00" locale="en"></span></span><span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-iso_date" title="October 26, 2026 15:33:47 UTC">2026-10-26</span>
 </span>
 <span class="md-source-file__fact">
 <span class="md-icon" title="Created">
