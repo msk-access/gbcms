@@ -74,7 +74,10 @@ Leaving out context items that respell a candidate sequence (`GBCMS_JUDGE_BACKGR
 - **PRs:** the repo disallows auto-merge, so merge with `gh` when the operator asks.
 - **Length-only insertion stays the ALT** (RJ-20 as amended on 2026-10-15, #278; re-confirmed 2026-10-26): an insert of the ALT's length inside the window whose bases are all masked is the ALT where no other allele of that length is at the locus.
 - **Ties stay depth only:** a read that fits REF and another candidate equally counts in DP, not in RD or AD, as GATK's uninformative read does.
-- **HG002 bars,** being built as truth v2d: score only inside the benchmark regions; score long deletions on the reads the engine counts; compare homozygous rows with REF.
+- **HG002 bars, truth v2d (done):** compare homozygous rows with REF; the benchmark BED by variant size; long deletions on anchor or junction-holding reads; count only reads decidable by their own bases. Ties that only phasing can decide go to #340.
+- **Both "keep" decisions measured:**
+  - length-only inserts: 0 truth-REF reads, 0 contradicting mates;
+  - ties as depth: VAF error 0.079, against 0.096 for develop.
 
 **Next (package 2):**
 1. Decisions from the two reports.

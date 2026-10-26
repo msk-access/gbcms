@@ -67,7 +67,7 @@ One line per memory. Full content lives in the linked file. Keep this index tigh
 - [Harness references](harness-references.md) — panel/ACCESS/WES slices are b37 (Homo_sapiens_assembly19 on OneDrive), HG002 and FORTE GRCh38 (~/Downloads/genome.fa); brief agents with the right one.
 - [Other tools on the slices](other-tools-harness.md) — the 10-tool comparison harness (plan670/tools): one container at a time, IMPACT/ACCESS slices have no proper-pair flag (bcftools -A), Delly/Mutect2/Paragraph quirks, decomposed delins.
 - [vcf2maf oracle](vcf2maf-oracle.md) — VCF↔MAF representation is defined as vcf2maf/maf2vcf output; how to run them locally and their quirks (dies on N, empty ALT for REF==ALT).
-- [GIAB truth arm](giab-truth-arm.md) — HG002 v5.0q hets on the DeepVariant 35x WGS BAM; score with truth v2c (`--truth v2c`/`v2cq20`, BWA rescored end to end); fetch slices in parallel; run untraced.
+- [GIAB truth arm](giab-truth-arm.md) — HG002 v5.0q hets on the DeepVariant 35x WGS BAM; score with truth v2d (`--truth v2d`/`v2dq20`: hom rows vs REF, benchmark by variant size, decidable by bases); fetch slices in parallel; run untraced.
 
 ## User (private, local-only — not committed)
 - `user-*.md` memories (e.g. who the operator is, personal defaults) live in this

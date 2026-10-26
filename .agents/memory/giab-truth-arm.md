@@ -44,3 +44,16 @@ the patient oracle `xoracle_v2.py`). Files: `truth_{reads,rows}_v2c.tsv` plus
 refuses a run whose threshold differs. Result: about 4,200 more decided reads (half with X
 within 4 bases of the read end), no read moved between REF and ALT, no verdict changed. The
 scratchpad copies of these tools are mirrored in `plan670/sp_tools/` (scripts only).
+**Truth v2d and the scoring rules (2026-10-26; operator):** `r2/truth_v2.py --tag v2d` writes
+`truth_*_v2d.tsv` (v2c is untouched). Score with `--truth v2d` / `v2dq20`.
+- **Homozygous rows** are compared with REF. Under v2c's shortcut chr18:12145098's reads were
+  labelled ALT; they are REF.
+- **Bars count rows inside the GIAB v5.0q benchmark,** picked by variant size: the smvar BED
+  below 50 bp, the stvar BED at 50 bp or more. The smvar BED excludes every 50 bp+ variant by
+  construction.
+- **Long deletions:** count reads holding the anchor, plus reads placed inside the deleted bases
+  whose own bases hold the junction.
+- **Reads only phasing can decide leave the bars.** A read whose bases fit its truth sequence and
+  another candidate equally is not "decidable by bases".
+
+Use v2d for every HG002 bar from now on.
