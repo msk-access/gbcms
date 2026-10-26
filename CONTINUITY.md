@@ -3,9 +3,84 @@
 > Tactical state that must survive a closed laptop or a context summary.
 > Update the **Now** and **Next** sections as work progresses.
 
-_Last updated: 2026-10-23_
+_Last updated: 2026-10-26_
 
-## Now — 6.7.0 package 2 decided: a universal per-haplotype read judge (2026-10-23)
+## Now — 6.7.0 package 2: the sequence judge integrated, fix round running (2026-10-26)
+
+**Release plan (operator, 2026-10-26).**
+- **6.7.0** ships the judge opt-in (`--read-judge sequence`, #304).
+- **6.8.0** does one thing: make it the default, meticulously and systematically. The parent issue is #331, with sub-issues:
+  - #332 tests and contracts, and every output path;
+  - #333 RNA;
+  - #334 acceptance and the `--min-baseq` sweep;
+  - #335 speed;
+  - #336 the HPC gate;
+  - #337 the switch-over.
+- **6.9.0 (new)** takes SV/fusion genotyping (#322–#327) and retiring the rules judge (#328).
+- The 6.6.0 milestone is closed.
+
+**Judge branch** `feature/c46-haplotype-judge`: pushed as a backup, no PR. The integration build is frozen as `plan670/src_c53d`. It has:
+- the graph scorer;
+- the fix round for long deletions and MNVs;
+- the MNV/SNV rule with `MNV_SHARED`;
+- the fits-nothing rule (xs) with `UNEXPLAINED_READS` (RJ-29);
+- clipped read ends at SNV/MNV rows admitted (RJ-13);
+- the name `--read-judge sequence`, with `haplotype` as a deprecated alias;
+- a Nextflow `read_judge` parameter (DNA).
+
+Leaving out context items that respell a candidate sequence (`GBCMS_JUDGE_BACKGROUND`) was measured and not adopted: the background stays as is. The rules path is byte-identical to develop on 616 runs.
+
+**Truths, corrected 2026-10-26:**
+- **HG002 truth v2c:** BWA alignments rescored end to end from the CIGAR; score with `--truth v2cq20`.
+- **Patient oracle v2** (`xdata/xoracle_v2.py`): per-haplotype indices plus an exact DP, and a label needs both.
+- **Bars:** count reads decidable at the run's `--min-baseq`; long deletions by breakpoint reads; a class fails only past 0.5 points AND 2 reads; wrong-call bars past 2 extra reads.
+- **Scratch scripts** are mirrored in `plan670/sp_tools/`.
+
+**Re-score of `src_c53d`** (v2 and v2c; details on #304):
+- **No agreement bar fails on any patient arm:** panel +2.68 pt, ACCESS XS1 +5.61, XS2 +7.88, normals +2.50, WES +4.46, gate +0.66.
+- **Gate groups below clinical sign-out:** in all nine, the oracle sides with the judge.
+- **Open:**
+  - wrong-call bars: gate MNVs +743, delins, gate unique 1 bp insertions other→ALT +114, unique deletions of 50+ bp other→REF;
+  - chrX: 56 true-ALT reads lost; SNVs near an indel: 21;
+  - true-REF reads called partial at tract clusters and 36 bp duplications;
+  - HG002 SNVs in tandem repeats: −40 true-REF reads;
+  - deletions of 1 kb+: scaled calls 162 more true-REF reads REF on HG002, while xs keeps 307 (panel) and 78 (gate) more correct calls.
+
+**In flight:**
+- **Code fix round on the branch:**
+  - port the insertion readability rule (RJ-20: no readable inserted base → not ALT);
+  - HG002 SNVs in tandem repeats;
+  - chr18:12145098, a homozygous 1.3 kb insertion (RD 50, AD 0);
+  - options for deletions of 1 kb+ (default unchanged until decided).
+- **Diagnosis, no code:** the open wrong-call classes and the ALT/REF losses.
+
+**Decided 2026-10-24 to 2026-10-26:**
+- **Clip admission:** admit. `clean:0` costs 8% of true ALT on patient data to avoid about 1% wrong reads.
+- **Fits-nothing:** xs; a refinement for deletions of 1 kb+ is pending.
+- **MNV/SNV:** O5 plus `MNV_SHARED`; oracles score containment as the row's ALT.
+- **Contexts:** listed rows, the guard background (as is) and found alleles all stay.
+- **`--min-baseq`:**
+  - it masks bases, never reads (#329); MSK runs at 20;
+  - the sweep runs at 0, 10, 20 and 30, chosen per arm by its quality bins;
+  - ACCESS is reported apart by collapser: XS1 Marianas, XS2 fgbio;
+  - a quality-scaled cost (cap 30 or 40) is adopted only if it wins at every threshold;
+  - the below-threshold "floor" cost is dropped.
+- **PHI:**
+  - tool output goes to the model provider;
+  - patient slices are fine for testing, never downstream;
+  - cBioPortal files never enter tool output (#330). The only console channel is `~/test/gbcms/harness/cbio/cbio_summary.py`; protected paths live in `~/.claude/protected-paths.txt`.
+- **PRs:** the repo disallows auto-merge, so merge with `gh` when the operator asks.
+
+**Next (package 2):**
+1. Decisions from the two reports.
+2. The `--min-baseq` sweep and the scaled-cost option.
+3. Speed: at most 2× develop. Candidates: Lancet2's two-tier gap model and k-mer allele discovery.
+4. The judge PR to develop, opt-in. Then re-check and close #290, #301, #297, #144, #246 and #264's docs.
+5. Then packages 3→7, with P, H and D7 alongside; then G, the freeze and the gate.
+
+**Main checkout:** on develop once this PR merges. It was on 336c07cd, with these memory notes uncommitted.
+
+## Before — 6.7.0 package 2 decided: a universal per-haplotype read judge (2026-10-23)
 **Package 1 done.**
 - #305 closed: no AD excess after #300. The oracle's 2-mismatch cap and reads off the anchor
   span made it; develop has at most 3 wrong-allele reads in 6,024. What remains (own-allele
@@ -62,7 +137,7 @@ Tickets that answer the same question, or share code paths and measurements, lan
 | # | Package | Tickets | Why together | First step |
 |:--|:--|:--|:--|:--|
 | 1 | Co-annotated alleles (**done**: #305 closed, #246 parked into 2) | #305, #246 | the AD-claiming guard and RJ-5/RJ-25; one measurement set: the cluster-aware check, the compound-het arm, the panel and gate clusters | #305 read by read on the data in hand; then #246, whose SNV sibling still claims the read through its own uncontested call |
-| 2 | Repeats: unit counts and placement (**decided**: the universal haplotype judge, #304) | #290, #301, #297, #144, #304; #264 (docs); #246 | one question, in four code paths: which length of a repeat a read carries when the aligner placed it elsewhere. One acceptance metric: VAF at germline hets in repeats (long insertions 0.441 on HG002) | decide the architecture first. Measure #304 (a whole-read haplotype judge) on every arm as a prototype against targeted fixes, then build; #264's documentation with it |
+| 2 | Repeats: unit counts and placement (**building**: the sequence judge, #304; opt-in in 6.7.0, the default in 6.8.0, #331) | #290, #301, #297, #144, #304; #264 (docs); #246 | one question, in four code paths: which length of a repeat a read carries when the aligner placed it elsewhere. One acceptance metric: VAF at germline hets in repeats (long insertions 0.441 on HG002) | decide the architecture first. Measure #304 (a whole-read haplotype judge) on every arm as a prototype against targeted fixes, then build; #264's documentation with it |
 | 3 | RNA read judgment | #292, #293, #178 | the spliced-read path; FORTE | #292's three prototypes, measured (decided 2026-10-17) |
 | 4 | Evidence outside the aligned bases | #177, #212, #179 | read admission and clipped bases (RJ-10, RJ-13); WES and HG002 without realignment | #212 first: the fragment end bounds what a clip may hold |
 | 5 | Guard statistics and artifacts | #306, #180 | telling a recurring change from an error or an artifact (fragment shares, pair orientation; #302 added the binomial orientation veto) | count the rows near the 5% line; decide #180's form |

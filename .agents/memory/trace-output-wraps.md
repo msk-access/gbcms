@@ -1,6 +1,6 @@
 ---
 name: trace-output-wraps
-description: "gbcms --trace read-call lines: set COLUMNS just above the longest allele (Rich wraps lines; 3000 wraps alleles over ~2.9 kb) but never a blanket 60000 (Rich pads every line to it: >450x slower); a read call is not a count; match rows by haplotype."
+description: "gbcms --trace read-call lines: run the CLI through plan670/r2/plain_trace.py (plain log handler: no Rich padding or wrapping, identical calls); with plain gbcms, Rich wraps at COLUMNS and pads every line to it (wide COLUMNS is hundreds of times slower); a read call is not a count; match rows by haplotype."
 metadata:
   node_type: memory
   type: reference
@@ -17,15 +17,23 @@ calls on the HG002 pri_ins and pri_del50 arms, #265 measurement, 2026-10-16). `p
 1 for first-in-template, else 2.
 
 **The cost of a wide COLUMNS (2026-10-24, the 6.7.0 speed review):** Rich pads every log
-line to the full width, so `COLUMNS=60000` makes a trace more than 450x slower than the
-untraced run (HG002 pri arm: 4.7 GB in 11 minutes against 1.3 s; a 15k-row SV arm ran over
-5 hours and was abandoned). Set COLUMNS to the longest allele in the input plus ~400 (e.g.
-12000 for alleles up to 10 kb) and trace only arms of a few thousand rows; the lasting fix
-is a Rust-side read-call file instead of log lines (6.7.0 review ticket).
+line to the full width and renders on one Python thread, so a wide COLUMNS makes a trace
+hundreds of times slower than the untraced run (HG002 pri arm at 60000: 4.7 GB in 11 minutes
+against 1.3 s; the 15k-row SV arm ran over 5 hours at 60000 and again at 23200, on one core,
+and was abandoned both times).
+
+**Use the plain-trace wrapper (2026-10-24):** `~/test/gbcms/harness/plan670/r2/plain_trace.py`
+runs the gbcms CLI with Rich's handler swapped for a plain `%(message)s` StreamHandler
+(`<build venv>/bin/python plain_trace.py dna ... --trace`; `r2/run_plain.sh ARM LABEL PYTHON`
+wraps it for the R2 arms). No COLUMNS needed, nothing wraps, nothing pads. Checked on the
+GIAB TR arm (build c46c): the same MAF and the same 97,328 read calls as the Rich trace (the
+Rich lines differ only by padding and the source-path column), in 1:59 against 6:19 at
+COLUMNS=12000, at 380% CPU instead of ~225%. The lasting fix is still a Rust-side read-call
+file instead of log lines (6.7.0 review ticket).
 
 **How to apply:** any per-read adjudication harness that diffs two builds' trace
-calls ([[pysam-validation-oracle]], [[genotyper-not-caller]]) — set the env var and
-assert a non-zero number of parsed calls before trusting a diff.
+calls ([[pysam-validation-oracle]], [[genotyper-not-caller]]) — use the wrapper (or set
+COLUMNS) and assert a non-zero number of parsed calls before trusting a diff.
 
 **Two more traps (2026-10-09, 6.7.0 plan measurements):**
 - **A read call is not a count.** Every classified read is logged, including reads the

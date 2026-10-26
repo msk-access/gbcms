@@ -21,3 +21,26 @@ Harness: `~/test/gbcms/harness/plan670/giab/` (public data; numbers can go on Gi
   minutes); the bases-only oracle does the per-read work.
 
 Related: [[decisions-worked-examples]], [[pysam-validation-oracle]].
+
+**Flaw found and fixed 2026-10-26:** `r2/truth.py` maps each read against all rows'
+haplotype contigs in one combined BWA index. Rows 1 bp apart (#246 pairs) have identical
+contigs, so a read's best hit can land on the neighbour's contig, leaving no or only a partial
+alignment to its own row; a missing alignment scored 0 and could decide the label (~9% of
+het-row labels on #246, ~42% on GIAB TR rested on one haplotype only). Truth v2: per-row
+alignment, end to end, two methods independent of the judge, missing = unphased. Until v2
+lands, treat old-truth numbers as build-to-build comparisons, not absolutes.
+**Truth v2 (done 2026-10-26):** `r2/truth_v2.py` (+ `truthv2_lib.py`, `truthv2_dp.c`), files
+`truth_{reads,rows}_v2.tsv` beside the old; `evaluate.py --truth v2`. Scoring rules (operator):
+bars on reads decidable at the run's `--min-baseq` (default 20: `v2q20`; full v2 reported as the gate's cost; the threshold comes from the run, never hard-coded); long deletions
+breakpoint reads only (strict v2; `v2dp` beside); a class fails only past 0.5 points AND 2
+reads. All earlier decisions held on v2.
+
+**Truth v2c supersedes v2 (2026-10-26):** v2 scored BWA with its `AS` tag, which is the local
+best and leaves a read-end mismatch uncharged (24% of v2 scores sat above the true end-to-end
+optimum). That under-charged exactly the read-end bases that clip admission rests on. v2c
+rescores every alignment over the whole read from its CIGAR (`r2/bwa_rescore.py`, shared with
+the patient oracle `xoracle_v2.py`). Files: `truth_{reads,rows}_v2c.tsv` plus
+`truth_settings_v2c.tsv` (the runs' `--min-baseq`). Score with `--truth v2c` / `v2cq20`; `v2cq20`
+refuses a run whose threshold differs. Result: about 4,200 more decided reads (half with X
+within 4 bases of the read end), no read moved between REF and ALT, no verdict changed. The
+scratchpad copies of these tools are mirrored in `plan670/sp_tools/` (scripts only).

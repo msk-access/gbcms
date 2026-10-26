@@ -33,3 +33,5 @@ orientation) that had made the orientation option look broken.
 **How to apply:** build the truth arm (D9 GIAB, D11 germline normals) before the
 decision round, and validate the measurement model on truth too: the first HG002 pass
 exposed an oracle placement bug that the panel data had hidden.
+
+**Bars count decided-rule contracts too (2026-10-25):** an arm-only bar would have removed the judge's found alleles away from the site (no arm moved), but 6 contract tests for a decided rule (an insertion just outside the window is a separate event) fail without them; the shape was too rare for the arms. A pre-registered bar names the arms *and* the decided-rule contract tests a change must keep.
