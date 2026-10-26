@@ -917,6 +917,29 @@ mod tests {
     }
 
     #[test]
+    fn a_guard_indel_with_which_ref_reads_as_x_is_left_out_where_no_read_needs_it() {
+        use haplotypes::BackgroundRule::AsIs;
+        use Call::*;
+        // AGCA>TGCT between a (GCT)3 run and a (GCA)20 run: X's ALT is (GCT)5 (GCA)20. The
+        // guard's recurring indels there are two GCT units more in the first run and one GCA
+        // unit more before X. REF with the GCT units is (GCT)5 (GCA)22: X's ALT over every
+        // read ending inside the GCA run, so as a context it ties X's carriers with REF. No
+        // read needs it for its call: it is left out, and X's carriers are X's. The GCA unit
+        // spells no candidate and stays.
+        let mut motif = b"GCGCCAGTTTGCTGCTGCTGCAGCA".to_vec();
+        motif.extend(b"GCA".repeat(20));
+        motif.extend(b"AGAGACTAGCCCC");
+        let c = contig(53, 260, &motif);
+        let x = row(282, "AGCA", "TGCT");
+        let (units, unit) = (Row::new(268, b"T", b"TTGCTGC"), Row::new(278, b"T", b"TGCA"));
+        let h_x = haplotype(&c, &[&x]);
+        let mut reads: Vec<ReadView> = (226..236).map(|s| read(&h_x, s, 100, s as i64, "100M")).collect();
+        reads.extend((228..238).map(|s| read(&c, s, 100, s as i64, "100M")));
+        let candidates = Candidates { background: vec![units, unit], ..Candidates::default() };
+        assert_eq!(calls_backed(&c, &x, &candidates, &reads, AsIs), [vec![Alt; 10], vec![Ref; 10]].concat());
+    }
+
+    #[test]
     fn two_reads_writing_an_indel_find_it_within_the_share_of_the_sites_reads() {
         let c = random_seq(600, 17);
         let base = |p: i64| c.get(p as usize).copied();

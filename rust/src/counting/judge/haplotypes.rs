@@ -1018,6 +1018,9 @@ fn agree(a: &[u8], b: &[u8], right: bool) -> usize {
 /// item is the aligner's respelling of the row's allele, not a change beside the event:
 /// as a context it would tie the reads that tell the candidates apart.
 ///
+/// With `one_way`, only REF with the item spelling a candidate counts (not a candidate with
+/// it spelling REF).
+///
 /// Reads are taken as placed, of length `l`: one reading in from the left flank tells two
 /// spellings apart once it passes the first base where they differ, so an item that moves
 /// that base on, where it lies at X's site or within a read of it, unmakes the telling
@@ -1034,6 +1037,22 @@ fn respellings<'r>(
     others: &'r [Row],
     rows: &'r [Row],
     masks: &[i64],
+) -> (Vec<u8>, Vec<u8>) {
+    respell_levels(reference, start, site, l, states, others, rows, masks, false)
+}
+
+/// [`respellings`], with `one_way` as it says.
+#[allow(clippy::too_many_arguments)]
+fn respell_levels<'r>(
+    reference: &[u8],
+    start: i64,
+    site: (i64, i64),
+    l: i64,
+    states: &'r [Row],
+    others: &'r [Row],
+    rows: &'r [Row],
+    masks: &[i64],
+    one_way: bool,
 ) -> (Vec<u8>, Vec<u8>) {
     let st = Stretch { reference, start, lo: (site.0 - l).max(start), hi: (site.1 + l).min(start + reference.len() as i64) };
     let inside = |r: &Row| r.pos >= st.lo && r.end() <= st.hi;
@@ -1107,7 +1126,8 @@ fn respellings<'r>(
             let with_b: Vec<Vec<&'r Row>> = sets.iter().filter(|c| c.iter().all(|r| !meet(r, b))).cloned().collect();
             let ref_b = side(&with_b, None, Some(b), &[]);
             let alt_b = if meet(b, state) { Vec::new() } else { side(&with_b, Some(state), Some(b), &[]) };
-            out_rows[i] = out_rows[i].max(unmakes(&alts, None, &refs, &ref_b)).max(unmakes(&refs, None, &alts, &alt_b));
+            let back = if one_way { 0 } else { unmakes(&refs, None, &alts, &alt_b) };
+            out_rows[i] = out_rows[i].max(unmakes(&alts, None, &refs, &ref_b)).max(back);
         }
         let sets = sets_without(None);
         let (refs, alts) = (side(&sets, None, None, &[]), side(&sets, Some(state), None, &[]));
@@ -1754,6 +1774,34 @@ impl Site {
         };
         let nb = background.len();
         let items: Vec<Row> = background.iter().chain(&found_contexts).cloned().collect();
+        // A whole respelling is left out; one over a read only where no reads need it: an
+        // item the reads attest (a real change beside a repeat, a germline SNP whose haplotype
+        // reads as X over a short read) explains them.
+        let settle = |whole: Dropped, partial: Vec<&Row>| -> Dropped {
+            if partial.is_empty() || scorer != ScorerKind::Graph {
+                return whole;
+            }
+            let build = |d: &Dropped| {
+                Site::build_core(scorer, target.clone(), candidates, (start, reference.clone()), reads, rule, sources, bg_rule, Some(d))
+            };
+            let Some(kept) = build(&whole) else { return whole };
+            let mut out = whole.clone();
+            for item in partial {
+                let mut d = whole.clone();
+                d.rows.push(item.clone());
+                let attested = build(&d).is_some_and(|without| needed_by(&kept, &without, reads, item));
+                log::debug!(
+                    "haplotype judge {}: {} respells a candidate sequence over a read; {}",
+                    named(&target),
+                    named(item),
+                    if attested { "the reads need it, kept" } else { "no reads need it, left out" },
+                );
+                if !attested {
+                    out.rows.push(item.clone());
+                }
+            }
+            out
+        };
         let drop: Dropped = match dropped {
             Some(d) => d.clone(),
             None if bg_rule == BackgroundRule::Respell && !(items.is_empty() && candidates.masked.is_empty()) => {
@@ -1774,39 +1822,31 @@ impl Site {
                         rows[i] = 2;
                     }
                 }
-                // A whole respelling is left out; one over a read only where no reads need
-                // it: an item the reads attest (a real change beside a repeat, a germline
-                // SNP whose haplotype reads as X over a short read) explains them.
                 let whole = Dropped { rows: items.iter().zip(&rows).filter(|(_, &k)| k == 2).map(|(r, _)| r.clone()).collect() };
-                let partial: Vec<&Row> = items.iter().zip(&rows).filter(|(_, &k)| k == 1).map(|(r, _)| r).collect();
-                if partial.is_empty() || scorer != ScorerKind::Graph {
-                    whole
-                } else {
-                    let build = |d: &Dropped| {
-                        Site::build_core(scorer, target.clone(), candidates, (start, reference.clone()), reads, rule, sources, bg_rule, Some(d))
-                    };
-                    match build(&whole) {
-                        None => whole,
-                        Some(kept) => {
-                            let mut out = whole.clone();
-                            for item in partial {
-                                let mut d = whole.clone();
-                                d.rows.push(item.clone());
-                                let attested = build(&d).is_some_and(|without| needed_by(&kept, &without, reads, item));
-                                log::debug!(
-                                    "haplotype judge {}: {} respells a candidate sequence over a read; {}",
-                                    named(&target),
-                                    named(item),
-                                    if attested { "the reads need it, kept" } else { "no reads need it, left out" },
-                                );
-                                if !attested {
-                                    out.rows.push(item.clone());
-                                }
-                            }
-                            out
-                        }
-                    }
-                }
+                settle(whole, items.iter().zip(&rows).filter(|(_, &k)| k == 1).map(|(r, _)| r).collect())
+            }
+            // Under the default, at a substitution X, a recurring indel of the guard's with
+            // which REF reads as X over a read reaching X's site is X's change respelled (a
+            // repeat X lengthens, written as more units of it beside X: AGCA>TGCT between a
+            // GCT run and a GCA run, REF with two GCT units more reads as X into the GCA
+            // run), never a context: left out where no reads need it for their call. A
+            // substitution's carriers hold its bases at X; an indel there is a shift of the
+            // repeat beside it. The masks, the substitutions and the found alleles stay
+            // contexts, and an indel X's site keeps its background as it is.
+            None if bg_rule == BackgroundRule::AsIs && !target.changes_length() && background.iter().any(|r| r.changes_length()) => {
+                let l = reads.iter().map(|r| r.len() as i64).max().unwrap_or(0);
+                let (s0, e0) = x_site(&target, start, &reference, place(&target));
+                let site = (s0 + start, e0 + start);
+                let indels: Vec<Row> = background.iter().filter(|r| r.changes_length()).cloned().collect();
+                let others: Vec<Row> = contexts
+                    .iter()
+                    .filter(|r| !found_contexts.contains(r))
+                    .chain(items.iter().filter(|r| !r.changes_length() || found_contexts.contains(r)))
+                    .cloned()
+                    .collect();
+                let (rows, _) = respell_levels(&reference, start, site, l, std::slice::from_ref(&target), &others, &indels, &[], true);
+                let whole = Dropped { rows: indels.iter().zip(&rows).filter(|(_, &k)| k == 2).map(|(r, _)| r.clone()).collect() };
+                settle(whole, indels.iter().zip(&rows).filter(|(_, &k)| k == 1).map(|(r, _)| r).collect())
             }
             None => Dropped::default(),
         };
