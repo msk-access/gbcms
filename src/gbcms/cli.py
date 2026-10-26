@@ -264,7 +264,16 @@ def dna(
     ),
     # Quality thresholds
     min_mapq: int = typer.Option(20, "--min-mapq", help="Minimum mapping quality"),
-    min_baseq: int = typer.Option(20, "--min-baseq", help="Minimum base quality"),
+    min_baseq: int = typer.Option(
+        20,
+        "--min-baseq",
+        help=(
+            "Minimum base quality. A base below it is read as unknown, like N: it "
+            "supports no allele and counts against none. Reads are not dropped: a "
+            "read still counts toward depth and is judged on its other bases. "
+            "0 masks only N bases."
+        ),
+    ),
     fragment_qual_threshold: int = typer.Option(
         10,
         "--fragment-qual-threshold",
@@ -647,7 +656,16 @@ def rna(
         "--min-mapq",
         help="Minimum mapping quality (default: 1 for STAR-aligned reads).",
     ),
-    min_baseq: int = typer.Option(20, "--min-baseq", help="Minimum base quality"),
+    min_baseq: int = typer.Option(
+        20,
+        "--min-baseq",
+        help=(
+            "Minimum base quality. A base below it is read as unknown, like N: it "
+            "supports no allele and counts against none. Reads are not dropped: a "
+            "read still counts toward depth and is judged on its other bases. "
+            "0 masks only N bases."
+        ),
+    ),
     fragment_qual_threshold: int = typer.Option(
         10,
         "--fragment-qual-threshold",

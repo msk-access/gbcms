@@ -213,7 +213,7 @@ Get up and running in minutes. All examples below assume gbcms is [installed](in
 | `--output-dir` | Required | Output directory |
 | `--format` | `vcf` | Output format (`vcf` or `maf`) |
 | `--min-mapq` | 20 (DNA) / 1 (RNA) | Minimum mapping quality |
-| `--min-baseq` | 20 | Minimum base quality |
+| `--min-baseq` | 20 | Minimum base quality; a base below it is read as unknown, like `N` (reads are kept) |
 | `--threads` | 1 | Number of threads |
 
 > 📖 Full option reference: [DNA CLI](../cli/dna.md) · [RNA CLI](../cli/rna.md)

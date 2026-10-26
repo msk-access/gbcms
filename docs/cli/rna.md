@@ -243,6 +243,11 @@ flowchart TD
 | `--min-baseq` | 20 | 20 |
 | `--fragment-qual-threshold` | 10 | 10 |
 
+`--min-baseq` masks bases, never reads: a base below it is read as unknown, like `N`, and
+the read still counts toward depth, judged on its other bases (see [Read Filters → Quality
+Thresholds](../reference/read-filters.md#quality-thresholds)). BAQ, on by default in RNA
+mode, lowers qualities near splice junctions and indels before this threshold applies.
+
 The RNA `--min-mapq 1` default keeps the primary alignments of reads STAR placed at two
 to four loci (MAPQ 3 or 1); the measurement behind it and the cost of unique-only
 counting are in [Read Filters → Why the RNA default is
