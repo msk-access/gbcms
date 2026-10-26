@@ -34,9 +34,21 @@ counts. Phasing: (1) judge for sequence-resolved small-variant rows, (2) fragmen
 (3) SV file input. Small-variant, SV and CNV calls are separate at MSK but overlap. Formats found: iCallSV's
 final columns are in rhshah/iCallSV `mergeFinalFiles.py` (Chr1/Pos1/Chr2/Pos2, SV_Type,
 Connection_Type, BrkptType, ConsensusSequence = Delly's junction contig, Tumor/Normal
-Reference/SplitReference/Variant/SplitVariant/ReadCount); SVtorm (jblancoheredia/SVtorm)
-merges Delly, GRIDSS, Manta, SvABA and a recall via CrosSV into TSV (`*_CrosSV.tsv`,
-`*_ANNOTE_SV_INN.tsv`; docs unwritten, example requested); a standard-VCF reader must take
+Reference/SplitReference/Variant/SplitVariant/ReadCount); SVtorm (jblancoheredia/SVtorm,
+read 2026-10-24) calls Delly, GRIDSS, Manta and SvABA on tumour/normal pairs; SURVIVOR merges
+(1 kb, 2 callers, no type or strand agreement); the "recall" is a second GRIDSS 2.13.2 run
+(operator: SVtorm relies on GRIDSS for recalling) on fragments overlapping the panel target
+BED (`params.intervals`; the merged candidates only steer its metrics), then a PON somatic
+filter (SVSOMF); SURVIVOR filters the five VCFs; CrosSV reconciles them against the tumour
+BAM (slop 100, per-patient prior BED) and appends recovered SVs. Output `*_CrosSV.tsv` /
+`*_ANNOTE_SV_INN.tsv`, columns (SVRVOR2TSV.py): SV_BC, CHROM, POS, ID, REF, ALT, QUAL,
+FILTER, CIEND, CIPOS, CHR2, END, SVLEN, SVMETHOD, SVTYPE, SUPP_VEC, SUPP, STRANDS, PE, SR,
+CT, DP (site 2 = CHR2/END, orientation = STRANDS or CT); annotation is iAnnotateSV
+(rhshah/iAnnotateSV, operator 2026-10-24): input `chr1 pos1 str1 chr2 pos2 str2` (1-based,
+str 0 = plus, 1 = minus; chromosomes without chr), output adds gene/transcript/site 1 and 2 and
+fusion; SVtorm's `*_ANNOTE_SV_INN.tsv` is its input, iCallSV uses it, and IMPACT data_sv
+site descriptions use its vocabulary, so its six columns are the proposed internal
+breakend-pair form (#323); a standard-VCF reader must take
 Manta (symbolic + BND, SVINSSEQ, HOMSEQ), Delly (CT, CONSENSUS), GRIDSS/SvABA (BND only).
 
 DECIDED (operator, 2026-10-23): package 2 adopts the judge for small-variant rows — S2
@@ -54,6 +66,70 @@ Build needs: speed (~300x develop now: k-mer triage, SIMD banded alignment e.g.
 block-aligner, trimming), mRNA haplotypes for RNA, junction-based admission for long
 deletions (RJ-24), discovered site alleles on the lacking side (REJ-20261007-002), guard
 background changes as context rows, binning invariance via prep-level row lists.
+
+**Ticketed (2026-10-24):** milestone 6.8.0 holds the SV work as parent #322 with
+sub-issues #323 (input formats and the separate output), #324 (breakend-junction judge),
+#325 (fragment evidence), #326 (truth, validation, small-variant overlap, community
+standard) and #327 (RNA fusions on mRNA junctions). Decided (operator, 2026-10-24): when
+the judge becomes the default, `--read-judge rules` stays one release as the fallback;
+removing the previous classifier is #328 (6.8.0, moves with the flip). R5–R9 (#313–#317)
+stay in 6.7.0: an R-ticket goes later only if every item is separate from 6.7.0 work.
+
+**Scorer architecture under evaluation (2026-10-24; plan and pre-registered acceptance on
+#304):** most judge faults came from enumerating contexts x states, so a graph scorer is being
+prototyped on local branch `proto/c47-graph-scorer` (worktree c47 = 971f8f01 + the c46e2
+fix): E1 per-site-state DP over a local sequence graph (context rows as bubbles), E3 coloured
+k-mer triage (phase 1); E2 Lancet2's two-tier gap model and E4 k-mer bubble allele discovery
+(phase 2, after the found-allele floor investigation). Graph = segments + edges so splices and
+SV junctions (#322) are edges later; read-length independent; pluggable error model for long
+reads. Coloured de Bruijn graphs are triage and discovery only (k-mers collapse repeat copies
+and count k-mers, not reads). Pangenome stacks (vg, PanGenie) are comparators, not the
+architecture: they remap reads, use population priors and report diploid genotypes
+([[lancet2-reference]]).
+
+**Decided (operator, 2026-10-25):** the graph is the judge's scorer (E1 failed pre-registered
+criterion 1 only through the undecided "fits nothing" rule, applied exactly, and through
+every-combination; it equals enumeration where enumeration is exact, is ~3x faster, removes
+539 lines and 14 caps). No per-site switching: the graph is exact where enumeration is, and
+switching to the rules per site would bring back a seam; speed comes from a cheap exit for
+reads that fit nothing. k-mer triage (E3) dropped (exact variant saves 2-18%). found2 floor
+confirmed on patient arms (no change at depth). Patient-data faults to fix on the graph:
+rows inside a long deletion's bases collapse REF; MNV ALT misses; homopolymer and 20-49 bp
+REF losses; gate cost 11.8x develop. Phases A-E with bars on #304 (A integrate, B fits-nothing
+decision, C fix round, D MNV/SNV policy decision, E speed).
+
+**Decided (operator, 2026-10-25), fits nothing:** xs + diagnostic: a read that fits no state
+is depth only where the aligner also doubts it (XS >= AS); every row counts its fits-nothing
+reads in gbcms_diagnostic. The absolute budget mostly caught structural reads (20+ bp clips,
+10+ bp indels) the given rows lack, not noise, and cost panel SNV/MNV ~1 point; residual risk
+is uniquely misplaced foreign reads at homozygous deletions in repeats (chr17 3.6 kb: 0.59).
+MNV/SNV (O5 + MNV_SHARED diagnostic) decided the same day.
+
+**Framing and name (operator, 2026-10-25):** the judge resolves which local sequence a read's
+own bases spell at the row (not phasing, no linkage credit); contexts only explain the
+read's other differences. User-facing name `--read-judge sequence`, "candidate sequences" in
+docs (rename after phase C). Whether each context source (listed rows, guard background,
+found alleles) earns its place is being measured, pre-registered on #304.
+
+**Release plan (operator, 2026-10-26):**
+- **6.7.0** ships the judge opt-in (#304).
+- **6.8.0** only makes it the default, "meticulously and systematically": parent #331, with sub-issues
+  - #332 tests and every output path,
+  - #333 RNA,
+  - #334 acceptance and the `--min-baseq` sweep,
+  - #335 speed,
+  - #336 the HPC gate,
+  - #337 the switch-over.
+- **6.9.0** takes the SV/fusion work (#322–#327) and retiring the rules judge (#328).
+- The integration round (`src_c53d`) is pushed as branch `feature/c46-haplotype-judge`, with no PR yet. Its
+  re-score on the corrected checks is recorded on #304.
+
+**Decided (operator, 2026-10-26):**
+- **The length-only insertion stays the ALT** (RJ-20 as amended on 2026-10-15, #278). The judge already follows it; the "port" proposed that morning came from stale docs.
+- **Ties stay depth only.** This is GATK's uninformative read; develop's placement tie-break leans to REF.
+- **xs stays.** Scaled's 162 extra REF reads were reads the engine never counts.
+- **HG002 bars** (truth v2d): score only inside the benchmark regions; score long deletions on the reads the engine counts; compare homozygous rows with REF.
+- **GATK's read evaluation** (the PairHMM, shared with its `--alleles` mode) is the fair comparator for read rules. Its discovery step, and its decision whether a variant is present, are not.
 
 **How to apply:** package 2 (#304 widened) is this judge. #246's prototype (c45c,
 worktree c38, uncommitted; patch + README in harness plan670/parked_246) was parked for

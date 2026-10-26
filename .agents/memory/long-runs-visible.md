@@ -1,6 +1,6 @@
 ---
 name: long-runs-visible
-description: Launch long harness runs as the tracked background task itself so the operator sees them; nohup only for runs that must outlive the session, then with a waiter on the runner's PID (never a log marker).
+description: Launch long harness runs as the tracked background task itself so the operator sees them; nohup only for runs that must outlive the session, then with a waiter on the runner's PID (never a log marker, never a `pgrep -f` pattern, which matches the waiter itself).
 metadata:
   type: feedback
 ---
@@ -20,7 +20,10 @@ only for a run that must outlive the session, and then pair it with a tracked wa
 on the runner's **process**: `while kill -0 <pid> 2>/dev/null; do sleep 60; done;
 <print the log's summary>`. Never wait on a marker line or file the run writes at its
 end: a run that dies never writes it, and a restart reusing the log name overwrites
-it, so the waiter hangs (twice on #294, 2026-10-19/20). One runner per log name; a run
+it, so the waiter hangs (twice on #294, 2026-10-19/20). Never wait with `pgrep -f
+"<pattern>"` either: the waiter's own command line holds the pattern, so it always finds
+itself (two R2-prototype waiters on `pgrep -f "giab/sv/slices"` ran 36 hours after their run
+ended, 2026-10-23/25). Wait on the PID. One runner per log name; a run
 and its waiter stop together; clear a stopped run's partial outputs before a restart
 (the arm runners skip any output directory that exists). When a run is slow (e.g. full `--trace` on expressed genes), say why and
 switch to a faster method rather than letting it grind. Runs that read a network
