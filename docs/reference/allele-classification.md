@@ -41,9 +41,9 @@ flowchart LR
 !!! info "Allele-Length and Anchor-Base Routing"
     Dispatch uses `ref_allele.len()` and `alt_allele.len()` as the primary selector. For `N×1` variants (deletion format) and `1×N` variants (insertion format), it additionally checks whether the anchor base substitutes (`alt_allele[0] ≠ ref_allele[0]`):
 
-    - **Pure deletion** (`alt[0] == ref[0]`) → `check_deletion` — e.g., `AC→A` where anchor A is preserved
+    - **Pure deletion** (`alt[0] == ref[0]`) → judged by its bases with the [exact-carrier rule](#the-exact-carrier-rule) (RJ-27, since 6.7.0); `check_deletion` only where the rule cannot judge it (no prepared reference, or one without the event's flank) — e.g., `AC→A` where anchor A is preserved
     - **Complex Del+SNV** (`alt[0] ≠ ref[0]`) → the [exact-carrier rule](#the-exact-carrier-rule) — e.g., `GC→T` where anchor G also substitutes to T
-    - **Pure insertion** (`alt[0] == ref[0]`) → `check_insertion` — e.g., `A→AC`
+    - **Pure insertion** (`alt[0] == ref[0]`) → judged by its bases with the exact-carrier rule (RJ-27, since 6.7.0); `check_insertion` only where the rule cannot judge it — e.g., `A→AC`
     - **Complex Ins+SNV** (`alt[0] ≠ ref[0]`) → the exact-carrier rule — e.g., `C→TA`, `A→CCC`. Before 6.6.0 these went to `check_insertion`, which compares only the inserted bases, so reads that keep the anchor counted ALT (on WES, 156 of 463 ALT reads at 10 such loci; #121)
 
     This distinction is critical: the pure-indel CIGAR safeguards cannot correctly classify reads that simultaneously carry the anchor substitution. The exact-carrier rule reads the substituted anchor as part of the allele.
@@ -127,6 +127,17 @@ Bases inserted after an **anchor** position. The anchor is the last reference ba
 | Position | 0-based index of the **anchor** base |
 | Quality check | Quality-masked sequence comparison |
 
+!!! note "Which path judges an insertion"
+    Since 6.7.0 a pure insertion is judged by its bases with the
+    [exact-carrier rule](#the-exact-carrier-rule) (RJ-27). The CIGAR walk below runs only for
+    an insertion the rule cannot judge (no prepared reference, or one without the event's
+    flank). The paths differ on an insert of the ALT's length whose bases are all unreadable
+    (N or below `--min-baseq`):
+
+    - under the exact-carrier rule it is the **ALT**, where no other allele of that length is
+      at the locus (RJ-20, amended 2026-10-15);
+    - on the CIGAR walk it is neither + `partial_alt`.
+
 ### Algorithm
 
 The insertion check uses a **single CIGAR walk** with four detection strategies:
@@ -185,8 +196,10 @@ flowchart LR
     - **Right length, no readable inserted base** (each N or below `--min-baseq`, or the
       insert runs past the read end) — the read carries the insertion's length, not its
       sequence: flag `has_unreadable_insert`, and the read is neither + `partial_alt` unless
-      the variant is also written readably elsewhere in it (RJ-20). Never Phase 3: REF pays
-      for the gap there, so length alone would win ALT.
+      the variant is also written readably elsewhere in it. Never Phase 3: REF pays
+      for the gap there, so length alone would win ALT. This is the CIGAR walk only; the
+      exact-carrier rule, which judges most insertions, counts such an insert inside the
+      window as the ALT where no other allele of that length is at the locus (RJ-20, amended).
 
     See [Wrong-Length Pure Indels](#wrong-length-pure-indels-partial_alt) for the full rule and
     its validation.
@@ -570,7 +583,7 @@ as the annotated event inflated VAF several-fold at such loci.
 | Insertion that is a truncation of the expected insert (≥4bp, ≥90% identity, both sequences non-low-complexity, at least one base readable) | **ALT** (structural) |
 | Any other wrong-length pure indel at the anchor | **Neither + `partial_alt`** |
 | Same-length insertion with confidently mismatching bases | **Neither + `partial_alt`** (third allele) |
-| Same-length insertion with no readable inserted base (each N or below `--min-baseq`), at the anchor or shifted inside the discrimination window | **Neither + `partial_alt`** (RJ-20: the length, not the sequence) |
+| Same-length insertion with no readable inserted base (each N or below `--min-baseq`), at the anchor or shifted inside the discrimination window | On these CIGAR checks, **Neither + `partial_alt`** (the length, not the sequence). Under the exact-carrier rule, which judges most insertions: **ALT** where no other allele of that length is at the locus (RJ-20, amended 2026-10-15) |
 | The same outside the discrimination window | A separate event (RJ-8): **REF** unless the read has another indel in the window |
 | A shifted same-length insertion with a readable base of its own | Judged over every placement it can take as well (RJ-21): **ALT** when one shows the ALT by read bases (at the junction as the strict path would, or the variant's haplotype) or the read's bases spell the ALT across the window; else **neither + `partial_alt`** when a placement sits inside the discrimination window, or a fewest-mismatch placement does with every junction it can reach scored by its readable mismatches (RJ-22: readable mismatches beside the insert block the slide); a separate event (**REF**) when none does |
 | Windowed wrong-length op inside the discrimination window (any of the read's indels there) | **Neither + `partial_alt`** (RJ-7; deletions only when the op is ≥5bp — 1–4bp windowed Ds are alignment noise → plain REF; insertions at any size) |

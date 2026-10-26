@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed — the docs state the unreadable-insert rule as decided (#304)
+
+- **An insert of the ALT's length whose bases are all masked is the ALT**, where no other
+  allele of that length is at the locus. The rule (RJ-20, amended 2026-10-15 in #278,
+  re-confirmed 2026-10-26) is applied by the exact-carrier rule, which judges pure indels by
+  their bases. Several pages still gave the superseded rule, that such a read is neither,
+  counted in `partial_alt`: the register row (amendment at its end),
+  `allele-classification.md` (Dispatch, Insertion, the wrong-length table), the glossary's
+  `has_unreadable_insert`, and the Read Filters line added in #329.
+- **Those pages now lead with the current rule.** They say that the CIGAR checks, which run
+  only for an insertion the exact-carrier rule cannot judge (no prepared reference), still
+  count such a read neither, in `partial_alt`. Counts are unchanged.
+
 ### Fixed — `--min-baseq` help and docs say what it does (#304)
 
 - **`--min-baseq` masks bases, never reads.** The CLI help ("Minimum base quality") and

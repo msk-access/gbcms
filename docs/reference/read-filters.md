@@ -162,9 +162,12 @@ Beyond the read-level filters above, gbcms also applies **base-level quality thr
       positions are skipped and the confident ones decide; a read with every differing
       position masked counts toward depth only.
     - **Insertion/Deletion**: masked bases match any base when the read is compared with
-      each allele. An insertion read with no readable inserted base carries the
-      insertion's length but not its sequence: neither REF nor ALT, counted in
-      `partial_alt` (see [Wrong-Length Pure Indels](allele-classification.md#wrong-length-pure-indels-partial_alt)).
+      each allele. A masked base's identity is unknown, but the base is still there.
+      So an insertion read whose inserted bases are all masked still shows the
+      insertion's length: inside the discrimination window, an insert of the ALT's
+      length is the ALT where no other allele of that length is at the locus (RJ-20 in
+      the [read-judgment register](read-judgment.md)). The CIGAR checks, used only for an
+      insertion without a prepared reference, count it neither, in `partial_alt`.
     - **Complex (exact carriers)**: Bases at or above the threshold must match the allele; every base is also weighed by its quality, and an ALT call needs the read's evidence for ALT over REF to reach at least what one base at the threshold gives (about 2.5 log10 at 20), so a read whose window is mostly low quality cannot be called ALT on one clear base
     - **Complex (Phase 3 SW)**: Low-quality bases are replaced with `N`, which scores 0 against any base
 
