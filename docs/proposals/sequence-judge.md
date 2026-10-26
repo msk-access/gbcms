@@ -52,6 +52,20 @@ For a row X and each admitted read:
   where its aligner also doubts it (XS ≥ AS, or MAPQ 0 with no XS), otherwise its margin
   decides it. `UNEXPLAINED_READS(n/m)` names how many of a row's depth reads fit none. The
   other options measured stay behind `GBCMS_JUDGE_FITS` (measurement only).
+- **The background refinement (measured 2026-10-26, not adopted; `GBCMS_JUDGE_BACKGROUND`,
+  default `asis`):** `respell` leaves out a context item of the guard's background or the
+  found alleles that respells the site's own candidate sequences: one that turns one
+  candidate into another whole (chr5:44868216 A>AT, X with a recurring 1 bp T deletion
+  spelling REF's SNV haplotype), items that together spell one change meeting X
+  (chr16:23024630 TA>AC, a 7 bp deletion and an inserted C spelling a carrier of X with a
+  6 bp deletion beside it), and one that respells only over a read where no reads need it
+  for their call. The guard's masks stay: removing them (`off`) breaks 26 decided-rule
+  contract tests (a masked germline SNP whose haplotype reads as X never counts ALT), and
+  a duplication's carriers cannot be told from such a SNP's at its one telling base. Against
+  its pre-registered bar it kept every class and every contract test but recovered under
+  half of what removing the background gains: none of the gate set's 36 bp insertion rows
+  (INS 20-49 +7.7 points with `off`), 28% of the HG002 insertion reads, 21 of 442 gate
+  wrong calls. It stays behind the switch, off.
 
 Measured (HG002 phased truth, R2): see #304. The prototype is `plan670/r2/hapjudge` (local).
 
