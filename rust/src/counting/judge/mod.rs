@@ -798,6 +798,58 @@ mod tests {
         assert_eq!(calls_backed(&c, &x, &candidates, &reads, Respell), want);
     }
 
+    /// An MNV that moves a G from one G run to the other: REF g5·ccgc·g4, X's ALT
+    /// g4·ccgc·g5 (GCCGC>CCGCG at 0-based 295). A G inserted after X's last base (anchored
+    /// on it) turns REF into g5·ccgc·g5, which is X's ALT with a G more on the left as well:
+    /// one indel each way.
+    fn shifted_mnv() -> (Vec<u8>, Row, Row) {
+        (contig(41, 290, b"TGGGGGCCGCGGGGCAT"), row(296, "GCCGC", "CCGCG"), row(300, "C", "CG"))
+    }
+
+    #[test]
+    fn a_listed_insertion_on_an_mnvs_last_base_that_spells_part_of_it_is_another_allele() {
+        use Call::*;
+        // The insertion's span is its anchor, X's last base: it is at X's site. A read of
+        // REF with it carries one of the two indels X's change is made of, never REF; X's
+        // and REF's own reads keep their calls.
+        let (c, x, ins) = shifted_mnv();
+        let rows = vec![x.clone(), ins.clone()];
+        let (h_ins, h_x) = (haplotype(&c, &[&ins]), haplotype(&c, &[&x]));
+        let reads = vec![
+            read(&h_ins, 250, 100, 250, "50M1I49M"),
+            read(&h_ins, 255, 100, 255, "45M1I54M"),
+            read(&h_x, 250, 100, 250, "100M"),
+            read(&c, 251, 100, 251, "100M"),
+        ];
+        assert_eq!(calls(&c, &rows, &x, &reads), vec![Other, Other, Alt, Ref]);
+        // Its reads make the guard take it as a recurring indel too: the listed state at X's
+        // site is that allele, never also a context beside X.
+        let candidates = Candidates { listed: vec![ins.clone()], background: vec![ins], ..Candidates::default() };
+        let backed = calls_backed(&c, &x, &candidates, &reads, haplotypes::BackgroundRule::AsIs);
+        assert_eq!(backed, vec![Other, Other, Alt, Ref], "listed and the guard's");
+    }
+
+    #[test]
+    #[ignore = "open: the guard's recurring indels keep the move beside X; leaving this one at \
+                X's site also turns background_indels_spelling_a_carrier_together_are_left_out's \
+                carriers from REF (asis) and ALT (respell) to depth, so it waits on that test"]
+    fn a_background_insertion_on_an_mnvs_last_base_that_spells_part_of_it_never_makes_ref() {
+        use haplotypes::BackgroundRule::AsIs;
+        use Call::*;
+        // The same insertion as the guard's recurring indel: at X's site it is no context,
+        // so a read of REF with it ties REF with one G more on the right against X's ALT with
+        // one more on the left (one indel each): depth only.
+        let (c, x, ins) = shifted_mnv();
+        let (h_ins, h_x) = (haplotype(&c, &[&ins]), haplotype(&c, &[&x]));
+        let reads = vec![
+            read(&h_ins, 250, 100, 250, "50M1I49M"),
+            read(&h_x, 250, 100, 250, "100M"),
+            read(&c, 251, 100, 251, "100M"),
+        ];
+        let candidates = Candidates { background: vec![ins], ..Candidates::default() };
+        assert_eq!(calls_backed(&c, &x, &candidates, &reads, AsIs), vec![Depth, Alt, Ref]);
+    }
+
     #[test]
     fn two_reads_writing_an_indel_find_it_within_the_share_of_the_sites_reads() {
         let c = random_seq(600, 17);
