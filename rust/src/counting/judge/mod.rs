@@ -889,6 +889,34 @@ mod tests {
     }
 
     #[test]
+    fn a_listed_snv_inside_a_tandem_duplications_copied_bases_may_lie_on_either_copy() {
+        use Call::*;
+        // X: a 26 bp tandem duplication after 0-based 299, copying 300..326; a listed SNV 13
+        // bases into the copied bases (0-based 313). X's molecules may carry it on either
+        // copy: a read ending 20 bases past the anchor with the SNV's base reads as REF with
+        // it and as X with it on the inserted copy alike, depth only. Reads past the copy
+        // tell them apart.
+        let c = random_seq(600, 71);
+        let unit = c[300..326].to_vec();
+        let x = Row::new(299, &c[299..300], &[&c[299..300], &unit[..]].concat());
+        let alt = if c[313] == b'C' { b'G' } else { b'C' };
+        let snv = Row::new(313, &c[313..314], &[alt]);
+        let mut on_copy = unit.clone();
+        on_copy[13] = alt;
+        let x_copy = Row::new(299, &c[299..300], &[&c[299..300], &on_copy[..]].concat());
+        let (h_snv, h_copy, h_orig) = (haplotype(&c, &[&snv]), haplotype(&c, &[&x_copy]), haplotype(&c, &[&x, &snv]));
+        let reads = vec![
+            read(&h_snv, 220, 100, 220, "100M"),
+            read(&h_copy, 220, 100, 220, "100M"),
+            read(&h_snv, 250, 100, 250, "100M"),
+            read(&h_copy, 250, 100, 250, "50M26I24M"),
+            read(&h_orig, 250, 100, 250, "50M26I24M"),
+            read(&c, 250, 100, 250, "100M"),
+        ];
+        assert_eq!(calls(&c, &[x.clone(), snv], &x, &reads), vec![Depth, Depth, Ref, Alt, Alt, Ref]);
+    }
+
+    #[test]
     fn two_reads_writing_an_indel_find_it_within_the_share_of_the_sites_reads() {
         let c = random_seq(600, 17);
         let base = |p: i64| c.get(p as usize).copied();
