@@ -1011,10 +1011,12 @@ fn agree(a: &[u8], b: &[u8], right: bool) -> usize {
 /// per change row in `rows` and per any-base mask in `masks` (genome positions), whether
 /// with it one of REF and another candidate sequence (X, or another allele at X's site,
 /// `states` with X first) spells the other over a read reaching X's site, where without
-/// it the two differ there. Such an item is the aligner's respelling of the row's allele
-/// (a recurring indel that, with REF, spells an insertion's bases in a repeat; a mask on
-/// a duplication's one telling base), not a change beside the event: as a context it
-/// would tie the reads that tell the candidates apart.
+/// it the two differ there: 2 where it turns one into the other whole (a recurring
+/// indel with which X spells REF's haplotype in a repeat), 1 where only over a read (a
+/// mask on a duplication's one telling base; also a real change beside a repeat, which
+/// only the reads can tell apart: [`Site::build_backed`] asks them), 0 where not. Such an
+/// item is the aligner's respelling of the row's allele, not a change beside the event:
+/// as a context it would tie the reads that tell the candidates apart.
 ///
 /// Reads are taken as placed, of length `l`: one reading in from the left flank tells two
 /// spellings apart once it passes the first base where they differ, so an item that moves
@@ -1032,12 +1034,12 @@ fn respellings<'r>(
     others: &'r [Row],
     rows: &'r [Row],
     masks: &[i64],
-) -> (Vec<bool>, Vec<bool>) {
+) -> (Vec<u8>, Vec<u8>) {
     let st = Stretch { reference, start, lo: (site.0 - l).max(start), hi: (site.1 + l).min(start + reference.len() as i64) };
     let inside = |r: &Row| r.pos >= st.lo && r.end() <= st.hi;
     let meet = |a: &Row, b: &Row| a.pos < b.end() && b.pos < a.end();
     let near = |r: &Row| (r.pos - site.1).max(site.0 - r.end()).max(0);
-    let (mut out_rows, mut out_masks) = (vec![false; rows.len()], vec![false; masks.len()]);
+    let (mut out_rows, mut out_masks) = (vec![0u8; rows.len()], vec![0u8; masks.len()]);
     if !states.iter().all(&inside) {
         return (out_rows, out_masks);
     }
@@ -1066,30 +1068,37 @@ fn respellings<'r>(
             })
             .collect()
     };
-    // Whether `with` reads further into one of `target`'s spellings than `without` does,
+    // How far `with` reads into one of `target`'s spellings past where `without` does,
     // from a first difference at X's site or within a read of it (`target_m`: the target
-    // spelled with the item, where the item is a mask on every spelling).
-    let unmakes = |target: &Spellings, target_m: Option<&Spellings>, without: &Spellings, with: &Spellings| {
-        target.iter().enumerate().any(|(k, (t_rows, t))| {
+    // spelled with the item, where the item is a mask on every spelling): 2 where a `with`
+    // spelling is the target whole (the item turns one candidate into the other), 1
+    // where it reads further over a read only, 0 where it does not.
+    let unmakes = |target: &Spellings, target_m: Option<&Spellings>, without: &Spellings, with: &Spellings| -> u8 {
+        let mut level = 0u8;
+        for (k, (t_rows, t)) in target.iter().enumerate() {
             let tm = target_m.map_or(t, |m| &m[k].1);
             let (ts, te) = (st.at(t_rows, site.0), st.at(t_rows, site.1));
             let n = t.len() as i64;
-            [false, true].into_iter().any(|right| {
+            for right in [false, true] {
                 let (Some(before), Some(after)) = (
                     without.iter().map(|(_, h)| agree(h, t, right) as i64).max(),
                     with.iter().map(|(_, h)| agree(h, tm, right) as i64).max(),
                 ) else {
-                    return false;
+                    continue;
                 };
                 // the first difference reading in from that side, as a position from it
                 let (s0, e0) = if right { (n - te, n - ts) } else { (ts, te) };
-                after > before && before + 1 >= s0 && before < e0 + l - 1
-            })
-        })
+                if after > before && before + 1 >= s0 && before < e0 + l - 1 {
+                    let whole = with.iter().any(|(_, h)| h.len() == tm.len() && agree(h, tm, false) == h.len());
+                    level = level.max(if whole { 2 } else { 1 });
+                }
+            }
+        }
+        level
     };
     for state in states {
         for (i, b) in rows.iter().enumerate() {
-            if out_rows[i] || !inside(b) {
+            if out_rows[i] == 2 || !inside(b) {
                 continue;
             }
             let sets = sets_without(Some(b));
@@ -1098,20 +1107,70 @@ fn respellings<'r>(
             let with_b: Vec<Vec<&'r Row>> = sets.iter().filter(|c| c.iter().all(|r| !meet(r, b))).cloned().collect();
             let ref_b = side(&with_b, None, Some(b), &[]);
             let alt_b = if meet(b, state) { Vec::new() } else { side(&with_b, Some(state), Some(b), &[]) };
-            out_rows[i] = unmakes(&alts, None, &refs, &ref_b) || unmakes(&refs, None, &alts, &alt_b);
+            out_rows[i] = out_rows[i].max(unmakes(&alts, None, &refs, &ref_b)).max(unmakes(&refs, None, &alts, &alt_b));
         }
         let sets = sets_without(None);
         let (refs, alts) = (side(&sets, None, None, &[]), side(&sets, Some(state), None, &[]));
         for (i, &m) in masks.iter().enumerate() {
-            if out_masks[i] || !(st.lo..st.hi).contains(&m) {
+            if out_masks[i] == 2 || !(st.lo..st.hi).contains(&m) {
                 continue;
             }
             // the mask on every spelling: REF's against the candidate's, both masked
             let (refs_m, alts_m) = (side(&sets, None, None, &[m]), side(&sets, Some(state), None, &[m]));
-            out_masks[i] = alts_m.len() == alts.len() && unmakes(&alts, Some(&alts_m), &refs, &refs_m);
+            if alts_m.len() == alts.len() {
+                out_masks[i] = out_masks[i].max(unmakes(&alts, Some(&alts_m), &refs, &refs_m));
+            }
         }
     }
     (out_rows, out_masks)
+}
+
+/// The context rows a site is built without (the respelling check's).
+#[derive(Debug, Clone, Default)]
+struct Dropped {
+    rows: Vec<Row>,
+}
+
+/// Whether a read's aligned span reaches `r`.
+fn reaches(read: &ReadView, r: &Row) -> bool {
+    read.ref_start < r.end() && r.pos < read.ref_end
+}
+
+/// A row as a trace names it.
+fn named(r: &Row) -> String {
+    format!("{}:{}>{}", r.pos + 1, String::from_utf8_lossy(&r.ref_al), String::from_utf8_lossy(&r.alt_al))
+}
+
+/// Reads weighed when asking whether the reads need an item ([`needed_by`]), the first
+/// reaching it.
+const ATTEST_MAX_READS: usize = 400;
+
+/// Whether the reads reaching `item` need it: on [`FOUND_MIN_READS`] of them and
+/// [`GUARD_REF_SHARE`], a read the site's candidate sequences call REF or ALT with it
+/// (`kept`) gets another call without it (`without`). An item no read needs for its call
+/// (a germline deletion beside the row does: its reads keep their call only with it)
+/// explains none of their differences.
+fn needed_by(kept: &Site, without: &Site, reads: &[ReadView], item: &Row) -> bool {
+    let near: Vec<&ReadView> = reads.iter().filter(|r| reaches(r, item)).take(ATTEST_MAX_READS).collect();
+    let mut ws = Workspace::default();
+    let mut call = |site: &Site, read: &ReadView| {
+        let gr = site.graph_read(read);
+        let mut best: [Option<i32>; 3] = [None; 3];
+        for g in &site.graphs {
+            let s = graph::decided(&ShortReads, &gr, &g.graph, &mut ws).0;
+            let b = &mut best[g.class as usize];
+            *b = Some(b.map_or(s, |v| v.max(s)));
+        }
+        super::decide::decide(best)
+    };
+    let need = near
+        .iter()
+        .filter(|r| {
+            let with = call(kept, r);
+            matches!(with, super::decide::Call::Alt | super::decide::Call::Ref) && call(without, r) != with
+        })
+        .count();
+    need as u32 >= FOUND_MIN_READS && need as f64 >= GUARD_REF_SHARE * near.len() as f64
 }
 
 /// Context items (the guard's background, the found contexts) weighed together when
@@ -1448,11 +1507,28 @@ impl Site {
         scorer: ScorerKind,
         target: Row,
         candidates: &Candidates,
+        window: (i64, Vec<u8>),
+        reads: &[ReadView],
+        rule: FoundRule,
+        sources: ContextSources,
+        bg_rule: BackgroundRule,
+    ) -> Option<Site> {
+        Site::build_core(scorer, target, candidates, window, reads, rule, sources, bg_rule, None)
+    }
+
+    /// [`Site::build_backed`], the context items in `dropped` left out where given (the
+    /// respelling check's own builds).
+    #[allow(clippy::too_many_arguments)]
+    fn build_core(
+        scorer: ScorerKind,
+        target: Row,
+        candidates: &Candidates,
         (start, reference): (i64, Vec<u8>),
         reads: &[ReadView],
         rule: FoundRule,
         sources: ContextSources,
         bg_rule: BackgroundRule,
+        dropped: Option<&Dropped>,
     ) -> Option<Site> {
         let wn = reference.len() as i64;
         let holds = |r: &Row| {
@@ -1618,25 +1694,64 @@ impl Site {
             _ => candidates.background.iter().map(beside).filter(|r| !meets(&target, r)).collect(),
         };
         let nb = background.len();
-        let (respelt, respelt_masks) =
-            if bg_rule == BackgroundRule::Respell && !(background.is_empty() && found_contexts.is_empty() && candidates.masked.is_empty()) {
+        let items: Vec<Row> = background.iter().chain(&found_contexts).cloned().collect();
+        let drop: Dropped = match dropped {
+            Some(d) => d.clone(),
+            None if bg_rule == BackgroundRule::Respell && !(items.is_empty() && candidates.masked.is_empty()) => {
                 let l = reads.iter().map(|r| r.len() as i64).max().unwrap_or(0);
                 let (s0, e0) = x_site(&target, start, &reference, place(&target));
                 let all_states: Vec<Row> = std::iter::once(target.clone()).chain(states.iter().cloned()).collect();
-                let items: Vec<Row> = background.iter().chain(&found_contexts).cloned().collect();
                 let listed: Vec<Row> = contexts.iter().filter(|r| !found_contexts.contains(r)).cloned().collect();
                 let site = (s0 + start, e0 + start);
-                let (mut rows, masks) = respellings(&reference, start, site, l, &all_states, &listed, &items, &candidates.masked);
+                // The guard's masks stay whatever they spell: a masked germline SNP whose
+                // haplotype reads as X over a short read never counts ALT (decided), and its
+                // reads cannot be told from a duplication's carriers at its one telling base.
+                let (mut rows, _) = respellings(&reference, start, site, l, &all_states, &listed, &items, &[]);
                 // Items that together, with REF, spell one change meeting X (a carrier's
                 // event the aligner wrote as indels on either side of X): an allele at X's
                 // site, never contexts.
                 for (i, joined) in joined_at_site(&reference, start, site, l, &items, |r| meets(&target, r)).into_iter().enumerate() {
-                    rows[i] |= joined;
+                    if joined {
+                        rows[i] = 2;
+                    }
                 }
-                (rows, masks)
-            } else {
-                (vec![false; nb + found_contexts.len()], vec![false; candidates.masked.len()])
-            };
+                // A whole respelling is left out; one over a read only where no reads need
+                // it: an item the reads attest (a real change beside a repeat, a germline
+                // SNP whose haplotype reads as X over a short read) explains them.
+                let whole = Dropped { rows: items.iter().zip(&rows).filter(|(_, &k)| k == 2).map(|(r, _)| r.clone()).collect() };
+                let partial: Vec<&Row> = items.iter().zip(&rows).filter(|(_, &k)| k == 1).map(|(r, _)| r).collect();
+                if partial.is_empty() || scorer != ScorerKind::Graph {
+                    whole
+                } else {
+                    let build = |d: &Dropped| {
+                        Site::build_core(scorer, target.clone(), candidates, (start, reference.clone()), reads, rule, sources, bg_rule, Some(d))
+                    };
+                    match build(&whole) {
+                        None => whole,
+                        Some(kept) => {
+                            let mut out = whole.clone();
+                            for item in partial {
+                                let mut d = whole.clone();
+                                d.rows.push(item.clone());
+                                let attested = build(&d).is_some_and(|without| needed_by(&kept, &without, reads, item));
+                                log::debug!(
+                                    "haplotype judge {}: {} respells a candidate sequence over a read; {}",
+                                    named(&target),
+                                    named(item),
+                                    if attested { "the reads need it, kept" } else { "no reads need it, left out" },
+                                );
+                                if !attested {
+                                    out.rows.push(item.clone());
+                                }
+                            }
+                            out
+                        }
+                    }
+                }
+            }
+            None => Dropped::default(),
+        };
+        let respelt: Vec<bool> = items.iter().map(|r| drop.rows.contains(r)).collect();
         let left_out = |r: &Row, whose: &str| {
             log::debug!(
                 "haplotype judge {}:{}>{}: {whose} {}:{}>{} respells a candidate sequence; left out",
@@ -1659,7 +1774,7 @@ impl Site {
         }
         let kept_masks: Vec<i64> = match bg_rule {
             BackgroundRule::Off => Vec::new(),
-            _ => candidates.masked.iter().zip(&respelt_masks).filter(|(_, &r)| !r).map(|(&m, _)| m).collect(),
+            _ => candidates.masked.clone(),
         };
         // A state of a substitution X's site that keeps the length may also change bases
         // beside X's (an allele spelled over a window, a listed MNV reaching past X): each
@@ -3457,12 +3572,12 @@ pub(crate) mod tests {
         let near_snv = Row::new(298, &c[298..299], b"G");
         let site = |x: &Row| (x.pos - 12, x.end() + 20);
         let (rows, masks) = respellings(&c, 0, site(&x), 100, std::slice::from_ref(&x), &listed, &[deletion, far, near_snv], &[]);
-        assert_eq!(rows, vec![true, false, false], "only the deletion respells");
+        assert_eq!(rows, vec![2, 0, 0], "only the deletion respells, turning X into REF's SNV haplotype whole");
         assert!(masks.is_empty());
         let (c, x, telling) = respelt_duplication();
         let site = (x.pos - 1, x.pos + 17);
         let (_, masks) = respellings(&c, 0, site, 100, std::slice::from_ref(&x), &[], &[], &[telling, 250, 330]);
-        assert_eq!(masks, vec![true, false, false], "only the mask on the telling base");
+        assert_eq!(masks, vec![1, 0, 0], "only the mask on the telling base, over a read");
     }
 
     #[test]

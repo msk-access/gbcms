@@ -758,18 +758,39 @@ mod tests {
     }
 
     #[test]
-    fn a_mask_on_a_duplications_one_telling_base_is_left_out() {
+    fn a_mask_on_a_duplications_one_telling_base_stays() {
         use haplotypes::BackgroundRule::{AsIs, Respell};
         use Call::*;
         // A 36 bp duplication differing from the bases it copies at one base, which the
         // guard masks (FLT3 ITD, gate set): a carrier ending 25 bases into it reads as REF
-        // with the base masked, so it ties. Left out, that base tells it: ALT.
+        // with the base masked, so it ties. The refinement keeps the mask: its reads cannot
+        // be told from a germline SNP's whose haplotype reads as the insertion over a short
+        // read, which never counts ALT (decided).
         let (c, x, telling) = haplotypes::tests::respelt_duplication();
         let h = haplotype(&c, &[&x]);
         let reads = vec![read(&h, 226, 100, 226, "100M"), read(&c, 226, 100, 226, "100M")];
         let candidates = Candidates { masked: vec![telling], ..Candidates::default() };
         assert_eq!(calls_backed(&c, &x, &candidates, &reads, AsIs), vec![Depth, Ref]);
-        assert_eq!(calls_backed(&c, &x, &candidates, &reads, Respell), vec![Alt, Ref]);
+        assert_eq!(calls_backed(&c, &x, &candidates, &reads, Respell), vec![Depth, Ref]);
+    }
+
+    #[test]
+    fn a_germline_change_the_reads_need_stays_though_it_respells_over_a_read() {
+        use haplotypes::BackgroundRule::{AsIs, Respell};
+        use Call::*;
+        // #278's shape: X deletes one G of GGG before eight Cs; every molecule carries a
+        // germline C at the run's last G (the guard's background). With REF it reads as X
+        // over a read ending in the Cs, but the REF molecules need it: without it they are
+        // depth only. Kept, they are REF.
+        let c = contig(91, 296, b"ACAGCGGGCCCCCCCCAGGG");
+        let x = Row::new(300, b"CG", b"C");
+        let germ = Row::new(303, b"G", b"C");
+        let h = haplotype(&c, &[&germ]);
+        let reads: Vec<ReadView> = (0..20).map(|i| read(&h, 240 + i, 100, 240 + i as i64, "100M")).collect();
+        let candidates = Candidates { background: vec![germ], ..Candidates::default() };
+        let want = vec![Ref; 20];
+        assert_eq!(calls_backed(&c, &x, &candidates, &reads, AsIs), want);
+        assert_eq!(calls_backed(&c, &x, &candidates, &reads, Respell), want);
     }
 
     #[test]
