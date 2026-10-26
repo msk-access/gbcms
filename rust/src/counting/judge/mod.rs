@@ -976,6 +976,24 @@ mod tests {
     }
 
     #[test]
+    fn a_read_ending_inside_two_insertions_that_differ_at_their_end_is_neither_rows_alt() {
+        use Call::*;
+        // Two insertions after 0-based 299 whose 12 inserted bases differ only at the last:
+        // a read ending inside the inserted bases fits both and never reads X's insertion
+        // whole, so it is X's or the other's alike, never X's ALT.
+        let c = random_seq(600, 73);
+        let ins: Vec<u8> = random_seq(12, 79);
+        let mut other_ins = ins.clone();
+        other_ins[11] = if ins[11] == b'A' { b'C' } else { b'A' };
+        let x = Row::new(299, &c[299..300], &[&c[299..300], &ins[..]].concat());
+        let y = Row::new(299, &c[299..300], &[&c[299..300], &other_ins[..]].concat());
+        let h_y = haplotype(&c, &[&y]);
+        let reads = vec![read(&h_y, 210, 100, 210, "90M10I")];
+        let got = calls(&c, &[x.clone(), y], &x, &reads);
+        assert_ne!(got, vec![Alt], "a read ending inside both insertions");
+    }
+
+    #[test]
     fn two_reads_writing_an_indel_find_it_within_the_share_of_the_sites_reads() {
         let c = random_seq(600, 17);
         let base = |p: i64| c.get(p as usize).copied();

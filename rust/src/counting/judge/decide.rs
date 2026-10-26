@@ -467,14 +467,15 @@ fn conclude<'h>(
             }
         }
     }
-    // Likewise a tie of X with another allele, REF beaten, is evidence of that allele only
-    // where the read reaches the bases that tell it from X: short of them (a carrier of X
-    // inside the bases an allele repeating those before X shares with X), where it reads
-    // every base X changes as X's, the read shows X and nothing of the other allele. One
-    // short of X's own bases (an SNV's read ending inside an MNV holding it) stays another
-    // allele.
+    // Likewise, at a substitution X, a tie of X with another allele, REF beaten, is evidence
+    // of that allele only where the read reaches the bases that tell it from X: short of them
+    // (a carrier of X inside the bases an allele repeating those before X shares with X),
+    // where it reads every base X changes as X's, the read shows X and nothing of the other
+    // allele. One short of X's own bases (an SNV's read ending inside an MNV holding it)
+    // stays another allele, as does a read ending inside two insertions that differ only
+    // past it: it never reads X whole.
     let mut alt_by_reach = false;
-    if call == Call::Other && tied_with(scores) == Some(Class::Alt as usize) {
+    if call == Call::Other && site.is_substitution() && tied_with(scores) == Some(Class::Alt as usize) {
         if let (Some((_, k)), Some((_, x))) = (best[Class::Other as usize], best[Class::Alt as usize]) {
             if !site.reaches_state_from(read, &hap(k), true) {
                 let xh = hap(x);
