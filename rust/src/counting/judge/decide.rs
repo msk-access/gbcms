@@ -195,6 +195,9 @@ pub(crate) fn delins_option() -> DelinsOption {
 ///   somewhere nearby better than in any state here.
 /// - `xspure`: the aligner places the read elsewhere at least as well, whatever its score;
 ///   decided from the tags before any programme runs.
+/// - `xsscaled[:R]`: depth only where both `xs` and `scaled:R` would make it so: the aligner
+///   doubts the read and its best score is below both [`FITS_NOTHING`] and R confident
+///   mismatches per 100 confident read bases. Every read either rule judges is judged.
 ///
 /// With `GBCMS_JUDGE_FITS_MEASURE=1`, every read whose best score is below a confident
 /// base also gets its neighbourhood fit computed, for the trace.
@@ -206,6 +209,7 @@ pub(crate) enum FitsRule {
     Relative(i32),
     Xs,
     XsPure,
+    XsScaled(f64),
 }
 
 /// The `scaled` option's rate where none is given: confident mismatches per 100 confident
@@ -226,6 +230,7 @@ fn parse_fits(v: &str) -> FitsRule {
         "relative" => FitsRule::Relative(arg.and_then(|a| a.parse().ok()).unwrap_or(DELTA)),
         "exact" => FitsRule::Exact,
         "xspure" => FitsRule::XsPure,
+        "xsscaled" => FitsRule::XsScaled(arg.and_then(|a| a.parse().ok()).unwrap_or(SCALED_RATE)),
         _ => FitsRule::Xs,
     }
 }
@@ -248,10 +253,7 @@ fn fits_nothing(rule: FitsRule, site: &Site, read: &ReadView, top: i32) -> (bool
     let fired = match rule {
         FitsRule::Exact => top < FITS_NOTHING,
         FitsRule::Off => false,
-        FitsRule::Scaled(rate) => {
-            let budget = (rate * read.confident() as f64 / 100.0).ceil() as i32;
-            top < budget * crate::counting::judge::score::MISMATCH
-        }
+        FitsRule::Scaled(rate) => top < scaled_floor(rate, read),
         FitsRule::Relative(margin) => {
             // a neighbourhood fit is at most 0, so a read within the margin of 0 is kept
             if top >= -margin {
@@ -263,8 +265,16 @@ fn fits_nothing(rule: FitsRule, site: &Site, read: &ReadView, top: i32) -> (bool
         }
         FitsRule::Xs => top < FITS_NOTHING && read.tags.fits_elsewhere(),
         FitsRule::XsPure => read.tags.fits_elsewhere(),
+        FitsRule::XsScaled(rate) => top < FITS_NOTHING && top < scaled_floor(rate, read) && read.tags.fits_elsewhere(),
     };
     (fired, measured)
+}
+
+/// The `scaled` option's floor for `read`: `rate` confident mismatches per 100 of its
+/// confident bases, rounded up.
+fn scaled_floor(rate: f64, read: &ReadView) -> i32 {
+    let budget = (rate * read.confident() as f64 / 100.0).ceil() as i32;
+    budget * crate::counting::judge::score::MISMATCH
 }
 
 /// The class whose best beats every other class's best by [`DELTA`]; else, where
@@ -934,6 +944,43 @@ mod tests {
         // No XS written: MAPQ 0 stands for the aligner's doubt.
         let no_xs = AlnTags { mapq: 0, best: Some(52), elsewhere: None, nm: Some(13) };
         assert_eq!(got(&noisy, no_xs), (Call::Depth, true));
+    }
+
+    #[test]
+    fn the_xs_and_scaled_option_is_depth_only_where_both_rules_would_make_it_so() {
+        use crate::counting::judge::haplotypes::AlnTags;
+        // GBCMS_JUDGE_FITS=xsscaled:R (measurement only): a read is depth only where the
+        // aligner doubts it (xs) and its misfit passes both ten confident mismatches and R
+        // per 100 confident bases (scaled). Twelve mismatches on a 100-base read pass ten
+        // but not 14 per 100: judged by its bases. Sixteen pass both: depth only where
+        // doubted, judged where the aligner places it here alone.
+        assert_eq!(parse_fits("xsscaled:14"), FitsRule::XsScaled(14.0));
+        assert_eq!(parse_fits("xsscaled"), FitsRule::XsScaled(SCALED_RATE));
+        let c = random_seq(600, 29);
+        let other = |b: u8| if b == b'A' { b'C' } else { b'A' };
+        let x = row(301, &(c[300] as char).to_string(), &(other(c[300]) as char).to_string());
+        let h = applied(&c, &x);
+        let s = site(&c, &x, &[], 100);
+        let noisy = |n: usize| {
+            let mut r = h[250..350].to_vec();
+            for i in (0..100).step_by(6).filter(|&i| i != 50).take(n) {
+                r[i] = other(r[i]);
+            }
+            r
+        };
+        let view = |seq: &[u8], tags: AlnTags| ReadView::new(seq, &[30; 100], 250, &[Cigar::Match(100)], (0, 100), 20).unwrap().tagged(tags);
+        let doubted = AlnTags { mapq: 0, best: Some(40), elsewhere: Some(40), nm: Some(16) };
+        let sure = AlnTags { mapq: 60, best: Some(40), elsewhere: Some(10), nm: Some(16) };
+        let fired = |rule: FitsRule, seq: &[u8], tags: AlnTags| {
+            let read = view(seq, tags);
+            let top = judge(&s, &read, 20, false).best.iter().flatten().copied().max().unwrap();
+            fits_nothing(rule, &s, &read, top).0
+        };
+        let both = FitsRule::XsScaled(14.0);
+        assert!(fired(FitsRule::Xs, &noisy(12), doubted), "xs: past ten mismatches, doubted");
+        assert!(!fired(both, &noisy(12), doubted), "within 14 per 100: judged");
+        assert!(fired(both, &noisy(16), doubted), "past both, doubted: depth only");
+        assert!(!fired(both, &noisy(16), sure), "placed here alone: judged");
     }
 
     #[test]
