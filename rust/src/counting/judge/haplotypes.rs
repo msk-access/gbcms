@@ -911,6 +911,252 @@ fn row_between(w: &[u8], h: &[u8], start: i64) -> Option<Row> {
     Some(Row::new(start + s as i64, &w[s..we], &h[s..he]))
 }
 
+/// Measurement only, TEMPORARY: which of the guard's background (its recurring changes,
+/// any-base masks and recurring indels beside the event) the judge keeps as contexts
+/// (`GBCMS_JUDGE_BACKGROUND`): `asis` (all of it, the default), `respell` (all but the
+/// items that respell the site's own candidate sequences, [`respellings`]) or `off`
+/// (none, the found alleles kept). Read when a site is built.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum BackgroundRule {
+    AsIs,
+    Respell,
+    Off,
+}
+
+pub(crate) fn background_rule() -> BackgroundRule {
+    static RULE: std::sync::OnceLock<BackgroundRule> = std::sync::OnceLock::new();
+    *RULE.get_or_init(|| {
+        let v = std::env::var("GBCMS_JUDGE_BACKGROUND").unwrap_or_default();
+        parse_background(&v).unwrap_or_else(|| {
+            log::warn!("GBCMS_JUDGE_BACKGROUND={v:?} is not asis, respell or off; the background is kept as it is");
+            BackgroundRule::AsIs
+        })
+    })
+}
+
+fn parse_background(v: &str) -> Option<BackgroundRule> {
+    match v {
+        "asis" | "" => Some(BackgroundRule::AsIs),
+        "respell" => Some(BackgroundRule::Respell),
+        "off" => Some(BackgroundRule::Off),
+        _ => None,
+    }
+}
+
+/// Context rows nearest X's site, every set of them weighed on each side, when asking
+/// whether a background item respells a candidate sequence ([`respellings`]).
+const RESPELL_MAX_ROWS: usize = 5;
+
+/// The stretch of the window a read over X's site can reach (genome `[lo, hi)`), spelled
+/// with rows applied.
+struct Stretch<'a> {
+    reference: &'a [u8],
+    start: i64,
+    lo: i64,
+    hi: i64,
+}
+
+impl Stretch<'_> {
+    /// The stretch with `rows` applied (none meeting another, each inside it) and `wild`
+    /// taking any base where no applied row covers it; None otherwise.
+    fn spell(&self, rows: &[&Row], wild: &[i64]) -> Option<Vec<u8>> {
+        let mut order: Vec<&Row> = rows.to_vec();
+        order.sort_by_key(|r| (r.pos, r.end()));
+        if order.iter().any(|r| r.pos < self.lo || r.end() > self.hi) || order.windows(2).any(|w| w[0].end() > w[1].pos) {
+            return None;
+        }
+        let at = |p: i64| (p - self.start) as usize;
+        let mut seq = self.reference[at(self.lo)..at(self.hi)].to_vec();
+        for &m in wild {
+            if (self.lo..self.hi).contains(&m) && !order.iter().any(|r| r.pos <= m && m < r.end()) {
+                seq[(m - self.lo) as usize] = WILD;
+            }
+        }
+        for r in order.iter().rev() {
+            seq.splice((r.pos - self.lo) as usize..(r.end() - self.lo) as usize, r.alt_al.iter().copied());
+        }
+        Some(seq)
+    }
+
+    /// Genome position `p` in the stretch spelled with `rows`: past each row ending at or
+    /// before it by the row's length change (one inside a row at the row's start).
+    fn at(&self, rows: &[&Row], p: i64) -> i64 {
+        let mut q = p - self.lo;
+        for r in rows {
+            if r.end() <= p {
+                q += r.alt_al.len() as i64 - r.ref_al.len() as i64;
+            } else if r.pos < p {
+                q -= p - r.pos;
+            }
+        }
+        q
+    }
+}
+
+/// Spellings of the stretch: the rows applied to each, and its bases.
+type Spellings<'r> = Vec<(Vec<&'r Row>, Vec<u8>)>;
+
+/// How far two spellings agree from their left (or, `right`, their right) end, a
+/// [`WILD`] base on either side matching any.
+fn agree(a: &[u8], b: &[u8], right: bool) -> usize {
+    let eq = |(x, y): (&u8, &u8)| x == y || *x == WILD || *y == WILD;
+    if right {
+        a.iter().rev().zip(b.iter().rev()).take_while(|&p| eq(p)).count()
+    } else {
+        a.iter().zip(b.iter()).take_while(|&p| eq(p)).count()
+    }
+}
+
+/// Which of the guard's background items respell the site's own candidate sequences:
+/// per change row in `rows` and per any-base mask in `masks` (genome positions), whether
+/// with it one of REF and another candidate sequence (X, or another allele at X's site,
+/// `states` with X first) spells the other over a read reaching X's site, where without
+/// it the two differ there. Such an item is the aligner's respelling of the row's allele
+/// (a recurring indel that, with REF, spells an insertion's bases in a repeat; a mask on
+/// a duplication's one telling base), not a change beside the event: as a context it
+/// would tie the reads that tell the candidates apart.
+///
+/// Reads are taken as placed, of length `l`: one reading in from the left flank tells two
+/// spellings apart once it passes the first base where they differ, so an item that moves
+/// that base on, where it lies at X's site or within a read of it, unmakes the telling
+/// (and from the right flank alike). Contexts are the other rows (`others`, the
+/// [`RESPELL_MAX_ROWS`] nearest X's site), every set of them that can lie together, on
+/// either side, so a read's other differences are explained as the judge would.
+#[allow(clippy::too_many_arguments)]
+fn respellings<'r>(
+    reference: &[u8],
+    start: i64,
+    site: (i64, i64),
+    l: i64,
+    states: &'r [Row],
+    others: &'r [Row],
+    rows: &'r [Row],
+    masks: &[i64],
+) -> (Vec<bool>, Vec<bool>) {
+    let st = Stretch { reference, start, lo: (site.0 - l).max(start), hi: (site.1 + l).min(start + reference.len() as i64) };
+    let inside = |r: &Row| r.pos >= st.lo && r.end() <= st.hi;
+    let meet = |a: &Row, b: &Row| a.pos < b.end() && b.pos < a.end();
+    let near = |r: &Row| (r.pos - site.1).max(site.0 - r.end()).max(0);
+    let (mut out_rows, mut out_masks) = (vec![false; rows.len()], vec![false; masks.len()]);
+    if !states.iter().all(&inside) {
+        return (out_rows, out_masks);
+    }
+    // The context pool: the other rows and the background, each once, nearest first.
+    let mut all: Vec<&'r Row> = Vec::new();
+    for r in others.iter().chain(rows).filter(|r| inside(r)) {
+        if !all.contains(&r) {
+            all.push(r);
+        }
+    }
+    all.sort_by_key(|r| (near(r), r.pos));
+    // Every set of the pool (the item weighed left out) that can lie together.
+    let sets_without = |item: Option<&Row>| -> Vec<Vec<&'r Row>> {
+        let pool: Vec<&'r Row> = all.iter().copied().filter(|r| item.is_none_or(|b| *r != b)).take(RESPELL_MAX_ROWS).collect();
+        (0u32..1 << pool.len())
+            .map(|m| (0..pool.len()).filter(|i| m >> i & 1 == 1).map(|i| pool[i]).collect::<Vec<_>>())
+            .filter(|c| c.iter().enumerate().all(|(i, a)| c[i + 1..].iter().all(|b| !meet(a, b))))
+            .collect()
+    };
+    // A side's spellings: (its rows, the stretch spelled) for each set it can lie with.
+    let side = |sets: &[Vec<&'r Row>], state: Option<&'r Row>, item: Option<&'r Row>, wild: &[i64]| -> Spellings<'r> {
+        sets.iter()
+            .filter_map(|c| {
+                let rows: Vec<&Row> = state.into_iter().chain(item).chain(c.iter().copied()).collect();
+                st.spell(&rows, wild).map(|h| (rows, h))
+            })
+            .collect()
+    };
+    // Whether `with` reads further into one of `target`'s spellings than `without` does,
+    // from a first difference at X's site or within a read of it (`target_m`: the target
+    // spelled with the item, where the item is a mask on every spelling).
+    let unmakes = |target: &Spellings, target_m: Option<&Spellings>, without: &Spellings, with: &Spellings| {
+        target.iter().enumerate().any(|(k, (t_rows, t))| {
+            let tm = target_m.map_or(t, |m| &m[k].1);
+            let (ts, te) = (st.at(t_rows, site.0), st.at(t_rows, site.1));
+            let n = t.len() as i64;
+            [false, true].into_iter().any(|right| {
+                let (Some(before), Some(after)) = (
+                    without.iter().map(|(_, h)| agree(h, t, right) as i64).max(),
+                    with.iter().map(|(_, h)| agree(h, tm, right) as i64).max(),
+                ) else {
+                    return false;
+                };
+                // the first difference reading in from that side, as a position from it
+                let (s0, e0) = if right { (n - te, n - ts) } else { (ts, te) };
+                after > before && before + 1 >= s0 && before < e0 + l - 1
+            })
+        })
+    };
+    for state in states {
+        for (i, b) in rows.iter().enumerate() {
+            if out_rows[i] || !inside(b) {
+                continue;
+            }
+            let sets = sets_without(Some(b));
+            let (refs, alts) = (side(&sets, None, None, &[]), side(&sets, Some(state), None, &[]));
+            // REF with the item spells the candidate, or the candidate with it spells REF.
+            let with_b: Vec<Vec<&'r Row>> = sets.iter().filter(|c| c.iter().all(|r| !meet(r, b))).cloned().collect();
+            let ref_b = side(&with_b, None, Some(b), &[]);
+            let alt_b = if meet(b, state) { Vec::new() } else { side(&with_b, Some(state), Some(b), &[]) };
+            out_rows[i] = unmakes(&alts, None, &refs, &ref_b) || unmakes(&refs, None, &alts, &alt_b);
+        }
+        let sets = sets_without(None);
+        let (refs, alts) = (side(&sets, None, None, &[]), side(&sets, Some(state), None, &[]));
+        for (i, &m) in masks.iter().enumerate() {
+            if out_masks[i] || !(st.lo..st.hi).contains(&m) {
+                continue;
+            }
+            // the mask on every spelling: REF's against the candidate's, both masked
+            let (refs_m, alts_m) = (side(&sets, None, None, &[m]), side(&sets, Some(state), None, &[m]));
+            out_masks[i] = alts_m.len() == alts.len() && unmakes(&alts, Some(&alts_m), &refs, &refs_m);
+        }
+    }
+    (out_rows, out_masks)
+}
+
+/// Context items (the guard's background, the found contexts) weighed together when
+/// asking whether a set of them spells one change at X's site ([`joined_at_site`]).
+const JOINED_MAX_ROWS: usize = 6;
+
+/// Per item of `items` (context rows none of which meets X alone), whether it belongs to a
+/// set of them that, applied to REF together, spells one change (the minimal row between
+/// REF and that spelling) that `meets_x`, the set's every item needed for it: a carrier's
+/// event the aligner wrote as two indels on either side of X (chr16:23024630 TA>AC, HG002:
+/// a 7 bp deletion and an inserted C spelling X with a 6 bp deletion beside it). Such a
+/// set is an allele at X's site, not context: with REF it would spell the carrier.
+/// Weighed over the [`JOINED_MAX_ROWS`] items nearest X's `site` within a read (`l`) of it.
+fn joined_at_site(reference: &[u8], start: i64, site: (i64, i64), l: i64, items: &[Row], meets_x: impl Fn(&Row) -> bool) -> Vec<bool> {
+    let mut out = vec![false; items.len()];
+    let near = |r: &Row| (r.pos - site.1).max(site.0 - r.end()).max(0);
+    let mut idx: Vec<usize> = (0..items.len()).filter(|&i| near(&items[i]) <= l).collect();
+    idx.sort_by_key(|&i| (near(&items[i]), items[i].pos));
+    idx.dedup_by(|a, b| items[*a] == items[*b]);
+    idx.truncate(JOINED_MAX_ROWS);
+    if idx.len() < 2 {
+        return out;
+    }
+    let whole = Stretch { reference, start, lo: start, hi: start + reference.len() as i64 };
+    let n = idx.len();
+    // Per set (bitmask over `idx`), whether REF with it spells one change meeting X.
+    let mut at_site = vec![false; 1 << n];
+    for m in 1usize..1 << n {
+        let set: Vec<&Row> = (0..n).filter(|k| m >> k & 1 == 1).map(|k| &items[idx[k]]).collect();
+        if set.len() < 2 {
+            continue;
+        }
+        let Some(spelled) = whole.spell(&set, &[]) else { continue };
+        at_site[m] = row_between(reference, &spelled, start).is_some_and(|r| meets_x(&r));
+        // every item needed: no set of one fewer does it already
+        let minimal = (0..n).filter(|k| m >> k & 1 == 1).all(|k| !at_site[m & !(1 << k)]);
+        if at_site[m] && minimal {
+            for k in (0..n).filter(|k| m >> k & 1 == 1) {
+                out[idx[k]] = true;
+            }
+        }
+    }
+    out
+}
+
 /// The bases a row's alleles differ at, as offsets into REF and into ALT: past the
 /// bases they share at the start, then at the end. Empty on one side for a pure
 /// insertion or deletion.
@@ -1188,10 +1434,25 @@ impl Site {
         scorer: ScorerKind,
         target: Row,
         candidates: &Candidates,
+        window: (i64, Vec<u8>),
+        reads: &[ReadView],
+        rule: FoundRule,
+        sources: ContextSources,
+    ) -> Option<Site> {
+        Site::build_backed(scorer, target, candidates, window, reads, rule, sources, background_rule())
+    }
+
+    /// [`Site::build_sourced`] with the guard's background kept by `bg_rule`.
+    #[allow(clippy::too_many_arguments)]
+    pub(crate) fn build_backed(
+        scorer: ScorerKind,
+        target: Row,
+        candidates: &Candidates,
         (start, reference): (i64, Vec<u8>),
         reads: &[ReadView],
         rule: FoundRule,
         sources: ContextSources,
+        bg_rule: BackgroundRule,
     ) -> Option<Site> {
         let wn = reference.len() as i64;
         let holds = |r: &Row| {
@@ -1292,6 +1553,8 @@ impl Site {
                 take(&Row::new(target.pos, &target.ref_al, &[b]), true);
             }
         }
+        // The contexts the reads' own alleles supply (the found source), each once.
+        let mut found_contexts: Vec<Row> = Vec::new();
         // An allele the guard found, spelled over a window: a state where the bases it
         // changes meet X's site, else a change beside X (RJ-8: another indel outside the
         // window is a separate event), a context.
@@ -1303,8 +1566,8 @@ impl Site {
             let spelled = [&reference[..s0], &r.alt_al[..], &reference[e0..]].concat();
             match row_between(&reference, &spelled, start) {
                 Some(minimal) if !meets(&target, &minimal) || in_deleted(&minimal) => {
-                    if sources.found() {
-                        take(&minimal, false);
+                    if sources.found() && take(&minimal, false) {
+                        found_contexts.push(minimal);
                     }
                 }
                 _ => {
@@ -1329,8 +1592,8 @@ impl Site {
                 // a state.
                 if let Some(beside_x) = split_beside(&target, &r) {
                     for c in beside_x {
-                        if !meets(&target, &c) && sources.found() {
-                            take(&c, false);
+                        if !meets(&target, &c) && sources.found() && take(&c, false) {
+                            found_contexts.push(c);
                         }
                     }
                     continue;
@@ -1345,12 +1608,59 @@ impl Site {
             }
         }
         // A background change at X's place cannot share a haplotype with X: crossed with
-        // REF alone it would favour REF, so it is left to the reads' bases there.
-        if sources.background() {
-            for r in candidates.background.iter().map(beside).filter(|r| !meets(&target, r)) {
-                take(&r, false);
+        // REF alone it would favour REF, so it is left to the reads' bases there. Under
+        // `GBCMS_JUDGE_BACKGROUND=respell` an item of the guard's background or of the found
+        // contexts that respells the site's own candidate sequences ([`respellings`]) is
+        // left out, change or mask.
+        let bg_rule = if sources.background() { bg_rule } else { BackgroundRule::Off };
+        let background: Vec<Row> = match bg_rule {
+            BackgroundRule::Off => Vec::new(),
+            _ => candidates.background.iter().map(beside).filter(|r| !meets(&target, r)).collect(),
+        };
+        let nb = background.len();
+        let (respelt, respelt_masks) =
+            if bg_rule == BackgroundRule::Respell && !(background.is_empty() && found_contexts.is_empty() && candidates.masked.is_empty()) {
+                let l = reads.iter().map(|r| r.len() as i64).max().unwrap_or(0);
+                let (s0, e0) = x_site(&target, start, &reference, place(&target));
+                let all_states: Vec<Row> = std::iter::once(target.clone()).chain(states.iter().cloned()).collect();
+                let items: Vec<Row> = background.iter().chain(&found_contexts).cloned().collect();
+                let listed: Vec<Row> = contexts.iter().filter(|r| !found_contexts.contains(r)).cloned().collect();
+                let site = (s0 + start, e0 + start);
+                let (mut rows, masks) = respellings(&reference, start, site, l, &all_states, &listed, &items, &candidates.masked);
+                // Items that together, with REF, spell one change meeting X (a carrier's
+                // event the aligner wrote as indels on either side of X): an allele at X's
+                // site, never contexts.
+                for (i, joined) in joined_at_site(&reference, start, site, l, &items, |r| meets(&target, r)).into_iter().enumerate() {
+                    rows[i] |= joined;
+                }
+                (rows, masks)
+            } else {
+                (vec![false; nb + found_contexts.len()], vec![false; candidates.masked.len()])
+            };
+        let left_out = |r: &Row, whose: &str| {
+            log::debug!(
+                "haplotype judge {}:{}>{}: {whose} {}:{}>{} respells a candidate sequence; left out",
+                target.pos + 1, String::from_utf8_lossy(&target.ref_al), String::from_utf8_lossy(&target.alt_al),
+                r.pos + 1, String::from_utf8_lossy(&r.ref_al), String::from_utf8_lossy(&r.alt_al),
+            );
+        };
+        for (r, &respells) in found_contexts.iter().zip(&respelt[nb..]) {
+            if respells {
+                left_out(r, "the found allele");
+                contexts.retain(|c| c != r);
             }
         }
+        for (r, &respells) in background.into_iter().zip(&respelt[..nb]) {
+            if respells {
+                left_out(&r, "the guard's");
+            } else if holds(&r) && seen.insert(r.clone()) {
+                contexts.push(r);
+            }
+        }
+        let kept_masks: Vec<i64> = match bg_rule {
+            BackgroundRule::Off => Vec::new(),
+            _ => candidates.masked.iter().zip(&respelt_masks).filter(|(_, &r)| !r).map(|(&m, _)| m).collect(),
+        };
         // A state of a substitution X's site that keeps the length may also change bases
         // beside X's (an allele spelled over a window, a listed MNV reaching past X): each
         // such change is a separate event, so it is also a context of every state, and a
@@ -1457,8 +1767,7 @@ impl Site {
                 (r.pos - start + on_ref.start as i64, r.pos - start + on_ref.end as i64)
             })
             .collect();
-        let masks: &[i64] = if sources.background() { &candidates.masked } else { &[] };
-        let mut masked: Vec<i64> = masks
+        let mut masked: Vec<i64> = kept_masks
             .iter()
             .map(|&p| p - start)
             .filter(|&m| m >= 0 && m < wn && !changed.iter().any(|&(s, e)| s <= m && m < e))
@@ -3088,6 +3397,72 @@ pub(crate) mod tests {
         assert_eq!(parse_contexts(""), Some(All));
         assert_eq!(parse_contexts("nofound"), Some(NoFound));
         assert_eq!(parse_contexts("Seq"), None);
+    }
+
+    /// The chr5:44868216 A>AT shape (#246 arm, HG002): an insertion of T in an A run
+    /// beside a T, with homozygous SNVs at the bases before and two after it and a listed
+    /// SNV A>T on the next base. 0-based: A x12 at 290..302, T 302, A 303, A 304, T 305,
+    /// A x13 at 306..319, T 319.
+    pub(crate) fn respelt_insertion() -> (Vec<u8>, Row, Vec<Row>, Row) {
+        let c = contig(43, 290, b"AAAAAAAAAAAATAATAAAAAAAAAAAAAT");
+        let x = Row::new(303, b"A", b"AT");
+        let listed = vec![Row::new(302, b"T", b"A"), Row::new(304, b"A", b"T"), Row::new(305, b"T", b"A")];
+        // The guard's recurring 1 bp T deletion at 305: X with it spells the SNV haplotype.
+        let deletion = Row::new(304, b"AT", b"A");
+        (c, x, listed, deletion)
+    }
+
+    /// The FLT3-ITD shape (gate set): a 36 bp insertion after 0-based 300 copying the next
+    /// 36 bases but one (offset 15), whose base the guard masks: REF with that base masked
+    /// spells the insertion's first 36 bases.
+    pub(crate) fn respelt_duplication() -> (Vec<u8>, Row, i64) {
+        let c = random_seq(600, 61);
+        let mut copy = c[301..337].to_vec();
+        copy[15] = if copy[15] == b'A' { b'C' } else { b'A' };
+        let x = Row::new(300, &c[300..301], &[&c[300..301], &copy[..]].concat());
+        (c, x, 316)
+    }
+
+    /// The chr16:23024630 TA>AC shape (HG002, the clip audit): its carriers hold X with a
+    /// 6 bp deletion beside it, which the reads write as a 7 bp deletion and a C inserted
+    /// after X. 0-based, from 290: ATTGTAGTTT, X's TA at 299, ACTTGCATTT.
+    pub(crate) fn split_carrier() -> (Vec<u8>, Row, Row, [Row; 2]) {
+        let c = contig(47, 290, b"ATTGTAGTTTAACTTGCATTT");
+        let x = Row::new(299, b"TA", b"AC");
+        let carrier = Row::new(293, b"GTAGTTTA", b"AC");
+        (c, x, carrier, [Row::new(290, b"ATTGTAGT", b"A"), Row::new(300, b"A", b"AC")])
+    }
+
+    #[test]
+    fn items_spelling_one_change_at_xs_site_together_are_found() {
+        let (c, x, _, [deletion, raw]) = split_carrier();
+        // the insertion as the site takes it, anchored past X's last base
+        let insertion = Row::new(301, b"A", &[b"C", &c[301..302]].concat());
+        assert_eq!((raw.pos, &raw.alt_al[..]), (300, &b"AC"[..]));
+        assert_eq!(insertion.alt_al, b"CA");
+        let far = Row::new(420, &c[420..421], if c[420] == b'A' { b"C" } else { b"A" });
+        let meets_x = |r: &Row| r.pos < x.end() && x.pos < r.end();
+        let got = joined_at_site(&c, 0, (x.pos, x.end()), 100, &[deletion.clone(), insertion.clone(), far.clone()], meets_x);
+        assert_eq!(got, vec![true, true, false], "the deletion and the insertion spell X's carrier together");
+        // alone, neither does
+        assert_eq!(joined_at_site(&c, 0, (x.pos, x.end()), 100, &[deletion, far], meets_x), vec![false, false]);
+    }
+
+    #[test]
+    fn a_background_item_respelling_a_candidate_sequence_is_found() {
+        // A recurring deletion with which X spells REF's SNV haplotype; a mask on the one
+        // base telling a duplication from the bases it copies.
+        let (c, x, listed, deletion) = respelt_insertion();
+        let far = Row::new(420, &c[420..421], if c[420] == b'A' { b"C" } else { b"A" });
+        let near_snv = Row::new(298, &c[298..299], b"G");
+        let site = |x: &Row| (x.pos - 12, x.end() + 20);
+        let (rows, masks) = respellings(&c, 0, site(&x), 100, std::slice::from_ref(&x), &listed, &[deletion, far, near_snv], &[]);
+        assert_eq!(rows, vec![true, false, false], "only the deletion respells");
+        assert!(masks.is_empty());
+        let (c, x, telling) = respelt_duplication();
+        let site = (x.pos - 1, x.pos + 17);
+        let (_, masks) = respellings(&c, 0, site, 100, std::slice::from_ref(&x), &[], &[], &[telling, 250, 330]);
+        assert_eq!(masks, vec![true, false, false], "only the mask on the telling base");
     }
 
     #[test]

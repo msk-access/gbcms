@@ -700,6 +700,78 @@ mod tests {
         assert_eq!(spells, vec![1, 0, 0, 0], "only the read showing the MNV's second base spells it");
     }
 
+    /// Calls on `x`'s site with the guard's background kept by `bg`.
+    fn calls_backed(contig: &[u8], x: &Row, candidates: &Candidates, reads: &[ReadView], bg: haplotypes::BackgroundRule) -> Vec<Call> {
+        let s = Site::build_backed(
+            ScorerKind::Graph,
+            x.clone(),
+            candidates,
+            (0, contig.to_vec()),
+            reads,
+            haplotypes::other_option().rule,
+            haplotypes::ContextSources::All,
+            bg,
+        )
+        .unwrap();
+        reads.iter().map(|r| judge(&s, r, MIN_BQ, false).call).collect()
+    }
+
+    #[test]
+    fn a_background_change_respelling_the_rows_allele_is_left_out() {
+        use haplotypes::BackgroundRule::{AsIs, Respell};
+        use Call::*;
+        // chr5:44868216 A>AT (#246 arm): with the guard's recurring T deletion two bases on
+        // as a context, X spells the SNV haplotype (REF at X's row) exactly, so its reads
+        // tie between X and REF. Left out, they are REF; the insertion's carriers stay ALT.
+        let (c, x, listed, deletion) = haplotypes::tests::respelt_insertion();
+        let h_snv = haplotype(&c, &[&listed[0], &listed[1], &listed[2]]);
+        let h_ins = haplotype(&c, &[&listed[0], &x, &listed[2]]);
+        let reads = vec![
+            read(&h_snv, 250, 100, 250, "100M"),
+            read(&h_snv, 256, 100, 256, "100M"),
+            read(&h_ins, 250, 100, 250, "54M1I45M"),
+            read(&h_ins, 257, 100, 257, "47M1I52M"),
+        ];
+        let candidates = Candidates { listed, background: vec![deletion], ..Candidates::default() };
+        assert_eq!(calls_backed(&c, &x, &candidates, &reads, AsIs), vec![Depth, Depth, Alt, Alt]);
+        assert_eq!(calls_backed(&c, &x, &candidates, &reads, Respell), vec![Ref, Ref, Alt, Alt]);
+    }
+
+    #[test]
+    fn background_indels_spelling_a_carrier_together_are_left_out() {
+        use haplotypes::BackgroundRule::{AsIs, Respell};
+        use Call::*;
+        // chr16:23024630 TA>AC (HG002): the carriers hold X with a 6 bp deletion beside
+        // it, written as the guard's recurring 7 bp deletion and an inserted C. REF with
+        // both spells a carrier exactly, so it scores REF. Left out, the carriers are X's
+        // (X with a phased deletion beside it); REF's reads stay REF.
+        let (c, x, carrier, background) = haplotypes::tests::split_carrier();
+        let h = haplotype(&c, &[&carrier]);
+        let reads = vec![
+            read(&h, 240, 100, 240, "53M6D47M"),
+            read(&h, 246, 100, 246, "47M6D53M"),
+            read(&c, 241, 100, 241, "100M"),
+        ];
+        let candidates = Candidates { background: background.to_vec(), ..Candidates::default() };
+        assert_eq!(calls_backed(&c, &x, &candidates, &reads, AsIs), vec![Ref, Ref, Ref]);
+        assert_eq!(calls_backed(&c, &x, &candidates, &reads, Respell), vec![Alt, Alt, Ref]);
+    }
+
+    #[test]
+    fn a_mask_on_a_duplications_one_telling_base_is_left_out() {
+        use haplotypes::BackgroundRule::{AsIs, Respell};
+        use Call::*;
+        // A 36 bp duplication differing from the bases it copies at one base, which the
+        // guard masks (FLT3 ITD, gate set): a carrier ending 25 bases into it reads as REF
+        // with the base masked, so it ties. Left out, that base tells it: ALT.
+        let (c, x, telling) = haplotypes::tests::respelt_duplication();
+        let h = haplotype(&c, &[&x]);
+        let reads = vec![read(&h, 226, 100, 226, "100M"), read(&c, 226, 100, 226, "100M")];
+        let candidates = Candidates { masked: vec![telling], ..Candidates::default() };
+        assert_eq!(calls_backed(&c, &x, &candidates, &reads, AsIs), vec![Depth, Ref]);
+        assert_eq!(calls_backed(&c, &x, &candidates, &reads, Respell), vec![Alt, Ref]);
+    }
+
     #[test]
     fn two_reads_writing_an_indel_find_it_within_the_share_of_the_sites_reads() {
         let c = random_seq(600, 17);
