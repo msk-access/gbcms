@@ -1957,42 +1957,7 @@ impl Site {
             let mut seen = given.clone();
             rows.into_iter().filter(|r| seen.insert(spelled(r))).collect()
         };
-        let (mut states, mut contexts) = (distinct(states), distinct(contexts));
-        // A pure insertion copying the bases after its anchor (a tandem duplication) with a
-        // listed substitution among the copied bases: on the reference the change sits once,
-        // but X's molecules may carry it on either copy, as the copy's place slides over
-        // them. X with the change on its inserted copy is X's change too, a state of X's
-        // class: a read ending inside the copy with the change's base reads as it and as
-        // REF with the change alike.
-        let mut on_copy: Vec<Row> = Vec::new();
-        if pure(&target) && target.alt_al.len() > target.ref_al.len() {
-            let (a, k0) = (target.pos, target.ref_al.len());
-            let copy = &target.alt_al[k0..];
-            let first = a + k0 as i64;
-            let (_, hi) = run(&target);
-            for c in candidates.listed.iter().map(beside) {
-                let fits = !c.changes_length()
-                    && contexts.contains(&c)
-                    && c.pos >= first
-                    && c.end() <= first + copy.len() as i64
-                    && c.end() <= hi;
-                if !fits {
-                    continue;
-                }
-                let off = (c.pos - first) as usize;
-                if copy[off..off + c.ref_al.len()] != c.ref_al[..] {
-                    continue;
-                }
-                let mut changed = copy.to_vec();
-                changed[off..off + c.alt_al.len()].copy_from_slice(&c.alt_al);
-                let r = Row::new(a, &target.ref_al, &[&target.ref_al[..], &changed[..]].concat());
-                if holds(&r) && !states.contains(&r) && !on_copy.contains(&r) {
-                    on_copy.push(r);
-                }
-            }
-        }
-        states.extend(on_copy.iter().cloned());
-        states.sort();
+        let (states, mut contexts) = (distinct(states), distinct(contexts));
         // A pure length change whose run X lies inside sits on the reference at either end
         // of it alike, but beside X they are two molecules: the other end's placement joins
         // the contexts (at one place with the row, so never with it), where it can lie with X.
@@ -2039,12 +2004,12 @@ impl Site {
             rows.iter()
                 .enumerate()
                 .map(|(r, row)| {
-                    let same_length = !x.changes_length()
+                    (1..=n_states).contains(&r)
+                        && !x.changes_length()
                         && !row.changes_length()
                         && row.pos <= x.pos
                         && row.end() >= x.end()
-                        && on_ref.clone().all(|k| row.alt_al[(x.pos + k as i64 - row.pos) as usize] == x.alt_al[k]);
-                    (1..=n_states).contains(&r) && (same_length || on_copy.contains(row))
+                        && on_ref.clone().all(|k| row.alt_al[(x.pos + k as i64 - row.pos) as usize] == x.alt_al[k])
                 })
                 .collect()
         };
