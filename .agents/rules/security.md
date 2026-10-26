@@ -39,6 +39,15 @@ model's habits and loses under load). The deterministic floor lives in
   `scripts/regression_panel/checkpoints.tsv` (commit SHAs and PR labels), only in
   `checkpoints.py`'s shape and with no identifier in it (step 1a).
 
+## Tool output leaves the machine
+- Everything a tool prints, for the session and every agent, is sent to the model
+  provider as part of the conversation. Patient test slices may be worked on, never
+  used downstream; report aggregates and allele shapes, never sample IDs or read names.
+- **cBioPortal study files never enter tool output.** Use the fixed summary script
+  (schema and counts, small counts hidden) or a script whose every output stream goes to
+  a file in a protected directory; protected paths live in `~/.claude/protected-paths.txt`,
+  outside the repo. (Enforced: `.claude/hooks/protect-cbioportal.py`.)
+
 ## Outward-facing actions
 - **Ask before public.** The default destination for any artifact is private. A
   public host, a deploy, a published file — each needs explicit, per-artifact
