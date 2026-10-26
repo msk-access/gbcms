@@ -407,10 +407,6 @@ pub(crate) struct Site {
     /// an allele of the same length over X's bases with X's bases there, such as an MNV
     /// listed beside its component SNV). Its haplotypes are X's ALT (decided 2026-10-25).
     holds_x: Vec<bool>,
-    /// Per row, for a state holding X's change that changes the length (a found allele
-    /// spelling an indel beside X through X's bases), the offset of X's first base in its
-    /// ALT bases.
-    x_in_holder: Vec<Option<usize>>,
     /// Window-relative REF spans of `rows`, and the spans their equivalent placements
     /// cover (a length change's; any other row's REF span).
     spans: Vec<(i64, i64)>,
@@ -671,10 +667,6 @@ const EDGE: i64 = 1;
 /// A long deletion's deleted bases, past its microhomology, that a read over its anchor
 /// reads to tell REF from it (RJ-24's REF window: four clean bases of the deleted bases).
 const JUNCTION_WINDOW: i64 = 4;
-
-/// Reference bases each side of an allele spelled when weighing whether it lies nearer X's
-/// haplotype than REF's.
-const HOLD_FLANK: usize = 10;
 
 /// Read bases in a row reading the reference that end an allele the read spells.
 const SPELL_STOP: usize = 3;
@@ -1300,18 +1292,10 @@ impl Site {
     /// length (a state holding X's change), the base at its offset there; else as
     /// [`Hap::to_hap`] maps it.
     fn column_in(&self, hap: &Hap, p: i64) -> i64 {
-        for &(rs, re, hs, he) in hap.segs.iter().filter(|&&(rs, re, _, _)| rs <= p && p < re) {
-            if he - hs == re - rs {
-                return hs + (p - rs);
-            }
-            // a holder changing the length: X's bases where its ALT holds them
-            let xs = self.spans[0].0;
-            let held = hap.rows.iter().find(|&&r| self.spans[r] == (rs, re)).and_then(|&r| self.x_in_holder[r]);
-            if let Some(k) = held.filter(|_| p >= xs) {
-                return hs + k as i64 + (p - xs);
-            }
-        }
-        hap.to_hap(p, false)
+        hap.segs
+            .iter()
+            .find(|&&(rs, re, hs, he)| rs <= p && p < re && he - hs == re - rs)
+            .map_or_else(|| hap.to_hap(p, false), |&(rs, _, hs, _)| hs + (p - rs))
     }
 
     /// The haplotype positions, with their bases, where `hap` tells X from REF at X's
@@ -1400,7 +1384,7 @@ impl Site {
             .filter(|&r| self.holds_x[r])
             .take(32)
             .enumerate()
-            .filter(|&(_, r)| !self.rows[r].changes_length() && spells(r))
+            .filter(|&(_, r)| spells(r))
             .fold(0u32, |m, (k, _)| m | 1 << k)
     }
 
@@ -1736,12 +1720,10 @@ impl Site {
             moved.unwrap_or_else(|| r.clone())
         };
         let beside = |r: &Row| placed(r, true);
-        let mut listed_states: Vec<Row> = Vec::new();
         for r in candidates.listed.iter().map(beside) {
             let state = meets(&target, &r) && !in_deleted(&r);
-            let taken = (state || sources.listed()) && take(&r, state);
-            if taken && state {
-                listed_states.push(r);
+            if state || sources.listed() {
+                take(&r, state);
             }
         }
         if target.ref_al.len() == 1 && target.alt_al.len() == 1 {
@@ -1801,72 +1783,6 @@ impl Site {
                 }
                 if take(&r, true) {
                     found_states.push((r, by));
-                }
-            }
-        }
-        // A listed or found allele changing the length over a substitution X's bases holds X's
-        // change where its ALT, placed from the end beside X (the length change all on its
-        // other side), reads X's bases there and its sequence lies nearer X's haplotype than
-        // REF's (a listed delins with X's change at its end, the reads' spelling of an indel
-        // through X's bases), and, for a found one, the reads writing it read X's bases at X
-        // by their own alignment: X with an indel and changes beside it on its molecule, X's
-        // ALT, as a listed MNV holding X's change is (containment), never another allele.
-        let mut held_at: Vec<(Row, usize)> = Vec::new();
-        if !target.changes_length() {
-            let xl = target.ref_al.len();
-            let changed: Vec<(i64, u8)> =
-                (0..xl).filter(|&i| target.ref_al[i] != target.alt_al[i]).map(|i| (target.pos + i as i64, target.alt_al[i])).collect();
-            let reads_x = |r: &Row, k: usize| {
-                k + xl <= r.alt_al.len() && (0..xl).all(|i| target.ref_al[i] == target.alt_al[i] || r.alt_al[k + i] == target.alt_al[i])
-            };
-            let offset = |r: &Row| -> Option<usize> {
-                let left = (target.pos - r.pos) as usize;
-                let tail = (r.end() - target.end()) as usize;
-                let from_left = (left + xl <= r.alt_al.len() && r.alt_al[..left] == r.ref_al[..left]).then_some(left);
-                let (na, nr) = (r.alt_al.len(), r.ref_al.len());
-                let from_right = (na >= tail + xl && r.alt_al[na - tail..] == r.ref_al[nr - tail..]).then(|| na - tail - xl);
-                match (from_left.filter(|&k| reads_x(r, k)), from_right.filter(|&k| reads_x(r, k))) {
-                    (Some(a), Some(b)) => (a == b).then_some(a),
-                    (a, b) => a.or(b),
-                }
-            };
-            // The allele's sequence with HOLD_FLANK bases each side, scored whole against X's
-            // haplotype and REF's over the window: nearer X's by the judge's own costs.
-            let x_hap: Vec<u8> = {
-                let (s0, e0) = ((target.pos - start) as usize, (target.end() - start) as usize);
-                [&reference[..s0], &target.alt_al[..], &reference[e0..]].concat()
-            };
-            let nearer_x = |r: &Row| {
-                let (s0, e0) = ((r.pos - start) as usize, (r.end() - start) as usize);
-                let (a, b) = (s0.saturating_sub(HOLD_FLANK), (e0 + HOLD_FLANK).min(reference.len()));
-                let own = [&reference[a..s0], &r.alt_al[..], &reference[e0..b]].concat();
-                super::score::full_score(&own, &x_hap) > super::score::full_score(&own, &reference)
-            };
-            let writers_read_x = |by: &[usize]| {
-                let (mut seen, mut carry) = (0usize, 0usize);
-                for read in by.iter().filter_map(|&i| reads.get(i)) {
-                    let at: Vec<Option<u8>> = changed
-                        .iter()
-                        .map(|&(p, _)| (0..read.seq.len()).find(|&q| read.aligned[q] && read.refpos[q] == p).map(|q| read.seq[q]))
-                        .collect();
-                    if at.iter().any(|b| b.is_none_or(|b| b == WILD)) {
-                        continue;
-                    }
-                    seen += 1;
-                    if at.iter().zip(&changed).all(|(b, &(_, alt))| *b == Some(alt)) {
-                        carry += 1;
-                    }
-                }
-                seen > 0 && 2 * carry > seen
-            };
-            let found_by = |r: &Row| found_states.iter().find(|(f, _)| f == r).map(|(_, by)| *by);
-            for r in listed_states.iter().chain(found_states.iter().map(|(f, _)| f)) {
-                if !r.changes_length() || r.pos > target.pos || r.end() < target.end() || held_at.iter().any(|(h, _)| h == r) {
-                    continue;
-                }
-                let writers_ok = found_by(r).is_none_or(writers_read_x) || listed_states.contains(r);
-                if let Some(k) = offset(r).filter(|_| writers_ok && nearer_x(r)) {
-                    held_at.push((r.clone(), k));
                 }
             }
         }
@@ -2120,16 +2036,10 @@ impl Site {
                         && row.pos <= x.pos
                         && row.end() >= x.end()
                         && on_ref.clone().all(|k| row.alt_al[(x.pos + k as i64 - row.pos) as usize] == x.alt_al[k]);
-                    let held = held_at.iter().any(|(h, _)| h == row);
-                    (1..=n_states).contains(&r) && (same_length || on_copy.contains(row) || held)
+                    (1..=n_states).contains(&r) && (same_length || on_copy.contains(row))
                 })
                 .collect()
         };
-        let x_in_holder: Vec<Option<usize>> = rows
-            .iter()
-            .enumerate()
-            .map(|(r, row)| held_at.iter().find(|(h, _)| h == row).filter(|_| holds_x[r]).map(|&(_, k)| k))
-            .collect();
         let spans: Vec<(i64, i64)> = rows.iter().map(|r| (r.pos - start, r.end() - start)).collect();
         let places = rows.iter().map(place).map(|(s, e)| (s - start, e - start)).collect();
         let max_shift = rows.iter().map(|r| r.ref_al.len().abs_diff(r.alt_al.len()) as i64).sum();
@@ -2172,7 +2082,6 @@ impl Site {
             rows,
             n_states,
             holds_x,
-            x_in_holder,
             spans,
             places,
             max_shift,
@@ -3332,10 +3241,6 @@ impl Site {
                 continue;
             };
             let Some(k) = self.graphs.iter().position(|g| g.row == Some(o)) else { continue };
-            // a holder of X's change is X's, whether or not the reads tell it from X
-            if self.graphs[k].class == Class::Alt {
-                continue;
-            }
             let mut told = 0usize;
             let rest = (0..reads.len()).filter(|i| by.binary_search(i).is_err());
             for read in by.iter().copied().chain(rest).filter_map(|i| reads.get(i)) {
