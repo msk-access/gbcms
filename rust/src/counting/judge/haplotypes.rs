@@ -113,6 +113,30 @@ pub(crate) struct ReadView {
     aligned: Vec<bool>,
     /// The read's name (its fragment), empty where not given.
     pub(crate) name: Vec<u8>,
+    /// Its aligner's own evidence on where it belongs, for the "fits nothing" rule.
+    pub(crate) tags: AlnTags,
+}
+
+/// What a read's aligner wrote about its placement: MAPQ, the AS and XS tags (the best
+/// alignment's score and the best score elsewhere, BWA-MEM's scale) and NM. None where
+/// the record carries no such tag.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub(crate) struct AlnTags {
+    pub(crate) mapq: u8,
+    pub(crate) best: Option<i64>,
+    pub(crate) elsewhere: Option<i64>,
+    pub(crate) nm: Option<i64>,
+}
+
+impl AlnTags {
+    /// Whether the aligner places the read elsewhere at least as well as here (XS at
+    /// least AS); where it wrote no XS, whether it gave the read MAPQ 0.
+    pub(crate) fn fits_elsewhere(&self) -> bool {
+        match (self.best, self.elsewhere) {
+            (Some(a), Some(x)) => x >= a,
+            _ => self.mapq == 0,
+        }
+    }
 }
 
 impl ReadView {
@@ -197,13 +221,39 @@ impl ReadView {
             indels,
             aligned: aligned[first..after].to_vec(),
             name: Vec::new(),
+            tags: AlnTags::default(),
         })
+    }
+
+    /// Measurement only: the readable bases its own alignment leaves unplaced at
+    /// each end (its soft clips there), leading and trailing.
+    pub(crate) fn clipped_ends(&self) -> (usize, usize) {
+        let lead = self.aligned.iter().take_while(|&&a| !a).count();
+        let tail = if lead == self.aligned.len() { 0 } else { self.aligned.iter().rev().take_while(|&&a| !a).count() };
+        (lead, tail)
     }
 
     /// The view with the read's name (its fragment).
     pub(crate) fn named(mut self, name: &[u8]) -> Self {
         self.name = name.to_vec();
         self
+    }
+
+    /// The view with its aligner's placement evidence.
+    pub(crate) fn tagged(mut self, tags: AlnTags) -> Self {
+        self.tags = tags;
+        self
+    }
+
+    /// Its bases read confidently (not masked).
+    pub(crate) fn confident(&self) -> usize {
+        self.seq.iter().filter(|&&b| b != WILD).count()
+    }
+
+    /// The confident mismatches its base qualities lead one to expect: the sum of each
+    /// confident base's error probability.
+    pub(crate) fn expected_errors(&self) -> f64 {
+        self.seq.iter().zip(&self.quals).filter(|(&b, _)| b != WILD).map(|(_, &q)| 10f64.powf(-f64::from(q) / 10.0)).sum()
     }
 
     /// The allele the read's own bases spell at each indel its alignment writes: from the
@@ -267,6 +317,11 @@ pub(crate) struct Hap {
 }
 
 impl Hap {
+    /// Measurement only: the haplotype's base at column `c` (a masked base is WILD).
+    pub(crate) fn base(&self, c: usize) -> u8 {
+        self.seq.get(c).copied().unwrap_or(WILD)
+    }
+
     fn build(site: &Site, rows: &[usize]) -> Hap {
         let mut order: Vec<usize> = rows.to_vec();
         order.sort_by_key(|&r| site.spans[r].0);
@@ -546,6 +601,61 @@ fn parse_other(v: &str) -> OtherOption {
     let found = numbered("found");
     let found_min = found.filter(|&k| k > 0).map_or(FOUND_MIN_READS, |k| k as u32);
     OtherOption { runs: on("runs"), found: found.is_some(), fit: on("fit"), rule, edges: on("edges"), found_min }
+}
+
+/// Measurement only, TEMPORARY: which sources of context explain a read's *other*
+/// differences, so they don't pass for X's allele (`GBCMS_JUDGE_CONTEXTS`). The site's
+/// states are the same under every level: REF, X, the listed rows over X's site, an SNV's
+/// other bases, and the guard's and the found alleles at X's site. Each level adds one
+/// source to the one before it:
+/// - `seq`: no context; the candidate sequences differ only at X's site.
+/// - `listed`: the listed rows in reach beside X's site, as bubbles.
+/// - `nofound`: and the guard's recurring background: its changes, its any-base masks and
+///   its recurring indels.
+/// - `all` (the default): and the alleles the reads spell away from X's site: the guard's
+///   other alleles that change bases beside the site only, and a found allele's changes
+///   beside a substitution X.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
+pub(crate) enum ContextSources {
+    Seq,
+    Listed,
+    NoFound,
+    All,
+}
+
+impl ContextSources {
+    fn listed(self) -> bool {
+        self >= ContextSources::Listed
+    }
+
+    fn background(self) -> bool {
+        self >= ContextSources::NoFound
+    }
+
+    fn found(self) -> bool {
+        self == ContextSources::All
+    }
+}
+
+pub(crate) fn context_sources() -> ContextSources {
+    static SOURCES: std::sync::OnceLock<ContextSources> = std::sync::OnceLock::new();
+    *SOURCES.get_or_init(|| {
+        let v = std::env::var("GBCMS_JUDGE_CONTEXTS").unwrap_or_default();
+        parse_contexts(&v).unwrap_or_else(|| {
+            log::warn!("GBCMS_JUDGE_CONTEXTS={v:?} is not seq, listed, nofound or all; every context source is used");
+            ContextSources::All
+        })
+    })
+}
+
+fn parse_contexts(v: &str) -> Option<ContextSources> {
+    match v {
+        "seq" => Some(ContextSources::Seq),
+        "listed" => Some(ContextSources::Listed),
+        "nofound" => Some(ContextSources::NoFound),
+        "all" | "" => Some(ContextSources::All),
+        _ => None,
+    }
 }
 
 /// An event's own bases from which an indel inside them, away from its ends, is a change
@@ -929,6 +1039,12 @@ impl Site {
         (self.site_window.0 + self.start, self.site_window.1 + self.start)
     }
 
+    /// The read's best fit anywhere on the window's reference (every row's REF, no
+    /// context), whole read, ends free: its fit to the local reference neighbourhood.
+    pub(crate) fn neighbourhood_fit(&self, read: &ReadView) -> i32 {
+        super::score::full_score(&read.seq, &self.reference)
+    }
+
     /// The columns of `hap` inside a long event's own bases, more than [`EDGE`] from
     /// either end: X's inserted (or substituted) bases on a haplotype carrying X, its
     /// deleted (or substituted) REF bases on one holding REF's, where they number
@@ -1060,9 +1176,22 @@ impl Site {
         scorer: ScorerKind,
         target: Row,
         candidates: &Candidates,
+        window: (i64, Vec<u8>),
+        reads: &[ReadView],
+        rule: FoundRule,
+    ) -> Option<Site> {
+        Site::build_sourced(scorer, target, candidates, window, reads, rule, context_sources())
+    }
+
+    /// [`Site::build_ruled`] with the context sources named.
+    fn build_sourced(
+        scorer: ScorerKind,
+        target: Row,
+        candidates: &Candidates,
         (start, reference): (i64, Vec<u8>),
         reads: &[ReadView],
         rule: FoundRule,
+        sources: ContextSources,
     ) -> Option<Site> {
         let wn = reference.len() as i64;
         let holds = |r: &Row| {
@@ -1152,7 +1281,10 @@ impl Site {
             moved.unwrap_or_else(|| r.clone())
         };
         for r in candidates.listed.iter().map(beside) {
-            take(&r, meets(&target, &r) && !in_deleted(&r));
+            let state = meets(&target, &r) && !in_deleted(&r);
+            if state || sources.listed() {
+                take(&r, state);
+            }
         }
         if target.ref_al.len() == 1 && target.alt_al.len() == 1 {
             // An SNV's site holds every base (a third base is another allele).
@@ -1170,9 +1302,15 @@ impl Site {
             }
             let spelled = [&reference[..s0], &r.alt_al[..], &reference[e0..]].concat();
             match row_between(&reference, &spelled, start) {
-                Some(minimal) if !meets(&target, &minimal) || in_deleted(&minimal) => take(&minimal, false),
-                _ => take(r, true),
-            };
+                Some(minimal) if !meets(&target, &minimal) || in_deleted(&minimal) => {
+                    if sources.found() {
+                        take(&minimal, false);
+                    }
+                }
+                _ => {
+                    take(r, true);
+                }
+            }
         }
         // Another length of X's repeat, and an indel the reads write recurringly at X's
         // site: other alleles, which explain their reads as neither REF nor X.
@@ -1191,7 +1329,7 @@ impl Site {
                 // a state.
                 if let Some(beside_x) = split_beside(&target, &r) {
                     for c in beside_x {
-                        if !meets(&target, &c) {
+                        if !meets(&target, &c) && sources.found() {
                             take(&c, false);
                         }
                     }
@@ -1208,8 +1346,10 @@ impl Site {
         }
         // A background change at X's place cannot share a haplotype with X: crossed with
         // REF alone it would favour REF, so it is left to the reads' bases there.
-        for r in candidates.background.iter().map(beside).filter(|r| !meets(&target, r)) {
-            take(&r, false);
+        if sources.background() {
+            for r in candidates.background.iter().map(beside).filter(|r| !meets(&target, r)) {
+                take(&r, false);
+            }
         }
         // A state of a substitution X's site that keeps the length may also change bases
         // beside X's (an allele spelled over a window, a listed MNV reaching past X): each
@@ -1317,8 +1457,8 @@ impl Site {
                 (r.pos - start + on_ref.start as i64, r.pos - start + on_ref.end as i64)
             })
             .collect();
-        let mut masked: Vec<i64> = candidates
-            .masked
+        let masks: &[i64] = if sources.background() { &candidates.masked } else { &[] };
+        let mut masked: Vec<i64> = masks
             .iter()
             .map(|&p| p - start)
             .filter(|&m| m >= 0 && m < wn && !changed.iter().any(|&(s, e)| s <= m && m < e))
@@ -2910,6 +3050,44 @@ pub(crate) mod tests {
         assert_eq!((o.found, o.rule, o.found_min), (true, FoundRule::Clean(1), 3));
         let o = parse_other("none");
         assert_eq!((o.found, o.fit, o.rule), (false, false, FoundRule::All));
+    }
+
+    #[test]
+    fn each_context_source_adds_only_its_own_rows() {
+        use ContextSources::*;
+        let c = random_seq(600, 31);
+        let other = |p: usize| if c[p] == b'A' { b"C".to_vec() } else { b"A".to_vec() };
+        let x = Row::new(300, &c[300..301], &other(300));
+        // A listed deletion over X (a state) and a listed SNV beside it (a context).
+        let over_x = Row::new(298, &c[298..303], &c[298..299]);
+        let beside = Row::new(330, &c[330..331], &other(330));
+        // The guard's: a recurring change, a mask, and another allele spelled over a window
+        // that changes one base beside X only.
+        let background = Row::new(270, &c[270..271], &other(270));
+        let mut spelled = c[340..350].to_vec();
+        spelled[5] = other(345)[0];
+        let discovered = Row::new(340, &c[340..350], &spelled);
+        let candidates = Candidates {
+            listed: vec![over_x, beside],
+            discovered: vec![discovered],
+            background: vec![background],
+            masked: vec![250],
+            found: Vec::new(),
+        };
+        let read = ReadView::new(&[b'A'; 150], &[30; 150], 230, &[Cigar::Match(150)], (0, 150), 20).unwrap();
+        let shape = |sources| {
+            let s = Site::build_sourced(ScorerKind::Graph, x.clone(), &candidates, (0, c.clone()), std::slice::from_ref(&read), FoundRule::All, sources)
+                .unwrap();
+            (s.n_states, s.rows.len() - 1 - s.n_states, s.masked.len())
+        };
+        // The site's states (the two other bases and the deletion) under every level.
+        assert_eq!(shape(Seq), (3, 0, 0));
+        assert_eq!(shape(Listed), (3, 1, 0));
+        assert_eq!(shape(NoFound), (3, 2, 1));
+        assert_eq!(shape(All), (3, 3, 1));
+        assert_eq!(parse_contexts(""), Some(All));
+        assert_eq!(parse_contexts("nofound"), Some(NoFound));
+        assert_eq!(parse_contexts("Seq"), None);
     }
 
     #[test]

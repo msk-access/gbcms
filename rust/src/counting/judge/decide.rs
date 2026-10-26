@@ -7,12 +7,12 @@
 //! depth only. No priors; a tie is never credited.
 
 use log::trace;
-use rust_htslib::bam::record::{Cigar, Record};
+use rust_htslib::bam::record::{Aux, Cigar, Record};
 
 use std::borrow::Cow;
 
 use super::graph::{self, ShortReads, Workspace};
-use super::haplotypes::{other_option, Class, Hap, ReadView, Scorer, ScorerKind, Site, TriageMode};
+use super::haplotypes::{other_option, AlnTags, Class, Hap, ReadView, Scorer, ScorerKind, Site, TriageMode};
 use super::score::{Alignment, Placed, DELTA, WILD};
 use crate::counting::carrier::{readable_range, ReadRules};
 use crate::counting::utils::{soft_clips, ClassifyPhase, ClassifyResult};
@@ -55,6 +55,103 @@ pub(crate) struct Verdict {
     /// For an ALT call, the states holding X's change the read spells whole
     /// ([`Site::spelled_holders`]).
     pub(crate) spells: u32,
+    /// Measurement only, the "fits nothing" decision package: the site states the full
+    /// programme decided (the band could not), whether the rule sent the read to depth,
+    /// and its fit to the local reference neighbourhood where that was computed.
+    pub(crate) fits: FitsTrace,
+    /// Measurement only, TEMPORARY: where a substitution's telling bases lie in the read's
+    /// soft clip (asked for the anchor), the clip's bases around them ([`ClipBases`]).
+    pub(crate) clip: Option<ClipBases>,
+}
+
+/// Measurement only: what the "fits nothing" rule saw of one read (see [`Verdict::fits`]).
+#[derive(Debug, Clone, Copy, Default)]
+pub(crate) struct FitsTrace {
+    pub(crate) full: u8,
+    pub(crate) states: u8,
+    pub(crate) fired: bool,
+    pub(crate) neighbourhood: Option<i32>,
+}
+
+/// Measurement only, TEMPORARY (the clip-admission measurement): a substitution's
+/// telling bases read in a soft clip, and the clip's other bases on the called
+/// haplotype: `beyond` past them towards the read's end, `between` from the aligned
+/// bases to them; each (confident and matching, confident and not, unconfident).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct ClipBases {
+    pub(crate) tail: bool,
+    pub(crate) beyond: (u16, u16, u16),
+    pub(crate) between: (u16, u16, u16),
+    /// Telling bases inside the clip, of all of them.
+    pub(crate) in_clip: (u16, u16),
+}
+
+/// Measurement only, TEMPORARY: which reads off the anchor a substitution row admits
+/// (`GBCMS_JUDGE_CLIPSUB`): `admit` (RJ-13, the default); `off` (none, by a clip or
+/// not, as the rules and the sign-out counter admit none); `anchored:N` (a clip only
+/// where it holds N confident bases past X's telling bases, matching the called
+/// haplotype); `clean:N` (as anchored, with no confident mismatch among the clip's
+/// other bases).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum ClipSub {
+    Admit,
+    Off,
+    Anchored(u16),
+    Clean(u16),
+}
+
+pub(crate) fn clip_sub() -> ClipSub {
+    static OPT: std::sync::OnceLock<ClipSub> = std::sync::OnceLock::new();
+    *OPT.get_or_init(|| {
+        let v = std::env::var("GBCMS_JUDGE_CLIPSUB").unwrap_or_default();
+        let n = |s: &str| s.parse::<u16>().unwrap_or(0);
+        match v.split_once(':') {
+            _ if v == "off" => ClipSub::Off,
+            Some(("anchored", k)) => ClipSub::Anchored(n(k)),
+            Some(("clean", k)) => ClipSub::Clean(n(k)),
+            _ => ClipSub::Admit,
+        }
+    })
+}
+
+/// Measurement only: [`ClipBases`] for a read whose telling bases (`idx`, read
+/// indices) lie in its soft clip, on the alignment `wa` to `hap` (its columns from `off`);
+/// None where none does.
+fn clip_bases(read: &ReadView, hap: &Hap, wa: &Alignment, off: usize, idx: &[usize]) -> Option<ClipBases> {
+    let (lo, hi) = (*idx.iter().min()?, *idx.iter().max()?);
+    let n = read.seq.len();
+    let (lead, tail) = read.clipped_ends();
+    let tally = |r: std::ops::Range<usize>| {
+        let mut t = (0u16, 0u16, 0u16);
+        for i in r.filter(|i| !idx.contains(i)) {
+            let b = read.seq[i];
+            match wa.placed[i] {
+                _ if b == WILD => t.2 += 1,
+                Placed::At(c) if hap.base(c + off) == WILD => t.2 += 1,
+                Placed::At(c) if hap.base(c + off) == b => t.0 += 1,
+                _ => t.1 += 1,
+            }
+        }
+        t
+    };
+    let inside = |f: &dyn Fn(usize) -> bool| idx.iter().filter(|&&i| f(i)).count() as u16;
+    if lo < lead {
+        Some(ClipBases {
+            tail: false,
+            beyond: tally(0..lo),
+            between: tally(hi + 1..lead.max(hi + 1)),
+            in_clip: (inside(&|i| i < lead), idx.len() as u16),
+        })
+    } else if tail > 0 && hi >= n - tail {
+        Some(ClipBases {
+            tail: true,
+            beyond: tally(hi + 1..n),
+            between: tally((n - tail).min(lo)..lo),
+            in_clip: (inside(&|i| i >= n - tail), idx.len() as u16),
+        })
+    } else {
+        None
+    }
 }
 
 /// Measurement only, TEMPORARY: what a delins call needs read (`GBCMS_JUDGE_DELINS`):
@@ -76,17 +173,90 @@ pub(crate) fn delins_option() -> DelinsOption {
     })
 }
 
-/// Measurement only, TEMPORARY, the scorer evaluation: whether the graph scorer applies
-/// [`FITS_NOTHING`] to the read's exact best score (`GBCMS_JUDGE_FITS=exact`, the default)
-/// or not at all (`off`). The enumerated scorer applies it where upper bounds on every
-/// haplotype's score fall below it, so a read whose exact best is lower can still count.
-fn fits_exact() -> bool {
-    std::env::var("GBCMS_JUDGE_FITS").map_or(true, |v| v != "off")
+/// Measurement only, TEMPORARY, the "fits nothing" decision package: which test, if any,
+/// makes a read that fits the site's states badly depth only on the graph scorer
+/// (`GBCMS_JUDGE_FITS`). The enumerated scorer keeps applying [`FITS_NOTHING`] to upper
+/// bounds on every haplotype's score.
+/// - `exact` (the default): the read's best score over every state below [`FITS_NOTHING`].
+/// - `off`: no fit test; the margin alone decides.
+/// - `scaled[:R]`: below R confident mismatches per 100 confident read bases ([`SCALED_RATE`]
+///   where R is not given), so the budget follows the read's length.
+/// - `relative[:M]`: below the read's fit to the local reference neighbourhood (anywhere
+///   on the window's reference) by more than M (default one confident base): the read fits
+///   somewhere nearby better than in any state here.
+/// - `xs`: the aligner places the read elsewhere at least as well (XS at least AS; MAPQ 0
+///   where it wrote no XS) and its best score is below [`FITS_NOTHING`]: a read the aligner
+///   doubts and no state explains.
+/// - `xspure`: the aligner places the read elsewhere at least as well, whatever its score;
+///   decided from the tags before any programme runs.
+///
+/// With `GBCMS_JUDGE_FITS_MEASURE=1`, every read whose best score is below a confident
+/// base also gets its neighbourhood fit computed, for the trace.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub(crate) enum FitsRule {
+    Exact,
+    Off,
+    Scaled(f64),
+    Relative(i32),
+    Xs,
+    XsPure,
+}
+
+/// The `scaled` option's rate where none is given: confident mismatches per 100 confident
+/// read bases.
+pub(crate) const SCALED_RATE: f64 = 10.0;
+
+pub(crate) fn fits_rule() -> FitsRule {
+    static RULE: std::sync::OnceLock<FitsRule> = std::sync::OnceLock::new();
+    *RULE.get_or_init(|| {
+        let v = std::env::var("GBCMS_JUDGE_FITS").unwrap_or_default();
+        let (name, arg) = v.split_once(':').map_or((v.as_str(), None), |(n, a)| (n, Some(a)));
+        match name {
+            "off" => FitsRule::Off,
+            "scaled" => FitsRule::Scaled(arg.and_then(|a| a.parse().ok()).unwrap_or(SCALED_RATE)),
+            "relative" => FitsRule::Relative(arg.and_then(|a| a.parse().ok()).unwrap_or(DELTA)),
+            "xs" => FitsRule::Xs,
+            "xspure" => FitsRule::XsPure,
+            _ => FitsRule::Exact,
+        }
+    })
+}
+
+fn fits_measure() -> bool {
+    static ON: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+    *ON.get_or_init(|| std::env::var("GBCMS_JUDGE_FITS_MEASURE").is_ok_and(|v| v == "1"))
 }
 
 /// A read whose best score on every haplotype is below this (ten confident mismatches)
 /// fits none of them: depth only.
 pub(crate) const FITS_NOTHING: i32 = 10 * crate::counting::judge::score::MISMATCH;
+
+/// Whether `rule` makes a read whose best score over the site's states is `top` depth
+/// only; the neighbourhood fit, where the rule or the measurement computed it.
+fn fits_nothing(rule: FitsRule, site: &Site, read: &ReadView, top: i32) -> (bool, Option<i32>) {
+    let neighbourhood = || site.neighbourhood_fit(read);
+    let measured = (fits_measure() && top <= -DELTA).then(neighbourhood);
+    let fired = match rule {
+        FitsRule::Exact => top < FITS_NOTHING,
+        FitsRule::Off => false,
+        FitsRule::Scaled(rate) => {
+            let budget = (rate * read.confident() as f64 / 100.0).ceil() as i32;
+            top < budget * crate::counting::judge::score::MISMATCH
+        }
+        FitsRule::Relative(margin) => {
+            // a neighbourhood fit is at most 0, so a read within the margin of 0 is kept
+            if top >= -margin {
+                false
+            } else {
+                let nb = measured.unwrap_or_else(neighbourhood);
+                return (top < nb - margin, Some(nb));
+            }
+        }
+        FitsRule::Xs => top < FITS_NOTHING && read.tags.fits_elsewhere(),
+        FitsRule::XsPure => read.tags.fits_elsewhere(),
+    };
+    (fired, measured)
+}
 
 /// The class whose best beats every other class's best by [`DELTA`]; else, where
 /// another allele and X (or REF) both beat the third class by as much, partial
@@ -163,7 +333,7 @@ fn judge_enumerated(site: &Site, read: &ReadView, min_baseq: u8, ask_anchor: boo
     // haplotypes do not hold) is depth only: a margin between two misfits is no evidence.
     if top < FITS_NOTHING {
         trace!("haplotype judge: the read fits no haplotype (best at most {top}) → depth only");
-        return Verdict { call: Call::Depth, qual: 0, best: [None; 3], holds_anchor: false, placed: None, triage: None, confirmed: false, spells: 0 };
+        return Verdict { call: Call::Depth, qual: 0, best: [None; 3], holds_anchor: false, placed: None, triage: None, confirmed: false, spells: 0, clip: None, fits: FitsTrace::default() };
     }
     for h in pending {
         let hap = &site.haps[h];
@@ -192,6 +362,12 @@ fn raise(best: &mut [Option<(i32, usize)>; 3], class: usize, s: i32, h: usize) {
 /// check, the bases that tell X from REF, the deciding quality, the anchor) is the one the
 /// state's best path spells.
 fn judge_graph(site: &Site, read: &ReadView, min_baseq: u8, ask_anchor: bool) -> Verdict {
+    let rule = fits_rule();
+    // The aligner's own tags decide before any programme runs.
+    if rule == FitsRule::XsPure && read.tags.fits_elsewhere() {
+        let fits = FitsTrace { states: site.graphs.len() as u8, fired: true, ..FitsTrace::default() };
+        return Verdict { call: Call::Depth, qual: 0, best: [None; 3], holds_anchor: false, placed: None, triage: None, confirmed: false, spells: 0, clip: None, fits };
+    }
     let gr = site.graph_read(read);
     let mut ws = Workspace::default();
     // Triage first: a read whose confident k-mers name one state.
@@ -202,7 +378,7 @@ fn judge_graph(site: &Site, read: &ReadView, min_baseq: u8, ask_anchor: bool) ->
     };
     if site.triage_mode == TriageMode::On {
         if let Some(t) = triaged {
-            return Verdict { call: t.call, qual: t.qual, best: [None; 3], holds_anchor: false, placed: None, triage: None, confirmed: false, spells: 0 };
+            return Verdict { call: t.call, qual: t.qual, best: [None; 3], holds_anchor: false, placed: None, triage: None, confirmed: false, spells: 0, clip: None, fits: FitsTrace::default() };
         }
     }
     let mut best: [Option<(i32, usize)>; 3] = [None; 3];
@@ -213,9 +389,11 @@ fn judge_graph(site: &Site, read: &ReadView, min_baseq: u8, ask_anchor: bool) ->
         raise(&mut best, st.class as usize, s, k);
     }
     let top = best.iter().flatten().map(|b| b.0).max().unwrap_or(i32::MIN);
-    let verdict = if top < FITS_NOTHING && fits_exact() {
-        trace!("haplotype judge: the read fits no state's graph (best {top}) → depth only");
-        Verdict { call: Call::Depth, qual: 0, best: [None; 3], holds_anchor: false, placed: None, triage: None, confirmed: false, spells: 0 }
+    let (fired, neighbourhood) = fits_nothing(rule, site, read, top);
+    let fits = FitsTrace { full: halves.iter().filter(|h| h.is_none()).count() as u8, states: halves.len() as u8, fired, neighbourhood };
+    let verdict = if fired {
+        trace!("haplotype judge: the read fits no state's graph (best {top}, {rule:?}) → depth only");
+        Verdict { call: Call::Depth, qual: 0, best: best.map(|b| b.map(|(s, _)| s)), holds_anchor: false, placed: None, triage: None, confirmed: false, spells: 0, clip: None, fits }
     } else {
         let scorer = Scorer::new(read);
         let ws = std::cell::RefCell::new(ws);
@@ -227,7 +405,7 @@ fn judge_graph(site: &Site, read: &ReadView, min_baseq: u8, ask_anchor: bool) ->
             Cow::Owned(site.hap_on_path(k, &p.rows))
         })
     };
-    Verdict { triage: triaged.map(|t| (t.call, t.qual, t.unknown)), ..verdict }
+    Verdict { triage: triaged.map(|t| (t.call, t.qual, t.unknown)), fits, ..verdict }
 }
 
 /// A read's call from its best score per class (`best`: score and candidate), its
@@ -281,10 +459,10 @@ fn conclude<'h>(
         Call::Depth => None,
     };
     let Some(won) = won else {
-        return Verdict { call, qual: 0, best: scores, holds_anchor: false, placed: None, triage: None, confirmed: false, spells: 0 };
+        return Verdict { call, qual: 0, best: scores, holds_anchor: false, placed: None, triage: None, confirmed: false, spells: 0, clip: None, fits: FitsTrace::default() };
     };
     if call == Call::Other && !ask_anchor {
-        return Verdict { call, qual: 0, best: scores, holds_anchor: false, placed: None, triage: None, confirmed: false, spells: 0 };
+        return Verdict { call, qual: 0, best: scores, holds_anchor: false, placed: None, triage: None, confirmed: false, spells: 0, clip: None, fits: FitsTrace::default() };
     }
     let hap_w = match fit_other {
         Some(h) => h,
@@ -300,7 +478,7 @@ fn conclude<'h>(
     let at = |p: &Placed| matches!(p, Placed::At(_));
     let placed = wa.placed.iter().position(at).zip(wa.placed.iter().rposition(at)).map(|(a, b)| (a, b + 1));
     if call == Call::Other {
-        return Verdict { call, qual: 0, best: scores, holds_anchor, placed, triage: None, confirmed: false, spells: 0 };
+        return Verdict { call, qual: 0, best: scores, holds_anchor, placed, triage: None, confirmed: false, spells: 0, clip: None, fits: FitsTrace::default() };
     }
     // The bases that tell X from REF at its site, covered by the winning alignment: X's
     // own for an ALT call, none of them read confidently as another base; REF's for a REF
@@ -317,20 +495,23 @@ fn conclude<'h>(
     let telling = if need { site.telling_in(hap_w) } else { Vec::new() };
     let mut confirmed = call == Call::Alt;
     let mut reads_all = true;
+    let mut telling_at = Vec::new();
     for (col, base) in telling {
         match wa.placed.iter().position(|p| column(p) == Some(col)) {
             None => reads_all = false,
             Some(i) if call == Call::Alt => {
+                telling_at.push(i);
                 let b = read.seq[i];
                 confirmed &= b != WILD;
                 reads_all &= b == WILD || b == base;
             }
-            Some(_) => {}
+            Some(i) => telling_at.push(i),
         }
     }
+    let clip = if ask_anchor && site.is_substitution() && reads_all { clip_bases(read, hap_w, &wa, off, &telling_at) } else { None };
     if !reads_all {
         call = Call::Depth;
-        return Verdict { call, qual: 0, best: scores, holds_anchor: false, placed: None, triage: None, confirmed: false, spells: 0 };
+        return Verdict { call, qual: 0, best: scores, holds_anchor: false, placed: None, triage: None, confirmed: false, spells: 0, clip: None, fits: FitsTrace::default() };
     }
     // The best losing haplotype: the best of the other classes, the first on a tie (X's,
     // for a REF call the other allele tied: the bases that beat X decided it).
@@ -345,7 +526,7 @@ fn conclude<'h>(
         deciding_quality(read, &wa, &la).map_or(floor, |q| q.max(floor))
     });
     let spells = if call == Call::Alt { site.spelled_holders(read, hap_w, &wa, off) } else { 0 };
-    Verdict { call, qual, best: scores, holds_anchor, placed, triage: None, confirmed, spells }
+    Verdict { call, qual, best: scores, holds_anchor, placed, triage: None, confirmed, spells, clip, fits: FitsTrace::default() }
 }
 
 /// What one read base costs in an alignment, and the haplotype bases skipped on each
@@ -379,7 +560,17 @@ pub(crate) fn read_view(record: &Record, quals: &[u8], min_baseq: u8, rules: &Re
     }
     let seq = record.seq().as_bytes();
     let readable = readable_range(record, rules)?;
-    ReadView::new(&seq, quals, record.pos(), &cigar, readable, min_baseq).map(|v| v.named(record.qname()))
+    let tag = |t: &[u8]| match record.aux(t) {
+        Ok(Aux::I8(v)) => Some(i64::from(v)),
+        Ok(Aux::U8(v)) => Some(i64::from(v)),
+        Ok(Aux::I16(v)) => Some(i64::from(v)),
+        Ok(Aux::U16(v)) => Some(i64::from(v)),
+        Ok(Aux::I32(v)) => Some(i64::from(v)),
+        Ok(Aux::U32(v)) => Some(i64::from(v)),
+        _ => None,
+    };
+    let tags = AlnTags { mapq: record.mapq(), best: tag(b"AS"), elsewhere: tag(b"XS"), nm: tag(b"NM") };
+    ReadView::new(&seq, quals, record.pos(), &cigar, readable, min_baseq).map(|v| v.named(record.qname()).tagged(tags))
 }
 
 /// Measurement only, TEMPORARY, to be removed before the merge (design §10): with
@@ -466,7 +657,9 @@ pub(crate) fn classify(record: &Record, variant: &Variant, quals: &[u8], min_bas
     let out = match read_view(record, quals, min_baseq, rules) {
         None => depth(),
         Some(read) => {
+            let clock = std::time::Instant::now();
             let verdict = judge(site, &read, min_baseq, !overlaps_anchor);
+            let ns = clock.elapsed().as_nanos();
             let mut out = match verdict.call {
                 Call::Alt => ClassifyResult::is_alt(verdict.qual, PHASE),
                 Call::Ref => ClassifyResult::is_ref(verdict.qual, PHASE),
@@ -485,14 +678,39 @@ pub(crate) fn classify(record: &Record, variant: &Variant, quals: &[u8], min_bas
             // with no fragment (unpaired, or its pair not facing inward) has none to bound
             // it.
             if !overlaps_anchor && verdict.call != Call::Depth && verdict.holds_anchor {
+                // Measurement only, TEMPORARY: GBCMS_JUDGE_CLIPSUB at a substitution row.
+                let sub = site.is_substitution();
+                let option = clip_sub();
+                let allowed = !sub
+                    || match option {
+                        ClipSub::Admit => true,
+                        ClipSub::Off => false,
+                        ClipSub::Anchored(k) => verdict.clip.is_none_or(|c| c.beyond.0 >= k),
+                        ClipSub::Clean(k) => verdict.clip.is_none_or(|c| c.beyond.0 >= k && c.beyond.1 == 0 && c.between.1 == 0),
+                    };
                 let (lead, tail) = soft_clips(record);
+                let mut inside = false;
                 if lead + tail > 0 {
                     let first = readable_range(record, rules).map_or(0, |r| r.0);
-                    out.clip_admissible = verdict.placed.zip(fragment_query_span(record)).is_some_and(|((a, b), (lo, hi))| {
+                    inside = verdict.placed.zip(fragment_query_span(record)).is_some_and(|((a, b), (lo, hi))| {
                         first + a >= lo && first + b <= hi
                     });
+                    out.clip_admissible = inside && allowed;
                 } else {
-                    out.read_from_right = true;
+                    out.read_from_right = allowed;
+                }
+                if sub {
+                    let c = verdict.clip;
+                    trace!(
+                        "judge clipsub {}:{} {}>{} read={} mate={} call={:?} soft=({},{}) clip={} inside={} admitted={} \
+                         beyond={:?} between={:?} in_clip={:?} option={:?}",
+                        variant.chrom, variant.pos + 1, variant.ref_allele, variant.alt_allele,
+                        String::from_utf8_lossy(record.qname()), if record.is_first_in_template() { 1 } else { 2 },
+                        verdict.call, lead, tail,
+                        c.map_or("none", |c| if c.tail { "tail" } else { "lead" }),
+                        inside, out.clip_admissible || out.read_from_right,
+                        c.map(|c| c.beyond), c.map(|c| c.between), c.map(|c| c.in_clip), option,
+                    );
                 }
             }
             trace!(
@@ -501,6 +719,20 @@ pub(crate) fn classify(record: &Record, variant: &Variant, quals: &[u8], min_bas
                 variant.chrom, variant.pos + 1, variant.ref_allele, variant.alt_allele,
                 String::from_utf8_lossy(record.qname()), verdict.call, verdict.best[0], verdict.best[1],
                 verdict.best[2], out.qual, overlaps_anchor || verdict.holds_anchor, site.haps.len(),
+            );
+            // Measurement only, the "fits nothing" decision package: per judged read, its best
+            // score per class (kept where the rule made it depth), its confident bases and the
+            // errors its qualities lead one to expect, the states the full programme decided,
+            // the time the judge took, the aligner's tags and the neighbourhood fit.
+            let f = verdict.fits;
+            trace!(
+                "judge fits {}:{} {}>{} read={} mate={} call={:?} alt={} ref={} other={} conf={} len={} experr={:.2} \
+                 full={}/{} ns={} mapq={} as={} xs={} nm={} nb={} fired={} rule={:?}",
+                variant.chrom, variant.pos + 1, variant.ref_allele, variant.alt_allele,
+                String::from_utf8_lossy(record.qname()), if record.is_first_in_template() { 1 } else { 2 },
+                verdict.call, opt(verdict.best[0]), opt(verdict.best[1]), opt(verdict.best[2]), read.confident(), read.seq.len(),
+                read.expected_errors(), f.full, f.states, ns, read.tags.mapq, opt(read.tags.best), opt(read.tags.elsewhere),
+                opt(read.tags.nm), opt(f.neighbourhood), f.fired, fits_rule(),
             );
             if let Some((t, tq, unknown)) = verdict.triage {
                 // Measurement only: triage's call beside the scorer's, for every read it decided.
@@ -533,6 +765,11 @@ fn spelled_listed(site: &Site, variant: &Variant, spells: u32) -> u32 {
         })
         .filter(|&j| j < 32)
         .fold(0u32, |m, j| m | 1 << j)
+}
+
+/// A value for the trace, `-` where absent.
+fn opt<T: std::fmt::Display>(v: Option<T>) -> String {
+    v.map_or_else(|| "-".to_string(), |x| x.to_string())
 }
 
 /// The flags a call carries beside its allele: an N the read shows over the row's REF
