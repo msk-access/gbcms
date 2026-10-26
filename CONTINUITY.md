@@ -46,13 +46,15 @@ Leaving out context items that respell a candidate sequence (`GBCMS_JUDGE_BACKGR
   - HG002 SNVs in tandem repeats: −40 true-REF reads;
   - deletions of 1 kb+: scaled calls 162 more true-REF reads REF on HG002, while xs keeps 307 (panel) and 78 (gate) more correct calls.
 
+**Fix round 1 (`src_c54a`): none of its four items was a judge bug.**
+- **Insertion readability:** the judge already follows RJ-20 as amended on 2026-10-15 (#278): an unreadable insert of the ALT's length inside the window is the ALT, on both paths. The "port" rested on stale reference text, and the operator is re-confirming the rule.
+- **HG002 SNVs in tandem repeats:** the −40 reads are ties that only phasing separates. Develop's placement tie-break would make 443 wrong calls against the judge's 2.
+- **chr18:12145098:** a truth error, not a judge error. The row is outside the benchmark, and v2c's homozygous shortcut never compares a read with REF.
+- **Deletions of 1 kb+:** scaled's 162 "gains" are reads the engine never counts (they start inside the deleted bases). xs stays.
+
 **In flight:**
-- **Code fix round on the branch:**
-  - port the insertion readability rule (RJ-20: no readable inserted base → not ALT);
-  - HG002 SNVs in tandem repeats;
-  - chr18:12145098, a homozygous 1.3 kb insertion (RD 50, AD 0);
-  - options for deletions of 1 kb+ (default unchanged until decided).
-- **Diagnosis, no code:** the open wrong-call classes and the ALT/REF losses.
+- **Fix round 2:** the six diagnosed judge bugs, and a measured switch for "a confident third base inside X's span is another allele".
+- **Oracle v3:** the patient check, with six fixes.
 
 **Decided 2026-10-24 to 2026-10-26:**
 - **Clip admission:** admit. `clean:0` costs 8% of true ALT on patient data to avoid about 1% wrong reads.
