@@ -72,6 +72,9 @@ Leaving out context items that respell a candidate sequence (`GBCMS_JUDGE_BACKGR
   - patient slices are fine for testing, never downstream;
   - cBioPortal files never enter tool output (#330). The only console channel is `~/test/gbcms/harness/cbio/cbio_summary.py`; protected paths live in `~/.claude/protected-paths.txt`.
 - **PRs:** the repo disallows auto-merge, so merge with `gh` when the operator asks.
+- **Length-only insertion stays the ALT** (RJ-20 as amended on 2026-10-15, #278; re-confirmed 2026-10-26): an insert of the ALT's length inside the window whose bases are all masked is the ALT where no other allele of that length is at the locus.
+- **Ties stay depth only:** a read that fits REF and another candidate equally counts in DP, not in RD or AD, as GATK's uninformative read does.
+- **HG002 bars,** being built as truth v2d: score only inside the benchmark regions; score long deletions on the reads the engine counts; compare homozygous rows with REF.
 
 **Next (package 2):**
 1. Decisions from the two reports.

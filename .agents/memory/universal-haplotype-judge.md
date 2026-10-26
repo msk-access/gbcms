@@ -124,6 +124,13 @@ found alleles) earns its place is being measured, pre-registered on #304.
 - The integration round (`src_c53d`) is pushed as branch `feature/c46-haplotype-judge`, with no PR yet. Its
   re-score on the corrected checks is recorded on #304.
 
+**Decided (operator, 2026-10-26):**
+- **The length-only insertion stays the ALT** (RJ-20 as amended on 2026-10-15, #278). The judge already follows it; the "port" proposed that morning came from stale docs.
+- **Ties stay depth only.** This is GATK's uninformative read; develop's placement tie-break leans to REF.
+- **xs stays.** Scaled's 162 extra REF reads were reads the engine never counts.
+- **HG002 bars** (truth v2d): score only inside the benchmark regions; score long deletions on the reads the engine counts; compare homozygous rows with REF.
+- **GATK's read evaluation** (the PairHMM, shared with its `--alleles` mode) is the fair comparator for read rules. Its discovery step, and its decision whether a variant is present, are not.
+
 **How to apply:** package 2 (#304 widened) is this judge. #246's prototype (c45c,
 worktree c38, uncommitted; patch + README in harness plan670/parked_246) was parked for
 this (operator, 2026-10-23); its red test and the HG002 #246 pair arm (giab/c246) are
