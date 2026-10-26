@@ -912,6 +912,31 @@ mod tests {
     }
 
     #[test]
+    fn a_read_tying_x_with_another_allele_it_never_reads_apart_from_x_is_alt() {
+        use Call::*;
+        // CC>TT at 0-based 300, beside an allele at its site that repeats the 17 bases before
+        // X and then reads X's TT (a duplication ending in X's change, as reads spell it). A
+        // carrier of X starting inside the 18 bases the two share reads X and that allele
+        // alike, REF beaten: it shows X where REF and X differ and nothing of the other
+        // allele, so it is X's. A carrier reaching further back tells them apart; the other
+        // allele's own carriers stay another allele.
+        let mut c = random_seq(600, 67);
+        c[300..302].copy_from_slice(b"CC");
+        c[282] = b'C';
+        let x = Row::new(300, b"CC", b"TT");
+        let dup = Row::new(300, b"CC", &[b"C", &c[283..300], b"TT"].concat());
+        let (h_x, h_dup) = (haplotype(&c, &[&x]), haplotype(&c, &[&dup]));
+        let reads = vec![
+            read(&h_x, 283, 100, 283, "100M"),
+            read(&h_x, 290, 100, 290, "100M"),
+            read(&h_x, 240, 100, 240, "100M"),
+            read(&h_dup, 240, 100, 240, "100M"),
+            read(&c, 250, 100, 250, "100M"),
+        ];
+        assert_eq!(calls(&c, &[x.clone(), dup], &x, &reads), vec![Alt, Alt, Alt, Other, Ref]);
+    }
+
+    #[test]
     fn two_reads_writing_an_indel_find_it_within_the_share_of_the_sites_reads() {
         let c = random_seq(600, 17);
         let base = |p: i64| c.get(p as usize).copied();

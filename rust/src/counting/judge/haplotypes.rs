@@ -1535,7 +1535,18 @@ impl Site {
     /// repeat the two differ only past its end (reading in from either side), so a read
     /// ending inside it reaches nothing that tells them apart.
     pub(crate) fn reaches_state(&self, read: &ReadView, other: &Hap) -> bool {
-        let rows: Vec<usize> = other.rows.iter().copied().filter(|&r| !self.is_state(r)).collect();
+        self.reaches_state_from(read, other, false)
+    }
+
+    /// [`Site::reaches_state`] from X's haplotype (`from_x`, X with `other`'s contexts that
+    /// can lie with it) rather than REF's.
+    pub(crate) fn reaches_state_from(&self, read: &ReadView, other: &Hap, from_x: bool) -> bool {
+        let mut rows: Vec<usize> = other.rows.iter().copied().filter(|&r| !self.is_state(r)).collect();
+        if from_x {
+            rows.retain(|&r| !self.conflict(0, r));
+            rows.push(0);
+            rows.sort_unstable();
+        }
         let reference = Hap::build(self, &rows);
         let (a, b) = (&reference.seq, &other.seq);
         if a == b {
