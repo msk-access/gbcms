@@ -559,6 +559,42 @@ def test_an_snv_beside_an_mnv_holding_its_change_counts_the_mnvs_carriers(tmp_pa
     assert "MNV_SHARED" not in d["gbcms_diagnostic"]
 
 
+# ── The fit rule: a read no candidate sequence explains ──
+
+
+def test_a_read_fitting_no_candidate_sequence_counts_only_where_its_aligner_is_sure(tmp_path):
+    """The fit rule (xs, decided 2026-10-25): an SNV's carriers carrying twelve confident
+    mismatches away from it fit none of the row's candidate sequences within ten. The 3
+    the aligner places elsewhere as well (XS = AS) are depth only; the 4 it places here
+    alone (XS < AS) are judged by their bases at the row, ALT. 6 clean carriers, 5 REF
+    reads. UNEXPLAINED_READS names the 7 of the row's 18 depth reads."""
+    m0 = 600
+    ref = _contig(53, length=1200)
+    alt = "A" if ref[m0 - 1] != "A" else "C"
+    snv = (m0, ref[m0 - 1], alt)
+    h = _apply(ref, [snv])
+    flip = {"A": "C", "C": "G", "G": "T", "T": "A"}
+
+    def noisy(name, start, best, elsewhere):
+        # mismatches every 8 read bases, X's base kept: starts one apart never share one
+        x = m0 - 1 - start
+        seq = list(h[start : start + READ_LEN])
+        for i in [k for k in range(0, READ_LEN, 8) if k != x][:12]:
+            seq[i] = flip[seq[i]]
+        a = make_read(name, "".join(seq), start, ((0, READ_LEN),))
+        a.set_tag("AS", best)
+        a.set_tag("XS", elsewhere)
+        return a
+
+    reads = [_plain(f"c{i}", h, m0 - 70 + 3 * i) for i in range(6)]
+    reads += [noisy(f"sure{i}", m0 - 60 + i, 52, 20) for i in range(4)]
+    reads += [noisy(f"doubt{i}", m0 - 56 + i, 52, 52) for i in range(3)]
+    reads += [_plain(f"r{i}", ref, m0 - 40 + 3 * i) for i in range(5)]
+    (row,) = _run(tmp_path, ref, [snv], reads, maf_rows=True)
+    assert (int(row["ref_count"]), int(row["alt_count"]), int(row["total_count"])) == (5, 10, 18)
+    assert "UNEXPLAINED_READS(7/18)" in row["gbcms_diagnostic"].split(";")
+
+
 # ── A long deletion with a listed row inside its deleted bases ──
 
 

@@ -312,3 +312,20 @@ def test_mnv_shared_flag():
     counts.mnv_shared = ""
     _make_pipeline()._compute_diagnostics([pv], [counts])
     assert "MNV_SHARED" not in pv.gbcms_diagnostic
+
+
+def test_unexplained_reads_flag():
+    """UNEXPLAINED_READS(n/m) names how many of the row's DP reads fit none of its candidate
+    sequences under the haplotype judge; absent at 0 or when the field is missing."""
+    pv = _mock_prepared_variant()
+    counts = _mock_counts(dp=40, ad=10)
+    counts.unexplained_reads = 3
+    _make_pipeline()._compute_diagnostics([pv], [counts])
+    assert pv.gbcms_diagnostic == "UNEXPLAINED_READS(3/40)"
+    for value in (0, None):
+        pv = _mock_prepared_variant()
+        counts = _mock_counts(dp=40, ad=10)
+        if value is not None:
+            counts.unexplained_reads = value
+        _make_pipeline()._compute_diagnostics([pv], [counts])
+        assert "UNEXPLAINED_READS" not in pv.gbcms_diagnostic

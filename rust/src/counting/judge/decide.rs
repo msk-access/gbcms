@@ -59,6 +59,10 @@ pub(crate) struct Verdict {
     /// programme decided (the band could not), whether the rule sent the read to depth,
     /// and its fit to the local reference neighbourhood where that was computed.
     pub(crate) fits: FitsTrace,
+    /// The read's best score over every candidate sequence is below [`FITS_NOTHING`]: it
+    /// fits none of them (an upper bound under the enumerated scorer), whether or not the
+    /// fit rule made it depth only. Diagnostic (UNEXPLAINED_READS).
+    pub(crate) fits_none: bool,
     /// Measurement only, TEMPORARY: where a substitution's telling bases lie in the read's
     /// soft clip (asked for the anchor), the clip's bases around them ([`ClipBases`]).
     pub(crate) clip: Option<ClipBases>,
@@ -173,20 +177,22 @@ pub(crate) fn delins_option() -> DelinsOption {
     })
 }
 
-/// Measurement only, TEMPORARY, the "fits nothing" decision package: which test, if any,
-/// makes a read that fits the site's states badly depth only on the graph scorer
-/// (`GBCMS_JUDGE_FITS`). The enumerated scorer keeps applying [`FITS_NOTHING`] to upper
-/// bounds on every haplotype's score.
-/// - `exact` (the default): the read's best score over every state below [`FITS_NOTHING`].
+/// The fit rule: which test, if any, makes a read that fits none of the site's candidate
+/// sequences depth only on the graph scorer (decided 2026-10-25: `xs`). The other options
+/// stay behind `GBCMS_JUDGE_FITS` for measurement, TEMPORARY. The enumerated scorer keeps
+/// applying [`FITS_NOTHING`] to upper bounds on every haplotype's score. Whatever the rule,
+/// such a read is named in the row's `UNEXPLAINED_READS` diagnostic.
+/// - `xs` (the default): the aligner places the read elsewhere at least as well (XS at
+///   least AS; MAPQ 0 where it wrote no XS) and its best score is below [`FITS_NOTHING`]:
+///   a read the aligner doubts and no candidate sequence explains. A read that fits none
+///   but that the aligner places here alone is judged by its margin, as any other.
+/// - `exact`: the read's best score over every state below [`FITS_NOTHING`].
 /// - `off`: no fit test; the margin alone decides.
 /// - `scaled[:R]`: below R confident mismatches per 100 confident read bases ([`SCALED_RATE`]
 ///   where R is not given), so the budget follows the read's length.
 /// - `relative[:M]`: below the read's fit to the local reference neighbourhood (anywhere
 ///   on the window's reference) by more than M (default one confident base): the read fits
 ///   somewhere nearby better than in any state here.
-/// - `xs`: the aligner places the read elsewhere at least as well (XS at least AS; MAPQ 0
-///   where it wrote no XS) and its best score is below [`FITS_NOTHING`]: a read the aligner
-///   doubts and no state explains.
 /// - `xspure`: the aligner places the read elsewhere at least as well, whatever its score;
 ///   decided from the tags before any programme runs.
 ///
@@ -208,18 +214,20 @@ pub(crate) const SCALED_RATE: f64 = 10.0;
 
 pub(crate) fn fits_rule() -> FitsRule {
     static RULE: std::sync::OnceLock<FitsRule> = std::sync::OnceLock::new();
-    *RULE.get_or_init(|| {
-        let v = std::env::var("GBCMS_JUDGE_FITS").unwrap_or_default();
-        let (name, arg) = v.split_once(':').map_or((v.as_str(), None), |(n, a)| (n, Some(a)));
-        match name {
-            "off" => FitsRule::Off,
-            "scaled" => FitsRule::Scaled(arg.and_then(|a| a.parse().ok()).unwrap_or(SCALED_RATE)),
-            "relative" => FitsRule::Relative(arg.and_then(|a| a.parse().ok()).unwrap_or(DELTA)),
-            "xs" => FitsRule::Xs,
-            "xspure" => FitsRule::XsPure,
-            _ => FitsRule::Exact,
-        }
-    })
+    *RULE.get_or_init(|| parse_fits(&std::env::var("GBCMS_JUDGE_FITS").unwrap_or_default()))
+}
+
+/// The fit rule a `GBCMS_JUDGE_FITS` value names; `xs` where it names none.
+fn parse_fits(v: &str) -> FitsRule {
+    let (name, arg) = v.split_once(':').map_or((v, None), |(n, a)| (n, Some(a)));
+    match name {
+        "off" => FitsRule::Off,
+        "scaled" => FitsRule::Scaled(arg.and_then(|a| a.parse().ok()).unwrap_or(SCALED_RATE)),
+        "relative" => FitsRule::Relative(arg.and_then(|a| a.parse().ok()).unwrap_or(DELTA)),
+        "exact" => FitsRule::Exact,
+        "xspure" => FitsRule::XsPure,
+        _ => FitsRule::Xs,
+    }
 }
 
 fn fits_measure() -> bool {
@@ -227,8 +235,9 @@ fn fits_measure() -> bool {
     *ON.get_or_init(|| std::env::var("GBCMS_JUDGE_FITS_MEASURE").is_ok_and(|v| v == "1"))
 }
 
-/// A read whose best score on every haplotype is below this (ten confident mismatches)
-/// fits none of them: depth only.
+/// A read whose best score on every candidate sequence is below this (ten confident
+/// mismatches) fits none of them: depth only where the fit rule says so ([`FitsRule`]),
+/// and named in the row's `UNEXPLAINED_READS` diagnostic.
 pub(crate) const FITS_NOTHING: i32 = 10 * crate::counting::judge::score::MISMATCH;
 
 /// Whether `rule` makes a read whose best score over the site's states is `top` depth
@@ -333,7 +342,7 @@ fn judge_enumerated(site: &Site, read: &ReadView, min_baseq: u8, ask_anchor: boo
     // haplotypes do not hold) is depth only: a margin between two misfits is no evidence.
     if top < FITS_NOTHING {
         trace!("haplotype judge: the read fits no haplotype (best at most {top}) → depth only");
-        return Verdict { call: Call::Depth, qual: 0, best: [None; 3], holds_anchor: false, placed: None, triage: None, confirmed: false, spells: 0, clip: None, fits: FitsTrace::default() };
+        return Verdict { call: Call::Depth, qual: 0, best: [None; 3], holds_anchor: false, placed: None, triage: None, confirmed: false, spells: 0, clip: None, fits: FitsTrace::default(), fits_none: true };
     }
     for h in pending {
         let hap = &site.haps[h];
@@ -366,7 +375,7 @@ fn judge_graph(site: &Site, read: &ReadView, min_baseq: u8, ask_anchor: bool) ->
     // The aligner's own tags decide before any programme runs.
     if rule == FitsRule::XsPure && read.tags.fits_elsewhere() {
         let fits = FitsTrace { states: site.graphs.len() as u8, fired: true, ..FitsTrace::default() };
-        return Verdict { call: Call::Depth, qual: 0, best: [None; 3], holds_anchor: false, placed: None, triage: None, confirmed: false, spells: 0, clip: None, fits };
+        return Verdict { call: Call::Depth, qual: 0, best: [None; 3], holds_anchor: false, placed: None, triage: None, confirmed: false, spells: 0, clip: None, fits, fits_none: false };
     }
     let gr = site.graph_read(read);
     let mut ws = Workspace::default();
@@ -378,7 +387,7 @@ fn judge_graph(site: &Site, read: &ReadView, min_baseq: u8, ask_anchor: bool) ->
     };
     if site.triage_mode == TriageMode::On {
         if let Some(t) = triaged {
-            return Verdict { call: t.call, qual: t.qual, best: [None; 3], holds_anchor: false, placed: None, triage: None, confirmed: false, spells: 0, clip: None, fits: FitsTrace::default() };
+            return Verdict { call: t.call, qual: t.qual, best: [None; 3], holds_anchor: false, placed: None, triage: None, confirmed: false, spells: 0, clip: None, fits: FitsTrace::default(), fits_none: false };
         }
     }
     let mut best: [Option<(i32, usize)>; 3] = [None; 3];
@@ -393,7 +402,7 @@ fn judge_graph(site: &Site, read: &ReadView, min_baseq: u8, ask_anchor: bool) ->
     let fits = FitsTrace { full: halves.iter().filter(|h| h.is_none()).count() as u8, states: halves.len() as u8, fired, neighbourhood };
     let verdict = if fired {
         trace!("haplotype judge: the read fits no state's graph (best {top}, {rule:?}) → depth only");
-        Verdict { call: Call::Depth, qual: 0, best: best.map(|b| b.map(|(s, _)| s)), holds_anchor: false, placed: None, triage: None, confirmed: false, spells: 0, clip: None, fits }
+        Verdict { call: Call::Depth, qual: 0, best: best.map(|b| b.map(|(s, _)| s)), holds_anchor: false, placed: None, triage: None, confirmed: false, spells: 0, clip: None, fits, fits_none: false }
     } else {
         let scorer = Scorer::new(read);
         let ws = std::cell::RefCell::new(ws);
@@ -405,7 +414,7 @@ fn judge_graph(site: &Site, read: &ReadView, min_baseq: u8, ask_anchor: bool) ->
             Cow::Owned(site.hap_on_path(k, &p.rows))
         })
     };
-    Verdict { triage: triaged.map(|t| (t.call, t.qual, t.unknown)), fits, ..verdict }
+    Verdict { triage: triaged.map(|t| (t.call, t.qual, t.unknown)), fits, fits_none: top < FITS_NOTHING, ..verdict }
 }
 
 /// A read's call from its best score per class (`best`: score and candidate), its
@@ -459,10 +468,10 @@ fn conclude<'h>(
         Call::Depth => None,
     };
     let Some(won) = won else {
-        return Verdict { call, qual: 0, best: scores, holds_anchor: false, placed: None, triage: None, confirmed: false, spells: 0, clip: None, fits: FitsTrace::default() };
+        return Verdict { call, qual: 0, best: scores, holds_anchor: false, placed: None, triage: None, confirmed: false, spells: 0, clip: None, fits: FitsTrace::default(), fits_none: false };
     };
     if call == Call::Other && !ask_anchor {
-        return Verdict { call, qual: 0, best: scores, holds_anchor: false, placed: None, triage: None, confirmed: false, spells: 0, clip: None, fits: FitsTrace::default() };
+        return Verdict { call, qual: 0, best: scores, holds_anchor: false, placed: None, triage: None, confirmed: false, spells: 0, clip: None, fits: FitsTrace::default(), fits_none: false };
     }
     let hap_w = match fit_other {
         Some(h) => h,
@@ -478,7 +487,7 @@ fn conclude<'h>(
     let at = |p: &Placed| matches!(p, Placed::At(_));
     let placed = wa.placed.iter().position(at).zip(wa.placed.iter().rposition(at)).map(|(a, b)| (a, b + 1));
     if call == Call::Other {
-        return Verdict { call, qual: 0, best: scores, holds_anchor, placed, triage: None, confirmed: false, spells: 0, clip: None, fits: FitsTrace::default() };
+        return Verdict { call, qual: 0, best: scores, holds_anchor, placed, triage: None, confirmed: false, spells: 0, clip: None, fits: FitsTrace::default(), fits_none: false };
     }
     // The bases that tell X from REF at its site, covered by the winning alignment: X's
     // own for an ALT call, none of them read confidently as another base; REF's for a REF
@@ -511,7 +520,7 @@ fn conclude<'h>(
     let clip = if ask_anchor && site.is_substitution() && reads_all { clip_bases(read, hap_w, &wa, off, &telling_at) } else { None };
     if !reads_all {
         call = Call::Depth;
-        return Verdict { call, qual: 0, best: scores, holds_anchor: false, placed: None, triage: None, confirmed: false, spells: 0, clip: None, fits: FitsTrace::default() };
+        return Verdict { call, qual: 0, best: scores, holds_anchor: false, placed: None, triage: None, confirmed: false, spells: 0, clip: None, fits: FitsTrace::default(), fits_none: false };
     }
     // The best losing haplotype: the best of the other classes, the first on a tie (X's,
     // for a REF call the other allele tied: the bases that beat X decided it).
@@ -526,7 +535,7 @@ fn conclude<'h>(
         deciding_quality(read, &wa, &la).map_or(floor, |q| q.max(floor))
     });
     let spells = if call == Call::Alt { site.spelled_holders(read, hap_w, &wa, off) } else { 0 };
-    Verdict { call, qual, best: scores, holds_anchor, placed, triage: None, confirmed, spells, clip, fits: FitsTrace::default() }
+    Verdict { call, qual, best: scores, holds_anchor, placed, triage: None, confirmed, spells, clip, fits: FitsTrace::default(), fits_none: false }
 }
 
 /// What one read base costs in an alignment, and the haplotype bases skipped on each
@@ -669,6 +678,8 @@ pub(crate) fn classify(record: &Record, variant: &Variant, quals: &[u8], min_bas
             // An MNP's ALT call that read every base where the alleles differ, confidently
             // and as the ALT's (MNP rescue keeps such a row's haplotype).
             out.mnp_confirmed = out.is_alt && verdict.confirmed;
+            // A read no candidate sequence explains, counted or not (UNEXPLAINED_READS).
+            out.fits_none = verdict.fits_none;
             if out.is_alt && verdict.spells != 0 {
                 out.spells_listed = spelled_listed(site, variant, verdict.spells);
             }
@@ -886,6 +897,43 @@ mod tests {
                 assert!(r.is_alt && r.clip_admissible, "{len}bp: the clip holds the anchor");
             });
         }
+    }
+
+    #[test]
+    fn a_read_fitting_no_candidate_sequence_is_depth_only_only_where_its_aligner_doubts_it() {
+        use crate::counting::judge::haplotypes::AlnTags;
+        // The fit rule (xs, the default): an SNV's carrier with twelve confident mismatches
+        // away from X fits none of the site's candidate sequences within ten. Placed
+        // elsewhere as well by its aligner (XS at least AS) it is depth only; placed here
+        // alone, its bases at X decide it. Either way it is a read no candidate sequence
+        // explains (UNEXPLAINED_READS); a clean carrier is not.
+        assert_eq!(parse_fits(""), FitsRule::Xs);
+        assert_eq!(parse_fits("xs"), FitsRule::Xs);
+        assert_eq!(parse_fits("exact"), FitsRule::Exact);
+        let c = random_seq(600, 23);
+        let other = |b: u8| if b == b'A' { b'C' } else { b'A' };
+        let x = row(301, &(c[300] as char).to_string(), &(other(c[300]) as char).to_string());
+        let h = applied(&c, &x);
+        let s = site(&c, &x, &[], 100);
+        let mut noisy = h[250..350].to_vec();
+        for i in (0..100).step_by(8).take(12) {
+            noisy[i] = other(noisy[i]);
+        }
+        let view = |seq: &[u8], tags: AlnTags| {
+            ReadView::new(seq, &[30; 100], 250, &[Cigar::Match(100)], (0, 100), 20).unwrap().tagged(tags)
+        };
+        let doubted = AlnTags { mapq: 0, best: Some(52), elsewhere: Some(52), nm: Some(13) };
+        let sure = AlnTags { mapq: 60, best: Some(52), elsewhere: Some(20), nm: Some(13) };
+        let got = |seq: &[u8], tags| {
+            let v = judge(&s, &view(seq, tags), 20, false);
+            (v.call, v.fits_none)
+        };
+        assert_eq!(got(&noisy, doubted), (Call::Depth, true), "the aligner doubts it");
+        assert_eq!(got(&noisy, sure), (Call::Alt, true), "placed here alone: its bases at X");
+        assert_eq!(got(&h[250..350], sure), (Call::Alt, false), "a clean carrier");
+        // No XS written: MAPQ 0 stands for the aligner's doubt.
+        let no_xs = AlnTags { mapq: 0, best: Some(52), elsewhere: None, nm: Some(13) };
+        assert_eq!(got(&noisy, no_xs), (Call::Depth, true));
     }
 
     #[test]

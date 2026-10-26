@@ -1033,6 +1033,13 @@ class Pipeline:
                 carriers count at both rows (a read carrying the SNV's base is its ALT,
                 whatever else is listed), so one molecule can enter both rows' AD and
                 mFSD size distributions. One flag per such MNV. Counts stand.
+            UNEXPLAINED_READS(n/m): under the haplotype judge, n of the row's m DP
+                reads fit none of its candidate sequences (REF, ALT, the other alleles
+                at its site, with every context) within ten confident mismatches. The
+                fit rule makes such a read depth only where its aligner places it
+                elsewhere at least as well (XS >= AS); otherwise its bases at the row
+                decide it, so a row with many may count foreign reads (a paralog's, or
+                reads placed at a homozygous deletion). Counts stand.
         """
         flags: list[str] = []
 
@@ -1119,6 +1126,13 @@ class Pipeline:
         shared = getattr(counts, "mnv_shared", "")
         for entry in shared.split("+") if shared else ():
             flags.append(f"MNV_SHARED({variant.chrom}:{entry})")
+
+        # Reads the haplotype judge found no candidate sequence explains: depth only where
+        # the aligner doubts them too (the fit rule), else judged by their bases at the
+        # row. Named so a row counting foreign reads is visible. The counts stand.
+        unexplained = getattr(counts, "unexplained_reads", 0)
+        if unexplained > 0:
+            flags.append(f"UNEXPLAINED_READS({unexplained}/{counts.dp})")
 
         return flags
 

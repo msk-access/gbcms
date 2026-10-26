@@ -36,6 +36,11 @@ For a row X and each admitted read:
     below `--min-baseq` weighs nothing (RJ-25), and `mnp_confirmed` needs all read.
   - A context row is one whose REF span meets X's span widened by the longest read, so a
     long deletion starting within reach (and running past it) is a context too.
+- **The fit rule (phase B, decided 2026-10-25; RJ-29):** a read whose best score over every
+  candidate sequence is below ten confident mismatches fits none of them; it is depth only
+  where its aligner also doubts it (XS ≥ AS, or MAPQ 0 with no XS), otherwise its margin
+  decides it. `UNEXPLAINED_READS(n/m)` names how many of a row's depth reads fit none. The
+  other options measured stay behind `GBCMS_JUDGE_FITS` (measurement only).
 
 Measured (HG002 phased truth, R2): see #304. The prototype is `plan670/r2/hapjudge` (local).
 

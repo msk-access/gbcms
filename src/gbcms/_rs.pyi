@@ -155,6 +155,11 @@ class BaseCounts:
     # POS:REF>ALT:n/m (1-based POS; n of the m ALT reads), several joined by '+'; empty
     # when none. Diagnostic only (MNV_SHARED flag).
     mnv_shared: str
+    # Under the haplotype judge: DP reads whose bases fit none of the row's candidate
+    # sequences (REF, ALT, the other alleles at its site, with every context) within ten
+    # confident mismatches, whether or not the fit rule made them depth only; 0 under the
+    # rules. Diagnostic only (UNEXPLAINED_READS flag).
+    unexplained_reads: int
     # GTF-informed annotation (None when no GTF)
     exon_boundary_dist: int | None
     # Per-transcript counts (empty string when no GTF or no overlap)

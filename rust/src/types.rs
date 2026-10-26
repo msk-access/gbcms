@@ -514,6 +514,14 @@ pub struct BaseCounts {
     /// MNV_SHARED); no count changes.
     #[pyo3(get)]
     pub mnv_shared: String,
+    /// Under the haplotype judge: reads counted in DP whose bases fit none of the row's
+    /// candidate sequences (REF, ALT, the other alleles at its site, with every context)
+    /// within ten confident mismatches. The fit rule makes such a read depth only where
+    /// its aligner places it elsewhere at least as well (XS >= AS); otherwise its margin
+    /// decides it. 0 under the rules. Diagnostic only (feeds UNEXPLAINED_READS); no count
+    /// changes.
+    #[pyo3(get)]
+    pub unexplained_reads: u32,
     /// Reads processed with the requested `--umi-tag` present. Internal only
     /// (no Python getter): summed per BAM to warn when a requested UMI tag is
     /// never seen and fragment grouping silently fell back to QNAME.

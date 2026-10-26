@@ -1866,6 +1866,11 @@ fn count_variant_from_cache(
             if result.sw_fallback {
                 counts.sw_fallback_reads += 1;
             }
+            // A read the haplotype judge found no candidate sequence explains, counted
+            // with DP: the n of UNEXPLAINED_READS(n/m), whatever its call.
+            if result.fits_none {
+                counts.unexplained_reads += 1;
+            }
             // Which rule decided the read (logs only).
             let d = &mut counts.decisions;
             d.ref_withdrawn += u64::from(result.ref_withdrawn);
