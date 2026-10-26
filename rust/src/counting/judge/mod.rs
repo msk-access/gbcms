@@ -971,6 +971,30 @@ mod tests {
     }
 
     #[test]
+    fn a_read_tying_ref_with_another_allele_it_writes_its_own_indel_across_is_ref() {
+        use Call::*;
+        // X: a T inserted in a TT run (after 0-based 300). A listed 33 bp deletion from
+        // 0-based 261 whose bases repeat their first seven after them: placed right, it
+        // ends at X's anchor, so it is another allele at X's site. A read REF at X with an
+        // unlisted 11 bp deletion ending 9 bases before X, starting inside the listed deletion's
+        // bases, fits REF and that allele about as badly (each wants an indel of its own):
+        // REF where X is beaten, never evidence of the deletion. A read carrying the
+        // deletion itself is that allele.
+        let c = contig(59, 261, b"CAGAGAACAAAAGAAAGAAAGATTTTCTTACTTCAGAGAATTCTTTGCCACGTATTTCTAGC");
+        let x = row(301, "A", "AT");
+        let del = Row::new(260, &c[260..294], &c[260..261]);
+        let rows = vec![x.clone(), del.clone()];
+        let own = [&c[275..281], &c[292..386]].concat();
+        let h_del = haplotype(&c, &[&del]);
+        let reads = vec![
+            read_q(&own, vec![Q; 100], 275, "6M11D94M"),
+            read(&c, 240, 100, 240, "100M"),
+            read(&h_del, 200, 100, 200, "61M33D39M"),
+        ];
+        assert_eq!(calls(&c, &rows, &x, &reads), vec![Ref, Ref, Other]);
+    }
+
+    #[test]
     fn a_listed_delins_ending_in_an_snvs_change_is_the_snvs_alt_but_an_insertion_beside_it_is_not() {
         use Call::*;
         // The same molecules listed as one delins over the deletion, the change at -2 and X:

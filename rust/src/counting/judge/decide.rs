@@ -447,12 +447,23 @@ fn conclude<'h>(
     // long deletion's bases, past where a read over X's anchor ends) the read shows REF
     // where REF and X differ, and nothing of the other allele.
     let mut ref_by_reach = false;
+    // Nor where the read writes an indel of its own across that allele's change (an
+    // unlisted deletion beside a listed one, each fitting it badly): it does not carry it,
+    // and reads REF where REF and X differ.
     if call == Call::Other && tied_with(scores) == Some(Class::Ref as usize) {
         if let Some((_, k)) = best[Class::Other as usize] {
-            if !site.reaches_state(read, &hap(k)) {
+            let other = hap(k);
+            if !site.reaches_state(read, &other) {
                 trace!("haplotype judge: REF ties another allele the read never reaches → REF");
                 call = Call::Ref;
                 ref_by_reach = true;
+            } else {
+                let (al, off) = scorer.align(site, &other);
+                if site.gap_at_state(&other, &read.seq, &al, off) {
+                    trace!("haplotype judge: REF ties another allele the read writes its own indel across → REF");
+                    call = Call::Ref;
+                    ref_by_reach = true;
+                }
             }
         }
     }

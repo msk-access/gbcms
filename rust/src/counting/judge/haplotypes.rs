@@ -1445,69 +1445,106 @@ impl Site {
     /// deletes bases at X's site: at any place the indel can slide to (an indel in a
     /// repeat is one allele wherever it is written in it).
     pub(crate) fn gap_at_site(&self, hap: &Hap, read: &[u8], al: &Alignment, off: usize) -> bool {
-        let (a, b) = self.site_columns(hap);
         // a gap lying wholly inside a long event's own bases is a change on that molecule,
         // never another allele of X
         let interior = if other_option().edges { self.long_interior(hap) } else { None };
         let inside = |lo: i64, hi: i64| interior.is_some_and(|(i0, i1)| i0 <= lo && hi <= i1);
-        let h = &hap.seq;
-        let m = h.len() as i64;
-        let at = |c: i64| (0..m).contains(&c).then(|| h[c as usize]);
-        let mut last: Option<i64> = None;
-        let mut i = 0;
-        while i < al.placed.len() {
-            match al.placed[i] {
-                Placed::At(c) => {
-                    let c = (c + off) as i64;
-                    let k = i64::from(al.skipped_after[i]);
-                    if k > 0 {
-                        // hap columns [lo, lo + k) skipped, slid each way
-                        let (mut lo, mut hi) = (c + 1, c + 1);
-                        while at(lo - 1).is_some() && at(lo - 1) == at(lo - 1 + k) {
-                            lo -= 1;
-                        }
-                        while at(hi + k).is_some() && at(hi) == at(hi + k) {
-                            hi += 1;
-                        }
-                        if lo < b && hi + k > a && !inside(lo, hi + k) {
-                            return true;
-                        }
-                    }
-                    last = Some(c);
-                    i += 1;
-                }
-                Placed::Inserted => {
-                    // the read bases [i, j) inserted before column `last` + 1
-                    let j = (i..al.placed.len()).find(|&t| al.placed[t] != Placed::Inserted).unwrap_or(al.placed.len());
-                    if let Some(c) = last {
-                        let ins = &read[i..j];
-                        let n = ins.len();
-                        // slide left: the base before the boundary equals the insert's last
-                        // base (rotated as it slides); right: the base after it its first
-                        let mut lo = c + 1;
-                        let mut rot = n;
-                        while lo > 0 && at(lo - 1) == Some(ins[(rot - 1) % n]) {
-                            lo -= 1;
-                            rot = if rot == 1 { n } else { rot - 1 };
-                        }
-                        let mut hi = c + 1;
-                        let mut r = 0;
-                        while at(hi) == Some(ins[r % n]) {
-                            hi += 1;
-                            r += 1;
-                        }
-                        if a < hi && lo < b && !inside(lo, hi) {
-                            return true;
-                        }
-                    }
-                    i = j;
-                }
-                Placed::LeftOver => i += 1,
-            }
-        }
-        false
+        gap_between(hap, read, al, off, self.site_columns(hap), inside, false)
     }
 
+    /// Whether an alignment of a read to another allele's haplotype `hap` (its columns
+    /// offset by `off`) inserts or deletes bases of its own where that allele changes the
+    /// window, a base each side, wherever the indel can slide to, read bases inserted before
+    /// its first aligned base included: the read writes another indel across the allele's
+    /// change rather than carrying it.
+    pub(crate) fn gap_at_state(&self, hap: &Hap, read: &[u8], al: &Alignment, off: usize) -> bool {
+        let Some(&r) = hap.rows.iter().find(|&&r| self.is_state(r)) else {
+            return false;
+        };
+        let Some(&(_, _, hs, he)) = hap.segs.iter().find(|&&(rs, re, _, _)| (rs, re) == self.spans[r]) else {
+            return false;
+        };
+        gap_between(hap, read, al, off, (hs - 1, he + 1), |_, _| false, true)
+    }
+}
+
+/// Whether an alignment of `read` to `hap` (its columns offset by `off`) inserts or deletes
+/// bases meeting the columns `[a, b)`, at any place the indel can slide to, but for one lying
+/// wholly where `inside` says; with `leading`, read bases inserted before the alignment's
+/// first column too.
+#[allow(clippy::too_many_arguments)]
+fn gap_between(
+    hap: &Hap,
+    read: &[u8],
+    al: &Alignment,
+    off: usize,
+    (a, b): (i64, i64),
+    inside: impl Fn(i64, i64) -> bool,
+    leading: bool,
+) -> bool {
+    let h = &hap.seq;
+    let m = h.len() as i64;
+    let at = |c: i64| (0..m).contains(&c).then(|| h[c as usize]);
+    let mut last: Option<i64> = None;
+    let mut i = 0;
+    while i < al.placed.len() {
+        match al.placed[i] {
+            Placed::At(c) => {
+                let c = (c + off) as i64;
+                let k = i64::from(al.skipped_after[i]);
+                if k > 0 {
+                    // hap columns [lo, lo + k) skipped, slid each way
+                    let (mut lo, mut hi) = (c + 1, c + 1);
+                    while at(lo - 1).is_some() && at(lo - 1) == at(lo - 1 + k) {
+                        lo -= 1;
+                    }
+                    while at(hi + k).is_some() && at(hi) == at(hi + k) {
+                        hi += 1;
+                    }
+                    if lo < b && hi + k > a && !inside(lo, hi + k) {
+                        return true;
+                    }
+                }
+                last = Some(c);
+                i += 1;
+            }
+            Placed::Inserted => {
+                // the read bases [i, j) inserted before column `last` + 1
+                let j = (i..al.placed.len()).find(|&t| al.placed[t] != Placed::Inserted).unwrap_or(al.placed.len());
+                let first = || match al.placed.get(j) {
+                    Some(&Placed::At(c)) if leading => Some((c + off) as i64 - 1),
+                    _ => None,
+                };
+                if let Some(c) = last.or_else(first) {
+                    let ins = &read[i..j];
+                    let n = ins.len();
+                    // slide left: the base before the boundary equals the insert's last
+                    // base (rotated as it slides); right: the base after it its first
+                    let mut lo = c + 1;
+                    let mut rot = n;
+                    while lo > 0 && at(lo - 1) == Some(ins[(rot - 1) % n]) {
+                        lo -= 1;
+                        rot = if rot == 1 { n } else { rot - 1 };
+                    }
+                    let mut hi = c + 1;
+                    let mut r = 0;
+                    while at(hi) == Some(ins[r % n]) {
+                        hi += 1;
+                        r += 1;
+                    }
+                    if a < hi && lo < b && !inside(lo, hi) {
+                        return true;
+                    }
+                }
+                i = j;
+            }
+            Placed::LeftOver => i += 1,
+        }
+    }
+    false
+}
+
+impl Site {
     /// Whether `read` reaches where another state's haplotype `other` differs from REF's:
     /// on REF's haplotype with `other`'s contexts (its rows but the state's), its aligned
     /// bases reach past their common prefix and start before their common suffix. In a
