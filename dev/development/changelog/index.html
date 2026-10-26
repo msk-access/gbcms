@@ -780,6 +780,19 @@
 <p>The format is based on <a href="https://keepachangelog.com/en/1.0.0/">Keep a Changelog</a>,
 and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semantic Versioning</a>.</p>
 <h2 id="unreleased">[Unreleased]<a class="headerlink" href="#unreleased" title="Permanent link">¶</a></h2>
+<h3 id="fixed-the-docs-state-the-unreadable-insert-rule-as-decided-304">Fixed — the docs state the unreadable-insert rule as decided (#304)<a class="headerlink" href="#fixed-the-docs-state-the-unreadable-insert-rule-as-decided-304" title="Permanent link">¶</a></h3>
+<ul>
+<li><strong>An insert of the ALT's length whose bases are all masked is the ALT</strong>, where no other
+  allele of that length is at the locus. The rule (RJ-20, amended 2026-10-15 in #278,
+  re-confirmed 2026-10-26) is applied by the exact-carrier rule, which judges pure indels by
+  their bases. Several pages still gave the superseded rule, that such a read is neither,
+  counted in <code>partial_alt</code>: the register row (amendment at its end),
+  <code>allele-classification.md</code> (Dispatch, Insertion, the wrong-length table), the glossary's
+  <code>has_unreadable_insert</code>, and the Read Filters line added in #329.</li>
+<li><strong>Those pages now lead with the current rule.</strong> They say that the <abbr title="Compact Idiosyncratic Gapped Alignment Report - BAM alignment operation string">CIGAR</abbr> checks, which run
+  only for an insertion the exact-carrier rule cannot judge (no prepared reference), still
+  count such a read neither, in <code>partial_alt</code>. Counts are unchanged.</li>
+</ul>
 <h3 id="fixed-min-baseq-help-and-docs-say-what-it-does-304">Fixed — <code>--min-baseq</code> help and docs say what it does (#304)<a class="headerlink" href="#fixed-min-baseq-help-and-docs-say-what-it-does-304" title="Permanent link">¶</a></h3>
 <ul>
 <li><strong><code>--min-baseq</code> masks bases, never reads.</strong> The <abbr title="Command Line Interface - Terminal-based program interface">CLI</abbr> help ("Minimum base quality") and
