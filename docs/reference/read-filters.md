@@ -143,17 +143,34 @@ Beyond the read-level filters above, gbcms also applies **base-level quality thr
 
 | Parameter | CLI Flag | Default | Description |
 |:----------|:---------|:--------|:------------|
-| Min base quality | `--min-baseq` | **20** | Bases below this are masked or rejected |
+| Min base quality | `--min-baseq` | **20** | Bases below this are read as unknown (like `N`); reads are kept |
 | Fragment consensus threshold | `--fragment-qual-threshold` | **10** | Quality margin for R1/R2 conflict resolution |
 
-!!! info "How Base Quality Is Used"
-    The effect of `--min-baseq` varies by variant type:
-    
-    - **SNP**: Read is rejected if the base at the variant position has quality < threshold
-    - **MNP**: Read is rejected if **any** base in the MNP region has quality < threshold
-    - **Insertion/Deletion (windowed scan)**: Inserted/deleted bases below threshold are **masked** (treated as wildcards) rather than rejecting the entire read
+!!! info "What `--min-baseq` does"
+    A base below `--min-baseq` is read as unknown, exactly like an `N`: it supports no
+    allele and counts against none. The threshold masks bases, never reads. A read with
+    masked bases still counts toward depth (`DP`, `DPF`) and is classified on its other
+    bases; when those cannot tell REF from ALT, it counts toward depth only (neither REF
+    nor ALT). `--min-baseq 0` masks only `N` bases. With `--apply-baq`, qualities near
+    indels and splice junctions are lowered first, then compared with the threshold
+    (see [BAQ](#baq-quality-downgrade)).
+
+    By variant type:
+
+    - **SNP**: a masked base at the variant position leaves the read neither REF nor ALT.
+    - **MNP**: each position where REF and ALT differ is judged on its own. Masked
+      positions are skipped and the confident ones decide; a read with every differing
+      position masked counts toward depth only.
+    - **Insertion/Deletion**: masked bases match any base when the read is compared with
+      each allele. An insertion read with no readable inserted base carries the
+      insertion's length but not its sequence: neither REF nor ALT, counted in
+      `partial_alt` (see [Wrong-Length Pure Indels](allele-classification.md#wrong-length-pure-indels-partial_alt)).
     - **Complex (exact carriers)**: Bases at or above the threshold must match the allele; every base is also weighed by its quality, and an ALT call needs the read's evidence for ALT over REF to reach at least what one base at the threshold gives (about 2.5 log10 at 20), so a read whose window is mostly low quality cannot be called ALT on one clear base
     - **Complex (Phase 3 SW)**: Low-quality bases are replaced with `N`, which scores 0 against any base
+
+    The original GBCMS applies no base-quality threshold by default; when one is set, a
+    read whose deciding base falls below it is left out of depth (`DP`) as well. gbcms
+    keeps such a read in depth.
 
 ---
 

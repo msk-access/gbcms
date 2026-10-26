@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed — `--min-baseq` help and docs say what it does (#304)
+
+- **`--min-baseq` masks bases, never reads.** The CLI help ("Minimum base quality") and
+  the docs did not say what happens below the threshold, and Read Filters said an SNP or
+  MNP read was "rejected". A base below it is read as unknown, like `N`: it supports no
+  allele and counts against none, and the read still counts toward depth, judged on its
+  other bases. An MNP's differing positions are judged one by one (masked ones skipped),
+  not by the block's lowest quality. The help text, the DNA, RNA, quickstart and
+  Nextflow parameter tables, and Read Filters now say so. Counts are unchanged.
+
 ### Fixed — companion file names, `.vcf.bgz` in normalize, the amplicon rule, Nextflow RNA defaults (#309)
 
 - **Companion files keep every dot of the output name.** The mFSD Parquet and report

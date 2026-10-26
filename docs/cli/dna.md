@@ -86,7 +86,7 @@ flag is passed.
 | Option | Default | Description |
 |:-------|:--------|:------------|
 | `--min-mapq` | `20` | Minimum MAPQ |
-| `--min-baseq` | `20` | Minimum BASEQ |
+| `--min-baseq` | `20` | Minimum base quality. A base below it is read as unknown, like `N`: it supports no allele and counts against none. Reads are not dropped: a read still counts toward depth and is judged on its other bases. `0` masks only `N` bases. See [Read Filters → Quality Thresholds](../reference/read-filters.md#quality-thresholds) |
 | `--filter-duplicates` | `true` | Filter duplicate reads |
 | `--filter-secondary` | `true` | Filter secondary alignments |
 | `--filter-supplementary` | `true` | Filter supplementary alignments |
