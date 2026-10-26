@@ -940,6 +940,66 @@ mod tests {
     }
 
     #[test]
+    fn a_found_allele_holding_an_snvs_change_beside_a_deletion_is_the_snvs_alt() {
+        use Call::*;
+        // An SNV at 0-based 400 whose carriers also carry a 60 bp deletion ending five bases
+        // before it, a change two bases before it and one seven after. The aligner writes the
+        // deletion, and the reads spell one allele from it through X (the found allele: the
+        // deletion, the change at -2 and X's base), which holds X's change: X's ALT, as a
+        // listed MNV holding it is. REF's and X's plain carriers keep their calls.
+        let c = random_seq(600, 37);
+        let other = |b: u8| if b == b'A' { b'C' } else { b'A' };
+        let x = Row::new(400, &c[400..401], &[other(c[400])]);
+        let mut h = c.clone();
+        for p in [398, 400, 407] {
+            h[p] = other(c[p]);
+        }
+        h.drain(336..396);
+        let mut reads: Vec<ReadView> =
+            (300..306).map(|s| read(&h, s, 100, s as i64, &format!("{}M60D{}M", 336 - s, 100 - (336 - s)))).collect();
+        reads.extend((330..340).map(|s| read(&c, s, 100, s as i64, "100M")));
+        let h_x = haplotype(&c, &[&x]);
+        reads.extend((340..343).map(|s| read(&h_x, s, 100, s as i64, "100M")));
+        let base = |p: i64| c.get(p as usize).copied();
+        let candidates = Candidates { found: found_indels(&base, &reads, &[]), ..Candidates::default() };
+        assert_eq!(candidates.found.len(), 1, "the carriers spell one allele");
+        let f = &candidates.found[0].0;
+        assert_eq!(f.pos + f.ref_al.len() as i64, 401, "from the deletion through X");
+        let s = Site::build(x, &candidates, (0, c.clone()), &reads).unwrap();
+        let got: Vec<Call> = reads.iter().map(|r| judge(&s, r, MIN_BQ, false).call).collect();
+        assert_eq!(got, [vec![Alt; 6], vec![Ref; 10], vec![Alt; 3]].concat());
+    }
+
+    #[test]
+    fn a_listed_delins_ending_in_an_snvs_change_is_the_snvs_alt_but_an_insertion_beside_it_is_not() {
+        use Call::*;
+        // The same molecules listed as one delins over the deletion, the change at -2 and X:
+        // its ALT ends in X's base and its sequence lies nearer X's haplotype than REF's, so
+        // its carriers are X's. A listed insertion after X's base whose last inserted base is
+        // X's ALT base reads as REF with an insertion, not as X: its carriers stay another
+        // allele.
+        let c = random_seq(600, 37);
+        let other = |b: u8| if b == b'A' { b'C' } else { b'A' };
+        let x = Row::new(400, &c[400..401], &[other(c[400])]);
+        let mut h = c.clone();
+        for p in [398, 400, 407] {
+            h[p] = other(c[p]);
+        }
+        let delins = Row::new(335, &c[335..401], &[&c[335..336], &h[396..401]].concat());
+        let carrier = haplotype(&c, &[&delins, &Row::new(407, &c[407..408], &h[407..408])]);
+        let mut reads: Vec<ReadView> = (300..306).map(|s| read(&carrier, s, 100, s as i64, "100M")).collect();
+        reads.extend((330..334).map(|s| read(&c, s, 100, s as i64, "100M")));
+        let h_x = haplotype(&c, &[&x]);
+        reads.extend((340..343).map(|s| read(&h_x, s, 100, s as i64, "100M")));
+        let rows = vec![x.clone(), delins];
+        assert_eq!(calls(&c, &rows, &x, &reads), [vec![Alt; 6], vec![Ref; 4], vec![Alt; 3]].concat());
+        let ins = Row::new(400, &c[400..401], &[&c[400..401], b"GT", &x.alt_al[..]].concat());
+        let h_ins = haplotype(&c, &[&ins]);
+        let reads = vec![read(&h_ins, 340, 100, 340, "100M"), read(&c, 341, 100, 341, "100M"), read(&h_x, 342, 100, 342, "100M")];
+        assert_eq!(calls(&c, &[x.clone(), ins], &x, &reads), vec![Other, Ref, Alt]);
+    }
+
+    #[test]
     fn two_reads_writing_an_indel_find_it_within_the_share_of_the_sites_reads() {
         let c = random_seq(600, 17);
         let base = |p: i64| c.get(p as usize).copied();
