@@ -471,6 +471,25 @@ fn conclude<'h>(
             }
         }
     }
+    // A substitution X's read whose confident bases at X's telling bases carry some of X's
+    // changes and REF's bases at others carries another allele (RJ-28: at an MNV's row a
+    // read carrying only some of its components), wherever the margin leaves it: REF by a
+    // base (one change of three), X by a base (two of three) or a tie of the two (one of
+    // two). A base below `--min-baseq` there weighs nothing either way.
+    let mut mixed_on: Option<Cow<'h, Hap>> = None;
+    if call == Call::Depth && site.changed_bases() >= 2 {
+        if let (Some((a, _)), Some((r, h))) = (best[Class::Alt as usize], best[Class::Ref as usize]) {
+            if (a - r).abs() < DELTA {
+                let candidate = hap(h);
+                let (al, off) = scorer.align(site, &candidate);
+                if read_at_x(site, read, &candidate, &al, off).mixed() {
+                    trace!("haplotype judge: REF and X tie on a read carrying some of X's changes → another allele");
+                    call = Call::Other;
+                    mixed_on = Some(candidate);
+                }
+            }
+        }
+    }
     let won = match call {
         Call::Alt => Some(Class::Alt),
         Call::Ref => Some(Class::Ref),
@@ -483,12 +502,19 @@ fn conclude<'h>(
     if call == Call::Other && !ask_anchor {
         return Verdict { call, qual: 0, best: scores, holds_anchor: false, placed: None, triage: None, confirmed: false, spells: 0, clip: None, fits: FitsTrace::default(), fits_none: false };
     }
-    let hap_w = match fit_other {
+    let hap_w = match fit_other.or(mixed_on) {
         Some(h) => h,
         None => hap(best[won as usize].map_or(0, |(_, h)| h)),
     };
     let hap_w: &Hap = &hap_w;
     let (wa, off) = scorer.align(site, hap_w);
+    if matches!(call, Call::Alt | Call::Ref) && site.changed_bases() >= 2 && read_at_x(site, read, hap_w, &wa, off).mixed() {
+        trace!("haplotype judge: a {call:?} call on a read carrying some of X's changes → another allele");
+        call = Call::Other;
+        if !ask_anchor {
+            return Verdict { call, qual: 0, best: scores, holds_anchor: false, placed: None, triage: None, confirmed: false, spells: 0, clip: None, fits: FitsTrace::default(), fits_none: false };
+        }
+    }
     let column = |p: &Placed| if let Placed::At(c) = *p { Some((c + off) as i64) } else { None };
     let holds_anchor = wa.covers().is_some_and(|(a, b)| {
         let anchor = site.anchor_in(hap_w);
@@ -546,6 +572,45 @@ fn conclude<'h>(
     });
     let spells = if call == Call::Alt { site.spelled_holders(read, hap_w, &wa, off) } else { 0 };
     Verdict { call, qual, best: scores, holds_anchor, placed, triage: None, confirmed, spells, clip, fits: FitsTrace::default(), fits_none: false }
+}
+
+/// What a read's confident bases show at a substitution X's telling bases, on its
+/// alignment `al` (columns offset by `off`) to `hap` (carrying X or holding REF's bases):
+/// at a base X changes, X's base, REF's or a third; where the two alleles agree (a base
+/// inside an MNV that it keeps), a base other than theirs is a third.
+#[derive(Debug, Clone, Copy, Default)]
+struct AtX {
+    x: bool,
+    reference: bool,
+    third: bool,
+}
+
+impl AtX {
+    /// Some of X's changes read and REF's bases at others: another allele.
+    fn mixed(self) -> bool {
+        self.x && self.reference
+    }
+}
+
+fn read_at_x(site: &Site, read: &ReadView, hap: &Hap, al: &Alignment, off: usize) -> AtX {
+    let mut out = AtX::default();
+    for (col, rb, ab) in site.telling_pairs(hap) {
+        let Some(i) = al.placed.iter().position(|p| matches!(*p, Placed::At(c) if (c + off) as i64 == col)) else {
+            continue;
+        };
+        let b = read.seq[i];
+        if b == WILD {
+            continue;
+        }
+        if rb != ab && b == ab {
+            out.x = true;
+        } else if b == rb {
+            out.reference |= rb != ab;
+        } else {
+            out.third = true;
+        }
+    }
+    out
 }
 
 /// What one read base costs in an alignment, and the haplotype bases skipped on each

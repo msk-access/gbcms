@@ -851,6 +851,44 @@ mod tests {
     }
 
     #[test]
+    fn a_read_carrying_some_of_an_mnvs_changes_but_not_all_is_another_allele() {
+        use Call::*;
+        // A read whose bases carry some of a substitution's changes and REF's bases at the
+        // others is another allele (RJ-28), whichever of REF and X its margin favours: one
+        // change of three (REF by a base), two of three (X by a base), one of two (a tie).
+        // A changed base below --min-baseq weighs nothing, as before.
+        let c = random_seq(600, 5);
+        let other = |b: u8| if b == b'A' { b'C' } else { b'A' };
+        let alt: Vec<u8> = c[300..303].iter().map(|&b| other(b)).collect();
+        let carrying = |k: &[usize]| {
+            let mut h = c.clone();
+            for &i in k {
+                h[300 + i] = alt[i];
+            }
+            h
+        };
+        let tnp = Row::new(300, &c[300..303], &alt);
+        let low = |i: usize| -> Vec<u8> { (0..100).map(|k| if k == i { 2 } else { Q }).collect() };
+        let reads = vec![
+            read(&carrying(&[2]), 250, 100, 250, "100M"),
+            read(&carrying(&[0]), 251, 100, 251, "100M"),
+            read(&carrying(&[0, 1]), 252, 100, 252, "100M"),
+            read(&carrying(&[0, 1, 2]), 253, 100, 253, "100M"),
+            read(&c, 254, 100, 254, "100M"),
+            read_q(&carrying(&[0])[250..350], low(50), 250, "100M"), // the change unread: REF
+        ];
+        assert_eq!(calls(&c, std::slice::from_ref(&tnp), &tnp, &reads), vec![Other, Other, Other, Alt, Ref, Ref], "TNP");
+        let dnp = Row::new(300, &c[300..302], &alt[..2]);
+        let reads = vec![
+            read(&carrying(&[1]), 250, 100, 250, "100M"),
+            read(&carrying(&[0]), 251, 100, 251, "100M"),
+            read(&carrying(&[0, 1]), 252, 100, 252, "100M"),
+            read(&c, 253, 100, 253, "100M"),
+        ];
+        assert_eq!(calls(&c, std::slice::from_ref(&dnp), &dnp, &reads), vec![Other, Other, Alt, Ref], "DNP");
+    }
+
+    #[test]
     fn two_reads_writing_an_indel_find_it_within_the_share_of_the_sites_reads() {
         let c = random_seq(600, 17);
         let base = |p: i64| c.get(p as usize).copied();

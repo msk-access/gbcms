@@ -1301,6 +1301,38 @@ impl Site {
         }
     }
 
+    /// For a substitution X, the haplotype positions of X's telling bases in `hap` (a
+    /// haplotype carrying X or holding REF's bases there), each with REF's base and X's
+    /// there; empty for a length change and on another allele's haplotype.
+    pub(crate) fn telling_pairs(&self, hap: &Hap) -> Vec<(i64, u8, u8)> {
+        let x = &self.rows[0];
+        if x.changes_length() || hap.class == Class::Other {
+            return Vec::new();
+        }
+        let (on_ref, _) = telling(x);
+        on_ref
+            .map(|k| {
+                let p = self.spans[0].0 + k as i64;
+                let col = match (hap.class, hap.x_seg) {
+                    (Class::Alt, Some((hs, _))) => hs + k as i64,
+                    (Class::Alt, None) => self.column_in(hap, p),
+                    _ => hap.to_hap(p, false),
+                };
+                (col, x.ref_al[k], x.alt_al[k])
+            })
+            .collect()
+    }
+
+    /// The bases X changes (REF's and X's differ), for a substitution X; 0 for a length
+    /// change.
+    pub(crate) fn changed_bases(&self) -> usize {
+        let x = &self.rows[0];
+        if x.changes_length() {
+            return 0;
+        }
+        x.ref_al.iter().zip(&x.alt_al).filter(|(a, b)| a != b).count()
+    }
+
     /// The states holding X's change (`holds_x`), in order.
     pub(crate) fn holders(&self) -> Vec<&Row> {
         (1..=self.n_states).filter(|&r| self.holds_x[r]).map(|r| &self.rows[r]).collect()
