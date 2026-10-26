@@ -1,8 +1,12 @@
-//! The haplotype judge (`--read-judge haplotype`, #304): one read judgment for every
-//! small-variant row. A read is scored whole against the row's local haplotypes (every
-//! context of the other listed rows within read reach, crossed with every state of the
-//! row's site) and counts ALT or REF only by one confident base; otherwise it is depth
-//! only. Design: `docs/proposals/haplotype-judge.md`.
+//! The sequence judge (`--read-judge sequence`, #304; `haplotype` is its former name):
+//! one read judgment for every small-variant row. It resolves which local sequence a
+//! read's own bases spell at the row: REF, the row's ALT, or another allele at its site.
+//! The read is scored whole against the row's candidate sequences (every state of the
+//! row's site, with every context of the other listed rows, the guard's background and
+//! the found alleles within read reach) and counts ALT or REF only by one confident base;
+//! otherwise it is depth only. Contexts only explain the read's other differences: no
+//! linkage, no phasing. Design: `docs/proposals/sequence-judge.md`. Internal names
+//! (haplotypes, `ReadJudge::Haplotype`) stay until the module is restructured.
 //!
 //! - [`graph`]: the scorer, a read against each state's sequence graph holding every
 //!   context at once (the default).
@@ -41,7 +45,7 @@ pub(crate) const READ_REACH: i64 = super::carrier::WHOLE_READ_REACH;
 pub(crate) enum ReadJudge {
     /// The size-specific rules (RJ-1 to RJ-27): the default.
     Rules,
-    /// The haplotype judge.
+    /// The sequence judge (`sequence`; `haplotype`, its former name).
     Haplotype,
 }
 
@@ -50,8 +54,8 @@ pub(crate) enum ReadJudge {
 pub(crate) fn parse_read_judge(token: &str) -> Result<ReadJudge, String> {
     match token {
         "rules" => Ok(ReadJudge::Rules),
-        "haplotype" => Ok(ReadJudge::Haplotype),
-        other => Err(format!("unknown read_judge {other:?}; expected \"rules\" or \"haplotype\"")),
+        "sequence" | "haplotype" => Ok(ReadJudge::Haplotype),
+        other => Err(format!("unknown read_judge {other:?}; expected \"rules\" or \"sequence\"")),
     }
 }
 
@@ -150,7 +154,7 @@ pub(crate) fn site_for(v: &Variant, guard: Option<&Guard>, reference: &CachedFas
     let hi = ends().map(|r| r.pos + r.ref_al.len() as i64).max().unwrap_or(v.pos + 1) + READ_REACH;
     let Some(window) = reference.window(&v.chrom, lo, hi) else {
         warn!(
-            "haplotype judge: the reference does not hold {}:{}-{} around {}:{} {}>{}; its reads are depth only",
+            "sequence judge: the reference does not hold {}:{}-{} around {}:{} {}>{}; its reads are depth only",
             v.chrom, lo + 1, hi, v.chrom, v.pos + 1, v.ref_allele, v.alt_allele,
         );
         return None;
@@ -194,7 +198,7 @@ pub(crate) fn site_for(v: &Variant, guard: Option<&Guard>, reference: &CachedFas
             s.site_span().0 + 1, s.site_span().1,
         ),
         None => warn!(
-            "haplotype judge: the reference does not hold the REF of {}:{} {}>{}; its reads are depth only",
+            "sequence judge: the reference does not hold the REF of {}:{} {}>{}; its reads are depth only",
             v.chrom, v.pos + 1, v.ref_allele, v.alt_allele,
         ),
     }
@@ -254,8 +258,9 @@ mod tests {
     #[test]
     fn the_read_judge_token_is_parsed_strictly() {
         assert_eq!(parse_read_judge("rules").unwrap(), ReadJudge::Rules);
-        assert_eq!(parse_read_judge("haplotype").unwrap(), ReadJudge::Haplotype);
-        for bad in ["Haplotype", "haplotypes", "", "rule"] {
+        assert_eq!(parse_read_judge("sequence").unwrap(), ReadJudge::Haplotype);
+        assert_eq!(parse_read_judge("haplotype").unwrap(), ReadJudge::Haplotype, "the former name");
+        for bad in ["Sequence", "sequences", "Haplotype", "haplotypes", "", "rule"] {
             assert!(parse_read_judge(bad).is_err(), "{bad:?} must be rejected");
         }
     }

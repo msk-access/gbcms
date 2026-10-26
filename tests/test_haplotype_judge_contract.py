@@ -1,4 +1,4 @@
-"""Package 2 (#304): the haplotype judge, `--read-judge haplotype`.
+"""Package 2 (#304): the sequence judge, `--read-judge sequence` (formerly `haplotype`).
 
 For a row X and each admitted read, the read is scored whole against the local haplotypes:
 every context of the other listed rows within read reach, crossed with every state of X's
@@ -105,7 +105,7 @@ def _run(tmp_path, ref, rows, reads, partial=False, maf_rows=False):
             "--format",
             "maf",
             "--read-judge",
-            "haplotype",
+            "sequence",
         ],
         env={"COLUMNS": "400"},
     )
@@ -688,7 +688,7 @@ def _judged_fixture(tmp_path, caplog, monkeypatch, name, **kw):
     import test_masked_repeat_reads_contract as masked
 
     def judged(bam, variants, **k):
-        k.setdefault("read_judge", "haplotype")
+        k.setdefault("read_judge", "sequence")
         k.setdefault("reference_fasta", str(Path(bam).with_suffix(".fa")))
         return count_checked(bam, variants, **k)
 
@@ -734,7 +734,7 @@ def _mnp_beside_indel(tmp_path, reads_of, extra=()):
     hap = ref[:p] + "TA" + ref[p + 2 :]
     fa, bam = _files(tmp_path, ref, reads_of(ref, hap, p) + list(extra))
     (c,) = count_checked(
-        bam, [_prepared(fa, "GC", "TA", pos=p)], read_judge="haplotype", reference_fasta=fa
+        bam, [_prepared(fa, "GC", "TA", pos=p)], read_judge="sequence", reference_fasta=fa
     )
     assert c.dp >= c.rd + c.ad and c.dpf >= c.rdf + c.adf
     assert c.rd == c.rd_fwd + c.rd_rev and c.ad == c.ad_fwd + c.ad_rev
@@ -839,7 +839,7 @@ def _imperfect_repeat_counts(tmp_path, where):
         1,
         True,
     )
-    (c,) = count_checked(bam, [pv.variant], read_judge="haplotype", reference_fasta=fa)
+    (c,) = count_checked(bam, [pv.variant], read_judge="sequence", reference_fasta=fa)
     assert c.dp >= c.rd + c.ad and c.rd == c.rd_fwd + c.rd_rev and c.ad == c.ad_fwd + c.ad_rev
     return c.rd, c.ad, c.partial_alt
 
@@ -896,7 +896,7 @@ def test_another_unit_count_of_a_vntr_is_partial_evidence(tmp_path, differ):
         1,
         True,
     )
-    (got,) = count_checked(bam, [pv.variant], read_judge="haplotype", reference_fasta=fa)
+    (got,) = count_checked(bam, [pv.variant], read_judge="sequence", reference_fasta=fa)
     assert got.dp >= got.rd + got.ad and got.rd == got.rd_fwd + got.rd_rev
     assert got.ad == got.ad_fwd + got.ad_rev
     assert (got.rd, got.ad, got.partial_alt) == (4, 4, 4)
@@ -1148,7 +1148,7 @@ def _two_haplotype_calls(tmp_path, caplog, window, g0, rows, x_pos, written=None
     caplog.clear()
     with caplog.at_level(5, logger="_rs.counting.engine"):
         _rs.reset_log_caching()
-        (c,) = count_checked(bam, [vs[xi]], read_judge="haplotype", reference_fasta=fa)
+        (c,) = count_checked(bam, [vs[xi]], read_judge="sequence", reference_fasta=fa)
     assert c.dp >= c.rd + c.ad and c.rd == c.rd_fwd + c.rd_rev and c.ad == c.ad_fwd + c.ad_rev
     key = f"1:{vs[xi].pos + 1} {vs[xi].ref_allele}>{vs[xi].alt_allele} "
     call = re.compile(r"read=(h[01])_\d+ mate=\d ref=(\w+) alt=(\w+)")
@@ -1260,7 +1260,7 @@ def test_a_dense_cluster_of_rows_is_judged_in_bounded_time(tmp_path):
         False,
         1,
         reference_fasta=fa,
-        read_judge="haplotype",
+        read_judge="sequence",
     )
     elapsed = time.monotonic() - t0
     assert c.dp >= c.rd + c.ad and c.dpf >= c.rdf + c.adf

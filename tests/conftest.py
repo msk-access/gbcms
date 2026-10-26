@@ -15,12 +15,12 @@ sys.path.insert(0, str(Path(__file__).parent))
 
 from helpers import SUITE_READ_JUDGE, UNJUDGED, install_suite_read_judge  # noqa: E402
 
-# GBCMS_TEST_READ_JUDGE=haplotype: the whole suite under the haplotype judge (helpers.py).
-if SUITE_READ_JUDGE == "haplotype":
+# GBCMS_TEST_READ_JUDGE=sequence: the whole suite under the sequence judge (helpers.py).
+if SUITE_READ_JUDGE == "sequence":
     install_suite_read_judge()
 elif SUITE_READ_JUDGE != "rules":
     raise pytest.UsageError(
-        f"GBCMS_TEST_READ_JUDGE={SUITE_READ_JUDGE!r}: expected 'rules' or 'haplotype'"
+        f"GBCMS_TEST_READ_JUDGE={SUITE_READ_JUDGE!r}: expected 'rules' or 'sequence'"
     )
 
 
@@ -29,13 +29,13 @@ def pytest_report_header(config):
 
 
 def pytest_terminal_summary(terminalreporter, exitstatus, config):
-    """Under the haplotype judge, the engine calls it could not take (no FASTA beside the
-    BAM, of its contigs, to read haplotypes from): those tests ran under the rules, not the
-    judge."""
-    if SUITE_READ_JUDGE != "haplotype" or not UNJUDGED:
+    """Under the sequence judge, the engine calls it could not take (no FASTA beside the
+    BAM, of its contigs, to read candidate sequences from): those tests ran under the
+    rules, not the judge."""
+    if SUITE_READ_JUDGE != "sequence" or not UNJUDGED:
         return
     tests = sorted({t for t, _ in UNJUDGED})
-    terminalreporter.section("not run under the haplotype judge")
+    terminalreporter.section("not run under the sequence judge")
     terminalreporter.write_line(
         f"{len(tests)} tests made {len(UNJUDGED)} engine calls under the rules "
         "(no single FASTA of the BAM's contigs beside it):"

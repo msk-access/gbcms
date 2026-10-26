@@ -442,12 +442,12 @@ fn count_bam_binned_core(
         // Until spliced reads are judged on the reference spliced along their junctions,
         // RNA would count every spliced read as depth only: refused, never silent.
         return Err(pyo3::exceptions::PyValueError::new_err(
-            "read_judge \"haplotype\" does not judge spliced reads yet: RNA mode needs read_judge \"rules\"",
+            "read_judge \"sequence\" does not judge spliced reads yet: RNA mode needs read_judge \"rules\"",
         ));
     }
     if read_judge == judge::ReadJudge::Haplotype && reference_fasta.is_none() {
         return Err(pyo3::exceptions::PyValueError::new_err(
-            "read_judge \"haplotype\" needs reference_fasta: each row's haplotypes are read from it",
+            "read_judge \"sequence\" needs reference_fasta: each row's candidate sequences are read from it",
         ));
     }
     let backend = parse_alignment_backend(

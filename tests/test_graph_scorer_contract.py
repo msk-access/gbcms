@@ -1,4 +1,4 @@
-"""The haplotype judge's graph scorer, the judge's default scorer.
+"""The sequence judge's graph scorer, the judge's default scorer.
 
 TEMPORARY switch: `GBCMS_JUDGE_SCORER=graph` (the default) scores a read, per state of X's
 site, by one dynamic programme over a local sequence graph (reference segments; the other
@@ -168,7 +168,7 @@ def _timed(bam, fa, variants):
         False,
         1,
         reference_fasta=fa,
-        read_judge="haplotype",
+        read_judge="sequence",
     )
     return counts, time.monotonic() - t0
 
@@ -312,6 +312,6 @@ def test_at_four_rows_or_fewer_the_graph_counts_as_the_enumeration(tmp_path, mon
         monkeypatch.setenv("GBCMS_JUDGE_SCORER", name)
         got[name] = [
             tuple(getattr(c, f) for f in FIELDS)
-            for c in count_checked(bam, variants, read_judge="haplotype", reference_fasta=fa)
+            for c in count_checked(bam, variants, read_judge="sequence", reference_fasta=fa)
         ]
     assert got["graph"] == got["enumerated"], (x, rows)

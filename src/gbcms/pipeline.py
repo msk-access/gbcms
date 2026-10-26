@@ -1027,13 +1027,13 @@ class Pipeline:
                 few (or in one pair orientation) for a haplotype's, so it was left
                 unmasked; a minority haplotype carrying it would count ALT where its
                 reads read as the ALT. Counts stand.
-            MNV_SHARED(chrom:pos:REF>ALT:n/m): under the haplotype judge, at a
+            MNV_SHARED(chrom:pos:REF>ALT:n/m): under the sequence judge, at a
                 substitution (an SNV) with a co-listed row holding its change (an MNV
                 containing it): n of the row's m ALT reads spell that MNV whole. Those
                 carriers count at both rows (a read carrying the SNV's base is its ALT,
                 whatever else is listed), so one molecule can enter both rows' AD and
                 mFSD size distributions. One flag per such MNV. Counts stand.
-            UNEXPLAINED_READS(n/m): under the haplotype judge, n of the row's m DP
+            UNEXPLAINED_READS(n/m): under the sequence judge, n of the row's m DP
                 reads fit none of its candidate sequences (REF, ALT, the other alleles
                 at its site, with every context) within ten confident mismatches. The
                 fit rule makes such a read depth only where its aligner places it
@@ -1121,13 +1121,13 @@ class Pipeline:
             flags.append(f"POSSIBLE_MINORITY_HAPLOTYPE({variant.chrom}:{minority})")
 
         # An SNV listed beside an MNV holding its change counts the MNV's carriers as its
-        # ALT (the haplotype judge): name how many of its ALT reads spell each such MNV, so
+        # ALT (the sequence judge): name how many of its ALT reads spell each such MNV, so
         # the reads the two rows share are visible. The counts stand.
         shared = getattr(counts, "mnv_shared", "")
         for entry in shared.split("+") if shared else ():
             flags.append(f"MNV_SHARED({variant.chrom}:{entry})")
 
-        # Reads the haplotype judge found no candidate sequence explains: depth only where
+        # Reads the sequence judge found no candidate sequence explains: depth only where
         # the aligner doubts them too (the fit rule), else judged by their bases at the
         # row. Named so a row counting foreign reads is visible. The counts stand.
         unexplained = getattr(counts, "unexplained_reads", 0)

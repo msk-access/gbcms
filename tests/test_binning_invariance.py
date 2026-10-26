@@ -352,7 +352,7 @@ def _paired(read, tlen, reverse=False):
     return read
 
 
-# ── The haplotype judge (--read-judge haplotype) ──────────────────────────────
+# ── The sequence judge (--read-judge sequence) ───────────────────────────────
 # A read is judged against the haplotypes built from its row's rows within reach (prep's,
 # from the whole input), its guard and the reads over it: none of them may depend on
 # which rows share a bin.
@@ -430,7 +430,7 @@ def test_haplotype_judge_counts_do_not_depend_on_bin_geometry(tmp_path, caplog):
     and with decoy rows in the call."""
     fa, bam = write_contig(tmp_path, JUDGE, _judge_reads(), "judge")
     variants, decomposed, siblings = _prepared(fa, JUDGE_ROWS)
-    judged = {"read_judge": "haplotype", "reference_fasta": fa}
+    judged = {"read_judge": "sequence", "reference_fasta": fa}
     base, run = _check_invariance(caplog, bam, variants, decomposed, siblings, **judged)
     # #246: the insertion counts its carriers however written (4 gapped, 6 through, 6
     # in cis with the SNV); the SNV its own 5 and the 6 in cis, the insertion's other
@@ -461,7 +461,7 @@ def test_haplotype_judge_dense_dna_counts_do_not_depend_on_bin_geometry(tmp_path
     fa, bam = write_contig(tmp_path, DNA, reads, "dna")
     variants, decomposed, siblings = _prepared(fa, DNA_VARIANTS)
     _check_invariance(
-        caplog, bam, variants, decomposed, siblings, read_judge="haplotype", reference_fasta=fa
+        caplog, bam, variants, decomposed, siblings, read_judge="sequence", reference_fasta=fa
     )
 
 
@@ -481,7 +481,7 @@ def test_haplotype_judge_clip_carriers_do_not_depend_on_bin_geometry(tmp_path, c
     fa, bam = write_contig(tmp_path, ref, reads, "clip")
     variants, decomposed, siblings = _prepared(fa, [(CLIP_POS, ref[CLIP_POS : CLIP_POS + 60], alt)])
     base, _ = _check_invariance(
-        caplog, bam, variants, decomposed, siblings, read_judge="haplotype", reference_fasta=fa
+        caplog, bam, variants, decomposed, siblings, read_judge="sequence", reference_fasta=fa
     )
     assert (base[0].rd, base[0].ad) == (10, 20), "the clipped carriers must count"
 

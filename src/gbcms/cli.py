@@ -51,9 +51,12 @@ class AlignmentBackend(StrEnum):
 
 
 class ReadJudge(StrEnum):
-    """CLI-exposed read judgments: the size-specific rules, or the haplotype judge."""
+    """CLI-exposed read judgments: the size-specific rules, or the sequence judge.
+    HAPLOTYPE is the sequence judge's former name, kept for old command lines (the
+    configuration takes it as 'sequence' and warns)."""
 
     RULES = "rules"
+    SEQUENCE = "sequence"
     HAPLOTYPE = "haplotype"
 
 
@@ -404,8 +407,9 @@ def dna(
         ReadJudge.RULES,
         "--read-judge",
         help=(
-            "Read judgment: 'rules' (the size-specific rules, default) or 'haplotype' "
-            "(each read scored whole against the row's local haplotypes; in development, #304)."
+            "Read judgment: 'rules' (the size-specific rules, default) or 'sequence' "
+            "(which of the row's candidate sequences each read's own bases spell at the "
+            "row; in development, #304). 'haplotype' is its former name (deprecated)."
         ),
     ),
     hmm_llr_threshold: float = typer.Option(
@@ -780,7 +784,7 @@ def rna(
         ReadJudge.RULES,
         "--read-judge",
         help=(
-            "Read judgment: 'rules' (the size-specific rules, default). 'haplotype' does "
+            "Read judgment: 'rules' (the size-specific rules, default). 'sequence' does "
             "not judge spliced reads yet and is refused in RNA mode (#304)."
         ),
     ),
@@ -839,9 +843,9 @@ def rna(
             "--preserve-barcode has no effect when the variant file is not a MAF.",
         )
 
-    if read_judge == ReadJudge.HAPLOTYPE:
+    if read_judge in (ReadJudge.SEQUENCE, ReadJudge.HAPLOTYPE):
         logger.error(
-            "--read-judge haplotype does not judge spliced reads yet; RNA mode needs "
+            f"--read-judge {read_judge.value} does not judge spliced reads yet; RNA mode needs "
             "--read-judge rules."
         )
         raise typer.Exit(code=1)

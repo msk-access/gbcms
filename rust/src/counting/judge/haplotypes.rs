@@ -3055,7 +3055,7 @@ impl Site {
                 static WARNED: std::sync::Once = std::sync::Once::new();
                 WARNED.call_once(|| {
                     log::warn!(
-                        "haplotype judge: the found-allele rule {other:?} is weighed under the enumerated scorer only \
+                        "sequence judge: the found-allele rule {other:?} is weighed under the enumerated scorer only \
                          (GBCMS_JUDGE_SCORER=enumerated); the graph scorer applies told"
                     )
                 });
