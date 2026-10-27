@@ -234,7 +234,7 @@ Newest at the top.
 - **Proposed:** score every junction a read's same-length insert could sit at by its
   readable mismatches (not only those a fits-gated slide reaches) and call ALT when a
   minimum-cost placement shows the ALT.
-- **Reason vetoed:** operator, after the C37 measurement (#245): at BRCA2 13:32906888
+- **Reason vetoed:** operator, after the C37 measurement (#245): at a BRCA2 insertion row (G>GA)
   the reads it would turn from REF into ALT carry a recurring other allele (G>A plus an
   A insertion, 11+ reads in two samples); AD would rise 23→28 and 28→40. A per-read
   rule cannot tell a singleton error from a recurring allele, so placement scoring may

@@ -1,4 +1,4 @@
-> Retired at the 6.6.0 cut (1f6cde46); restored 2026-10-27 from c01749ab (the cut's parent). Distilled outcomes live in the read-rule register, REJECTED.md and the docs.
+> Retired at the 6.6.0 cut (1f6cde46); restored 2026-10-27 from c01749ab (the cut's parent). Distilled outcomes live in the read-rule register, REJECTED.md and the docs. Patient-row coordinates redacted (2026-10-27).
 
 # 6.6.0 cycle — plan
 
@@ -2089,7 +2089,7 @@ page from the CHANGELOG section in the release workflow.
     aligner wrote just outside the window behind a substitution (the base it would
     place onto the reference does not fit) cannot slide back, so it is a separate event
     and the read counts REF, though its fewest-mismatch placement is at the variant's
-    junction: RC 20 reads, all at BRCA2 13:32906888 G>GA (the 8-A haplotype, G>A plus an
+    junction: RC 20 reads, all at one BRCA2 insertion row, G>GA (the 8-A haplotype, G>A plus an
     A insertion, recurring in 11+ reads across two samples: another allele), WES 2 (one
     fragment, a singleton anchor substitution), FORTE 1. A prototype that scores every
     placement by readable mismatches reproduces develop's call on every other read of
@@ -2100,8 +2100,8 @@ page from the CHANGELOG section in the release workflow.
     reads (65-93% of those rows' AD) carry the complex allele with the deletion's exact
     op and the other events outside the deletion's window (RJ-8: in cis). A masked
     junction insert fitting two same-length siblings: FORTE 1 read. And duplicate input
-    rows of one allele (FORTE's probe set lists +CTG at both ends of a (CTG)x11 tract,
-    3:40462029 and 40462061): prep normalizes them to one variant, each is the other's
+    rows of one allele (FORTE's probe set lists +CTG at both ends of a (CTG)x11 tract):
+    prep normalizes them to one variant, each is the other's
     sibling, and the AD guard calls every carrier written mid-tract "either allele,
     neither row's AD". Shown not to be binning (one variant per bin gives the same
     counts): with the twin, +CTG AD 7 (partial 95); without it, AD 62 (partial 40), as
@@ -2130,7 +2130,7 @@ page from the CHANGELOG section in the release workflow.
   mode (a base that does not fit placed at a cost of one), consulted before a readable
   same-length insert is called a separate event and at the scan-window gate; ALT stays
   judged over the fits-gated placements. Acceptance against develop's outputs: RC 2
-  rows (both BRCA2 13:32906888, REF −19, partial +19), WES 1 row (REF −2), FORTE RNA 2
+  rows (both the BRCA2 G>GA row, REF −19, partial +19), WES 1 row (REF −2), FORTE RNA 2
   rows (REF −2, one read written past the scan pad at a GCT tract's far end, which the
   haplotype measurement's window missed); FORTE DNA mode, 8 Parquet tables, RNA truth
   and probes unchanged; no ALT or depth changed anywhere. The adversarial review found

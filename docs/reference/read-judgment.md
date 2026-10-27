@@ -724,7 +724,7 @@ develop, each read judged by its local haplotype, on RC (ABRA2-realigned), FORTE
   written 9 with the insert elsewhere in the tract; ABRA2 moves a read only onto a
   contig with strictly fewer mismatches, and a singleton gets no contig of its own.
 - The carrier counted REF, measured with the fixed build against develop's outputs:
-  RC 19 reads at 2 rows, both BRCA2 13:32906888 G>GA (an 8-A haplotype, the anchor
+  RC 19 reads at 2 rows, both at one BRCA2 insertion row, G>GA (an 8-A haplotype, the anchor
   read as A plus an inserted A, in 11 or more reads across two samples, which ABRA2
   wrote one and two junctions left); WES 2 (one fragment, a singleton anchor
   substitution); FORTE 2, one written past the scan window at the far end of a GCT
