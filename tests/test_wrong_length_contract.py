@@ -1,15 +1,17 @@
 """Target contract for wrong-length pure-indel evidence (issue #91).
 
 A read whose CIGAR proves a pure insertion/deletion of a DIFFERENT length at
-the variant anchor is evidence of a *different allele* (or a truncated
-representation, for complex insertion sequences) — never a definitive REF or
-full ALT call:
+the variant anchor is evidence of a *different allele* — never a definitive REF
+or full ALT call. A truncated copy of a long insert is another allele too (D2 of
+#278, RJ-27): the CIGAR path's 90% identity band counts it ALT only where the
+exact-carrier rule cannot judge the row.
 
   - pure DEL, a wrong-length D op (any length; the >=50bp length band is
     retired, RJ-24) -> neither + partial_alt
-  - pure INS, wrong length, observed insert NOT a high-identity substring of a
-    non-low-complexity expected insert -> neither + partial_alt
-  - pure INS truncation of a complex expected insert -> ALT (same event)
+  - pure INS, wrong length, observed insert unrelated to the expected insert
+    -> neither + partial_alt
+  - pure INS truncation of a complex expected insert -> neither + partial_alt
+    (another allele by its bases)
   - a deletion written as two ops with bases kept between, or net-matching but
     DISPLACED deletions (M ops across the expected span) -> partial: another
     allele by its bases. These deletions are unprepared here, so the CIGAR
@@ -18,7 +20,9 @@ full ALT call:
   - windowed (not-at-anchor) wrong-length ops: repeat tract -> neither +
     partial_alt; unique context -> REF at anchor + partial_alt (noise is
     surfaced, never silently absorbed)
-  - delins/complex variants -> Phase-3 (unchanged)
+  - delins/complex variants -> not the pure-indel wrong-length rule: the
+    exact-carrier rule judges them (RJ-4), the CIGAR checks and Phase 3 only
+    where it cannot judge the row
 
 Every counting assertion runs through count_checked (binning invariance) and
 asserts the counting invariants.
@@ -366,11 +370,11 @@ def test_ins_repeat_tract_windowed_wrong_length_stays_partial(tmp_path):
 
 # ═════════════════════════ delins guard (regime 2) ═══════════════════════
 def test_delins_reads_keep_phase3_routing(tmp_path):
-    """Complex AAA>G vs plain 1bp-del reads: the wrong-length rule must NOT
-    apply to delins — Phase-3 owns this class (validated on the curated
-    internal set). This test pins the routing by asserting the wrong-length
-    reads are not force-converted to partial via the pure-indel rule:
-    whatever Phase-3 decides, ad stays 0 and the classification is stable
+    """Complex AAA>G vs plain 1bp-del reads: the pure-indel wrong-length rule must
+    NOT apply to delins — the exact-carrier rule judges this class (RJ-4), the
+    CIGAR checks and Phase 3 only where it cannot judge the row. This test pins
+    the routing by asserting the wrong-length reads are not force-converted to
+    partial via the pure-indel rule: ad stays 0 and the classification is stable
     before and after the fix."""
     ref = _mk_ref(plants=HOMOPOLY)
     bam = _bam(tmp_path, ref, _ref_reads(ref, 200) + _del_reads(ref, 200, 1))

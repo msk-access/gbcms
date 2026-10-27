@@ -98,6 +98,22 @@ caveat in gbcms's output.
   read's clip that reaches an exon edge or junction end is not allele evidence;
   other clips are the read's own bases (RJ-18; measured on FORTE splice probes: 3
   of 19 spurious ALT reads removed).
+- **Clip-borne ITD carriers, measured** (#92,
+  [2026-09-22](https://github.com/msk-access/gbcms/issues/92#issuecomment-5780022052) and
+  [2026-09-23](https://github.com/msk-access/gbcms/issues/92#issuecomment-5788174498)):
+    - a 30bp ITD with sign-out t_alt=7 had zero I-op reads in the BAM. Its carriers exist only as
+      soft clips whose clip start sits 9-47bp downstream of the anchor (ITD alignments diverge at
+      the duplication boundary, not at the insertion point). Phase 3 then admitted soft clips only
+      within ±1bp of the variant position, so they never reached haplotype scoring: ad=0,
+      partial=0, `ZERO_ALT`. The candidate fix widens the clip-admission window for insertions to
+      the anchor plus the insert length (a structural bound, not a tuned constant). It changes
+      counts and risks clip noise, so it needs its own red-first, measured cycle;
+    - prevalence: 12 further ITD loci (15-63bp, t_alt 11-409) are 12/12 I-op-dominant (I carriers
+      16-597 against 1-10 clip candidates per locus). A different timepoint of the same patient as
+      the clip-only outlier shows 587 I-op carriers: the outlier was a low-carrier sample (t_alt=7)
+      where the few molecules happened to land clip-represented. Verdict: the rescue (C7 #144) stays
+      filed at low priority, with `CLIP_CANDIDATES(n)` as the observability stopgap. The truth
+      batch these come from is in `PRODUCTION_READINESS.md`.
 - **Community** (verified in source):
     - GATK HaplotypeCaller and Mutect2 revert clips and realign reads, but only
       with a well-defined fragment;
@@ -218,6 +234,26 @@ caveat in gbcms's output.
       on the panel it added 13 ALT calls the bases oracle agrees with, against 111 it
       does not. The band stays only where the rule cannot judge (no prepared
       reference, the CIGAR path).
+- **Measured before the decision** (#92, [2026-09-22](https://github.com/msk-access/gbcms/issues/92#issuecomment-5779396851)
+  and [2026-09-23](https://github.com/msk-access/gbcms/issues/92#issuecomment-5787996247)), when the
+  question was whether a base-quality-first policy could replace the 90% identity band:
+    - IMPACT raw reads, a mismatch-anatomy survey over the insertion loci of 4bp or more (about 900
+      carrier reads at 38bp and 19bp loci): the dominant non-exact class was zero-mismatch
+      truncations (about 24% of carriers; 219 candidates), pure length containment that no quality
+      policy touches. Mismatching candidates were about 2% of carriers, their bases mostly high
+      quality (Q20-35) yet every pattern a singleton at a unique position with a unique substitution
+      (isolated errors inside long inserts, not a systematic representation shift); the class where
+      both policies agree (all-low-BQ mismatches) was 6 reads.
+    - ACCESS consensus reads, at the two band-eligible insertion loci of the truth panel (6bp at
+      about 261 duplex candidates; 7bp at about 266): exactly three classes, exact (the
+      overwhelming majority), length truncations (2-14 per locus) and N-carrying candidates (0-10
+      duplex, up to 83 simplex). Same-length sequence mismatches: zero, on both flavors, at both
+      loci. That is what the consensus SOPs predict (v2 masks bases under Q30 to N; v1 marks a
+      disagreement as N), so a base-quality-first policy has nothing to act on in consensus data.
+    - A supporting truth point from the first FLT3-ITD run (36bp ITD): ad=129 against sign-out
+      t_alt=128, with the truncation-smear class (13 reads) separated into `partial_alt`.
+    - The band was kept then (REJ-20260922-001 in `.agents/learnings/REJECTED.md`); the exact-carrier
+      rule later tested it and did not adopt it (REJ-20261016-002).
 - **Should do:** decided and done (the band: decided against). See
   [Read Judgment](read-judgment.md).
 - **Community:** not surveyed for this caveat.
@@ -259,6 +295,14 @@ caveat in gbcms's output.
 - **gbcms now:** counted exactly. They are not the given allele, so they become
   `partial_alt`, and `COEXISTING_ALLELE` names a frequent one.
 - **Should do:** decided and done (report, don't correct).
+- **Measured** (#92, 2026-09-22,
+  [comment](https://github.com/msk-access/gbcms/issues/92#issuecomment-5780293921)): on 6 MSI-high
+  samples (MSI scores 45-53) the wrong-length rule already separates real stutter. Median
+  ad-versus-sign-out relative error is +1.4% (IQR +0.6% to +2.9%) across 247 covered loci; at the
+  35 loci with 3 or more same-tract wrong-length ops, 481 stutter reads are flagged `partial_alt`
+  against 35 not flagged (93%). A repeat-aware gate for deletions under 5bp was therefore not
+  built; the numbers are in [Allele Classification](allele-classification.md) (the note after the
+  windowed-scan safeguards).
 - **Community:** callers model stutter (for example HipSTR, GATK's STR models);
   a genotyper reports it.
 
@@ -281,6 +325,13 @@ caveat in gbcms's output.
   gives the share of its first records flagged duplicate. ACCESS consensus and
   FORTE RNA BAMs carry no duplicate flags by design (0 in 6 sampled; IMPACT
   12–25%), so a warning would fire on every such run.
+- **Counting basis against sign-out** (measured, #92,
+  [2026-09-22](https://github.com/msk-access/gbcms/issues/92#issuecomment-5780022052)): a 66bp ITD
+  read 334 against sign-out 887. That is a counting-basis difference, not a miss: the deduplicated
+  BAM holds only about 380 I-bearing reads in total (233 exact I66 plus a truncation ladder), and
+  sign-out's 887/1550 exceeds that population, implying pre-dedup or pair-level counting upstream.
+  Read-level ad=334 (exact reads plus the truncations the identity band then admitted; since
+  RJ-27 a truncation is `partial_alt`) was faithful to the BAM.
 - **Community:** Picard MarkDuplicates; fgbio consensus calling.
 
 ### Overlapping mates
@@ -304,7 +355,11 @@ caveat in gbcms's output.
 - **RNA editing (A-to-I):** a catalogued editing site inside a window makes an ALT
   carrier look like partial evidence. Proposed: treat the edited base as matching
   inside windows (R3 #178). Today `rna_editing_site` flags only variants that are
-  themselves editing sites.
+  themselves editing sites. An edit inside an insertion's inserted bases has no genomic
+  coordinate, so neither `--rna-editing-db` nor a catalogue mask (proposed above) reaches it:
+  an isolated one is one error (RJ-26); one recurring on 2 or more fragments and 5% of the
+  carriers makes them another allele (partial evidence). One of 118 FORTE insertion rows
+  showed one (6 reads) (measured 2026-10-27 on the FORTE RNA slices).
 - **Allele-specific expression and NMD:** RNA VAF is expression-weighted and is
   not a DNA VAF. It is reported as is: an interpretation caveat.
 - **Strandedness:** antisense reads are gated when enforced, and `rna_antisense_depth`

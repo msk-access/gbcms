@@ -567,7 +567,7 @@ These columns are **always** appended regardless of input format.
 | Column | Type | Description |
 |:-------|:-----|:------------|
 | `rna_sense_depth` | Integer | REF and ALT reads on the transcript sense strand at this position |
-| `rna_antisense_depth` | Integer | REF and ALT reads on the antisense strand (first-class, over the anchor). Under `--enforce-strandedness` (the RNA default) these reads are kept out of REF, ALT, depth, fragments and the other counts, but are still classified and tallied here, so the column is the same with `--no-strandedness`. Exceptions: `--rescue-homopolymer` and `--rescue-mnp` choose between counts by ALT depth, so the adopted form (and this column) can differ between the modes; loci without a gene strand (intergenic, or genes of both strands over the locus) report 0, as every read there counts as sense, and so does a whole run with `--strandedness unstranded`. |
+| `rna_antisense_depth` | Integer | REF and ALT reads on the antisense strand (first-class, over the anchor). Under `--enforce-strandedness` (the RNA default) these reads are kept out of REF, ALT, depth, fragments and the other counts, but are still classified and tallied here, so the column is the same with `--no-strandedness`. Exceptions: `--rescue-homopolymer` and `--rescue-mnp` choose between counts by ALT depth, so the adopted form (and this column) can differ between the modes; loci without a gene strand (intergenic, or genes of both strands over the locus) report 0, as every read there counts as sense, and so does a whole run with `--strandedness unstranded`. An antisense read carrying another allele is tallied nowhere under enforcement; with `--no-strandedness` it counts in `partial_alt`. |
 | `rna_alt_sense_count` | Integer | ALT reads on the sense strand |
 | `rna_editing_site` | Boolean | QC flag (requires `--rna-editing-db`): [definition](qc-flags.md#qc-columns) |
 | `rna_splice_spanning` | Integer | ALT reads whose alignment spans a splice junction (`N` CIGAR operation) |
@@ -592,6 +592,8 @@ These columns are **always** appended regardless of input format.
 |:-------|:-----|:------------|
 | `transcript_read_counts` | String | Pipe-separated per-transcript read-level count triplets. Format: `ENST...:AD,RD,DP\|ENST...:AD,RD,DP`. Example: `ENST00000269305:11,140,162\|ENST00000445888:7,95,108`. Empty when no GTF or no overlapping transcripts. |
 | `transcript_fragment_counts` | String | Same format as `transcript_read_counts` but with fragment-level counts: `ENST...:ADF,RDF,DPF`. Fragment counts ≤ read counts for each transcript. |
+
+A transcript's DP (DPF) counts every compatible read (fragment) that observes the locus, as the row's `total_count` does, so reads carrying another allele (the row's `partial_alt`) and reads that cannot tell the alleles apart are in DP but in neither AD nor RD. The entry has no partial field.
 
 #### Aberrant Splice Junction Detection (ASJD)
 

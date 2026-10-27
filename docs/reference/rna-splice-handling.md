@@ -109,6 +109,10 @@ per-type classification):
 - A junction that starts inside a complex event's differing bases and runs past
   them (or ends inside them) splices the haplotypes at the event's edge (RJ-19),
   so a delins carrier counts whether the aligner wrote `X D N` or `X N`.
+- A pure indel's read of another length is another allele in RNA as in DNA, judged by its bases on
+  its own spliced reference; homopolymer slippage on the FORTE sample matched IMPACT DNA's rate at
+  each run length (about 1% at 6 bases, 5% at 8, 10% at 10), so `PARTIAL_DOMINANT` reads the same
+  in both modes (measured 2026-10-27 on the FORTE RNA slices).
 
 Reads without `N` ops never enter this triage — DNA-mode classification
 is untouched. Per-variant exclusion counts are logged at debug level in
@@ -147,9 +151,50 @@ heuristic BAQ handles overhang misalignment.
     intron-retention reads against a haplotype missing bases their
     sequence genuinely contains. It was removed; `ref_context` is always
     genomic.
-    Splice-aware Phase-3 scoring, if real-data measurement shows it is
-    needed, requires an explicit genomic→spliced coordinate map with
-    junction-compatible extraction (tracked in issue #94).
+    #94 closed splice-aware Phase-3 scoring as not demanded (B2b;
+    [closing comment](https://github.com/msk-access/gbcms/issues/94#issuecomment-5815889505);
+    reopen if truth data produces a delins carrier at a junction; see the next
+    note). `repeat_span` stays genomic: it sizes the read window, the bins and the
+    CIGAR checks' scan, and is not used by the exact-carrier rule, which grows each
+    spliced read's event on its own spliced reference (RJ-19, RJ-27). Widening the
+    read window 20 bases changed no count on 1,132 FORTE rows, 112 of whose tracts
+    meet an exon edge (measured 2026-10-27 on the FORTE RNA slices).
+
+!!! info "Closed as not demanded: splice-aware Phase-3 scoring (B2b of #94)"
+    B2b was the coordinate-mapped spliced-haplotype Phase 3: scoring a read across a
+    junction against a haplotype spliced at that junction. It was closed with #94 on
+    2026-09-24 ([closing comment](https://github.com/msk-access/gbcms/issues/94#issuecomment-5815889505)).
+
+    - **Demand:** measured demand across the RNA truth cohort was zero. Every covered
+      junction-adjacent indel classified correctly through the structural paths (post-N
+      inspection, windowed scan, span-aligned REF testimony); no case needed alignment scoring
+      across a splice ([comment of 2026-09-22](https://github.com/msk-access/gbcms/issues/94#issuecomment-5779396531)).
+    - **Community check** ([comment](https://github.com/msk-access/gbcms/issues/94#issuecomment-5779885342)):
+      no mainstream tool scores reads across splice junctions. GATK's RNA best practice
+      (SplitNCigarReads plus HaplotypeCaller) cuts reads at every N and calls on the exon
+      fragments, from aligned bases only: the destructive equivalent of the splice-aware evidence
+      rule above. Long-read RNA pipelines apply the same split-style transformation and still
+      document junction-adjacent indels as their weak spot (recall drops near junctions), and
+      several simply hard-filter splice-adjacent variants. RNA allele counters do not support
+      indels at all. So gbcms is at or beyond community practice for the junction population, and
+      B2b would be novel territory, which raises the evidence bar for building it. (References: the
+      GATK RNAseq short-variant workflow; Genome Biology 13059-023-02923-y on long-read RNA
+      alignment and junction-indel recall; ScanNeo2 #192 on artifact inflation without splice
+      handling.)
+    - **Design note, if demand appears:** prefer annotation-driven transcript-space projection
+      (GTF transcript coordinates, a deterministic genomic↔transcript map, per-read
+      isoform-compatibility gating) over read-derived consensus splicing. The removed consensus
+      snipping failed on consensus instability and the missing coordinate map; transcript-space
+      construction avoids both, and keeps pre-mRNA and intron-retention reads genomically scored.
+    - **Reopen if** truth data produces a delins carrier at a junction (the entry in
+      `.agents/learnings/REJECTED.md` is REJ-20260924-001).
+    - **Later, RJ-19** (C32 #213, 2026-10-04, [Read Judgment](read-judgment.md)) built read-derived
+      spliced windows for the exact-carrier rule: a spliced read's windows are made over the
+      reference spliced at that read's own junctions. It uses no alignment scoring, so it is not
+      B2b, and it came from synthetic splice probes (spurious ALT at exon-edge events, 19 → 4), not
+      from a truth-data case, so B2b stays closed. Its junctions come from the read, not the
+      annotation; the design note's preference for annotation-driven projection concerns any
+      future Phase-3 scoring across a splice.
 
 ### Heuristic BAQ Near Splice Junctions (`--apply-baq`)
 
@@ -172,6 +217,61 @@ the per-transcript counts, ASJD and each `--rescue-mnp` component re-count all
 use this one rule, so at an exon edge a transcript's counts match the variant's
 counts, as they do elsewhere. Away from a boundary, BAQ applies in every view.
 A DEBUG line names each variant form where it is skipped.
+
+!!! info "Why the exception reads the whole REF span (measured for #106, R1)"
+    Before 6.6.0 the distance was measured from the variant's first base, so a multi-base
+    variant reaching an exon's right edge kept BAQ and lost its edge-side bases in every spliced
+    read. Local data, aggregates only; the numbers are from
+    [the measurement](https://github.com/msk-access/gbcms/issues/106#issuecomment-5816857647),
+    [the evidence for the decision](https://github.com/msk-access/gbcms/issues/106#issuecomment-5834304141)
+    and [the acceptance](https://github.com/msk-access/gbcms/issues/106#issuecomment-5896307927);
+    the rounds are in the archived plans, `.agents/archive/CYCLE_6.5.0_PLAN.md` § T9 and
+    `.agents/archive/CYCLE_6.6.0_PLAN.md` § R1.
+
+    - **Demand.** The engine's own preparation over 74,617 unique signed-out multi-base events,
+      against GENCODE exon boundaries from all transcripts: the geometry (first base more than 5bp
+      from every site, REF span within 5bp) is present in 6,130 of 61,123 deletions (10%; 4,887
+      cross an exon boundary, mostly >20bp) and 99 of 13,359 MNPs (0.7%; nearly all end 1-5bp
+      short of a right edge).
+    - **Effect.** An A/B of develop against a span-aware prototype on 3 junction-rich RNA samples,
+      326 probes (one per junction, at least 300bp apart so length-changing probes cannot form
+      clusters). Deletions: no effect, 0 of 510 probe-sample rows moved apart from a single
+      fragment count (deletion calls are structural). MNPs ending 4-5bp short of a right edge (DNP,
+      TNP, 4bp): 139 of 183 rows changed, RD +0.03-0.17% (at most 1% per probe), per-transcript and
+      ASJD moving alike, AD and DP unchanged.
+    - **Why counts barely move, and what does matter.** Counted exactly with pysam, a median
+      90-92% of the reads covering such an MNP have a splice N within BAQ's 5bp radius of an MNP
+      base. REF and ALT calls vote on the unmasked bases, so counts hold. But an MNP read counts as
+      confirmed (`mnp_confirmed_alt`) only when no base is masked, so about 9 in 10 real carriers
+      there could never be confirmed, and `--rescue-mnp`'s `haplotype_confirmed` safeguard was
+      blind at right exon edges in RNA.
+    - **The column follows the rule.** The 6.5.0 measurement first recommended keeping
+      `exon_boundary_dist` POS-based (a span-based column would change about 10% of edge deletions
+      for no counting benefit). The evidence of 2026-09-25 reversed it: among 97,246 unique
+      signed-out multi-base and indel variants, the span-based distance differs from the POS-based
+      one for 41%, 6.1% flip in or out of the 5bp window (98 of them MNPs), and on the FORTE truth
+      cohort 26 of the 94 rows are multi-base or indels, the distance differs for 8 and the window
+      flips for 1. Operator decision, 2026-09-25: span distance for both.
+    - **Standards.** No single spec. Ensembl VEP applies its splice windows by overlap (any changed
+      base counts); ANNOVAR measures from the nearest end of the span and flags spans that cross
+      the boundary; SpliceAI uses POS only. There is no standard for BAQ near junctions: htslib
+      skips BAQ for spliced reads, and GATK4 does not use BAQ.
+    - **Not adopted: a read-level rule** (no N-penalty at annotated junctions). It would
+      re-penalize novel junctions near a variant, which is ASJD's splice-creation signal, restore
+      indel penalties at edges, and change the main counts more (REJ-20260925-002 in
+      `.agents/learnings/REJECTED.md`).
+    - **Acceptance (2026-09-29).** FORTE truth cohort (33 samples, 94 rows): 0 count changes, all
+      68 SNV rows byte-identical, the column changes on 8 multi-base rows and 1 row flips the 5bp
+      window with unchanged counts. Exon-edge probes (326 × 3 samples): counts move on 139 MNP
+      rows, all where the window flips, and no deletion moves; summed RD +489, partial +6, AD −2,
+      depth unchanged. In 135 of the 139 moved rows the change equals what the reads' own bases
+      predict (read at sequencer quality against emulated BAQ); in the other 4 every re-called read
+      was inspected and each new call is what its bases say (mostly a Q24 REF base 4bp from the
+      junction that BAQ had lowered to Q4; one Q24 third-allele base BAQ had hidden). Column: 978
+      of 978 probe rows equal an independent span distance of the engine-normalized variant.
+      `--rescue-mnp` on the probes: 4 of 243 MNP rows change outcome (1 from rescued to
+      `haplotype_confirmed`, 3 newly rescued on one-read components). DNA (28 runs, 1,060 rows)
+      byte-identical.
 
 **Default behavior:**
 

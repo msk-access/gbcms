@@ -192,7 +192,9 @@ flowchart LR
     - **Right length, confident base mismatch** (mismatches on ≥`--min-baseq` bases) — a
       same-length **third allele** → neither + `partial_alt`. Phase 3 must not arbitrate here
       either: alignment scoring promotes a wrong-sequence insert to ALT because it still beats
-      the gapped REF alignment.
+      the gapped REF alignment. Measured when the rule landed (#91, local panels): ad unchanged
+      everywhere; three insertion rows moved a total of 8 provably mismatched reads from `rd`
+      to partial, the largest 6 reads on one insertion row.
     - **Right length, no readable inserted base** (each N or below `--min-baseq`, or the
       insert runs past the read end) — the read carries the insertion's length, not its
       sequence: flag `has_unreadable_insert`, and the read is neither + `partial_alt` unless
@@ -534,6 +536,16 @@ Three layers of validation prevent false-positive windowed matches:
 
     Short deletions (1–4bp) failing S3 use CIGAR-definitive REF: a 1bp Del that gives another haplotype is almost certainly an unrelated noise deletion, not a left-alignment artifact.
 
+!!! note "Considered and not needed: a repeat-aware gate for deletions under 5bp (#92)"
+    The windowed rule drops a wrong-length deletion under 5bp as noise, while an insertion of any size is flagged and resolved by repeat. A gate that also flagged a sub-5bp windowed deletion falling inside the variant's tract (so the tract resolved it to neither + `partial_alt`) was measured on 2026-09-22 on real MSI-high truth data and not built ([#92 comment](https://github.com/msk-access/gbcms/issues/92#issuecomment-5780293921)). Panel: 6 MSI-high samples (MSI scores 45-53) carrying 246 signed-out small indels at classic MSI target tracts (TGFBR2 A×10, MSH3 A×8, RNF43 C×7, JAK1 T×8, NOTCH4 AGC×7, …), plus a thin MSS control (one locus); the comment also says "all 247 covered loci".
+
+    - **Truth concordance at the MSI loci was already excellent:** median ad-versus-sign-out relative error **+1.4%** (IQR +0.6% to +2.9%) across all 247 covered loci. The wrong-length rule does not degrade MSI genotyping.
+    - **Real stutter was present and already handled:** 35 of 247 loci show 3 or more same-tract wrong-length ops (for example an expected D1 with a D2 ladder ×20; an expected D6 in a triplet tract with D3×92, D9×5, D12×3). Across them **481 stutter reads are flagged `partial_alt` against 35 not flagged (93%)**. Left-alignment collapses same-tract ops onto the shared anchor, where the anchor-position wrong-length rule fires (neither + `partial_alt`), so the windowed <5bp dismissal rarely sees real stutter: real stutter is not displaced from the anchor.
+    - **The residual does not justify a rule:** unflagged stutter is about 0.14 reads per locus. Off-length sub-5bp ops run at 11.7 per 1000 dp at MSI-high signed-out loci against 0 at the MSS control.
+
+    The gate assumed stutter would be absorbed silently into `rd`; the measurement shows the anchor-position rule already separates it. The measurement used the CIGAR path, which then judged every deletion. Since 6.7.0 a prepared deletion is judged by its bases (RJ-27), and the noise rule above runs only where the exact-carrier rule cannot judge the row
+    (REJ-20260922-002 in `.agents/learnings/REJECTED.md`).
+
 !!! warning "No Interior REF for Large Deletions"
     Reads that map **entirely within** a large deleted span never see the anchor junction and carry no information about whether the deletion is present. They are classified **neither** — an earlier interior-REF shortcut was removed because it massively inflated `rd` (claiming thousands of interior reads as REF evidence for a ~1kb deletion). Only reads spanning the anchor position contribute to any count.
 
@@ -567,6 +579,13 @@ Read 3 (REF):  CIGAR = 12M
 ---
 
 ## Wrong-Length Pure Indels (partial_alt) { #wrong-length-pure-indels-partial_alt }
+
+!!! note "Which path applies"
+    These are the CIGAR checks' rules. In 6.7.0 (unreleased) every prepared pure indel is judged by
+    its bases (RJ-27; RJ-7 as amended), in RNA on the read's spliced reference (RJ-19); the CIGAR
+    checks' length gates (the under-5 bp windowed noise gate, the insert identity band) apply only
+    where the rule cannot judge: on the FORTE RNA arms that was no read of about 1.24M (measured
+    2026-10-27 on the FORTE RNA slices).
 
 A read whose CIGAR proves a **pure indel of a different length** at the variant anchor is
 evidence of a **different allele** — never definitive REF, and never the queried ALT. This is
@@ -783,7 +802,7 @@ A read is REF or ALT for a complex variant only when **its own bases carry that 
 - **When the rule cannot run.** `prepare_variants` fetches reference until it holds the event, grown through any repeat, with its flank and the neighbouring-change reach of 25 bases, and until the windows, with every base the guard could mask masked, reach a base telling the alleles apart (up to 16,384 bases each side, clamped at a contig end: the window holds the bases that exist). For reading reads whole it also holds a whole read's reach, 300 bases each side of the change (`Variant.whole_ref`, not exposed to Python), which every bin's fetch covers. A variant without that reference (one built without `prepare_variants`, or an event whose two flank bases would pass a contig end) keeps the previous classifier below. Every variant of a normal run is prepared. A record stored without its bases (SEQ `*`) is not read.
 
 !!! info "Why not a tolerant score"
-    Local alignment, likelihoods and an edit-distance margin all credit near-matches to the given allele. On real complex variants, those scores credited reads carrying other alleles, and reads that end inside the event. VarDict's rescue and Mutect2's `--alleles` mode do the same. gbcms reports the given allele's exact support and names a different allele the reads carry in `gbcms_diagnostic` (`OBSERVED_ALLELE` / `COEXISTING_ALLELE`).
+    Local alignment, likelihoods and an edit-distance margin all credit near-matches to the given allele. On real complex variants, those scores credited reads carrying other alleles, and reads that end inside the event. VarDict's rescue and Mutect2's `--alleles` mode do the same (VarDictJava and GATK Mutect2 source: VarDict's rescue moves near-matching reads in by soft-clip consensus with up to 3 mismatches and counts REF as one base; Mutect2 credits each read's best haplotype by likelihood, so under `--alleles` a read carrying a slightly different, unassembled allele can be credited to the given one). The measurements are in [Read Judgment](read-judgment.md), evidence behind RJ-4. gbcms reports the given allele's exact support and names a different allele the reads carry in `gbcms_diagnostic` (`OBSERVED_ALLELE` / `COEXISTING_ALLELE`).
 
 ### Previous classifier (variants without a reference; pure-indel Phase 3)
 
@@ -1095,6 +1114,17 @@ the same as GATK's AD, which counts only informative reads. The rule does not
 apply to substitution-bearing events (SNV, MNP, delins): they have no shift
 region, and their first base already discriminates.
 
+**A worked example: counting by base against by allele** (#253, measured 2026-10-08).
+A 9bp deletion in a 51bp trinucleotide repeat, in an IMPACT tumor and its matched
+normal. By base at the indel's position, as IGV, bam-readcount, the original
+GetBaseCounts and the clinical counts do: 159 reads show the reference base, but
+only 16 of them cross the tract. The deletion count of 24 is every length together;
+the given 9bp deletion is 15 of them. By allele, the tumor's `vaf` is 15/31 ≈ 48%
+and the normal's crossing reads show 0/23 (a working note of the same measurement
+says 0/24). So it is a high-fraction somatic event, which by-base counting reports
+at 6.6%. Whether allele-level VAF needs a spanning-bias correction (the shorter
+allele crosses the tract more often) is measured against germline hets in C41 #264.
+
 **The ALT side (6.6.0, #188).** An ALT call stands from the CIGAR alone when the
 read spans C10's windows read on the ALT haplotype, `[lo − 1, hi + 2)` or
 `[lo − 2, hi + 1)`. For an insertion these are its REF windows. For a deletion
@@ -1172,7 +1202,14 @@ They are documented constants, not tuned per locus: an earlier
 `dynamic_sw_gap_extend` logistic curve rounded to −1 for every `repeat_span`,
 and traced real runs (ACCESS duplex, MSI-high) confirmed SW scores nothing
 under the default backend on well-formed input, so the curve was removed
-(issue #92).
+(issue #92). The traced runs were an ACCESS duplex sample and the heaviest MSI-high
+sample: 42 tract indels and 31 Phase-3 classifications, with zero Smith-Waterman
+fallback invocations ([#92 comment](https://github.com/msk-access/gbcms/issues/92#issuecomment-5788174498)).
+Under the default PairHMM backend the pangenomic matrix builds on well-formed input
+(prep supplies `ref_context`), and on the explicit SW backend the old function was a
+constant −1 anyway. Making the relaxation real (a curve reaching 0 for deep repeats)
+was not adopted: it would change SW alignment scores on a path that never fires, at
+the cost of a validation pass (REJ-20260923-005 in `.agents/learnings/REJECTED.md`).
 
 Smith-Waterman has two roles:
 

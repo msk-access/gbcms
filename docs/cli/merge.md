@@ -141,6 +141,22 @@ columns are computed (assuming all strand-level counts are present in the input)
     reports the MNP there.
     Check `duplex_gbcms_rescue` / `simplex_gbcms_rescue` for those rows.
 
+!!! info "Validated on real ACCESS data (2026-09-23)"
+    The additive combination rests on duplex and simplex being disjoint molecule sets. Checked
+    on real clinical data first: zero QNAME overlap between the duplex and simplex BAMs at three
+    loci. Then a flavor-pair truth harness ([#92 comment](https://github.com/msk-access/gbcms/issues/92#issuecomment-5787981177)):
+    4 samples and 256 signed-out variants, each sample genotyped twice (duplex BAM and simplex BAM
+    separately, default filters, one streamed BAM at a time), combined with
+    `gbcms merge --add-combined`, and scored as `simplex_duplex_*_fragment` against sign-out.
+
+    - With t_alt of 5 or more (n=252): median relative error **+0.0%** (IQR +0.0% to +0.6%); by
+      type SNV +0.0% (n=191), DEL +2.9% (n=44), INS +7.3% (n=17). No missed variants at any t_alt.
+    - The only deviations over 25% were five deletions in one hypermutation cluster of about 150bp
+      in BRCA2, each over-counted 2-5× before the cluster contest of 6.5.0 (three 2bp deletions, a
+      33bp deletion, a 14bp deletion and four 1-3bp inserts interleaved in an AG-rich tract); see
+      [Read Judgment](../reference/read-judgment.md), evidence behind RJ-5.
+    - This was also the first real-data exercise of the combined-sums path.
+
 ---
 
 ## Nextflow Integration

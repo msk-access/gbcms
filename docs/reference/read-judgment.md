@@ -95,11 +95,139 @@ it shows in review instead of slipping in with an unrelated fix.
 
 None.
 
+Evidence behind RJ-4 (2026-09-25 to 09-28), #141. The decision is
+[the #141 comment of 2026-09-25](https://github.com/msk-access/gbcms/issues/141#issuecomment-5839231028);
+the rounds are in the archived plan, `.agents/archive/CYCLE_6.6.0_PLAN.md` § C1. The ticket began as a
+stale-score defect in the Smith-Waterman local fallback and became the exact-carrier rule once the
+reads were adjudicated one by one (local data, aggregates only):
+- 129 real reads took the fallback (40 signed-out complex variants in 40 IMPACT samples, SW
+  backend); 110 were linked exactly to their BAM read. 77 (70%) did not span the event (±1): 30 ALT,
+  10 REF, 37 tie. Of the 33 that did, ALT was right 23/23 and REF 3/4, and ties lost 2 ALT and 2 REF
+  reads that had a clear answer. 30 of the fallback's 53 ALT calls came from reads that do not span
+  the event.
+- The first plan, flagging from the second try's (local) scores, was right for 32 of 67 REF/tie
+  reads against 36 as it stood: both flag on score closeness, not read content. A content rule on
+  ALT-specific 8-mers would demote 6 of the 23 true ALT carriers. The first round's 22 of 62
+  second-try ALT calls (35%) without ALT-specific sequence came largely from non-spanning reads
+  and detector misses.
+- Every read at the 40 variants: of the ALT-like reads (at most 1 edit of the ALT over the event
+  ±1), 3,276 (96%) carry the given ALT exactly over the event ±6, 54 are 1 edit off and 82 more than
+  1 edit off, and for 79 of those the same off sequence recurs (3 or more reads). Only 2 of the
+  fallback's 23 aligned-spanning ALT calls carry the given ALT exactly: it fires where end-to-end
+  alignment was poor, then credits near-matches. Soft clips: 11 of the 12 ALT-called fallback reads
+  clipped at the event carry the whole given ALT in their clipped bases, and none of the 16 REF- or
+  tie-called clipped reads carries either allele.
+- Default backend, 38 variants, anchor-overlapping reads judged over the event ±2: ALT calls 4,185
+  (3,767 exact, 90%; 384 partial, 9%; 27 carry neither exactly), REF calls 13,390 (11,017 exact, 82%;
+  2,278 partial, 17%; 69 neither). The rule keeps 90% of ALT calls and 82% of REF calls, VAF rises
+  by a median of 3.8%, and 12 variants move by more than 10% (0.84× to 2.84×).
+- Acceptance (25 signed-out IMPACT complex variants, truth = equal-length padded windows, reads
+  holding both): `sw` equals `pairhmm` on 25 of 25 traced variants; exact REF reads are called REF
+  7,457 of 7,468 times (11 neither) and exact ALT reads ALT 2,018 of 2,020 (2 partial), with no
+  REF↔ALT flip; ALT calls are 98.8% exact-ALT reads (develop 89.8%), REF calls 98.5% exact-REF
+  (develop 85.8%). On the RC set 8 of 1,154 rows change, all complex or in a complex row's group.
+  RNA (FORTE, about 7,150 synthetic delins probes in expressed genes, 2 samples; REF share of depth,
+  develop → the rule): genomic windows reached into the intron, so spliced reads were neither,
+  0.987 → 0.017 at 0-1 bp from an exon edge and 0.982 → 0.484 at 2-4 bp; with windows ending at a
+  read's own junction, 0.923 and 0.906 against 0.909 mid-exon.
+- Other tools (VarDictJava and GATK Mutect2 source): neither counts exactly the given allele.
+  VarDict matches its own CIGAR-derived allele text and its rescue moves near-matching reads in
+  (soft-clip consensus with up to 3 mismatches); its REF is a one-base count and it has no
+  given-allele mode. Mutect2 credits each read's best haplotype by likelihood, even when the read
+  carries extra events, so under `--alleles` a read carrying a slightly different, unassembled allele
+  can be credited to the given one; it counts a read whose bases tell the alleles apart even when
+  the read ends partway through the event.
+- Not adopted: flagging from the second try's scores, the 8-mer content rule, and that rule with
+  demotion of ALT calls lacking ALT sequence (REJ-20260925-001 in
+  `.agents/learnings/REJECTED.md`).
+
+Evidence behind RJ-5's first form, the cluster contest of 6.5.0 (2026-09-22/23), #92 and #99
+([adjudication](https://github.com/msk-access/gbcms/issues/92#issuecomment-5788067318),
+[acceptance](https://github.com/msk-access/gbcms/issues/92#issuecomment-5802243054); design in
+`.agents/archive/CYCLE_6.5.0_PLAN.md` § T1). At a hypermutation cluster in a repeat tract of BRCA2
+(five annotated deletions among four 1-3bp inserts in an AG-rich stretch of about 150bp; ACCESS
+duplex and simplex fragments against sign-out), each annotated row counted the union of the carriers
+compatible with it: per-row counts of 39-107 against sign-out 21-45, and a sum of about 397 against
+about 150 distinct ALT molecules. Every deletion op in the cluster's molecules was canonically
+left-aligned, one vote per molecule, and assigned only on exact canonical identity:
+- no equivalence collisions: the five annotations canonicalize to distinct alleles, so exclusive
+  assignment is well-defined;
+- exclusive assignment against sign-out: 28/28, 32/32 and 21/21 exact on the three 2bp deletions;
+  28 vs 22 (33bp) and 41 vs 45 (14bp), within a few molecules;
+- the locus is messier than annotated: 1,299 molecules carry an unannotated 1bp deletion in the
+  tract (plus D11/D17 ladders) and 373 molecules carry 2 or more deletion ops in the window.
+
+The contest that shipped in #99 (anchor-exact evidence never contested; every other ALT read
+demoted to `partial_alt` if the read's own window does not favour the row's ALT over REF, if it is an
+alignment-phase call on a pure indel, or if a sibling's ALT explains it strictly better) was
+accepted on: the three 2bp deletions at 28/28, 32/32 and 21/21; the 33bp and 14bp deletions from 76
+and 94 down to 37 and 51 against sign-out 22 and 45 (the remainder is same-length shifted ops, kept
+so the shifted-representation rescue still works; the canonical-identity table above and these
+figures differ for the two longer deletions because they are two different models); the other
+signed-out variants of the truth panel (252 across four samples) unchanged; five IMPACT samples with
+signed-out complex (delins) clusters, where every pure-deletion row matches exactly, delins rows keep
+their own carriers, and the MAF and VCF input paths agree on every row; group-free panels (FLT3-ITD,
+MSI, the RNA cohort) byte-identical. The release-candidate check of 2026-09-24 (28 DNA runs, 1030 of
+1060 rows byte-identical; the 30 changed rows were 29 cluster rows and one `CLIP_CANDIDATES` flag)
+reproduced it: 28/28, 32/32, 21/21 exact; 33bp 37 v 22; 14bp 51 v 45. Three earlier designs failed
+real data and are not adopted (REJ-20260923-006 in `.agents/learnings/REJECTED.md`). Test 3 was later
+replaced for exact-carrier calls by #300 (the amendment above).
+
+Evidence behind RJ-6 (2026-09-17/18), #91
+([phase 2](https://github.com/msk-access/gbcms/issues/91#issuecomment-5721200517),
+[phase 5](https://github.com/msk-access/gbcms/issues/91#issuecomment-5722764306)). Before the rule a
+read proving a wrong-length pure indel got a definitive call: on the large-deletion panel (unique
+context, same-anchor read deletions against annotated 100 and 60bp) every length 40-120bp counted
+as full ALT, and a 2bp deletion at the edge of a 10bp homopolymer read about 51% VAF where
+exact-length support was about 1.4%. The synthetic matrix used 8 REF + 6 wrong-allele reads per
+scenario. Real-data targets, read-truth verified and all exact on the final build: a FLT3-class 2bp
+deletion ad 259 → 7 plus 252 partial (VAF 51% → 2.7%); an AR-class 9bp GGC-tract deletion ad 24 →
+15 plus 9; an RNA 2bp-deletion locus ad 32 → 15 plus 17; a SMARCB1-class 19bp insertion stays 310.
+The 74-row curated indel panel: 72/74 byte-identical after the rule (the two changed rows were
+delins, window effects), 69/74 on the final build (exactly 5 changed rows); the 5-sample full-BAM
+large-deletion and delins panel 14/15 byte-identical (the one difference a diagnostic `partial_alt`
+read, with rd/ad/dp identical). A same-length insertion whose bases confidently mismatch the
+expected insert (a third allele) had been absorbed into `rd`: ad unchanged everywhere, three
+insertion rows moved a total of 8 provably mismatched reads from `rd` to partial, the largest 6 reads
+on one row. The first draft of the placement band summed net deleted bases anywhere in the region, so
+a D(2) at the anchor + M(53) + D(49) read passed it for an expected D(50); the shipped band was
+placement-aware (retired by RJ-24). Four adversarial passes found 69 findings (19, 21, 7 and 21,
+plus 1 more code finding), each fixed on the branch or tracked on #92. Not adopted: the
+reciprocal-overlap tier and the split-suspect escape hatch to Phase 3 (REJ-20260917-001 in
+`.agents/learnings/REJECTED.md`).
+
 Evidence behind RJ-7 to RJ-9 (2026-10-01): on 105 changed DNA and WES rows the
 read census counts 57,199 REF reads; develop counted 60,619 and the decided rules
 57,218. The largest moves are deep slippage loci (a BRCA2 cluster where an
 unannotated 1bp deletion in an A run sits inside two annotated rows' windows; a
 T run). RJ-9 changed no row on RC, FORTE or WES.
+
+Behind RJ-7's choice (#200, [decision](https://github.com/msk-access/gbcms/issues/200#issuecomment-5950921993)):
+the ticket offered (a) any insertion or deletion inside the discrimination window makes the read
+not REF, and (b) keeping the 1-4bp "noise" policy and making the post-walk rule consistent with it
+(no flip on an unrelated op); (a) was chosen and (b) is not adopted (REJ-20261001-001 in
+`.agents/learnings/REJECTED.md`). The synthetic shapes, (REF, ALT, partial) on develop: −A carriers
+on a +A row in a homopolymer (10, 0, 0); +A carriers on a −A row (10, 0, 0); a D(2) inside the 8bp
+span of a unique −8 row (10, 0, 0); a D(1) right after the anchor of a unique +10bp insertion row
+(10, 0, 0). Real-data cases from the cluster-1 acceptance: at one RC insertion locus (+AAG in an AAAG
+repeat, two samples), six reads carrying a large deletion upstream and a D1 four bases into the
+insertion's window were partial on develop, kept out of the row's REF only because a co-annotated
+33bp deletion's Phase 3 wrongly called them ALT; at an RC 6bp deletion in a CAG/CAGCAA repeat, five
+reads whose bases are REF across the discrimination window lost REF (REF + partial on develop,
+partial on the branch), each carrying a same-length deletion of other bases 23bp away, outside the
+window but inside the scan window. The ticket's remark that GATK counts such reads as neither
+allele: as understood, GATK's AD credits a read to the allele whose haplotype it fits clearly
+better, so RJ-7 is stricter than GATK, by decision, because it follows the reads' bases, which the
+census checks. On the measured change, 112 of 144 files are byte-identical and 155 rows change (REF
+−4,327, partial +4,324; ALT and depth unchanged); on every FORTE row the reads moved out of REF are no
+more than those whose bases contradict both alleles.
+
+Rarity behind RJ-9 (#199, [decision](https://github.com/msk-access/gbcms/issues/199#issuecomment-5950922254)):
+769 anchor-changing one-base-REF rows among 1.13M signed-out; 133 with an ALT of 6 bases or more. The
+two false calls it removed, three synthetic reads each: CA>T (Del+SNV) before a 60-A run, reads
+carrying only C>T, were ALT (on develop at every run length); C>TA (Ins+SNV) before the same run was
+ALT too. Reads that keep the anchor with the extra A and end inside an 80-A run are base-identical to
+the REF reads, so they count REF like them; placement (the CIGAR's insertion) does not decide.
 
 Evidence behind RJ-10 to RJ-13 (2026-10-02). A survey of every harness input
 (RC DNA, FORTE, WES) found 1,197 reads with event bases past their fragment end
@@ -144,6 +272,18 @@ develop and the census on the same inputs:
   census (reads that were a co-annotated row's false ALT now count REF where
   their bases across this row's window are REF). Summed distance to the census
   on the changed indel rows: REF 344 → 251, ALT 40 → 44.
+
+A fuzz of 2,400 random insertion, deletion and mismatch compositions near the anchor over eight
+pure-indel rows (#202 body; rerun over 2,400 reads, five seeds, on the final head of the cluster-1
+change) gave 130 ALT calls on reads whose bases are not exactly the ALT, all the same on develop: 42
+carry the ALT plus mismatches, which is correct, and 88 delete the anchor base and fall to Phase 3,
+whose PairHMM credits the closer of two haplotypes. Those 88 are the route RJ-15 closes. Real data
+from the cluster-1 acceptance: at one RC insertion locus (+AAG in an AAAG repeat, two samples),
+reads deleting 24-54bp across the anchor were partial on develop and counted REF + partial once a
+co-annotated 33bp deletion's false ALT was withdrawn, 10 reads across the two samples. On a synthetic
+−8 row in unique sequence, five reads that only delete the anchor and the next two bases (`D3`) hold
+neither allele, yet the engine counted 5 REF. Not adopted: the strict and the ALT-by-bases
+prototypes (REJ-20261002-001 in `.agents/learnings/REJECTED.md`).
 
 Evidence behind RJ-16 (2026-10-02/03). Synthetic delins probes in covered
 sequence, where no read carries the ALT, found spurious ALT reads in data whose
@@ -255,6 +395,27 @@ Against the merged build: HG002 10+ bp insertions in band 334 -> 343 (mean
 gate panel, 7 insertion rows change and no oracle-ALT read is lost; WES, normals and
 ACCESS, and FORTE are unchanged.
 
+Evidence behind the #278 decision of 2026-10-15
+([comment](https://github.com/msk-access/gbcms/issues/278#issuecomment-6195173189)), a prototype on every
+MNP, delins and pure-indel row of the 6.6.0 gate panel (sliced locally); these are the prototype's
+numbers, before the final build below:
+- Group A, what the read can see. RJ-1 (a read ending inside or just past the tract is depth only,
+  for both alleles) moves 27.8k REF and 8.0k ALT reads on the panel and removes the REF excess the
+  CIGAR rule shows on HG002: deletions' median VAF 0.455 → 0.500, short insertions 0.429 → 0.500,
+  10+ bp insertions 0.150 → 0.43. RJ-20 (an insertion carrier whose inserted bases are unreadable
+  counts ALT where no other allele of that length is at the locus, as RJ-25 decides for complex
+  events) gives +560 ALT on the panel, and AD +1 in all across the matched normals.
+- Group B, errors in the read. RJ-22 keeps about 1.8k ALT reads, and the matching REF reads, where
+  the junction ALT has a substitution in the run.
+- Group C, another event in the read. Outside the windows (RJ-8) a read whose indel's best placement
+  lies outside keeps its call as a separate event; that check, ahead of the read-on of #287, touches
+  0.7k REF reads and 4 tests.
+- Found on the prototype and fixed on the branch: a germline change joining the run a pure indel
+  slides through left REF molecules reading as the ALT; in one matched normal that gave RD 437 → 0
+  and VAF 1.0. With background in the run masked around the indel's own bases, and the windows
+  reading on where masks hide the alleles' difference, that normal reads RD 398 / AD 8, with
+  sign-out at 8.
+
 Evidence behind RJ-26 and RJ-27 (2026-10-15/16), #278. Other tools' read-level judges
 (GATK HaplotypeCaller and Mutect2, Octopus) decide an indel read by one base past the
 repeat and take a single mismatch as an error unless it recurs; the recurrence floor
@@ -269,13 +430,15 @@ base; 794, 921 and 968 under a two-flank oracle, 14 rows farther from it than de
 and 58 closer). On HG002's het indels (truth VAF 0.5) against the CIGAR checks: 10+ bp
 insertions in band (0.35-0.65) 110 -> 334 (median VAF 0.150 -> 0.424), short
 insertions 465 -> 552, deletions 529 -> 563. The window growth (on the allele holding
-the indel's bases) was chosen over growth on both alleles and over none: HG002 long
+the indel's bases) was chosen over growth on both alleles and over none (REJ-20261016-001 in
+`.agents/learnings/REJECTED.md`): HG002 long
 insertions mean |VAF - 0.5| .1498 against .1510 and .1540, deletions in band 563
 against 563 and 571, oracle-correct panel reads 489,324 REF and 151,958 ALT against
 488,127 / 151,533 and 492,962 / 154,045, reads of another allele counted ALT 897
 against 851 and 1,166. The identity band for truncated inserts (D2) added 158 ALT reads
 on HG002 long insertions with truth concordance unchanged, and on the panel 13 ALT
-calls the oracle agrees with against 111 it does not: not adopted. An adversarial
+calls the oracle agrees with against 111 it does not: not adopted (REJ-20261016-002 in
+`.agents/learnings/REJECTED.md`). An adversarial
 review's third-allele shapes (21, pinned) led to the confirmation past the windows: a
 count threshold lost 516 oracle-ALT panel reads (carriers of one row with a phased DNP
 eight bases on); the shift test keeps them and removes 91 oracle-disagreeing calls for
@@ -287,6 +450,20 @@ it reads on along its mRNA (before: spliced REF reads at indels two to four base
 before an exon's end neither, partial under BAQ; develop lost the spliced ALT reads
 under BAQ); on the FORTE slices one row changes, with the GTF or without (RD +1, a
 spliced REF read the intron had left undecided).
+
+Evidence behind the RJ-27 amendment of 2026-10-20 to 2026-10-22 (#294,
+[decision record](https://github.com/msk-access/gbcms/issues/294#issuecomment-6364311473)), what short
+reads can tell at three HG002 rows. Every read (137) was fitted against the true haplotypes and
+against the same pair with the insertion swapped: 53 fit every haplotype; 21 can only be sorted by
+knowing the SNP's phase; at the #294 row no fragment reaches both the SNV and a base that tells the
+insertion apart. Develop's extra ALT calls at two of the rows (8 of 13) were reads showing only a SNP
+that happens to be in cis; in trans the same reading is the error the ticket describes. A whole-read
+PairHMM with the nearby germline changes as haplotypes reached what these reads' bases can show: all
+63 reads whose bases tell were right, with none wrong or missed. Two caveats: gbcms's own PairHMM had
+its end gaps reversed (#299), and in gbcms the haplotypes would have to come from the guard. The
+comment called it a candidate for later; #304 took it up for package 2. Considered and not
+adopted: choosing the rule by whether the ALT is present, and a cis rescue (REJ-20261023-001 in
+`.agents/learnings/REJECTED.md`).
 
 Evidence behind RJ-25 and the RJ-23 grown-event amendment (2026-10-14), measured on a
 synthetic arm of 13 shapes (each event on its own contig: REF, the given ALT and another
@@ -404,6 +581,42 @@ panel's 60 deletions of 50+ bp (IMPACT, ABRA2-realigned) and 300 HG002 het delet
 - Surveyed tools that test a known junction anchor 5-16 bases past the microhomology
   (Manta, Delly, Paragraph, SvABA, Pindel); genome-wide placers need 20-25 for
   uniqueness, which a genotyper given the breakpoint does not.
+- ABRA2 and clips on the panel (60 deletions of 50+ bp; #254,
+  [decision](https://github.com/msk-access/gbcms/issues/254#issuecomment-6073704863)): ABRA2 writes
+  97% of carriers as a D op; 3.4% are clips, in 28 of 60 rows, and 6.6.0 credits none of them (the
+  6.7.0 plan counts 6,137 junction carriers written as a D op and 217 as a soft clip, 87 of them
+  with 10+ junction bases). 6.6.0 reads 4-7% low there, because ALT reads with a short far side are
+  clipped while REF reads need only a base or two. Under the rule about 5% of ALT reads become
+  depth: they show fewer than 4 bases past the junction, and their REF counterparts drop alike. 3
+  rows lose more: their ALT reads all carry a change 3-7 bases from the junction, a larger allele
+  (the shared sub-decision with #253). The junction-carrier counts on HG002 differ between the
+  sources: the decision comment gives 1,719 of 2,497 as clips (k = 10, "without realignment every
+  carrier is a clip"), the first bullet of this list 1,958; the basis of the difference is not
+  recorded.
+- Junk risk: 23 junk clips at the breakpoint predict under 0.1 false carriers at 4^−4.
+- Which breakpoint REF is read at: pooling REF from both breakpoints, as Manta, Delly and SVTyper do
+  (Paragraph genotypes each breakpoint on its own), puts a het near 1/3. On capture data row-level VAF
+  swings with depth along the event: REF at the left against the right breakpoint has median 1.02
+  over 48 panel deletions, and spans 0.69-1.86 for the middle 80% of rows, 19 of 48 differing by
+  more than 25%. On WGS (HG002) it does not. REF stays at the POS breakpoint (a far-breakpoint REF
+  read gives HG002 0.43 against 0.50).
+- Spec shapes added for the rule ([comment](https://github.com/msk-access/gbcms/issues/254#issuecomment-6085365571)):
+  deletions of 500 bp and 1 kb (only one breakpoint is held and it is credited as junction
+  evidence); a split carrier, a primary soft-clipped at the junction plus a hard-clipped
+  supplementary, counted once; a hard-clipped record with no primary in the fetch, not evidence; REF
+  at the POS breakpoint only. Not added, because measured negligible: R1/R2 disagreement (23 of
+  about 195k panel fragments) and insertions longer than a read (none of 459 panel insertions
+  reaches 100 bp).
+- Correction of the ticket's premise (2026-10-15, interim 6.7.0 gate adjudication;
+  [comment](https://github.com/msk-access/gbcms/issues/254#issuecomment-6191561532)): the "7 and 4
+  exact-junction reads" at the two deletions over 1 kb were runs of N in clipped tails, with 0-1
+  confident bases in the 30-mer. The panel's 1,023-bp rows are truncations: their reads carry
+  1,046-1,118-bp deletions from the same POS (the #285 bullet below says 1,086-1,118-bp; both are
+  as the sources give them), and no read holds the given junction, so 0 is right in 6.6.0 and
+  develop alike. What the rule delivered stands: clipped carriers whose own bases hold the junction
+  are credited (+184 reads across the gate's 50+ bp stratum). The limit the adjudication found is
+  right-clipped carriers whose aligned bases end before the junction windows, which get no read call
+  (#286).
 - The sibling guard (2026-10-13): over the whole deleted span, co-annotated SNVs
   inside it withdrew 2,667 REF reads at 10 of the panel's 60 deletions, where no ALT
   molecule could carry them (one row's VAF 0.17 became 0.30); limited to the anchor
@@ -429,7 +642,12 @@ panel's 60 deletions of 50+ bp (IMPACT, ABRA2-realigned) and 300 HG002 het delet
   joint check; develop's 2-bp shift about 23%), mates read in the wrong order, and
   short reads of another allele; each is a test. A phased DNP at the junction counts
   ALT in 36 of 40 random contexts (the other four: the deletion shifted right exactly,
-  or a DNP on every base the windows tell the alleles by), elsewhere 40 of 40. HG002's
+  or a DNP on every base the windows tell the alleles by), elsewhere 40 of 40. The
+  one-base-aside tolerance first posted (2026-10-18) counted it ALT in only 21 of the 40: in the
+  other 19 the deletion shifted right matched the reads at all but one base. The operator's
+  correction was an exact match, at the cost that another breakpoint that also carries an SNV
+  inside the run counts as the given deletion with a neighbour (REJ-20261018-001 in
+  `.agents/learnings/REJECTED.md`). HG002's
   90-bp deletion, one unit of a VNTR of about 90-bp units whose carriers hold a phased
   SNV equal to the next unit, reads VAF 0.11 with the deletion alone in the input and
   0.58 with the SNV row (truth 0.5). The breakpoint search takes 0.1 s on a 1 Mb
@@ -447,7 +665,8 @@ no realignment):
   padding favour the shorter allele (panel VAF ×1.22); junctions read from either
   flank favour the longer one (×0.87). On the four long delins (windows past 50
   bases) the written counts match the one-sided reading (REF 1,356 against 1,351):
-  the reads that hold only the far junction are classified but never counted.
+  the reads that hold only the far junction are classified but never counted
+  (REJ-20261008-001 in `.agents/learnings/REJECTED.md`).
 - Recurrent neighbours: in 47 of the 137 rows the ALT reads share a confident change
   3–25 bases from the event that REF reads lack: the reads carry a larger allele.
   Withholding those reads (as first decided) was measured and reversed on
