@@ -118,18 +118,22 @@ Add new section at top. The text after the em dash becomes the GitHub Release ti
 - Changes description
 ```
 
-### 3b. Remove cycle plans
+### 3b. Distill and archive cycle plans
 
-Cycle plans (`CYCLE_X.Y.Z_PLAN.md`) live on `develop` and never ship. Delete
-every one on the release branch, and point `CONTINUITY.md` elsewhere if it
-references them:
+A cycle plan (`CYCLE_X.Y.Z_PLAN.md`) is the cycle's working record on `develop`, and
+often the only place its measurements were written. Before the cut, distill it as an
+issue is distilled before closing (`.agents/rules/git-conventions.md` §Issues). Each
+decision, with the numbers that decided it, goes to the read-rule register or a proposal
+doc. Rejected ideas go to `.agents/learnings/REJECTED.md`, and open work to tickets.
+Then move the plan out of the repo root on the release branch, where grep still finds it,
+and point `CONTINUITY.md` there if it references the plan:
 
 ```bash
-git rm CYCLE_*_PLAN.md
+git mv CYCLE_X.Y.Z_PLAN.md .agents/archive/
 ```
 
-The back-merge (step 10) then removes the finished cycle's plan from `develop`
-too. The next cycle's plan is added to `develop` after the back-merge.
+The back-merge (step 10) carries the move to `develop`. The next cycle's plan is added
+to `develop` after the back-merge.
 
 ### 4. Run Pre-Release Checks
 
