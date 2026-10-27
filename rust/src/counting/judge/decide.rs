@@ -467,33 +467,6 @@ fn conclude<'h>(
             }
         }
     }
-    // Likewise, at a substitution X, a tie of X with another allele, REF beaten, is evidence
-    // of that allele only where the read reaches the bases that tell it from X: short of them
-    // (a carrier of X inside the bases an allele repeating those before X shares with X),
-    // where it reads every base X changes as X's, the read shows X and nothing of the other
-    // allele. One short of X's own bases (an SNV's read ending inside an MNV holding it)
-    // stays another allele, as does a read ending inside two insertions that differ only
-    // past it: it never reads X whole.
-    let mut alt_by_reach = false;
-    if call == Call::Other && site.is_substitution() && tied_with(scores) == Some(Class::Alt as usize) {
-        if let (Some((_, k)), Some((_, x))) = (best[Class::Other as usize], best[Class::Alt as usize]) {
-            if !site.reaches_state_from(read, &hap(k), true) {
-                let xh = hap(x);
-                let (al, off) = scorer.align(site, &xh);
-                let reads_x = site.telling_in(&xh).into_iter().all(|(col, base)| {
-                    al.placed
-                        .iter()
-                        .position(|p| matches!(*p, Placed::At(c) if (c + off) as i64 == col))
-                        .is_some_and(|i| read.seq[i] == WILD || read.seq[i] == base)
-                });
-                if reads_x {
-                    trace!("haplotype judge: X ties another allele the read never reads apart from X → ALT");
-                    call = Call::Alt;
-                    alt_by_reach = true;
-                }
-            }
-        }
-    }
     // The haplotype the read fits best of all, where its alignment there leaves an indel
     // unexplained inside X's site: the read carries another allele there, never REF or X.
     let overall = best.iter().flatten().copied().max_by(|a, b| a.0.cmp(&b.0).then(b.1.cmp(&a.1)));
@@ -622,7 +595,7 @@ fn conclude<'h>(
     // for a REF call the other allele tied: the bases that beat X decided it).
     let floor = min_baseq.max(1);
     let lost = (0..3)
-        .filter(|&k| k != won as usize && !((ref_by_reach || alt_by_reach) && k == Class::Other as usize))
+        .filter(|&k| k != won as usize && !(ref_by_reach && k == Class::Other as usize))
         .filter_map(|k| best[k])
         .max_by(|a, b| a.0.cmp(&b.0).then(b.1.cmp(&a.1)))
         .map(|(_, h)| h);

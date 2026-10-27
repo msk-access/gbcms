@@ -915,31 +915,6 @@ mod tests {
     }
 
     #[test]
-    fn a_read_tying_x_with_another_allele_it_never_reads_apart_from_x_is_alt() {
-        use Call::*;
-        // CC>TT at 0-based 300, beside an allele at its site that repeats the 17 bases before
-        // X and then reads X's TT (a duplication ending in X's change, as reads spell it). A
-        // carrier of X starting inside the 18 bases the two share reads X and that allele
-        // alike, REF beaten: it shows X where REF and X differ and nothing of the other
-        // allele, so it is X's. A carrier reaching further back tells them apart; the other
-        // allele's own carriers stay another allele.
-        let mut c = random_seq(600, 67);
-        c[300..302].copy_from_slice(b"CC");
-        c[282] = b'C';
-        let x = Row::new(300, b"CC", b"TT");
-        let dup = Row::new(300, b"CC", &[b"C", &c[283..300], b"TT"].concat());
-        let (h_x, h_dup) = (haplotype(&c, &[&x]), haplotype(&c, &[&dup]));
-        let reads = vec![
-            read(&h_x, 283, 100, 283, "100M"),
-            read(&h_x, 290, 100, 290, "100M"),
-            read(&h_x, 240, 100, 240, "100M"),
-            read(&h_dup, 240, 100, 240, "100M"),
-            read(&c, 250, 100, 250, "100M"),
-        ];
-        assert_eq!(calls(&c, &[x.clone(), dup], &x, &reads), vec![Alt, Alt, Alt, Other, Ref]);
-    }
-
-    #[test]
     fn a_covered_telling_base_read_as_neither_allele_is_another_allele_under_the_switch() {
         use haplotypes::NeitherRule::{Margin, Other as Neither};
         use Call::*;
@@ -976,24 +951,6 @@ mod tests {
         let reads = vec![read(&with(&c, 1), 250, 100, 250, "100M"), read(&c, 251, 100, 251, "100M"), read(&h, 252, 100, 252, "100M")];
         assert_eq!(calls_under(&delins, &reads, Margin), vec![Ref, Ref, Alt], "delins, the margin");
         assert_eq!(calls_under(&delins, &reads, Neither), vec![Other, Ref, Alt], "delins, the switch");
-    }
-
-    #[test]
-    fn a_read_ending_inside_two_insertions_that_differ_at_their_end_is_neither_rows_alt() {
-        use Call::*;
-        // Two insertions after 0-based 299 whose 12 inserted bases differ only at the last:
-        // a read ending inside the inserted bases fits both and never reads X's insertion
-        // whole, so it is X's or the other's alike, never X's ALT.
-        let c = random_seq(600, 73);
-        let ins: Vec<u8> = random_seq(12, 79);
-        let mut other_ins = ins.clone();
-        other_ins[11] = if ins[11] == b'A' { b'C' } else { b'A' };
-        let x = Row::new(299, &c[299..300], &[&c[299..300], &ins[..]].concat());
-        let y = Row::new(299, &c[299..300], &[&c[299..300], &other_ins[..]].concat());
-        let h_y = haplotype(&c, &[&y]);
-        let reads = vec![read(&h_y, 210, 100, 210, "90M10I")];
-        let got = calls(&c, &[x.clone(), y], &x, &reads);
-        assert_ne!(got, vec![Alt], "a read ending inside both insertions");
     }
 
     #[test]
