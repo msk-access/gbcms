@@ -72,8 +72,10 @@ For a row X and each admitted read:
   - `GBCMS_JUDGE_NEITHER=other` (measurement only; default `margin`): a covered telling base
     read confidently as neither allele makes a REF or ALT call on an MNV or a delins another
     allele.
-- **Third measurement round (2026-10-27; measurement options, defaults unchanged, open for the
-  operator):**
+- **Third measurement round (2026-10-27; measurement options, defaults unchanged):**
+  decided 2026-10-27: margin; a confident third base below the found floor is an error (RJ-26);
+  the per-read forms' gains come from the oracles' strict core. Beside-X: the default stays
+  `site`; `beside` and `apart` are not adopted.
   - The confident third base (`GBCMS_JUDGE_NEITHER`). Mechanism: a read is REF only where its
     bases show REF's where the alleles differ, so a confident base neither allele has there
     makes a REF or ALT call neither. Errors put such bases on telling bases at the reads' own

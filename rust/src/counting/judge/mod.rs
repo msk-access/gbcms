@@ -977,6 +977,97 @@ mod tests {
         }
     }
 
+    /// The calls of `reads` at `target` among `rows` on `contig` under an own-gap rule.
+    fn calls_own_gap(contig: &[u8], rows: &[Row], target: &Row, reads: &[ReadView], rule: haplotypes::OwnGapRule) -> Vec<Call> {
+        let l = reads.iter().map(ReadView::len).max().unwrap();
+        let mut s = site(contig, target, rows, l);
+        s.own_gap = rule;
+        reads.iter().map(|r| judge(&s, r, MIN_BQ, false).call).collect()
+    }
+
+    #[test]
+    fn under_the_general_own_gap_rule_a_read_beside_another_allele_by_its_own_indel_keeps_the_margins_call() {
+        use haplotypes::OwnGapRule::{All, Tie};
+        use Call::*;
+        // X a T inserted in a TT run (after 0-based 300), beside a listed 33 bp deletion
+        // whose right placement ends at X's anchor (another allele at X's site). A read
+        // with an unlisted 11 bp deletion inside the listed deletion's bases reaches that
+        // allele only through its own gap at its change, and REF and X without one at
+        // X's site. REF at X, it ties REF with that allele: REF under either rule (the
+        // decided tie rule). Carrying X's T, X beats both: ALT under either. Alike where
+        // the read begins two bases before its own gap (a read end), and where the bases
+        // beside the gap are below --min-baseq.
+        let c = contig(59, 261, b"CAGAGAACAAAAGAAAGAAAGATTTTCTTACTTCAGAGAATTCTTTGCCACGTATTTCTAGC");
+        let x = row(301, "A", "AT");
+        let del = Row::new(260, &c[260..294], &c[260..261]);
+        let rows = vec![x.clone(), del.clone()];
+        let hx = haplotype(&c, &[&x]);
+        let low = |at: &[usize]| (0..100).map(|i| if at.contains(&i) { 5 } else { Q }).collect::<Vec<u8>>();
+        let reads = vec![
+            read_q(&[&c[275..281], &c[292..386]].concat(), vec![Q; 100], 275, "6M11D94M"),
+            read_q(&[&c[279..281], &c[292..390]].concat(), vec![Q; 100], 279, "2M11D98M"),
+            read_q(&[&c[275..281], &c[292..386]].concat(), low(&[4, 5, 6, 7]), 275, "6M11D94M"),
+            read_q(&[&hx[275..281], &hx[292..386]].concat(), vec![Q; 100], 275, "6M11D9M1I84M"),
+            read_q(&[&hx[279..281], &hx[292..390]].concat(), vec![Q; 100], 279, "2M11D9M1I88M"),
+            read_q(&[&hx[275..281], &hx[292..386]].concat(), low(&[4, 5, 6, 7]), 275, "6M11D9M1I84M"),
+        ];
+        let want = vec![Ref, Ref, Ref, Alt, Alt, Alt];
+        assert_eq!(calls_own_gap(&c, &rows, &x, &reads, All), want, "all");
+        assert_eq!(calls_own_gap(&c, &rows, &x, &reads, Tie), want, "tie");
+    }
+
+    #[test]
+    fn under_the_general_own_gap_rule_a_read_writing_its_own_indel_at_x_carries_no_state() {
+        use haplotypes::OwnGapRule::{All, Tie};
+        use Call::*;
+        // Unique sequence: an SNV whose base the read deletes, an MNV inside whose block it
+        // inserts a base, a delins beside whose junction it deletes one: every state is
+        // reached only through the read's own gap at X's change, so another allele. A read
+        // deleting a base four bases from the SNV, outside its change, is a separate event
+        // (RJ-8): REF. In a run: X one T inserted, a listed sibling of five; a read of every
+        // other length (one to seven) is another allele (RJ-6), X's length ALT; alike for
+        // deletions in a G run (X one G, the sibling three). Under either rule.
+        let c = random_seq(600, 5);
+        let other = |b: u8| if b == b'A' { b'C' } else { b'A' };
+        let snv = Row::new(300, &c[300..301], &[other(c[300])]);
+        let mnv = Row::new(300, &c[300..303], &c[300..303].iter().map(|&b| other(b)).collect::<Vec<_>>());
+        let delins = Row::new(300, &c[300..304], b"GG");
+        let hd = haplotype(&c, &[&delins]);
+        let cases: Vec<(Row, ReadView, Call, &str)> = vec![
+            (snv.clone(), read_q(&[&c[250..300], &c[301..351]].concat(), vec![Q; 100], 250, "50M1D50M"), Other, "SNV, its base deleted"),
+            (snv.clone(), read_q(&[&c[250..304], &c[305..351]].concat(), vec![Q; 100], 250, "54M1D46M"), Ref, "SNV, a base four away deleted"),
+            (mnv.clone(), read_q(&[&c[250..302], b"T".as_slice(), &c[302..349]].concat(), vec![Q; 100], 250, "52M1I47M"), Other, "MNV, a base inserted in its block"),
+            (delins.clone(), read_q(&[&hd[250..302], &hd[303..351]].concat(), vec![Q; 100], 250, "52M1D48M"), Other, "delins, a base deleted at its junction"),
+        ];
+        for rule in [All, Tie] {
+            for (x, r, want, what) in &cases {
+                assert_eq!(calls_own_gap(&c, std::slice::from_ref(x), x, std::slice::from_ref(r), rule), vec![*want], "{what}, {rule:?}");
+            }
+        }
+        let a = contig(61, 299, b"GCTTA");
+        let x = row(301, "C", "CT");
+        let sib = row(301, "C", "CTTTTT");
+        let reads: Vec<ReadView> = (1..=7usize)
+            .map(|n| {
+                let h = [&a[..301], "T".repeat(n).as_bytes(), &a[301..]].concat();
+                read_q(&h[220..320], vec![Q; 100], 220, &format!("81M{n}I{}M", 19 - n))
+            })
+            .collect();
+        let want = vec![Alt, Other, Other, Other, Other, Other, Other];
+        for rule in [All, Tie] {
+            assert_eq!(calls_own_gap(&a, &[x.clone(), sib.clone()], &x, &reads, rule), want, "T run, {rule:?}");
+        }
+        let d = contig(62, 295, b"AGGGGGGGGC");
+        let (xd, sd) = (row(296, "AG", "A"), row(296, "AGGG", "A"));
+        let reads: Vec<ReadView> = (1..=5usize)
+            .map(|n| read_q(&[&d[220..297], &d[297 + n..320 + n]].concat(), vec![Q; 100], 220, &format!("77M{n}D23M")))
+            .collect();
+        let want = vec![Alt, Other, Other, Other, Other];
+        for rule in [All, Tie] {
+            assert_eq!(calls_own_gap(&d, &[xd.clone(), sd.clone()], &xd, &reads, rule), want, "G run, {rule:?}");
+        }
+    }
+
     #[test]
     fn the_window_switch_moves_a_neither_base_only_where_both_alleles_reads_are_read_alike() {
         use haplotypes::NeitherRule::{Other as Neither, Window};

@@ -439,6 +439,9 @@ pub(crate) struct Site {
     /// What a covered telling base read confidently as neither allele does to a REF or ALT
     /// call ([`neither_rule`]).
     pub(crate) neither: NeitherRule,
+    /// Which states a read reaching them only through an indel of its own loses
+    /// ([`own_gap_rule`]).
+    pub(crate) own_gap: OwnGapRule,
     /// At a substitution of two bases or more or a delins X: per genome position over the
     /// window and base, the reads whose own alignments read that base there confidently.
     tally: HashMap<(i64, u8), u32>,
@@ -529,6 +532,31 @@ pub(crate) fn neither_rule() -> NeitherRule {
 /// a substitution of two bases or more or a delins traces what the read shows at X's telling
 /// bases that is neither allele's (each such base's quality, place and recurrence), and its
 /// mismatches elsewhere on the called haplotype ("judge neither" lines).
+/// Measurement only, TEMPORARY: which states a read loses that it reaches only through an
+/// indel of its own at the state's change (`GBCMS_JUDGE_OWNGAP`): `tie`, the default, another
+/// allele tied with REF where X is beaten (the decided tie rule); `all`, any state (REF, X or
+/// another allele) within the margin of the read's best, before the margin decides, for every
+/// pair of states and for wins as for ties. Read when a site is built.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum OwnGapRule {
+    Tie,
+    All,
+}
+
+pub(crate) fn own_gap_rule() -> OwnGapRule {
+    match std::env::var("GBCMS_JUDGE_OWNGAP").as_deref() {
+        Ok("all") => OwnGapRule::All,
+        _ => OwnGapRule::Tie,
+    }
+}
+
+/// Measurement only: whether to trace each background item the respelling check weighs
+/// (`GBCMS_JUDGE_RESPELL_TRACE=1`): its kind, direction, state and fate.
+pub(crate) fn respell_trace() -> bool {
+    static ON: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+    *ON.get_or_init(|| std::env::var("GBCMS_JUDGE_RESPELL_TRACE").is_ok_and(|v| v == "1"))
+}
+
 pub(crate) fn neither_trace() -> bool {
     static ON: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
     *ON.get_or_init(|| std::env::var("GBCMS_JUDGE_NEITHER_TRACE").is_ok_and(|v| v == "1"))
@@ -1105,7 +1133,7 @@ fn agree(a: &[u8], b: &[u8], right: bool) -> usize {
 /// as a context it would tie the reads that tell the candidates apart.
 ///
 /// With `one_way`, only REF with the item spelling a candidate counts (not a candidate with
-/// it spelling REF).
+/// it spelling REF); [`respell_directions`] weighs either direction alone.
 ///
 /// Reads are taken as placed, of length `l`: one reading in from the left flank tells two
 /// spellings apart once it passes the first base where they differ, so an item that moves
@@ -1139,6 +1167,23 @@ fn respell_levels<'r>(
     rows: &'r [Row],
     masks: &[i64],
     one_way: bool,
+) -> (Vec<u8>, Vec<u8>) {
+    respell_directions(reference, start, site, l, states, others, rows, masks, (true, !one_way))
+}
+
+/// Measurement only: [`respell_levels`] weighing REF with the item spelling a candidate
+/// (`dirs.0`) and a candidate with it spelling REF (`dirs.1`), each where asked.
+#[allow(clippy::too_many_arguments)]
+fn respell_directions<'r>(
+    reference: &[u8],
+    start: i64,
+    site: (i64, i64),
+    l: i64,
+    states: &'r [Row],
+    others: &'r [Row],
+    rows: &'r [Row],
+    masks: &[i64],
+    dirs: (bool, bool),
 ) -> (Vec<u8>, Vec<u8>) {
     let st = Stretch { reference, start, lo: (site.0 - l).max(start), hi: (site.1 + l).min(start + reference.len() as i64) };
     let inside = |r: &Row| r.pos >= st.lo && r.end() <= st.hi;
@@ -1212,8 +1257,9 @@ fn respell_levels<'r>(
             let with_b: Vec<Vec<&'r Row>> = sets.iter().filter(|c| c.iter().all(|r| !meet(r, b))).cloned().collect();
             let ref_b = side(&with_b, None, Some(b), &[]);
             let alt_b = if meet(b, state) { Vec::new() } else { side(&with_b, Some(state), Some(b), &[]) };
-            let back = if one_way { 0 } else { unmakes(&refs, None, &alts, &alt_b) };
-            out_rows[i] = out_rows[i].max(unmakes(&alts, None, &refs, &ref_b)).max(back);
+            let back = if dirs.1 { unmakes(&refs, None, &alts, &alt_b) } else { 0 };
+            let forth = if dirs.0 { unmakes(&alts, None, &refs, &ref_b) } else { 0 };
+            out_rows[i] = out_rows[i].max(forth).max(back);
         }
         let sets = sets_without(None);
         let (refs, alts) = (side(&sets, None, None, &[]), side(&sets, Some(state), None, &[]));
@@ -1240,6 +1286,18 @@ struct Dropped {
 /// Whether a read's aligned span reaches `r`.
 fn reaches(read: &ReadView, r: &Row) -> bool {
     read.ref_start < r.end() && r.pos < read.ref_end
+}
+
+/// A row's type as a trace names it: SNV, MNV, INS, DEL or DELINS.
+fn x_type(r: &Row) -> &'static str {
+    let (on_ref, on_alt) = telling(r);
+    match (r.ref_al.len() == r.alt_al.len(), on_ref.is_empty(), on_alt.is_empty()) {
+        (true, _, _) if on_ref.len() <= 1 => "SNV",
+        (true, _, _) => "MNV",
+        (false, true, _) => "INS",
+        (false, _, true) => "DEL",
+        _ => "DELINS",
+    }
 }
 
 /// A row as a trace names it.
@@ -1544,6 +1602,33 @@ impl Site {
         let interior = if other_option().edges { self.long_interior(hap) } else { None };
         let inside = |lo: i64, hi: i64| interior.is_some_and(|(i0, i1)| i0 <= lo && hi <= i1);
         gap_between(hap, read, al, off, self.site_columns(hap), inside, false)
+    }
+
+    /// Measurement only (`GBCMS_JUDGE_OWNGAP=all`): whether an alignment of a read to the
+    /// state `hap` is (its columns offset by `off`) inserts or deletes bases of its own at
+    /// that state's change, wherever the indel can slide to, read bases inserted before its
+    /// first aligned base included. REF's and X's change is X's site (the bases a
+    /// substitution changes; a length change's run and a base each side, the discrimination
+    /// window); another allele's is the bases it changes, and for one changing the length a
+    /// base each side too ([`Site::gap_at_state`]). An indel beside a substitution's bases is
+    /// a separate event (RJ-8), never a reason the read does not carry it. A gap wholly
+    /// inside a long event's own bases is a change on that molecule, as the fit check has it.
+    pub(crate) fn own_gap_at(&self, hap: &Hap, read: &[u8], al: &Alignment, off: usize) -> bool {
+        if hap.class == Class::Other || (hap.class == Class::Alt && hap.x_seg.is_none()) {
+            let Some(&r) = hap.rows.iter().find(|&&r| self.is_state(r)) else {
+                return false;
+            };
+            if self.rows[r].changes_length() {
+                return self.gap_at_state(hap, read, al, off);
+            }
+            let Some(&(_, _, hs, he)) = hap.segs.iter().find(|&&(rs, re, _, _)| (rs, re) == self.spans[r]) else {
+                return false;
+            };
+            return gap_between(hap, read, al, off, (hs, he), |_, _| false, true);
+        }
+        let interior = if other_option().edges { self.long_interior(hap) } else { None };
+        let inside = |lo: i64, hi: i64| interior.is_some_and(|(i0, i1)| i0 <= lo && hi <= i1);
+        gap_between(hap, read, al, off, self.site_columns(hap), inside, true)
     }
 
     /// Whether an alignment of a read to another allele's haplotype `hap` (its columns
@@ -1980,7 +2065,29 @@ impl Site {
                     }
                 }
                 let whole = Dropped { rows: items.iter().zip(&rows).filter(|(_, &k)| k == 2).map(|(r, _)| r.clone()).collect() };
-                settle(whole, items.iter().zip(&rows).filter(|(_, &k)| k == 1).map(|(r, _)| r).collect())
+                let settled = settle(whole, items.iter().zip(&rows).filter(|(_, &k)| k == 1).map(|(r, _)| r).collect());
+                if respell_trace() {
+                    let (forth, _) = respell_directions(&reference, start, site, l, &all_states, &listed, &items, &[], (true, false));
+                    let (back, _) = respell_directions(&reference, start, site, l, &all_states, &listed, &items, &[], (false, true));
+                    let (on_x, _) = respellings(&reference, start, site, l, std::slice::from_ref(&target), &listed, &items, &[]);
+                    let joined = joined_at_site(&reference, start, site, l, &items, |r| meets(&target, r));
+                    for (i, item) in items.iter().enumerate().filter(|&(i, _)| rows[i] > 0) {
+                        let kind = if i >= nb { "found" } else if item.changes_length() { "indel" } else { "substitution" };
+                        let dir = match (forth[i] > 0, back[i] > 0) {
+                            (true, true) => "both",
+                            (true, false) => "ref_to_state",
+                            (false, true) => "state_to_ref",
+                            (false, false) => "joined_only",
+                        };
+                        log::trace!(
+                            "judge respell {} xtype={} rule=respell item={} kind={kind} level={} joined={} dir={dir} state={} fate={}",
+                            named(&target), x_type(&target), named(item), if rows[i] == 2 { "whole" } else { "read" },
+                            u8::from(joined[i]), if on_x[i] > 0 { "x" } else { "other" },
+                            if settled.rows.contains(item) { "left_out" } else { "kept" },
+                        );
+                    }
+                }
+                settled
             }
             // Under the default, at a substitution X, a recurring indel of the guard's with
             // which REF reads as X over a read reaching X's site is X's change respelled (a
@@ -2003,7 +2110,17 @@ impl Site {
                     .collect();
                 let (rows, _) = respell_levels(&reference, start, site, l, std::slice::from_ref(&target), &others, &indels, &[], true);
                 let whole = Dropped { rows: indels.iter().zip(&rows).filter(|(_, &k)| k == 2).map(|(r, _)| r.clone()).collect() };
-                settle(whole, indels.iter().zip(&rows).filter(|(_, &k)| k == 1).map(|(r, _)| r).collect())
+                let settled = settle(whole, indels.iter().zip(&rows).filter(|(_, &k)| k == 1).map(|(r, _)| r).collect());
+                if respell_trace() {
+                    for (i, item) in indels.iter().enumerate().filter(|&(i, _)| rows[i] > 0) {
+                        log::trace!(
+                            "judge respell {} xtype={} rule=asis item={} kind=indel level={} joined=0 dir=ref_to_state state=x fate={}",
+                            named(&target), x_type(&target), named(item), if rows[i] == 2 { "whole" } else { "read" },
+                            if settled.rows.contains(item) { "left_out" } else { "kept" },
+                        );
+                    }
+                }
+                settled
             }
             None => Dropped::default(),
         };
@@ -2216,6 +2333,7 @@ impl Site {
             triage: None,
             triage_mode: triage_mode(),
             neither: neither_rule(),
+            own_gap: own_gap_rule(),
             tally,
             background_bases,
             background_masks,
