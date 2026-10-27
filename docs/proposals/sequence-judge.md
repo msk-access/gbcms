@@ -104,6 +104,28 @@ For a row X and each admitted read:
     clear of every placement of a length-changing X is beside it), breaks 24 decided
     contracts: an allele's carriers are another allele wherever it is written (RJ-5, RJ-6,
     RJ-7). The default stays `site`.
+- **Fourth measurement round (2026-10-27; the general forms of the second round's two
+  narrowed fixes, measurement options, defaults unchanged, open for the operator):**
+  - The background respelled (`GBCMS_JUDGE_BACKGROUND=respell`; `GBCMS_JUDGE_RESPELL_TRACE=1`
+    names each item weighed). Mechanism: a context with which one candidate's sequence spells
+    another's over the reads leaves those reads unable to tell the two apart. General rule:
+    any background item or found allele (the masks excepted, decided), alone or joined with
+    others into one change at X's site, in either direction, for any state and any X, is left
+    out where no read needs it. Against the default: every patient arm passes on both oracles;
+    HG002's truth arms gain (c246's 1-9 bp insertions 34 ALT and 15 REF reads, tr's 10-49 bp
+    10 ALT, the 1 kb insertions 5 ALT and one wrong call fewer), no class failing. Nearly all
+    of it is the step to indel and delins X (HG002: 289 rows, 417 reads changing call, 76 of
+    them right by truth after and 2 before); the guard-indel rule's own items change nothing,
+    and substitutions, other states and the state-to-REF direction move 5 reads at most. No
+    decided contract changes.
+  - The own gap (`GBCMS_JUDGE_OWNGAP`). Mechanism: a read that reaches a state only through an
+    indel of its own at that state's change does not carry it. `all` (every state, wins and
+    ties) breaks four decided contracts and fails classes on every patient arm: dropping REF
+    or X in their own tie hands the read to the other by elimination, though its bases show
+    neither where they differ. `others` (another allele's states only) breaks none, but fails
+    delins under 20 bases and gate insertions on oracle v3: where another allele wins by the
+    margin, a read writing an indel of its own beside that allele's change still carries the
+    allele's bases (25 of 26 such panel reads wrong). Neither replaces the decided tie rule.
 - **The background refinement (measured 2026-10-26, not adopted; `GBCMS_JUDGE_BACKGROUND`,
   default `asis`):** `respell` leaves out a context item of the guard's background or the
   found alleles that respells the site's own candidate sequences: one that turns one
