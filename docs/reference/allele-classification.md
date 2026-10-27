@@ -581,7 +581,7 @@ Read 3 (REF):  CIGAR = 12M
 ## Wrong-Length Pure Indels (partial_alt) { #wrong-length-pure-indels-partial_alt }
 
 !!! note "Which path applies"
-    These are the CIGAR checks' rules. In 6.7.0 (unreleased) every prepared pure indel is judged by
+    These are the CIGAR checks' rules. Since 6.7.0 every prepared pure indel is judged by
     its bases (RJ-27; RJ-7 as amended), in RNA on the read's spliced reference (RJ-19); the CIGAR
     checks' length gates (the under-5 bp windowed noise gate, the insert identity band) apply only
     where the rule cannot judge: on the FORTE RNA arms that was no read of about 1.24M (measured

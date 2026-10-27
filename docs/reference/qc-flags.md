@@ -81,7 +81,7 @@ it had no strand filter, so antisense reads that enforcement keeps out of the co
 `n` and `m`, and it did not keep the loop's `NH:i:1` rescue. A review measured
 `COEXISTING_ALLELE(...:16/12)` with antisense reads present against `8/6` without them, both
 enforced. The diagnostic now shares the counting loop's admission rule (O8 #186, built in #217). Measured on FORTE: counts unchanged everywhere; the diagnostic changes
-on 1 T9 row (100/0 → 98/0) and 5 of 7,224 splice-probe rows. Other tools tally other alleles over the
+on 1 exon-edge probe row (100/0 → 98/0) and 5 of 7,224 splice-probe rows. Other tools tally other alleles over the
 same filtered reads as their primary counts (bam-readcount, ASEReadCounter `otherBases`, VarDict).
 
 ## MNP rescue
