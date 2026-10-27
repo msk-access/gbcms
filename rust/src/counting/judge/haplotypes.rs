@@ -536,16 +536,20 @@ pub(crate) fn neither_rule() -> NeitherRule {
 /// indel of its own at the state's change (`GBCMS_JUDGE_OWNGAP`): `tie`, the default, another
 /// allele tied with REF where X is beaten (the decided tie rule); `all`, any state (REF, X or
 /// another allele) within the margin of the read's best, before the margin decides, for every
-/// pair of states and for wins as for ties. Read when a site is built.
+/// pair of states and for wins as for ties; `others`, as `all` for another allele's states
+/// only, REF and X staying for the margin to weigh against each other. Read when a site is
+/// built.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum OwnGapRule {
     Tie,
     All,
+    Others,
 }
 
 pub(crate) fn own_gap_rule() -> OwnGapRule {
     match std::env::var("GBCMS_JUDGE_OWNGAP").as_deref() {
         Ok("all") => OwnGapRule::All,
+        Ok("others") => OwnGapRule::Others,
         _ => OwnGapRule::Tie,
     }
 }

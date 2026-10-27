@@ -987,7 +987,7 @@ mod tests {
 
     #[test]
     fn under_the_general_own_gap_rule_a_read_beside_another_allele_by_its_own_indel_keeps_the_margins_call() {
-        use haplotypes::OwnGapRule::{All, Tie};
+        use haplotypes::OwnGapRule::{All, Others, Tie};
         use Call::*;
         // X a T inserted in a TT run (after 0-based 300), beside a listed 33 bp deletion
         // whose right placement ends at X's anchor (another allele at X's site). A read
@@ -1013,6 +1013,7 @@ mod tests {
         ];
         let want = vec![Ref, Ref, Ref, Alt, Alt, Alt];
         assert_eq!(calls_own_gap(&c, &rows, &x, &reads, All), want, "all");
+        assert_eq!(calls_own_gap(&c, &rows, &x, &reads, Others), want, "others");
         assert_eq!(calls_own_gap(&c, &rows, &x, &reads, Tie), want, "tie");
     }
 

@@ -481,14 +481,14 @@ fn conclude<'h>(
     ask_anchor: bool,
     hap: impl Fn(usize) -> Cow<'h, Hap>,
 ) -> Verdict {
-    if site.own_gap != OwnGapRule::All {
+    if site.own_gap == OwnGapRule::Tie {
         return conclude_margin(site, read, scorer, best, min_baseq, ask_anchor, hap);
     }
-    // Measurement only (`GBCMS_JUDGE_OWNGAP=all`): a state the read reaches only through an
-    // indel of its own at that state's change is not the read's, whatever it ties with or
-    // beats: each state within the margin of the best (the best first, then any the margin
-    // could weigh against it) is dropped where its alignment writes such an indel, and the
-    // margin decides among the rest.
+    // Measurement only (`GBCMS_JUDGE_OWNGAP=all` or `others`): a state the read reaches only
+    // through an indel of its own at that state's change is not the read's, whatever it ties
+    // with or beats: each state within the margin of the best (the best first, then any the
+    // margin could weigh against it; under `others` another allele's only) is dropped where
+    // its alignment writes such an indel, and the margin decides among the rest.
     // The fit check (RJ-7: the best haplotype's alignment leaving an indel of the read's own
     // at X's site is another allele) stands first, on every state: a read it sends to
     // another allele carries no state there, whichever the margin would weigh after.
@@ -511,7 +511,8 @@ fn conclude<'h>(
         let mut changed = false;
         for c in 0..3 {
             let Some((s, h)) = best[c].filter(|_| !og.dropped[c] && !checked[c]) else { continue };
-            if top - s >= DELTA {
+            // under `others`, REF and X stay for the margin to weigh against each other
+            if top - s >= DELTA || (site.own_gap == OwnGapRule::Others && c != Class::Other as usize) {
                 continue;
             }
             checked[c] = true;
