@@ -500,19 +500,25 @@ pub(crate) fn triage_mode() -> TriageMode {
 ///
 /// `other:N` moves such reads only at rows whose allele is under N bases ([`Site::x_size`]);
 /// `recur:K` only where a neither base it reads is read the same at the same place by K
-/// other reads of the row, by their own alignments ([`Site::recurrence`]).
+/// other reads of the row, by their own alignments ([`Site::recurrence`]); `window` only where
+/// a neither base lies where both alleles' reads are read alike: a base a substitution changes
+/// (not one it keeps, where the alleles agree), or within [`JUNCTION_WINDOW`] telling bases of
+/// either end of a length change's (its junctions, as RJ-24 reads a long deletion; deeper in,
+/// REF's molecules hold bases X's never do, so an error there would weigh on REF alone).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum NeitherRule {
     Margin,
     Other,
     Below(usize),
     Recur(u32),
+    Window,
 }
 
 pub(crate) fn neither_rule() -> NeitherRule {
     let v = std::env::var("GBCMS_JUDGE_NEITHER").unwrap_or_default();
     match v.split_once(':') {
         None if v == "other" => NeitherRule::Other,
+        None if v == "window" => NeitherRule::Window,
         Some(("other", n)) => n.parse().map_or(NeitherRule::Margin, NeitherRule::Below),
         Some(("recur", k)) => k.parse().map_or(NeitherRule::Margin, NeitherRule::Recur),
         _ => NeitherRule::Margin,
@@ -533,16 +539,22 @@ pub(crate) fn neither_trace() -> bool {
 /// at X's site (its placements meet X's), another allele there; or `beside`, a change beside
 /// X, a context, so a read carrying it is read at X by its bases there. An allele inserting at
 /// X's point (another insertion there, X's behind a substituted anchor) stays at X's site
-/// either way. Read when a site is built.
+/// either way. `apart`, the general form measured beside it: a length change meeting a
+/// length-changing X with an equivalent placement clear of every placement of X (its anchor,
+/// its point and the bases it changes, wherever X slides) is beside X, a context, whatever it
+/// inserts or removes; one every placement of which touches X's is at X's site. Read when a
+/// site is built.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum EndsRule {
     Site,
     Beside,
+    Apart,
 }
 
 pub(crate) fn ends_rule() -> EndsRule {
     match std::env::var("GBCMS_JUDGE_ENDS").as_deref() {
         Ok("beside") => EndsRule::Beside,
+        Ok("apart") => EndsRule::Apart,
         _ => EndsRule::Site,
     }
 }
@@ -740,7 +752,7 @@ const LONG_EVENT: i64 = crate::counting::junction::LONG_DELETION as i64;
 const EDGE: i64 = 1;
 /// A long deletion's deleted bases, past its microhomology, that a read over its anchor
 /// reads to tell REF from it (RJ-24's REF window: four clean bases of the deleted bases).
-const JUNCTION_WINDOW: i64 = 4;
+pub(crate) const JUNCTION_WINDOW: i64 = 4;
 
 /// Read bases in a row reading the reference that end an allele the read spells.
 const SPELL_STOP: usize = 3;
@@ -1815,13 +1827,25 @@ impl Site {
         // Under `GBCMS_JUDGE_ENDS=beside`: an allele removing bases whose equivalent placements
         // end exactly at an insertion X's point is beside X, a context. One that inserts there
         // (net longer) is at X's site, as two insertions at one anchor each count their own.
-        let ends_at_x = |r: &Row| {
-            ends == EndsRule::Beside
-                && pure(&target)
-                && target.alt_al.len() > target.ref_al.len()
-                && r.alt_al.len() < r.ref_al.len()
-                && *r != target
-                && place(r).1 == target.end()
+        let ends_at_x = |r: &Row| match ends {
+            EndsRule::Site => false,
+            EndsRule::Beside => {
+                pure(&target)
+                    && target.alt_al.len() > target.ref_al.len()
+                    && r.alt_al.len() < r.ref_al.len()
+                    && *r != target
+                    && place(r).1 == target.end()
+            }
+            // Under `GBCMS_JUDGE_ENDS=apart`: a length change one of whose placements (its
+            // leftmost or its rightmost, a REF span's width each) lies clear of every placement
+            // of a length-changing X is beside X.
+            EndsRule::Apart => {
+                // a pure indel slides over its run; any other length change sits where written
+                let span = |a: &Row| if pure(a) { place(a) } else { (a.pos, a.end()) };
+                let ((ls, re), (xs, xe)) = (span(r), span(&target));
+                let w = r.ref_al.len() as i64;
+                target.changes_length() && r.changes_length() && *r != target && (ls + w <= xs || re - w >= xe)
+            }
         };
         for r in candidates.listed.iter().map(beside) {
             let state = meets(&target, &r) && !in_deleted(&r) && !ends_at_x(&r);

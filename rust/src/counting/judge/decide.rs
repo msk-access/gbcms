@@ -92,6 +92,8 @@ pub(crate) struct NeitherTrace {
     /// Of those mismatches, the ones no other read of the row reads the same at that place.
     pub(crate) bg_single: u32,
     pub(crate) moved: bool,
+    /// The neither bases lying where both alleles' reads are read alike (`window`).
+    pub(crate) window: u8,
 }
 
 /// Measurement only: what the "fits nothing" rule saw of one read (see [`Verdict::fits`]).
@@ -558,6 +560,7 @@ fn conclude<'h>(
                     NeitherRule::Other => true,
                     NeitherRule::Below(n) => site.x_size() < n,
                     NeitherRule::Recur(k) => nt.max_recur >= k,
+                    NeitherRule::Window => nt.window > 0,
                 };
         }
     }
@@ -711,6 +714,14 @@ fn neither_bases(site: &Site, read: &ReadView, hap: &Hap, al: &Alignment, off: u
                 None => got != b,
             };
         if neither {
+            // a base the alleles both read: one a substitution changes, or a length change's
+            // telling base within the junction window of either end
+            let jw = super::haplotypes::JUNCTION_WINDOW as usize;
+            let alike = match rb {
+                Some(rb) => rb != b,
+                None => k < jw || k + jw >= telling.len(),
+            };
+            t.window = t.window.saturating_add(u8::from(alike));
             let recur = pos.map_or(0, |p| site.recurrence(p, got));
             t.max_recur = t.max_recur.max(recur);
             if (t.n as usize) < t.bases.len() {

@@ -72,6 +72,36 @@ For a row X and each admitted read:
   - `GBCMS_JUDGE_NEITHER=other` (measurement only; default `margin`): a covered telling base
     read confidently as neither allele makes a REF or ALT call on an MNV or a delins another
     allele.
+- **Third measurement round (2026-10-27; measurement options, defaults unchanged, open for the
+  operator):**
+  - The confident third base (`GBCMS_JUDGE_NEITHER`). Mechanism: a read is REF only where its
+    bases show REF's where the alleles differ, so a confident base neither allele has there
+    makes a REF or ALT call neither. Errors put such bases on telling bases at the reads' own
+    mismatch rate (on the patient arms, single-read neither bases per telling base at or below
+    the mismatch rate elsewhere in the same reads), so the switch moves reads in proportion to the bases read:
+    about 0.1% of calls at MNVs, 1% at delins of 20-49 bases, 2% at 50 or more; and where
+    REF's molecules hold bases X's never do, the moves fall on REF and raise VAF (0.2-0.4
+    points at 20 bases or more), RJ-24's mechanism. Forms: `other` (every telling base);
+    `other:N` (alleles under N bases: 20, oracle v3's own core cut, is no mechanism);
+    `recur:K` (where K other reads show the base: reads, not fragments, and two reads are
+    mostly one fragment's mates; recurring bases are damage-like, C>A and C>T, as single
+    ones are); `window` (only where both alleles' reads are read alike: a substitution's
+    changed bases, not the bases an MNV keeps; a length change's junction windows, 4 telling
+    bases from either end, as RJ-24 reads). Against `margin` (patient arms on oracles v2 and
+    v3, HG002 truth v2dbq20 and the delins arm's het band): `other` fails delins of 20 bases
+    or more on the panel, cohort, WES and gate arms; `recur:1` and `recur:2` fail 50+; `other:20`
+    and `window` pass every arm on both oracles (`window` synthesised from the `other` lane,
+    exact for the reads); HG002's truth arms change no class under any. No form breaks a
+    decided contract. A base the read's haplotype holds, or the guard's background explains,
+    is no neither base.
+  - Beside an insertion (`GBCMS_JUDGE_ENDS`). `beside`: an allele removing bases whose
+    placements end at an insertion X's point is a context. It moves 120 reads at 5 gate
+    insertion rows from partial evidence to REF, the listed deletion's carriers (oracle v3
+    calls them sibling carriers: 108 more wrong calls), and on HG002 loses ALT reads at
+    insertions of 50-299 bases. Its general form, `apart` (a length change with a placement
+    clear of every placement of a length-changing X is beside it), breaks 24 decided
+    contracts: an allele's carriers are another allele wherever it is written (RJ-5, RJ-6,
+    RJ-7). The default stays `site`.
 - **The background refinement (measured 2026-10-26, not adopted; `GBCMS_JUDGE_BACKGROUND`,
   default `asis`):** `respell` leaves out a context item of the guard's background or the
   found alleles that respells the site's own candidate sequences: one that turns one

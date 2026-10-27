@@ -978,6 +978,42 @@ mod tests {
     }
 
     #[test]
+    fn the_window_switch_moves_a_neither_base_only_where_both_alleles_reads_are_read_alike() {
+        use haplotypes::NeitherRule::{Other as Neither, Window};
+        use Call::*;
+        // An MNV keeping its middle base: a REF read with a third base at the base it keeps
+        // (the alleles agree there) stays REF under the window form, one at a base it changes
+        // moves. A 24-base delins: a REF read with a third base two bases in (its junction
+        // window) moves, one twelve bases in (bases X's molecules never hold) stays REF.
+        // Every one moves under `other`.
+        let c = random_seq(600, 5);
+        let other = |b: u8| if b == b'A' { b'C' } else { b'A' };
+        let third = |b: u8, a: u8| *b"ACGT".iter().find(|&&t| t != b && t != a).unwrap();
+        let reread = |p: usize, b: u8| {
+            let mut h = c.clone();
+            h[p] = b;
+            read(&h, 250, 100, 250, "100M")
+        };
+        let mnv = Row::new(300, &c[300..303], &[other(c[300]), c[301], other(c[302])]);
+        let delins = Row::new(300, &c[300..324], b"GG");
+        let cases = [
+            (&mnv, reread(301, other(c[301])), Ref, "MNV, a kept base"),
+            (&mnv, reread(302, third(c[302], other(c[302]))), Other, "MNV, a changed base"),
+            (&delins, reread(302, other(c[302])), Other, "delins, its junction window"),
+            (&delins, reread(312, other(c[312])), Ref, "delins, twelve bases in"),
+        ];
+        for (x, r, under_window, what) in cases {
+            let call = |rule| {
+                let mut s = site(&c, x, &[], 100);
+                s.neither = rule;
+                judge(&s, &r, MIN_BQ, false).call
+            };
+            assert_eq!(call(Window), under_window, "{what}, window");
+            assert_eq!(call(Neither), Other, "{what}, other");
+        }
+    }
+
+    #[test]
     fn the_recurrence_switch_moves_a_neither_base_only_where_other_reads_show_it() {
         use haplotypes::NeitherRule::Recur;
         use Call::*;
@@ -1047,6 +1083,40 @@ mod tests {
                 let s = Site::build_ended(x.clone(), &candidates, (0, c.clone()), &reads, ends).unwrap();
                 let calls: Vec<Call> = reads.iter().map(|r| judge(&s, r, MIN_BQ, false).call).collect();
                 assert_eq!(calls, vec![Other, Ref], "{}>{}, {ends:?}", String::from_utf8_lossy(&sibling.ref_al), String::from_utf8_lossy(&sibling.alt_al));
+            }
+        }
+    }
+
+    #[test]
+    fn an_allele_with_a_placement_clear_of_an_indels_bases_is_beside_it_under_the_apart_option() {
+        use haplotypes::EndsRule::{Apart, Beside, Site as AtSite};
+        use Call::*;
+        // The general form of the beside option: the listed 33 bp deletion ending at X's
+        // point at its rightmost placement is clear of X's bases at its leftmost, so beside
+        // X; another insertion at X's anchor and X's behind a substituted anchor touch X's
+        // anchor wherever written, so at X's site; and a delins removing bases that replaces
+        // X's anchor (one placement, ending at X's point) is at X's site, where the narrower
+        // option takes it as beside.
+        let c = contig(59, 261, b"CAGAGAACAAAAGAAAGAAAGATTTTCTTACTTCAGAGAATTCTTTGCCACGTATTTCTAGC");
+        let x = row(301, "A", "AT");
+        let del = Row::new(260, &c[260..294], &c[260..261]);
+        let short = Row::new(297, &c[297..301], b"G");
+        let cases: [(Row, &str, [Call; 3]); 4] = [
+            (del.clone(), "61M33D39M", [Other, Ref, Ref]),
+            (row(301, "A", "AG"), "61M1I38M", [Other, Other, Other]),
+            (row(301, "A", "CT"), "61M1I38M", [Other, Other, Other]),
+            (short.clone(), "57M3D43M", [Other, Ref, Other]),
+        ];
+        for (allele, cig, want) in cases {
+            let h = haplotype(&c, &[&allele]);
+            let from = if allele == del { 200 } else { 240 };
+            let reads = vec![read(&h, from, 100, from as i64, cig), read(&c, 240, 100, 240, "100M")];
+            let candidates = Candidates { listed: vec![allele.clone()], ..Candidates::default() };
+            for (ends, w) in [(AtSite, want[0]), (Beside, want[1]), (Apart, want[2])] {
+                let s = Site::build_ended(x.clone(), &candidates, (0, c.clone()), &reads, ends).unwrap();
+                let calls: Vec<Call> = reads.iter().map(|r| judge(&s, r, MIN_BQ, false).call).collect();
+                let name = format!("{}>{}", allele.ref_al.len(), allele.alt_al.len());
+                assert_eq!(calls, vec![w, Ref], "{name}, {ends:?}");
             }
         }
     }
