@@ -23,7 +23,7 @@
 //!   appears with REF and with X, so only a read's bases at X's site can tell those
 //!   apart.
 
-use std::collections::{BTreeMap, BTreeSet, HashMap};
+use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 
 use rust_htslib::bam::record::Cigar;
 
@@ -442,6 +442,10 @@ pub(crate) struct Site {
     /// At a substitution of two bases or more or a delins X: per genome position over the
     /// window and base, the reads whose own alignments read that base there confidently.
     tally: HashMap<(i64, u8), u32>,
+    /// The guard's background, genome coordinates: its recurring single-base changes, and
+    /// the positions it masks (any base). A base it explains is no allele's third base.
+    background_bases: HashSet<(i64, u8)>,
+    background_masks: Vec<i64>,
 }
 
 /// Which scorer weighs a read (`GBCMS_JUDGE_SCORER`): `graph`, the judge's scorer and the
@@ -1429,6 +1433,12 @@ impl Site {
         self.tally.get(&(pos, base)).map_or(0, |n| n.saturating_sub(1))
     }
 
+    /// Whether the guard's background explains `base` at genome position `pos`: one of its
+    /// recurring changes there, or any base where it masks.
+    pub(crate) fn background_explains(&self, pos: i64, base: u8) -> bool {
+        self.background_bases.contains(&(pos, base)) || self.background_masks.binary_search(&pos).is_ok()
+    }
+
     /// The bases X changes (REF's and X's differ), for a substitution X; 0 for a length
     /// change.
     pub(crate) fn changed_bases(&self) -> usize {
@@ -2144,6 +2154,22 @@ impl Site {
             }
             t
         };
+        let (background_bases, background_masks) = if bg_rule == BackgroundRule::Off {
+            (HashSet::new(), Vec::new())
+        } else {
+            let bases: HashSet<(i64, u8)> = candidates
+                .background
+                .iter()
+                .filter(|r| !r.changes_length())
+                .flat_map(|r| {
+                    let changed = r.ref_al.iter().zip(&r.alt_al).enumerate().filter(|(_, (a, b))| a != b);
+                    changed.map(move |(k, (_, &b))| (r.pos + k as i64, b))
+                })
+                .collect();
+            let mut masks = candidates.masked.clone();
+            masks.sort_unstable();
+            (bases, masks)
+        };
         let mut site = Site {
             start,
             reference,
@@ -2164,6 +2190,8 @@ impl Site {
             triage_mode: triage_mode(),
             neither: neither_rule(),
             tally,
+            background_bases,
+            background_masks,
         };
 
         // The context rows a read over X can reach: REF span meeting X's ± the longest read

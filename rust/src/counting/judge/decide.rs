@@ -677,7 +677,8 @@ fn read_at_x(site: &Site, read: &ReadView, hap: &Hap, al: &Alignment, off: usize
 /// REF's bases there, its columns offset by `off`) reads at X's telling bases that is neither
 /// allele's: on a substitution of two bases or more, a confident base neither REF's nor X's
 /// at a base X changes, or other than theirs where they agree; on a delins, a confident base
-/// other than the called allele's. None at any other row.
+/// other than the called allele's; never the haplotype's own base there nor one the guard's
+/// background explains (a masked base takes any). None at any other row.
 fn neither_bases(site: &Site, read: &ReadView, hap: &Hap, al: &Alignment, off: usize) -> Option<NeitherTrace> {
     let telling: Vec<(i64, Option<u8>, u8)> = if site.changed_bases() >= 2 {
         site.telling_pairs(hap).into_iter().map(|(col, rb, ab)| (col, Some(rb), ab)).collect()
@@ -694,18 +695,22 @@ fn neither_bases(site: &Site, read: &ReadView, hap: &Hap, al: &Alignment, off: u
     let mut t = NeitherTrace { size: site.x_size() as u16, telling: telling.len() as u16, ..NeitherTrace::default() };
     for (k, &(col, rb, b)) in telling.iter().enumerate() {
         let Some(i) = at(col) else { continue };
-        let got = read.seq[i];
-        if got == WILD {
+        let (got, held) = (read.seq[i], hap.base(col as usize));
+        if got == WILD || held == WILD {
             continue;
         }
         t.conf += 1;
-        let neither = match rb {
-            Some(rb) if rb != b => got != rb && got != b,
-            Some(rb) => got != rb,
-            None => got != b,
-        };
+        let pos = read.own_position(i);
+        // A base the read's haplotype holds there (a context it applies), or the guard's
+        // background explains, is no third allele's.
+        let neither = got != held
+            && !pos.is_some_and(|p| site.background_explains(p, got))
+            && match rb {
+                Some(rb) if rb != b => got != rb && got != b,
+                Some(rb) => got != rb,
+                None => got != b,
+            };
         if neither {
-            let pos = read.own_position(i);
             let recur = pos.map_or(0, |p| site.recurrence(p, got));
             t.max_recur = t.max_recur.max(recur);
             if (t.n as usize) < t.bases.len() {

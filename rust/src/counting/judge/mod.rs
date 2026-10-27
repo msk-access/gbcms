@@ -1029,6 +1029,37 @@ mod tests {
     }
 
     #[test]
+    fn the_neither_switch_leaves_a_base_the_guards_background_explains_to_the_margin() {
+        use haplotypes::NeitherRule::{Other as Neither, Recur};
+        use Call::*;
+        // A germline change in the guard's background at a base an MNV keeps, and one inside
+        // a delins's deleted bases: REF reads carrying it read background there, no third
+        // allele's base (the background at a base the MNV keeps is masked, decided
+        // 2026-10-14), so the switch leaves them REF. A REF read with a base the background
+        // does not explain there moves.
+        let c = random_seq(600, 5);
+        let other = |b: u8| if b == b'A' { b'C' } else { b'A' };
+        let third = |b: u8, a: u8| *b"ACGT".iter().find(|&&t| t != b && t != a).unwrap();
+        let mnv = Row::new(300, &c[300..303], &[other(c[300]), c[301], other(c[302])]);
+        let delins = Row::new(300, &c[300..304], b"GG");
+        for (x, g) in [(mnv, 301usize), (delins, 302)] {
+            let germ = Row::new(g as i64, &c[g..=g], &[other(c[g])]);
+            let h = haplotype(&c, &[&germ]);
+            let mut reads: Vec<ReadView> = (0..6).map(|k| read(&h, 250 + k, 100, 250 + k as i64, "100M")).collect();
+            let mut lone = c.clone();
+            lone[g] = third(c[g], other(c[g]));
+            reads.push(read(&lone, 260, 100, 260, "100M"));
+            let candidates = Candidates { background: vec![germ], ..Candidates::default() };
+            for rule in [Neither, Recur(0)] {
+                let mut s = Site::build(x.clone(), &candidates, (0, c.clone()), &reads).unwrap();
+                s.neither = rule;
+                let calls: Vec<Call> = reads.iter().map(|r| judge(&s, r, MIN_BQ, false).call).collect();
+                assert_eq!(calls, [vec![Ref; 6], vec![Other]].concat(), "{} bases, {rule:?}", x.ref_al.len());
+            }
+        }
+    }
+
+    #[test]
     fn two_reads_writing_an_indel_find_it_within_the_share_of_the_sites_reads() {
         let c = random_seq(600, 17);
         let base = |p: i64| c.get(p as usize).copied();
