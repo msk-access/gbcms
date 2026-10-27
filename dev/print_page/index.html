@@ -6859,14 +6859,14 @@ synthetic SNPs per sample, handled in a single batched <code>count_bam_binned()<
 <a id="__codelineno-3-3" name="__codelineno-3-3" href="#reference-architecture-__codelineno-3-3"></a>                                                   counts illustrative, TERT-shaped)
 <a id="__codelineno-3-4" name="__codelineno-3-4" href="#reference-architecture-__codelineno-3-4"></a>
 <a id="__codelineno-3-5" name="__codelineno-3-5" href="#reference-architecture-__codelineno-3-5"></a>Components, counted as SNVs with the sample's own settings:
-<a id="__codelineno-3-6" name="__codelineno-3-6" href="#reference-architecture-__codelineno-3-6"></a>  5:1295250 G&gt;A  → ad=88
-<a id="__codelineno-3-7" name="__codelineno-3-7" href="#reference-architecture-__codelineno-3-7"></a>  5:1295254 G&gt;A  → ad=1
+<a id="__codelineno-3-6" name="__codelineno-3-6" href="#reference-architecture-__codelineno-3-6"></a>  1:1000 G&gt;A  → ad=88
+<a id="__codelineno-3-7" name="__codelineno-3-7" href="#reference-architecture-__codelineno-3-7"></a>  1:1004 G&gt;A  → ad=1
 <a id="__codelineno-3-8" name="__codelineno-3-8" href="#reference-architecture-__codelineno-3-8"></a>
-<a id="__codelineno-3-9" name="__codelineno-3-9" href="#reference-architecture-__codelineno-3-9"></a>Best component beats the MNP's ad (88 &gt; 1) → the row reports the 5:1295250 G&gt;A SNV's
+<a id="__codelineno-3-9" name="__codelineno-3-9" href="#reference-architecture-__codelineno-3-9"></a>Best component beats the MNP's ad (88 &gt; 1) → the row reports the 1:1000 G&gt;A SNV's
 <a id="__codelineno-3-10" name="__codelineno-3-10" href="#reference-architecture-__codelineno-3-10"></a>BaseCounts wholesale.
 <a id="__codelineno-3-11" name="__codelineno-3-11" href="#reference-architecture-__codelineno-3-11"></a>gbcms_rescue: method=decomposed;outcome=rescued;original_ref=486;original_alt=1;
-<a id="__codelineno-3-12" name="__codelineno-3-12" href="#reference-architecture-__codelineno-3-12"></a>              original_partial=88;original_confirmed=0;adopted=5:1295250(G&gt;A);
-<a id="__codelineno-3-13" name="__codelineno-3-13" href="#reference-architecture-__codelineno-3-13"></a>              positions=5:1295250(G&gt;A):88+5:1295254(G&gt;A):1
+<a id="__codelineno-3-12" name="__codelineno-3-12" href="#reference-architecture-__codelineno-3-12"></a>              original_partial=88;original_confirmed=0;adopted=1:1000(G&gt;A);
+<a id="__codelineno-3-13" name="__codelineno-3-13" href="#reference-architecture-__codelineno-3-13"></a>              positions=1:1000(G&gt;A):88+1:1004(G&gt;A):1
 </code></pre></div>
 <p>Ties go to the leftmost position. Adopting the component's <strong>whole</strong> <code>BaseCounts</code> (not
 just its <code>ad</code>) keeps the row one coherent genotype: every count, fragment, strand,
@@ -10207,7 +10207,7 @@ Use mouse to pan and zoom
 </div>
 <div class="admonition example">
 <p class="admonition-title">Real-World: SOX2</p>
-<p><strong>SOX2</strong> at chr3:181430901: <code>CCCCCC→T</code> (6bp→1bp, net −5bp). The reads carry <code>CCCCT</code>.
+<p><strong>SOX2</strong>, <code>CCCCCC→T</code> (6bp→1bp, net −5bp). The reads carry <code>CCCCT</code>.
 - <strong>Default:</strong> the row reports <code>CCCCCC→T</code> (alt=3), and <code>gbcms_diagnostic</code> names <code>CCCCT</code>.
 - <strong>With <code>--rescue-homopolymer</code>:</strong> the corrected <code>CCCCCC→CCCCCT</code> (alt=79) wins, and the row reports <code>gbcms_status = PASS</code>, <code>gbcms_status_reason = WARN_HOMOPOLYMER_DECOMP</code>.</p>
 </div>
@@ -16511,7 +16511,7 @@ The case studies below record why the routing exists and what the earlier fixes 
 <hr>
 <h2 id="reference-complex-indels-case-1-complex-delsnv-sox9">Case 1: Complex Del+SNV — SOX9 (<code>GC→T</code>)<a class="headerlink" href="#reference-complex-indels-case-1-complex-delsnv-sox9" title="Permanent link">¶</a></h2>
 <h3 id="reference-complex-indels-the-variant">The Variant<a class="headerlink" href="#reference-complex-indels-the-variant" title="Permanent link">¶</a></h3>
-<p><strong>Gene:</strong> SOX9 · <strong>Position:</strong> chr17:70119766 · <strong>REF:</strong> <code>GC</code> · <strong>ALT:</strong> <code>T</code></p>
+<p><strong>Gene:</strong> SOX9 · <strong>REF:</strong> <code>GC</code> · <strong>ALT:</strong> <code>T</code></p>
 <p>This is a deletion-format variant (<code>len(REF)=2 &gt; len(ALT)=1</code>), but it is <strong>not</strong> a pure deletion:
 the anchor base G also changes to T. This makes it a complex Del+SNV — one net base is deleted
 AND the anchor substitutes simultaneously.</p>
@@ -16531,7 +16531,7 @@ AND the anchor substitutes simultaneously.</p>
 <p><code>check_complex</code> builds <code>REF_haplotype = ...GC...</code> and <code>ALT_haplotype = ...T...</code> and runs Phase 3
 Smith-Waterman. ALT reads align better to <code>ALT_hap</code> → classified as <strong>ALT</strong>.</p>
 <h3 id="reference-complex-indels-read-level-example">Read-Level Example<a class="headerlink" href="#reference-complex-indels-read-level-example" title="Permanent link">¶</a></h3>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#reference-complex-indels-__codelineno-1-1"></a>Variant: chr17:70119766  GC → T
+<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#reference-complex-indels-__codelineno-1-1"></a>Variant: SOX9  GC → T
 <a id="__codelineno-1-2" name="__codelineno-1-2" href="#reference-complex-indels-__codelineno-1-2"></a>Reference:  ... A  G  C  T  A  T ...
 <a id="__codelineno-1-3" name="__codelineno-1-3" href="#reference-complex-indels-__codelineno-1-3"></a>                   ↑
 <a id="__codelineno-1-4" name="__codelineno-1-4" href="#reference-complex-indels-__codelineno-1-4"></a>               anchor pos (G)
@@ -16579,7 +16579,7 @@ Smith-Waterman. ALT reads align better to <code>ALT_hap</code> → classified as
 <hr>
 <h2 id="reference-complex-indels-case-2-nf2-large-deletion-ref-reads-invisible">Case 2: NF2 Large Deletion — REF Reads Invisible<a class="headerlink" href="#reference-complex-indels-case-2-nf2-large-deletion-ref-reads-invisible" title="Permanent link">¶</a></h2>
 <h3 id="reference-complex-indels-the-variant_1">The Variant<a class="headerlink" href="#reference-complex-indels-the-variant_1" title="Permanent link">¶</a></h3>
-<p><strong>Gene:</strong> NF2 · <strong>Position:</strong> chr22:30038094 · <strong>Type:</strong> ~100bp deletion with a short (7bp) replacement — a large <strong>delins</strong> (<code>ref_len &gt; alt_len &gt; 1</code>), dispatched to <code>check_complex</code></p>
+<p><strong>Gene:</strong> NF2 · <strong>Type:</strong> ~100bp deletion with a short (7bp) replacement — a large <strong>delins</strong> (<code>ref_len &gt; alt_len &gt; 1</code>), dispatched to <code>check_complex</code></p>
 <div class="admonition note">
 <p class="admonition-title">Why this case is check_complex's problem, not check_deletion's</p>
 <p>A PURE large deletion never reaches this fallback: its clean anchor-spanning REF reads
@@ -16609,11 +16609,11 @@ silently discards all REF evidence.</p>
 <p>The M-block coverage check confirms the read spans the anchor position, establishing REF support
 without needing haplotype alignment.</p>
 <h3 id="reference-complex-indels-read-level-example_1">Read-Level Example<a class="headerlink" href="#reference-complex-indels-read-level-example_1" title="Permanent link">¶</a></h3>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#reference-complex-indels-__codelineno-3-1"></a>Variant: chr22:30038094  [~100bp REF] → [7bp ALT]  (large delins)
-<a id="__codelineno-3-2" name="__codelineno-3-2" href="#reference-complex-indels-__codelineno-3-2"></a>Anchor position: 30038094
+<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#reference-complex-indels-__codelineno-3-1"></a>Variant: NF2  [~100bp REF] → [7bp ALT]  (large delins)
+<a id="__codelineno-3-2" name="__codelineno-3-2" href="#reference-complex-indels-__codelineno-3-2"></a>Anchor position: P
 <a id="__codelineno-3-3" name="__codelineno-3-3" href="#reference-complex-indels-__codelineno-3-3"></a>
-<a id="__codelineno-3-4" name="__codelineno-3-4" href="#reference-complex-indels-__codelineno-3-4"></a>REF read CIGAR: 150M  (spans anchor at 30038094)
-<a id="__codelineno-3-5" name="__codelineno-3-5" href="#reference-complex-indels-__codelineno-3-5"></a>    M-block: [30038040 ── 30038190]  ← covers anchor ✅, anchor BQ ≥ min_baseq ✅
+<a id="__codelineno-3-4" name="__codelineno-3-4" href="#reference-complex-indels-__codelineno-3-4"></a>REF read CIGAR: 150M  (spans anchor at P)
+<a id="__codelineno-3-5" name="__codelineno-3-5" href="#reference-complex-indels-__codelineno-3-5"></a>    M-block: [P−54 ── P+96]  ← covers anchor ✅, anchor BQ ≥ min_baseq ✅
 <a id="__codelineno-3-6" name="__codelineno-3-6" href="#reference-complex-indels-__codelineno-3-6"></a>    is_worth_realignment = false (clean CIGAR)
 <a id="__codelineno-3-7" name="__codelineno-3-7" href="#reference-complex-indels-__codelineno-3-7"></a>    Old: return Neither
 <a id="__codelineno-3-8" name="__codelineno-3-8" href="#reference-complex-indels-__codelineno-3-8"></a>    New: deletion-direction (ref_len &gt; alt_len) + M coverage + anchor BQ → REF ✅
@@ -16651,20 +16651,20 @@ without needing haplotype alignment.</p>
 <hr>
 <h2 id="reference-complex-indels-case-3-tp53-12bp-left-alignment-shifted-deletion">Case 3: TP53 12bp Left-Alignment Shifted Deletion<a class="headerlink" href="#reference-complex-indels-case-3-tp53-12bp-left-alignment-shifted-deletion" title="Permanent link">¶</a></h2>
 <h3 id="reference-complex-indels-the-variant_2">The Variant<a class="headerlink" href="#reference-complex-indels-the-variant_2" title="Permanent link">¶</a></h3>
-<p><strong>Gene:</strong> TP53 · <strong>Position:</strong> chr17:7579309 · <strong>REF:</strong> <code>GACCGTGCAAGT</code> (12bp) · <strong>ALT:</strong> <code>-</code> (deletion)</p>
+<p><strong>Gene:</strong> TP53 · <strong>REF:</strong> <code>GACCGTGCAAGT</code> (12bp) · <strong>ALT:</strong> <code>-</code> (deletion)</p>
 <h3 id="reference-complex-indels-root-cause-bwa-left-alignment">Root Cause: <abbr title="Burrows-Wheeler Aligner - Standard short-read DNA aligner (mem/aln)">BWA</abbr> Left-Alignment<a class="headerlink" href="#reference-complex-indels-root-cause-bwa-left-alignment" title="Permanent link">¶</a></h3>
 <p><abbr title="Burrows-Wheeler Aligner - Standard short-read DNA aligner (mem/aln)">BWA</abbr> left-aligns indels to the leftmost equivalent position in the genome. For this 12bp deletion in
 a region with a partial repeat (<code>ACC</code> motif), <abbr title="Burrows-Wheeler Aligner - Standard short-read DNA aligner (mem/aln)">BWA</abbr> places the anchor 3bp <strong>left</strong> of where the
 <abbr title="Compact Idiosyncratic Gapped Alignment Report - BAM alignment operation string">CIGAR</abbr> <code>D(12)</code> operation actually appears in the reads.</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#reference-complex-indels-__codelineno-4-1"></a>Left-aligned anchor position (what MAF/gbcms sees):  chr17:7579309
-<a id="__codelineno-4-2" name="__codelineno-4-2" href="#reference-complex-indels-__codelineno-4-2"></a>Actual CIGAR D(12) position in reads:                chr17:7579312  (+3bp right)
+<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#reference-complex-indels-__codelineno-4-1"></a>Left-aligned anchor position (what MAF/gbcms sees):  P
+<a id="__codelineno-4-2" name="__codelineno-4-2" href="#reference-complex-indels-__codelineno-4-2"></a>Actual CIGAR D(12) position in reads:                P+3  (+3bp right)
 </code></pre></div>
 <h3 id="reference-complex-indels-why-the-old-code-returned-alt0_1">Why the Old Code Returned alt=0<a class="headerlink" href="#reference-complex-indels-why-the-old-code-returned-alt0_1" title="Permanent link">¶</a></h3>
 <p><code>check_deletion</code> windowed scan:
-1. Finds <code>D(12)</code> within the ±5bp window (at position 7579312)
+1. Finds <code>D(12)</code> within the ±5bp window (at position P+3)
 2. Passes <strong>S1</strong>: length matches (12bp)
-3. Applies <strong>S3</strong>: compares reference bases at <code>7579312</code> against expected deleted sequence <code>GACCGTGCAAGT</code>
-4. Reference at <code>7579312</code> is <code>CGTGCAAGT...</code>, not <code>GACCGTGCAAGT</code> → <strong>S3 fails</strong>
+3. Applies <strong>S3</strong>: compares reference bases at <code>P+3</code> against expected deleted sequence <code>GACCGTGCAAGT</code>
+4. Reference at <code>P+3</code> is <code>CGTGCAAGT...</code>, not <code>GACCGTGCAAGT</code> → <strong>S3 fails</strong>
 5. Old code: S3 fail → Continue → read not counted → <code>found_ref_coverage = true</code> → REF</p>
 <p>All 221 ALT reads fail S3 → <code>alt = 0</code>, <code>ref = 775</code>.</p>
 <h3 id="reference-complex-indels-the-fix-fix-4-variant_checksrs-check_deletion">The Fix (Fix 4 — <code>variant_checks.rs</code> <code>check_deletion</code>)<a class="headerlink" href="#reference-complex-indels-the-fix-fix-4-variant_checksrs-check_deletion" title="Permanent link">¶</a></h3>
@@ -16692,13 +16692,13 @@ for these cases.</p>
 left-alignment can move the anchor up to <code>repeat_span</code> positions left, and 5bp is the minimum
 spanning a small repeat motif (e.g., dinucleotide repeat <code>ACAC</code>).</p>
 <h3 id="reference-complex-indels-read-level-example_2">Read-Level Example<a class="headerlink" href="#reference-complex-indels-read-level-example_2" title="Permanent link">¶</a></h3>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#reference-complex-indels-__codelineno-6-1"></a>Variant (left-aligned): chr17:7579309  GACCGTGCAAGT → -
-<a id="__codelineno-6-2" name="__codelineno-6-2" href="#reference-complex-indels-__codelineno-6-2"></a>Anchor (gbcms):          pos = 7579309
+<div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#reference-complex-indels-__codelineno-6-1"></a>Variant (left-aligned): TP53 P  GACCGTGCAAGT → -
+<a id="__codelineno-6-2" name="__codelineno-6-2" href="#reference-complex-indels-__codelineno-6-2"></a>Anchor (gbcms):          pos = P
 <a id="__codelineno-6-3" name="__codelineno-6-3" href="#reference-complex-indels-__codelineno-6-3"></a>
 <a id="__codelineno-6-4" name="__codelineno-6-4" href="#reference-complex-indels-__codelineno-6-4"></a>ALT read CIGAR: 48M 12D 52M
-<a id="__codelineno-6-5" name="__codelineno-6-5" href="#reference-complex-indels-__codelineno-6-5"></a>    D(12) at pos 7579312  (3bp right of anchor)
+<a id="__codelineno-6-5" name="__codelineno-6-5" href="#reference-complex-indels-__codelineno-6-5"></a>    D(12) at pos P+3  (3bp right of anchor)
 <a id="__codelineno-6-6" name="__codelineno-6-6" href="#reference-complex-indels-__codelineno-6-6"></a>    S1: length 12 == 12 ✅
-<a id="__codelineno-6-7" name="__codelineno-6-7" href="#reference-complex-indels-__codelineno-6-7"></a>    S3: ref[7579312..7579324] = "CGTGCAAGT..." ≠ "GACCGTGCAAGT" ❌
+<a id="__codelineno-6-7" name="__codelineno-6-7" href="#reference-complex-indels-__codelineno-6-7"></a>    S3: ref[P+3..P+15] = "CGTGCAAGT..." ≠ "GACCGTGCAAGT" ❌
 <a id="__codelineno-6-8" name="__codelineno-6-8" href="#reference-complex-indels-__codelineno-6-8"></a>    Old: Continue → REF (incorrect)
 <a id="__codelineno-6-9" name="__codelineno-6-9" href="#reference-complex-indels-__codelineno-6-9"></a>    New: del_len(12) ≥ 5 → has_shifted_same_length = true
 <a id="__codelineno-6-10" name="__codelineno-6-10" href="#reference-complex-indels-__codelineno-6-10"></a>    → Phase 3: ALT haplotype aligns correctly → ALT ✅
@@ -16817,12 +16817,13 @@ not describe. Inspect per-read lengths with <code>--trace</code>.</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-10-1" name="__codelineno-10-1" href="#reference-complex-indels-__codelineno-10-1"></a><span class="kn">import</span><span class="w"> </span><span class="nn">pysam</span>
 <a id="__codelineno-10-2" name="__codelineno-10-2" href="#reference-complex-indels-__codelineno-10-2"></a>
 <a id="__codelineno-10-3" name="__codelineno-10-3" href="#reference-complex-indels-__codelineno-10-3"></a><span class="n">bam</span> <span class="o">=</span> <span class="n">pysam</span><span class="o">.</span><span class="n">AlignmentFile</span><span class="p">(</span><span class="s2">"sample.bam"</span><span class="p">)</span>
-<a id="__codelineno-10-4" name="__codelineno-10-4" href="#reference-complex-indels-__codelineno-10-4"></a><span class="n">anchor</span> <span class="o">=</span> <span class="mi">7579308</span>  <span class="c1"># 0-based</span>
-<a id="__codelineno-10-5" name="__codelineno-10-5" href="#reference-complex-indels-__codelineno-10-5"></a>
-<a id="__codelineno-10-6" name="__codelineno-10-6" href="#reference-complex-indels-__codelineno-10-6"></a><span class="k">for</span> <span class="n">read</span> <span class="ow">in</span> <span class="n">bam</span><span class="o">.</span><span class="n">fetch</span><span class="p">(</span><span class="s2">"chr17"</span><span class="p">,</span> <span class="n">anchor</span> <span class="o">-</span> <span class="mi">10</span><span class="p">,</span> <span class="n">anchor</span> <span class="o">+</span> <span class="mi">15</span><span class="p">):</span>
-<a id="__codelineno-10-7" name="__codelineno-10-7" href="#reference-complex-indels-__codelineno-10-7"></a>    <span class="k">for</span> <span class="n">op</span><span class="p">,</span> <span class="n">length</span> <span class="ow">in</span> <span class="n">read</span><span class="o">.</span><span class="n">cigartuples</span><span class="p">:</span>
-<a id="__codelineno-10-8" name="__codelineno-10-8" href="#reference-complex-indels-__codelineno-10-8"></a>        <span class="k">if</span> <span class="n">op</span> <span class="o">==</span> <span class="mi">2</span><span class="p">:</span>  <span class="c1"># D (deletion)</span>
-<a id="__codelineno-10-9" name="__codelineno-10-9" href="#reference-complex-indels-__codelineno-10-9"></a>            <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"D(</span><span class="si">{</span><span class="n">length</span><span class="si">}</span><span class="s2">) at ref_pos ~ </span><span class="si">{</span><span class="n">read</span><span class="o">.</span><span class="n">reference_start</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span>
+<a id="__codelineno-10-4" name="__codelineno-10-4" href="#reference-complex-indels-__codelineno-10-4"></a><span class="n">CHROM</span><span class="p">,</span> <span class="n">POS</span> <span class="o">=</span> <span class="s2">"chr17"</span><span class="p">,</span> <span class="mi">1_000_000</span>  <span class="c1"># the variant's chromosome and 1-based position</span>
+<a id="__codelineno-10-5" name="__codelineno-10-5" href="#reference-complex-indels-__codelineno-10-5"></a><span class="n">anchor</span> <span class="o">=</span> <span class="n">POS</span> <span class="o">-</span> <span class="mi">1</span>  <span class="c1"># 0-based</span>
+<a id="__codelineno-10-6" name="__codelineno-10-6" href="#reference-complex-indels-__codelineno-10-6"></a>
+<a id="__codelineno-10-7" name="__codelineno-10-7" href="#reference-complex-indels-__codelineno-10-7"></a><span class="k">for</span> <span class="n">read</span> <span class="ow">in</span> <span class="n">bam</span><span class="o">.</span><span class="n">fetch</span><span class="p">(</span><span class="n">CHROM</span><span class="p">,</span> <span class="n">anchor</span> <span class="o">-</span> <span class="mi">10</span><span class="p">,</span> <span class="n">anchor</span> <span class="o">+</span> <span class="mi">15</span><span class="p">):</span>
+<a id="__codelineno-10-8" name="__codelineno-10-8" href="#reference-complex-indels-__codelineno-10-8"></a>    <span class="k">for</span> <span class="n">op</span><span class="p">,</span> <span class="n">length</span> <span class="ow">in</span> <span class="n">read</span><span class="o">.</span><span class="n">cigartuples</span><span class="p">:</span>
+<a id="__codelineno-10-9" name="__codelineno-10-9" href="#reference-complex-indels-__codelineno-10-9"></a>        <span class="k">if</span> <span class="n">op</span> <span class="o">==</span> <span class="mi">2</span><span class="p">:</span>  <span class="c1"># D (deletion)</span>
+<a id="__codelineno-10-10" name="__codelineno-10-10" href="#reference-complex-indels-__codelineno-10-10"></a>            <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"D(</span><span class="si">{</span><span class="n">length</span><span class="si">}</span><span class="s2">) at ref_pos ~ </span><span class="si">{</span><span class="n">read</span><span class="o">.</span><span class="n">reference_start</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span>
 </code></pre></div>
 <hr>
 <h2 id="reference-complex-indels-related">Related<a class="headerlink" href="#reference-complex-indels-related" title="Permanent link">¶</a></h2>
@@ -17990,10 +17991,10 @@ for the full design rationale and data flow diagram.</p>
 <a id="__codelineno-9-4" name="__codelineno-9-4" href="#development-developer-guide-__codelineno-9-4"></a><span class="c1"># Rescue log lines:</span>
 <a id="__codelineno-9-5" name="__codelineno-9-5" href="#development-developer-guide-__codelineno-9-5"></a><span class="c1"># WARNING — "MNP rescue enabled (--rescue-mnp, threshold=1.00): rescued rows report a component SNV's counts ..."  (once per run)</span>
 <a id="__codelineno-9-6" name="__codelineno-9-6" href="#development-developer-guide-__codelineno-9-6"></a><span class="c1"># INFO    — "MNP rescue for SAMPLE: rescued=2, skipped_grouped=1 (0.342s)"   (per-sample outcome summary)</span>
-<a id="__codelineno-9-7" name="__codelineno-9-7" href="#development-developer-guide-__codelineno-9-7"></a><span class="c1"># WARNING — "MNP rescue: 5:1295250 GAGGG&gt;AAGGA now reports component 5:1295250(G&gt;A) (ALT 88, REF 487); the MNP itself had ALT 1 (0 showing the whole haplotype), partial 88"</span>
+<a id="__codelineno-9-7" name="__codelineno-9-7" href="#development-developer-guide-__codelineno-9-7"></a><span class="c1"># WARNING — "MNP rescue: 1:1000 GAGGG&gt;AAGGA now reports component 1:1000(G&gt;A) (ALT 88, REF 487); the MNP itself had ALT 1 (0 showing the whole haplotype), partial 88"</span>
 <a id="__codelineno-9-8" name="__codelineno-9-8" href="#development-developer-guide-__codelineno-9-8"></a><span class="c1"># DEBUG   — "MNP rescue: ... skipped — co-annotated group 3 owns its reads"</span>
 <a id="__codelineno-9-9" name="__codelineno-9-9" href="#development-developer-guide-__codelineno-9-9"></a><span class="c1"># DEBUG   — "MNP rescue: ... kept — 36 read(s) show the whole haplotype"</span>
-<a id="__codelineno-9-10" name="__codelineno-9-10" href="#development-developer-guide-__codelineno-9-10"></a><span class="c1"># WARNING — "Mixed MNP rescue at 5:1295250 GAGGG&gt;AAGGA — duplex reports component ..., simplex reports the MNP ..."  (gbcms merge)</span>
+<a id="__codelineno-9-10" name="__codelineno-9-10" href="#development-developer-guide-__codelineno-9-10"></a><span class="c1"># WARNING — "Mixed MNP rescue at 1:1000 GAGGG&gt;AAGGA — duplex reports component ..., simplex reports the MNP ..."  (gbcms merge)</span>
 <a id="__codelineno-9-11" name="__codelineno-9-11" href="#development-developer-guide-__codelineno-9-11"></a><span class="c1"># DEBUG   — "MNP rescue: ... not rescued (no_improvement) ..."  (partial evidence was not component carriers)</span>
 <a id="__codelineno-9-12" name="__codelineno-9-12" href="#development-developer-guide-__codelineno-9-12"></a><span class="c1"># WARNING — "MNP rescue: ... not rescued (ref_validation_failed) ..."  (anomaly: investigate)</span>
 <a id="__codelineno-9-13" name="__codelineno-9-13" href="#development-developer-guide-__codelineno-9-13"></a><span class="c1"># WARNING — "MNP rescue: synthetic SNV ... failed preparation (...) — reported as ref_fail"</span>
@@ -18755,14 +18756,14 @@ varies it further. For pure indels, <code>tests/census.py</code> judges each rea
 </tbody>
 </table>
 <h3 id="development-testing-guide-real-world-validation">Real-World Validation<a class="headerlink" href="#development-testing-guide-real-world-validation" title="Permanent link">¶</a></h3>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-8-1" name="__codelineno-8-1" href="#development-testing-guide-__codelineno-8-1"></a><span class="c1"># Compare gbcms vs samtools for a SNP</span>
-<a id="__codelineno-8-2" name="__codelineno-8-2" href="#development-testing-guide-__codelineno-8-2"></a><span class="c1"># Position: chr1:11168293 G&gt;A</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-8-1" name="__codelineno-8-1" href="#development-testing-guide-__codelineno-8-1"></a><span class="c1"># Compare gbcms vs samtools for a SNP (set CHROM and POS to the variant)</span>
+<a id="__codelineno-8-2" name="__codelineno-8-2" href="#development-testing-guide-__codelineno-8-2"></a><span class="nv">CHROM</span><span class="o">=</span><span class="m">1</span><span class="p">;</span><span class="w"> </span><span class="nv">POS</span><span class="o">=</span><span class="m">1000000</span>
 <a id="__codelineno-8-3" name="__codelineno-8-3" href="#development-testing-guide-__codelineno-8-3"></a>
 <a id="__codelineno-8-4" name="__codelineno-8-4" href="#development-testing-guide-__codelineno-8-4"></a><span class="c1"># gbcms output</span>
-<a id="__codelineno-8-5" name="__codelineno-8-5" href="#development-testing-guide-__codelineno-8-5"></a>awk<span class="w"> </span>-F<span class="s1">'\t'</span><span class="w"> </span><span class="s1">'$5=="1" &amp;&amp; $6=="11168293" {print "REF="$41, "ALT="$42}'</span><span class="w"> </span>output.maf
+<a id="__codelineno-8-5" name="__codelineno-8-5" href="#development-testing-guide-__codelineno-8-5"></a>awk<span class="w"> </span>-F<span class="s1">'\t'</span><span class="w"> </span>-v<span class="w"> </span><span class="nv">c</span><span class="o">=</span><span class="s2">"</span><span class="nv">$CHROM</span><span class="s2">"</span><span class="w"> </span>-v<span class="w"> </span><span class="nv">p</span><span class="o">=</span><span class="s2">"</span><span class="nv">$POS</span><span class="s2">"</span><span class="w"> </span><span class="s1">'$5==c &amp;&amp; $6==p {print "REF="$41, "ALT="$42}'</span><span class="w"> </span>output.maf
 <a id="__codelineno-8-6" name="__codelineno-8-6" href="#development-testing-guide-__codelineno-8-6"></a>
 <a id="__codelineno-8-7" name="__codelineno-8-7" href="#development-testing-guide-__codelineno-8-7"></a><span class="c1"># samtools output</span>
-<a id="__codelineno-8-8" name="__codelineno-8-8" href="#development-testing-guide-__codelineno-8-8"></a>samtools<span class="w"> </span>mpileup<span class="w"> </span>-r<span class="w"> </span><span class="m">1</span>:11168293-11168293<span class="w"> </span>-q<span class="w"> </span><span class="m">20</span><span class="w"> </span>-f<span class="w"> </span>ref.fa<span class="w"> </span>sample.bam<span class="w"> </span><span class="p">|</span><span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-8-8" name="__codelineno-8-8" href="#development-testing-guide-__codelineno-8-8"></a>samtools<span class="w"> </span>mpileup<span class="w"> </span>-r<span class="w"> </span><span class="s2">"</span><span class="nv">$CHROM</span><span class="s2">:</span><span class="nv">$POS</span><span class="s2">-</span><span class="nv">$POS</span><span class="s2">"</span><span class="w"> </span>-q<span class="w"> </span><span class="m">20</span><span class="w"> </span>-f<span class="w"> </span>ref.fa<span class="w"> </span>sample.bam<span class="w"> </span><span class="p">|</span><span class="w"> </span><span class="se">\</span>
 <a id="__codelineno-8-9" name="__codelineno-8-9" href="#development-testing-guide-__codelineno-8-9"></a><span class="w">    </span>awk<span class="w"> </span><span class="s1">'{gsub(/\^.|\$/,"",$5); print "DP="$4, "Pileup="$5}'</span>
 </code></pre></div>
 <hr>
@@ -23580,13 +23581,13 @@ not a <abbr title="Binary Alignment Map - Compressed sequence alignment file for
 </li>
 <li>
 <p><strong><abbr title="Binary Alignment Map - Compressed sequence alignment file format">BAM</abbr> coverage</strong> — verify the <abbr title="Binary Alignment Map - Compressed sequence alignment file format">BAM</abbr> actually has reads at this position:
-   </p><div class="highlight"><pre><span></span><code><a id="__codelineno-9-1" name="__codelineno-9-1" href="#resources-troubleshooting-__codelineno-9-1"></a>samtools<span class="w"> </span>view<span class="w"> </span>-c<span class="w"> </span>sample.bam<span class="w"> </span><span class="s2">"chr17:7579309-7579322"</span>
+   </p><div class="highlight"><pre><span></span><code><a id="__codelineno-9-1" name="__codelineno-9-1" href="#resources-troubleshooting-__codelineno-9-1"></a>samtools<span class="w"> </span>view<span class="w"> </span>-c<span class="w"> </span>sample.bam<span class="w"> </span><span class="s2">"CHROM:START-END"</span><span class="w">  </span><span class="c1"># the event's span</span>
 </code></pre></div>
 </li>
 <li>
 <p><strong>Verbose per-read trace</strong> — most diagnostic tool:
    </p><div class="highlight"><pre><span></span><code><a id="__codelineno-10-1" name="__codelineno-10-1" href="#resources-troubleshooting-__codelineno-10-1"></a><span class="c1"># Per-read trace lines print 0-BASED positions; variant-level lines are 1-based.</span>
-<a id="__codelineno-10-2" name="__codelineno-10-2" href="#resources-troubleshooting-__codelineno-10-2"></a>gbcms<span class="w"> </span>dna<span class="w"> </span>--trace<span class="w"> </span>...<span class="w"> </span><span class="m">2</span>&gt;<span class="p">&amp;</span><span class="m">1</span><span class="w"> </span><span class="p">|</span><span class="w"> </span>grep<span class="w"> </span>-E<span class="w"> </span><span class="s2">"7579308|7579309"</span><span class="w">  </span><span class="c1"># 0-based and 1-based</span>
+<a id="__codelineno-10-2" name="__codelineno-10-2" href="#resources-troubleshooting-__codelineno-10-2"></a>gbcms<span class="w"> </span>dna<span class="w"> </span>--trace<span class="w"> </span>...<span class="w"> </span><span class="m">2</span>&gt;<span class="p">&amp;</span><span class="m">1</span><span class="w"> </span><span class="p">|</span><span class="w"> </span>grep<span class="w"> </span>-E<span class="w"> </span><span class="s2">"&lt;pos0&gt;|&lt;pos1&gt;"</span><span class="w">  </span><span class="c1"># the anchor, 0-based and 1-based</span>
 </code></pre></div>
 </li>
 </ol>
@@ -23600,7 +23601,7 @@ of equal-length windows read from the POS flank, so a REF read counts when it ca
 reference from that flank as far as the ALT read must carry the ALT.</p>
 <p>If <code>ref = 0</code>, check:
 - The variant was normalized correctly (<code>gbcms_status</code> is <code>PASS</code>)
-- The <abbr title="Binary Alignment Map - Compressed sequence alignment file format">BAM</abbr> slice has coverage at the event's ends (<code>samtools depth -a sample.bam -r chr22:30038094-30038095</code>)
+- The <abbr title="Binary Alignment Map - Compressed sequence alignment file format">BAM</abbr> slice has coverage at the event's ends (<code>samtools depth -a sample.bam -r CHROM:START-END</code>)
 - Reads actually <strong>reach a junction</strong>: reads mapping entirely inside a large deleted span,
   or ending inside the event, carry no information about the variant and count as depth only</p>
 <p>See <a href="#reference-complex-indels-case-2-nf2-large-deletion-ref-reads-invisible">NF2 Case Study</a>.</p>
@@ -23858,7 +23859,7 @@ genuinely has nothing to count.</p>
 <a id="__codelineno-19-6" name="__codelineno-19-6" href="#resources-troubleshooting-__codelineno-19-6"></a><span class="c1"># Per-read trace lines print 0-BASED positions; variant-level lines are 1-based,</span>
 <a id="__codelineno-19-7" name="__codelineno-19-7" href="#resources-troubleshooting-__codelineno-19-7"></a><span class="c1"># so grep both spellings of the coordinate.</span>
 <a id="__codelineno-19-8" name="__codelineno-19-8" href="#resources-troubleshooting-__codelineno-19-8"></a>gbcms<span class="w"> </span>dna<span class="w"> </span>--trace<span class="w"> </span>--variants<span class="w"> </span>variants.maf<span class="w"> </span>--bam<span class="w"> </span>sample.bam<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-19-9" name="__codelineno-19-9" href="#resources-troubleshooting-__codelineno-19-9"></a><span class="w">    </span>--fasta<span class="w"> </span>ref.fa<span class="w"> </span>--output-dir<span class="w"> </span>/tmp/debug/<span class="w"> </span><span class="m">2</span>&gt;<span class="p">&amp;</span><span class="m">1</span><span class="w"> </span><span class="p">|</span><span class="w"> </span>grep<span class="w"> </span>-E<span class="w"> </span><span class="s2">"7579308|7579309"</span><span class="w"> </span>&gt;<span class="w"> </span>tp53_trace.log
+<a id="__codelineno-19-9" name="__codelineno-19-9" href="#resources-troubleshooting-__codelineno-19-9"></a><span class="w">    </span>--fasta<span class="w"> </span>ref.fa<span class="w"> </span>--output-dir<span class="w"> </span>/tmp/debug/<span class="w"> </span><span class="m">2</span>&gt;<span class="p">&amp;</span><span class="m">1</span><span class="w"> </span><span class="p">|</span><span class="w"> </span>grep<span class="w"> </span>-E<span class="w"> </span><span class="s2">"&lt;pos0&gt;|&lt;pos1&gt;"</span><span class="w"> </span>&gt;<span class="w"> </span>trace.log
 </code></pre></div>
 <h3 id="resources-troubleshooting-inspecting-genomic-bin-construction">Inspecting Genomic Bin Construction<a class="headerlink" href="#resources-troubleshooting-inspecting-genomic-bin-construction" title="Permanent link">¶</a></h3>
 <p>gbcms groups variants into <strong>~10kb genomic bins</strong> before <abbr title="Binary Alignment Map - Compressed sequence alignment file format">BAM</abbr> traversal to reduce <code>bam.fetch()</code> calls (see <a href="#reference-architecture-genomic-binning">Architecture → Genomic Binning</a>). Bin construction is logged at INFO by default:</p>

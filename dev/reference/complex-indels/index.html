@@ -79,7 +79,7 @@
             body[data-md-color-scheme="slate"] .gslide-title { color: var(--md-default-fg-color); }
             body[data-md-color-scheme="slate"] .gslide-desc { color: var(--md-default-fg-color); }
         </style><meta name="panzoom-theme" content="material">
-<meta name="panzoom-data" content='{"selectors": [".d2", ".mermaid"], "initial_zoom_level": 1.0}'> </head>
+<meta name="panzoom-data" content='{"selectors": [".mermaid", ".d2"], "initial_zoom_level": 1.0}'> </head>
   
   
     
@@ -2681,7 +2681,7 @@ The case studies below record why the routing exists and what the earlier fixes 
 <hr>
 <h2 id="case-1-complex-delsnv-sox9">Case 1: Complex Del+SNV — SOX9 (<code>GC→T</code>)<a class="headerlink" href="#case-1-complex-delsnv-sox9" title="Permanent link">¶</a></h2>
 <h3 id="the-variant">The Variant<a class="headerlink" href="#the-variant" title="Permanent link">¶</a></h3>
-<p><strong>Gene:</strong> SOX9 · <strong>Position:</strong> chr17:70119766 · <strong>REF:</strong> <code>GC</code> · <strong>ALT:</strong> <code>T</code></p>
+<p><strong>Gene:</strong> SOX9 · <strong>REF:</strong> <code>GC</code> · <strong>ALT:</strong> <code>T</code></p>
 <p>This is a deletion-format variant (<code>len(REF)=2 &gt; len(ALT)=1</code>), but it is <strong>not</strong> a pure deletion:
 the anchor base G also changes to T. This makes it a complex Del+SNV — one net base is deleted
 AND the anchor substitutes simultaneously.</p>
@@ -2701,7 +2701,7 @@ AND the anchor substitutes simultaneously.</p>
 <p><code>check_complex</code> builds <code>REF_haplotype = ...GC...</code> and <code>ALT_haplotype = ...T...</code> and runs Phase 3
 Smith-Waterman. ALT reads align better to <code>ALT_hap</code> → classified as <strong>ALT</strong>.</p>
 <h3 id="read-level-example">Read-Level Example<a class="headerlink" href="#read-level-example" title="Permanent link">¶</a></h3>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>Variant: chr17:70119766  GC → T
+<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>Variant: SOX9  GC → T
 <a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a>Reference:  ... A  G  C  T  A  T ...
 <a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a>                   ↑
 <a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a>               anchor pos (G)
@@ -2749,7 +2749,7 @@ Smith-Waterman. ALT reads align better to <code>ALT_hap</code> → classified as
 <hr>
 <h2 id="case-2-nf2-large-deletion-ref-reads-invisible">Case 2: NF2 Large Deletion — REF Reads Invisible<a class="headerlink" href="#case-2-nf2-large-deletion-ref-reads-invisible" title="Permanent link">¶</a></h2>
 <h3 id="the-variant_1">The Variant<a class="headerlink" href="#the-variant_1" title="Permanent link">¶</a></h3>
-<p><strong>Gene:</strong> NF2 · <strong>Position:</strong> chr22:30038094 · <strong>Type:</strong> ~100bp deletion with a short (7bp) replacement — a large <strong>delins</strong> (<code>ref_len &gt; alt_len &gt; 1</code>), dispatched to <code>check_complex</code></p>
+<p><strong>Gene:</strong> NF2 · <strong>Type:</strong> ~100bp deletion with a short (7bp) replacement — a large <strong>delins</strong> (<code>ref_len &gt; alt_len &gt; 1</code>), dispatched to <code>check_complex</code></p>
 <div class="admonition note">
 <p class="admonition-title">Why this case is check_complex's problem, not check_deletion's</p>
 <p>A PURE large deletion never reaches this fallback: its clean anchor-spanning REF reads
@@ -2779,11 +2779,11 @@ silently discards all REF evidence.</p>
 <p>The M-block coverage check confirms the read spans the anchor position, establishing REF support
 without needing haplotype alignment.</p>
 <h3 id="read-level-example_1">Read-Level Example<a class="headerlink" href="#read-level-example_1" title="Permanent link">¶</a></h3>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a>Variant: chr22:30038094  [~100bp REF] → [7bp ALT]  (large delins)
-<a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a>Anchor position: 30038094
+<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a>Variant: NF2  [~100bp REF] → [7bp ALT]  (large delins)
+<a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a>Anchor position: P
 <a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a>
-<a id="__codelineno-3-4" name="__codelineno-3-4" href="#__codelineno-3-4"></a>REF read CIGAR: 150M  (spans anchor at 30038094)
-<a id="__codelineno-3-5" name="__codelineno-3-5" href="#__codelineno-3-5"></a>    M-block: [30038040 ── 30038190]  ← covers anchor ✅, anchor BQ ≥ min_baseq ✅
+<a id="__codelineno-3-4" name="__codelineno-3-4" href="#__codelineno-3-4"></a>REF read CIGAR: 150M  (spans anchor at P)
+<a id="__codelineno-3-5" name="__codelineno-3-5" href="#__codelineno-3-5"></a>    M-block: [P−54 ── P+96]  ← covers anchor ✅, anchor BQ ≥ min_baseq ✅
 <a id="__codelineno-3-6" name="__codelineno-3-6" href="#__codelineno-3-6"></a>    is_worth_realignment = false (clean CIGAR)
 <a id="__codelineno-3-7" name="__codelineno-3-7" href="#__codelineno-3-7"></a>    Old: return Neither
 <a id="__codelineno-3-8" name="__codelineno-3-8" href="#__codelineno-3-8"></a>    New: deletion-direction (ref_len &gt; alt_len) + M coverage + anchor BQ → REF ✅
@@ -2821,20 +2821,20 @@ without needing haplotype alignment.</p>
 <hr>
 <h2 id="case-3-tp53-12bp-left-alignment-shifted-deletion">Case 3: TP53 12bp Left-Alignment Shifted Deletion<a class="headerlink" href="#case-3-tp53-12bp-left-alignment-shifted-deletion" title="Permanent link">¶</a></h2>
 <h3 id="the-variant_2">The Variant<a class="headerlink" href="#the-variant_2" title="Permanent link">¶</a></h3>
-<p><strong>Gene:</strong> TP53 · <strong>Position:</strong> chr17:7579309 · <strong>REF:</strong> <code>GACCGTGCAAGT</code> (12bp) · <strong>ALT:</strong> <code>-</code> (deletion)</p>
+<p><strong>Gene:</strong> TP53 · <strong>REF:</strong> <code>GACCGTGCAAGT</code> (12bp) · <strong>ALT:</strong> <code>-</code> (deletion)</p>
 <h3 id="root-cause-bwa-left-alignment">Root Cause: <abbr title="Burrows-Wheeler Aligner - Standard short-read DNA aligner (mem/aln)">BWA</abbr> Left-Alignment<a class="headerlink" href="#root-cause-bwa-left-alignment" title="Permanent link">¶</a></h3>
 <p><abbr title="Burrows-Wheeler Aligner - Standard short-read DNA aligner (mem/aln)">BWA</abbr> left-aligns indels to the leftmost equivalent position in the genome. For this 12bp deletion in
 a region with a partial repeat (<code>ACC</code> motif), <abbr title="Burrows-Wheeler Aligner - Standard short-read DNA aligner (mem/aln)">BWA</abbr> places the anchor 3bp <strong>left</strong> of where the
 <abbr title="Compact Idiosyncratic Gapped Alignment Report - BAM alignment operation string">CIGAR</abbr> <code>D(12)</code> operation actually appears in the reads.</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a>Left-aligned anchor position (what MAF/gbcms sees):  chr17:7579309
-<a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a>Actual CIGAR D(12) position in reads:                chr17:7579312  (+3bp right)
+<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a>Left-aligned anchor position (what MAF/gbcms sees):  P
+<a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a>Actual CIGAR D(12) position in reads:                P+3  (+3bp right)
 </code></pre></div>
 <h3 id="why-the-old-code-returned-alt0_1">Why the Old Code Returned alt=0<a class="headerlink" href="#why-the-old-code-returned-alt0_1" title="Permanent link">¶</a></h3>
 <p><code>check_deletion</code> windowed scan:
-1. Finds <code>D(12)</code> within the ±5bp window (at position 7579312)
+1. Finds <code>D(12)</code> within the ±5bp window (at position P+3)
 2. Passes <strong>S1</strong>: length matches (12bp)
-3. Applies <strong>S3</strong>: compares reference bases at <code>7579312</code> against expected deleted sequence <code>GACCGTGCAAGT</code>
-4. Reference at <code>7579312</code> is <code>CGTGCAAGT...</code>, not <code>GACCGTGCAAGT</code> → <strong>S3 fails</strong>
+3. Applies <strong>S3</strong>: compares reference bases at <code>P+3</code> against expected deleted sequence <code>GACCGTGCAAGT</code>
+4. Reference at <code>P+3</code> is <code>CGTGCAAGT...</code>, not <code>GACCGTGCAAGT</code> → <strong>S3 fails</strong>
 5. Old code: S3 fail → Continue → read not counted → <code>found_ref_coverage = true</code> → REF</p>
 <p>All 221 ALT reads fail S3 → <code>alt = 0</code>, <code>ref = 775</code>.</p>
 <h3 id="the-fix-fix-4-variant_checksrs-check_deletion">The Fix (Fix 4 — <code>variant_checks.rs</code> <code>check_deletion</code>)<a class="headerlink" href="#the-fix-fix-4-variant_checksrs-check_deletion" title="Permanent link">¶</a></h3>
@@ -2862,13 +2862,13 @@ for these cases.</p>
 left-alignment can move the anchor up to <code>repeat_span</code> positions left, and 5bp is the minimum
 spanning a small repeat motif (e.g., dinucleotide repeat <code>ACAC</code>).</p>
 <h3 id="read-level-example_2">Read-Level Example<a class="headerlink" href="#read-level-example_2" title="Permanent link">¶</a></h3>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a>Variant (left-aligned): chr17:7579309  GACCGTGCAAGT → -
-<a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a>Anchor (gbcms):          pos = 7579309
+<div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a>Variant (left-aligned): TP53 P  GACCGTGCAAGT → -
+<a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a>Anchor (gbcms):          pos = P
 <a id="__codelineno-6-3" name="__codelineno-6-3" href="#__codelineno-6-3"></a>
 <a id="__codelineno-6-4" name="__codelineno-6-4" href="#__codelineno-6-4"></a>ALT read CIGAR: 48M 12D 52M
-<a id="__codelineno-6-5" name="__codelineno-6-5" href="#__codelineno-6-5"></a>    D(12) at pos 7579312  (3bp right of anchor)
+<a id="__codelineno-6-5" name="__codelineno-6-5" href="#__codelineno-6-5"></a>    D(12) at pos P+3  (3bp right of anchor)
 <a id="__codelineno-6-6" name="__codelineno-6-6" href="#__codelineno-6-6"></a>    S1: length 12 == 12 ✅
-<a id="__codelineno-6-7" name="__codelineno-6-7" href="#__codelineno-6-7"></a>    S3: ref[7579312..7579324] = "CGTGCAAGT..." ≠ "GACCGTGCAAGT" ❌
+<a id="__codelineno-6-7" name="__codelineno-6-7" href="#__codelineno-6-7"></a>    S3: ref[P+3..P+15] = "CGTGCAAGT..." ≠ "GACCGTGCAAGT" ❌
 <a id="__codelineno-6-8" name="__codelineno-6-8" href="#__codelineno-6-8"></a>    Old: Continue → REF (incorrect)
 <a id="__codelineno-6-9" name="__codelineno-6-9" href="#__codelineno-6-9"></a>    New: del_len(12) ≥ 5 → has_shifted_same_length = true
 <a id="__codelineno-6-10" name="__codelineno-6-10" href="#__codelineno-6-10"></a>    → Phase 3: ALT haplotype aligns correctly → ALT ✅
@@ -2987,12 +2987,13 @@ not describe. Inspect per-read lengths with <code>--trace</code>.</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-10-1" name="__codelineno-10-1" href="#__codelineno-10-1"></a><span class="kn">import</span><span class="w"> </span><span class="nn">pysam</span>
 <a id="__codelineno-10-2" name="__codelineno-10-2" href="#__codelineno-10-2"></a>
 <a id="__codelineno-10-3" name="__codelineno-10-3" href="#__codelineno-10-3"></a><span class="n">bam</span> <span class="o">=</span> <span class="n">pysam</span><span class="o">.</span><span class="n">AlignmentFile</span><span class="p">(</span><span class="s2">"sample.bam"</span><span class="p">)</span>
-<a id="__codelineno-10-4" name="__codelineno-10-4" href="#__codelineno-10-4"></a><span class="n">anchor</span> <span class="o">=</span> <span class="mi">7579308</span>  <span class="c1"># 0-based</span>
-<a id="__codelineno-10-5" name="__codelineno-10-5" href="#__codelineno-10-5"></a>
-<a id="__codelineno-10-6" name="__codelineno-10-6" href="#__codelineno-10-6"></a><span class="k">for</span> <span class="n">read</span> <span class="ow">in</span> <span class="n">bam</span><span class="o">.</span><span class="n">fetch</span><span class="p">(</span><span class="s2">"chr17"</span><span class="p">,</span> <span class="n">anchor</span> <span class="o">-</span> <span class="mi">10</span><span class="p">,</span> <span class="n">anchor</span> <span class="o">+</span> <span class="mi">15</span><span class="p">):</span>
-<a id="__codelineno-10-7" name="__codelineno-10-7" href="#__codelineno-10-7"></a>    <span class="k">for</span> <span class="n">op</span><span class="p">,</span> <span class="n">length</span> <span class="ow">in</span> <span class="n">read</span><span class="o">.</span><span class="n">cigartuples</span><span class="p">:</span>
-<a id="__codelineno-10-8" name="__codelineno-10-8" href="#__codelineno-10-8"></a>        <span class="k">if</span> <span class="n">op</span> <span class="o">==</span> <span class="mi">2</span><span class="p">:</span>  <span class="c1"># D (deletion)</span>
-<a id="__codelineno-10-9" name="__codelineno-10-9" href="#__codelineno-10-9"></a>            <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"D(</span><span class="si">{</span><span class="n">length</span><span class="si">}</span><span class="s2">) at ref_pos ~ </span><span class="si">{</span><span class="n">read</span><span class="o">.</span><span class="n">reference_start</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span>
+<a id="__codelineno-10-4" name="__codelineno-10-4" href="#__codelineno-10-4"></a><span class="n">CHROM</span><span class="p">,</span> <span class="n">POS</span> <span class="o">=</span> <span class="s2">"chr17"</span><span class="p">,</span> <span class="mi">1_000_000</span>  <span class="c1"># the variant's chromosome and 1-based position</span>
+<a id="__codelineno-10-5" name="__codelineno-10-5" href="#__codelineno-10-5"></a><span class="n">anchor</span> <span class="o">=</span> <span class="n">POS</span> <span class="o">-</span> <span class="mi">1</span>  <span class="c1"># 0-based</span>
+<a id="__codelineno-10-6" name="__codelineno-10-6" href="#__codelineno-10-6"></a>
+<a id="__codelineno-10-7" name="__codelineno-10-7" href="#__codelineno-10-7"></a><span class="k">for</span> <span class="n">read</span> <span class="ow">in</span> <span class="n">bam</span><span class="o">.</span><span class="n">fetch</span><span class="p">(</span><span class="n">CHROM</span><span class="p">,</span> <span class="n">anchor</span> <span class="o">-</span> <span class="mi">10</span><span class="p">,</span> <span class="n">anchor</span> <span class="o">+</span> <span class="mi">15</span><span class="p">):</span>
+<a id="__codelineno-10-8" name="__codelineno-10-8" href="#__codelineno-10-8"></a>    <span class="k">for</span> <span class="n">op</span><span class="p">,</span> <span class="n">length</span> <span class="ow">in</span> <span class="n">read</span><span class="o">.</span><span class="n">cigartuples</span><span class="p">:</span>
+<a id="__codelineno-10-9" name="__codelineno-10-9" href="#__codelineno-10-9"></a>        <span class="k">if</span> <span class="n">op</span> <span class="o">==</span> <span class="mi">2</span><span class="p">:</span>  <span class="c1"># D (deletion)</span>
+<a id="__codelineno-10-10" name="__codelineno-10-10" href="#__codelineno-10-10"></a>            <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"D(</span><span class="si">{</span><span class="n">length</span><span class="si">}</span><span class="s2">) at ref_pos ~ </span><span class="si">{</span><span class="n">read</span><span class="o">.</span><span class="n">reference_start</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span>
 </code></pre></div>
 <hr>
 <h2 id="related">Related<a class="headerlink" href="#related" title="Permanent link">¶</a></h2>
@@ -3027,7 +3028,7 @@ not describe. Inspect per-read lengths with <code>--trace</code>.</p>
     <span class="md-icon" title="Last update">
       <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M21 13.1c-.1 0-.3.1-.4.2l-1 1 2.1 2.1 1-1c.2-.2.2-.6 0-.8l-1.3-1.3c-.1-.1-.2-.2-.4-.2m-1.9 1.8-6.1 6V23h2.1l6.1-6.1zM12.5 7v5.2l4 2.4-1 1L11 13V7zM11 21.9c-5.1-.5-9-4.8-9-9.9C2 6.5 6.5 2 12 2c5.3 0 9.6 4.1 10 9.3-.3-.1-.6-.2-1-.2s-.7.1-1 .2C19.6 7.2 16.2 4 12 4c-4.4 0-8 3.6-8 8 0 4.1 3.1 7.5 7.1 7.9l-.1.2z"></path></svg>
     </span>
-    <span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-timeago" title="October 10, 2026 01:33:42 UTC"><span class="timeago" datetime="2026-10-10T01:33:42+00:00" locale="en"></span></span><span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-iso_date" title="October 10, 2026 01:33:42 UTC">2026-10-10</span>
+    <span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-timeago" title="October 27, 2026 19:33:18 UTC"><span class="timeago" datetime="2026-10-27T19:33:18+00:00" locale="en"></span></span><span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-iso_date" title="October 27, 2026 19:33:18 UTC">2026-10-27</span>
   </span>
 
     

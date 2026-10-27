@@ -79,7 +79,7 @@
             body[data-md-color-scheme="slate"] .gslide-title { color: var(--md-default-fg-color); }
             body[data-md-color-scheme="slate"] .gslide-desc { color: var(--md-default-fg-color); }
         </style><meta name="panzoom-theme" content="material">
-<meta name="panzoom-data" content='{"selectors": [".d2", ".mermaid"], "initial_zoom_level": 1.0}'> </head>
+<meta name="panzoom-data" content='{"selectors": [".mermaid", ".d2"], "initial_zoom_level": 1.0}'> </head>
   
   
     
@@ -2207,13 +2207,13 @@ not a <abbr title="Binary Alignment Map - Compressed sequence alignment file for
 </li>
 <li>
 <p><strong><abbr title="Binary Alignment Map - Compressed sequence alignment file format">BAM</abbr> coverage</strong> — verify the <abbr title="Binary Alignment Map - Compressed sequence alignment file format">BAM</abbr> actually has reads at this position:
-   </p><div class="highlight"><pre><span></span><code><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a>samtools<span class="w"> </span>view<span class="w"> </span>-c<span class="w"> </span>sample.bam<span class="w"> </span><span class="s2">"chr17:7579309-7579322"</span>
+   </p><div class="highlight"><pre><span></span><code><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a>samtools<span class="w"> </span>view<span class="w"> </span>-c<span class="w"> </span>sample.bam<span class="w"> </span><span class="s2">"CHROM:START-END"</span><span class="w">  </span><span class="c1"># the event's span</span>
 </code></pre></div>
 </li>
 <li>
 <p><strong>Verbose per-read trace</strong> — most diagnostic tool:
    </p><div class="highlight"><pre><span></span><code><a id="__codelineno-10-1" name="__codelineno-10-1" href="#__codelineno-10-1"></a><span class="c1"># Per-read trace lines print 0-BASED positions; variant-level lines are 1-based.</span>
-<a id="__codelineno-10-2" name="__codelineno-10-2" href="#__codelineno-10-2"></a>gbcms<span class="w"> </span>dna<span class="w"> </span>--trace<span class="w"> </span>...<span class="w"> </span><span class="m">2</span>&gt;<span class="p">&amp;</span><span class="m">1</span><span class="w"> </span><span class="p">|</span><span class="w"> </span>grep<span class="w"> </span>-E<span class="w"> </span><span class="s2">"7579308|7579309"</span><span class="w">  </span><span class="c1"># 0-based and 1-based</span>
+<a id="__codelineno-10-2" name="__codelineno-10-2" href="#__codelineno-10-2"></a>gbcms<span class="w"> </span>dna<span class="w"> </span>--trace<span class="w"> </span>...<span class="w"> </span><span class="m">2</span>&gt;<span class="p">&amp;</span><span class="m">1</span><span class="w"> </span><span class="p">|</span><span class="w"> </span>grep<span class="w"> </span>-E<span class="w"> </span><span class="s2">"&lt;pos0&gt;|&lt;pos1&gt;"</span><span class="w">  </span><span class="c1"># the anchor, 0-based and 1-based</span>
 </code></pre></div>
 </li>
 </ol>
@@ -2227,7 +2227,7 @@ of equal-length windows read from the POS flank, so a REF read counts when it ca
 reference from that flank as far as the ALT read must carry the ALT.</p>
 <p>If <code>ref = 0</code>, check:
 - The variant was normalized correctly (<code>gbcms_status</code> is <code>PASS</code>)
-- The <abbr title="Binary Alignment Map - Compressed sequence alignment file format">BAM</abbr> slice has coverage at the event's ends (<code>samtools depth -a sample.bam -r chr22:30038094-30038095</code>)
+- The <abbr title="Binary Alignment Map - Compressed sequence alignment file format">BAM</abbr> slice has coverage at the event's ends (<code>samtools depth -a sample.bam -r CHROM:START-END</code>)
 - Reads actually <strong>reach a junction</strong>: reads mapping entirely inside a large deleted span,
   or ending inside the event, carry no information about the variant and count as depth only</p>
 <p>See <a href="../../reference/complex-indels/#case-2-nf2-large-deletion-ref-reads-invisible">NF2 Case Study</a>.</p>
@@ -2485,7 +2485,7 @@ genuinely has nothing to count.</p>
 <a id="__codelineno-19-6" name="__codelineno-19-6" href="#__codelineno-19-6"></a><span class="c1"># Per-read trace lines print 0-BASED positions; variant-level lines are 1-based,</span>
 <a id="__codelineno-19-7" name="__codelineno-19-7" href="#__codelineno-19-7"></a><span class="c1"># so grep both spellings of the coordinate.</span>
 <a id="__codelineno-19-8" name="__codelineno-19-8" href="#__codelineno-19-8"></a>gbcms<span class="w"> </span>dna<span class="w"> </span>--trace<span class="w"> </span>--variants<span class="w"> </span>variants.maf<span class="w"> </span>--bam<span class="w"> </span>sample.bam<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-19-9" name="__codelineno-19-9" href="#__codelineno-19-9"></a><span class="w">    </span>--fasta<span class="w"> </span>ref.fa<span class="w"> </span>--output-dir<span class="w"> </span>/tmp/debug/<span class="w"> </span><span class="m">2</span>&gt;<span class="p">&amp;</span><span class="m">1</span><span class="w"> </span><span class="p">|</span><span class="w"> </span>grep<span class="w"> </span>-E<span class="w"> </span><span class="s2">"7579308|7579309"</span><span class="w"> </span>&gt;<span class="w"> </span>tp53_trace.log
+<a id="__codelineno-19-9" name="__codelineno-19-9" href="#__codelineno-19-9"></a><span class="w">    </span>--fasta<span class="w"> </span>ref.fa<span class="w"> </span>--output-dir<span class="w"> </span>/tmp/debug/<span class="w"> </span><span class="m">2</span>&gt;<span class="p">&amp;</span><span class="m">1</span><span class="w"> </span><span class="p">|</span><span class="w"> </span>grep<span class="w"> </span>-E<span class="w"> </span><span class="s2">"&lt;pos0&gt;|&lt;pos1&gt;"</span><span class="w"> </span>&gt;<span class="w"> </span>trace.log
 </code></pre></div>
 <h3 id="inspecting-genomic-bin-construction">Inspecting Genomic Bin Construction<a class="headerlink" href="#inspecting-genomic-bin-construction" title="Permanent link">¶</a></h3>
 <p>gbcms groups variants into <strong>~10kb genomic bins</strong> before <abbr title="Binary Alignment Map - Compressed sequence alignment file format">BAM</abbr> traversal to reduce <code>bam.fetch()</code> calls (see <a href="../../reference/architecture/#genomic-binning">Architecture → Genomic Binning</a>). Bin construction is logged at INFO by default:</p>
@@ -2537,7 +2537,7 @@ genuinely has nothing to count.</p>
     <span class="md-icon" title="Last update">
       <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M21 13.1c-.1 0-.3.1-.4.2l-1 1 2.1 2.1 1-1c.2-.2.2-.6 0-.8l-1.3-1.3c-.1-.1-.2-.2-.4-.2m-1.9 1.8-6.1 6V23h2.1l6.1-6.1zM12.5 7v5.2l4 2.4-1 1L11 13V7zM11 21.9c-5.1-.5-9-4.8-9-9.9C2 6.5 6.5 2 12 2c5.3 0 9.6 4.1 10 9.3-.3-.1-.6-.2-1-.2s-.7.1-1 .2C19.6 7.2 16.2 4 12 4c-4.4 0-8 3.6-8 8 0 4.1 3.1 7.5 7.1 7.9l-.1.2z"></path></svg>
     </span>
-    <span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-timeago" title="October 24, 2026 05:32:22 UTC"><span class="timeago" datetime="2026-10-24T05:32:22+00:00" locale="en"></span></span><span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-iso_date" title="October 24, 2026 05:32:22 UTC">2026-10-24</span>
+    <span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-timeago" title="October 27, 2026 19:33:18 UTC"><span class="timeago" datetime="2026-10-27T19:33:18+00:00" locale="en"></span></span><span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-iso_date" title="October 27, 2026 19:33:18 UTC">2026-10-27</span>
   </span>
 
     
