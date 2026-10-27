@@ -62,14 +62,13 @@ For a row X and each admitted read:
     for indels only.
   - A tie of REF with another allele, X beaten, is REF where the read writes an indel of its
     own across that allele's change (as where it never reaches it).
-  - At a substitution X, a tie of X with another allele, REF beaten, is X's where the read
-    never reads the two apart (a carrier inside the bases a duplication allele repeats) and
-    reads X's telling bases as X's.
   - Measured and dropped: an indel on an MNV's last base taken as at X's site (its REF
     losses were an oracle v3 artefact); containment for states that change the length (a
     carrier of a listed delins ending in X's base is that delins's, oracle v3); and X with
     a listed change on a tandem duplication's inserted copy as a candidate (23 true-REF
-    reads lost at HG002's 1 kb+ insertions, truth v2db; open for the operator).
+    reads lost at HG002's 1 kb+ insertions, truth v2db; open for the operator); and a tie of
+    X with another allele the read never reads apart from X credited to X (it credited
+    reads the oracles call either).
   - `GBCMS_JUDGE_NEITHER=other` (measurement only; default `margin`): a covered telling base
     read confidently as neither allele makes a REF or ALT call on an MNV or a delins another
     allele.
