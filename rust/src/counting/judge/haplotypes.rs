@@ -528,10 +528,12 @@ pub(crate) fn neither_trace() -> bool {
     *ON.get_or_init(|| std::env::var("GBCMS_JUDGE_NEITHER_TRACE").is_ok_and(|v| v == "1"))
 }
 
-/// Measurement only, TEMPORARY: where an allele whose equivalent placements end exactly at
-/// an insertion X's point stands (`GBCMS_JUDGE_ENDS`): `site`, the default, at X's site (its
-/// placements meet X's), another allele there; or `beside`, a change beside X, a context, so
-/// a read carrying it is read at X by its bases there. Read when a site is built.
+/// Measurement only, TEMPORARY: where an allele that removes bases, its equivalent placements
+/// ending exactly at an insertion X's point, stands (`GBCMS_JUDGE_ENDS`): `site`, the default,
+/// at X's site (its placements meet X's), another allele there; or `beside`, a change beside
+/// X, a context, so a read carrying it is read at X by its bases there. An allele inserting at
+/// X's point (another insertion there, X's behind a substituted anchor) stays at X's site
+/// either way. Read when a site is built.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum EndsRule {
     Site,
@@ -1810,13 +1812,14 @@ impl Site {
             };
             moved.unwrap_or_else(|| r.clone())
         };
-        // Under `GBCMS_JUDGE_ENDS=beside`: an allele changing the length whose equivalent
-        // placements end exactly at an insertion X's point is beside X, a context.
+        // Under `GBCMS_JUDGE_ENDS=beside`: an allele removing bases whose equivalent placements
+        // end exactly at an insertion X's point is beside X, a context. One that inserts there
+        // (net longer) is at X's site, as two insertions at one anchor each count their own.
         let ends_at_x = |r: &Row| {
             ends == EndsRule::Beside
                 && pure(&target)
                 && target.alt_al.len() > target.ref_al.len()
-                && r.changes_length()
+                && r.alt_al.len() < r.ref_al.len()
                 && *r != target
                 && place(r).1 == target.end()
         };

@@ -1029,6 +1029,29 @@ mod tests {
     }
 
     #[test]
+    fn an_allele_inserting_at_an_insertions_point_stays_at_its_site_under_the_beside_option() {
+        use haplotypes::EndsRule::{Beside, Site as AtSite};
+        use Call::*;
+        // Another insertion at X's anchor, and X's insertion behind a substituted anchor (a
+        // delins): each ends at X's point but inserts there, so it is at X's site under the
+        // option too, and its carriers stay another allele (two insertions at one anchor
+        // count their own carriers; a carrier behind an anchor substitution is another
+        // allele). Only an allele that ends there and inserts nothing is beside X.
+        let c = contig(59, 261, b"CAGAGAACAAAAGAAAGAAAGATTTTCTTACTTCAGAGAATTCTTTGCCACGTATTTCTAGC");
+        let x = row(301, "A", "AT");
+        for sibling in [row(301, "A", "AG"), row(301, "A", "CT")] {
+            let h = haplotype(&c, &[&sibling]);
+            let reads = vec![read(&h, 240, 100, 240, "61M1I38M"), read(&c, 240, 100, 240, "100M")];
+            let candidates = Candidates { listed: vec![sibling.clone()], ..Candidates::default() };
+            for ends in [AtSite, Beside] {
+                let s = Site::build_ended(x.clone(), &candidates, (0, c.clone()), &reads, ends).unwrap();
+                let calls: Vec<Call> = reads.iter().map(|r| judge(&s, r, MIN_BQ, false).call).collect();
+                assert_eq!(calls, vec![Other, Ref], "{}>{}, {ends:?}", String::from_utf8_lossy(&sibling.ref_al), String::from_utf8_lossy(&sibling.alt_al));
+            }
+        }
+    }
+
+    #[test]
     fn the_neither_switch_leaves_a_base_the_guards_background_explains_to_the_margin() {
         use haplotypes::NeitherRule::{Other as Neither, Recur};
         use Call::*;
