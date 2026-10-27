@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed — a read-rule change starts from its mechanism (#304)
+
+- **Fix the class, not the row.** The procedure for changing how reads are judged
+  (`read-judgment.md`, "How a change to read judgment is made") now asks for the
+  mechanism first, stated without the row that showed the bug, with the rule derived
+  from the principles. Its tests cover the other shapes of the same mechanism, any cutoff
+  comes from a mechanism rather than from where a measurement splits, and a rule narrower
+  than its mechanism says why. The fix is judged on data the bug was not found in.
+- **Each decided read rule states its mechanism.** The register has a Mechanism column,
+  filled for RJ-1 to RJ-27, and new entries state theirs. Counts are unchanged.
+
 ### Fixed — the docs state the unreadable-insert rule as decided (#304)
 
 - **An insert of the ALT's length whose bases are all masked is the ALT**, where no other

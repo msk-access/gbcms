@@ -19,5 +19,5 @@ config), never a constant; write bars as "decidable at the run's `--min-baseq`";
 count-changing rule whose behaviour depends on a user parameter gets a sweep over plausible
 values (e.g. `--min-baseq` 10/20/30) in its acceptance. MSK runs at 20 (operator, 2026-10-26: "We use
 20 at MSK so that is ok"), so the default stays; the sweep checks that a rule holds at the other
-values a run may need, and is not a search for a new default. Related: [[decisions-worked-examples]],
+values a run may need, and is not a search for a new default. The harness reads the default from `src/gbcms/cli.py` (`truthv2_lib.cli_default_min_baseq`, `xoracle_v2.cli_default_min_baseq`), so its pattern must allow the option to span lines: #329 broke a pattern that didn't (fixed 2026-10-26). Related: [[decisions-worked-examples]],
 [[test-across-data-types]], [[giab-truth-arm]].
