@@ -124,13 +124,13 @@ Common issues and solutions for gbcms. Issues are grouped by phase — work top-
 
     4. **BAM coverage** — verify the BAM actually has reads at this position:
        ```bash
-       samtools view -c sample.bam "chr17:7579309-7579322"
+       samtools view -c sample.bam "CHROM:START-END"  # the event's span
        ```
 
     5. **Verbose per-read trace** — most diagnostic tool:
        ```bash
        # Per-read trace lines print 0-BASED positions; variant-level lines are 1-based.
-       gbcms dna --trace ... 2>&1 | grep -E "7579308|7579309"  # 0-based and 1-based
+       gbcms dna --trace ... 2>&1 | grep -E "<pos0>|<pos1>"  # the anchor, 0-based and 1-based
        ```
 
 ??? question "`ref_count = 0` for a large deletion"
@@ -143,7 +143,7 @@ Common issues and solutions for gbcms. Issues are grouped by phase — work top-
 
     If `ref = 0`, check:
     - The variant was normalized correctly (`gbcms_status` is `PASS`)
-    - The BAM slice has coverage at the event's ends (`samtools depth -a sample.bam -r chr22:30038094-30038095`)
+    - The BAM slice has coverage at the event's ends (`samtools depth -a sample.bam -r CHROM:START-END`)
     - Reads actually **reach a junction**: reads mapping entirely inside a large deleted span,
       or ending inside the event, carry no information about the variant and count as depth only
 
@@ -384,7 +384,7 @@ gbcms dna --verbose --variants variants.maf --bam sample.bam \
 # Per-read trace lines print 0-BASED positions; variant-level lines are 1-based,
 # so grep both spellings of the coordinate.
 gbcms dna --trace --variants variants.maf --bam sample.bam \
-    --fasta ref.fa --output-dir /tmp/debug/ 2>&1 | grep -E "7579308|7579309" > tp53_trace.log
+    --fasta ref.fa --output-dir /tmp/debug/ 2>&1 | grep -E "<pos0>|<pos1>" > trace.log
 ```
 
 ### Inspecting Genomic Bin Construction

@@ -488,12 +488,12 @@ def test_audit_format():
     assert format_rescue_audit(
         "rescued",
         original,
-        ["5:1295250(G>A):87", "5:1295254(G>A):ref_fail"],
-        "5:1295250(G>A)",
+        ["1:1000(G>A):87", "1:1004(G>A):ref_fail"],
+        "1:1000(G>A)",
     ) == (
         "method=decomposed;outcome=rescued;original_ref=486;original_alt=1;"
-        "original_partial=88;original_confirmed=0;adopted=5:1295250(G>A);"
-        "positions=5:1295250(G>A):87+5:1295254(G>A):ref_fail"
+        "original_partial=88;original_confirmed=0;adopted=1:1000(G>A);"
+        "positions=1:1000(G>A):87+1:1004(G>A):ref_fail"
     )
 
 

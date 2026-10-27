@@ -939,7 +939,7 @@ pub fn check_complex<F: Fn(u8, u8) -> i32>(
     //    evidence. Skip Phase 2 for this case — let Phase 3 (SW/HMM) decide
     //    with full haplotype context.
     //
-    // Example: ARID1A 1:27024008 REF=42bp ALT=5bp. Reads with 5bp recon
+    // Example: an ARID1A delins, REF=42bp ALT=5bp. Reads with 5bp recon
     // would match alt_len=5 in Case B → false ALT. Guard catches ref_len=42
     // > 2*5=10 and skips to Phase 3.
     let ref_len = ref_bytes.len();
