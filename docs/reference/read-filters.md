@@ -291,6 +291,42 @@ same strand (`forward` swaps them):
     ASJD's strand-discordance check. `--no-strandedness` alone only stops the filtering; reads are still
     folded under the `reverse` protocol (see [`gbcms rna`](../cli/rna.md#strandedness-filtering)).
 
+### How much antisense evidence there is, and why the column counts it first
+
+`rna_antisense_depth` counts antisense REF and ALT reads before the strand filter drops them
+(as `mq0_count` is tallied before its filter), and ASJD's `STRAND_DISCORDANT` is documented as a
+`--no-strandedness` diagnostic. Decided 2026-09-25 from this census (local data, aggregates only;
+[evidence](https://github.com/msk-access/gbcms/issues/114#issuecomment-5834318189), archived plan
+`.agents/archive/CYCLE_6.6.0_PLAN.md` § R2). FORTE truth cohort, 33 samples, 71 truth loci inside a
+single gene, reverse-stranded dUTP:
+
+| Population | Sense | Antisense |
+|:--|--:|--:|
+| Reads at the truth loci | 28,182 | 143 (0.5%) |
+| What gbcms reported before the change | 28,128 | 0 |
+| Junction reads near the loci | 125,541 | 138 (0.1%) |
+
+- 13 of the 71 loci (18%) have any antisense read; 24 antisense reads carry the ALT.
+- On a local sample, 500 random expressed exonic positions: median antisense fraction 0%, 5% of
+  positions have any, the maximum 48% (typical of overlapping antisense transcripts).
+- **Standard.** None for allele counting. Gene-level counters (HTSeq `--stranded`, featureCounts
+  `-s`) drop wrong-strand reads and report no antisense count; ASE counters (GATK ASEReadCounter,
+  phASER, WASP) have no strand option; QC tools (Picard, RNA-SeQC, RSeQC) report antisense only as a
+  library-level rate. The closest precedent for counting before the filter is ASEReadCounter, which
+  reports how many reads each filter removed, counted before exclusion. No tool reports
+  strand-discordant junction evidence; STAR takes junction strand from the intron motif.
+- **Why `STRAND_DISCORDANT` stays unfiltered-only:** before any filter, antisense junction evidence is
+  about 0.1%, so a pre-filter flag would be close to noise. Not adopted: that flag on all junction
+  reads, and keeping the column as "reads that reached classification" (REJ-20260925-003 in
+  `.agents/learnings/REJECTED.md`).
+- **Acceptance (2026-09-29).** FORTE truth cohort (94 rows): only `rna_antisense_depth` changes, from
+  0 to 203 reads on 15 rows, equal to its `--no-strandedness` value on 94/94 rows. An independent
+  per-read census of the 68 truth SNV rows (the reads' own bases, dUTP strand folding, the MAPQ/NH
+  rule, emulated BAQ): 68/68 rows exact, 181 = 181 reads. Exon-edge probes (978 rows): only the
+  antisense column changes, from 0 to 3,678 reads (0.12% of sense depth, on 393 rows), equal to
+  `--no-strandedness` on 978/978. DNA (28 runs) byte-identical. The column counts REF and ALT reads
+  over the anchor, so it reports fewer than the 143 raw antisense reads of the census.
+
 ---
 
 ## BAQ Quality Downgrade

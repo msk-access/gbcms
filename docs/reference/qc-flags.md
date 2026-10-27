@@ -76,6 +76,14 @@ admits: in RNA a unique mapper, `NH:i:1`, below `--min-mapq`; under strandedness
 enforcement, sense reads only), so they compare with `alt_count` and `ref_count`.
 <!-- --8<-- [end:diagnostics] -->
 
+Before 6.6.0 the scan used its own filter (not secondary, not supplementary, `mapq >= min_mapq`):
+it had no strand filter, so antisense reads that enforcement keeps out of the counts still entered
+`n` and `m`, and it did not keep the loop's `NH:i:1` rescue. A review measured
+`COEXISTING_ALLELE(...:16/12)` with antisense reads present against `8/6` without them, both
+enforced. The diagnostic now shares the counting loop's admission rule (O8 #186, built in #217). Measured on FORTE: counts unchanged everywhere; the diagnostic changes
+on 1 exon-edge probe row (100/0 → 98/0) and 5 of 7,224 splice-probe rows. Other tools tally other alleles over the
+same filtered reads as their primary counts (bam-readcount, ASEReadCounter `otherBases`, VarDict).
+
 ## MNP rescue
 
 `gbcms_rescue` (VCF `GR`), with `--rescue-mnp` only, is an audit trail:

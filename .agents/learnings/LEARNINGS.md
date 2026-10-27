@@ -312,7 +312,7 @@ regenerating a section.
   it, caveats go to the status-reason and diagnostic columns.
 - **Promotion target:** `AGENTS.md` invariant 7 "Count the given allele";
   `.agents/memory/bam-is-truth.md` clarifies that a finding is never ALT evidence; new
-  memory `count-the-given-allele.md`; `CYCLE_6.6.0_PLAN.md` C1 drops the exception,
+  memory `count-the-given-allele.md`; `.agents/archive/CYCLE_6.6.0_PLAN.md` C1 drops the exception,
   and C3 is re-scoped to report the given allele, with the default-on decomposition
   as an open decision.
 

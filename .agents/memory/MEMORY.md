@@ -6,7 +6,7 @@ One line per memory. Full content lives in the linked file. Keep this index tigh
 - [Harness stays small](harness-stay-small.md) — curate skills/rules ruthlessly; every line is paid for each turn.
 - [No ticket labels in code](no-ticket-labels-in-code.md) — comments/logs explain what/why/how, never CR-/HI-/ME-/P4c labels.
 - [Describe labels in brackets](describe-labels-in-brackets.md) — when explaining, say what a thing is first and put phase/RJ/build/option labels in brackets; never lead with a bare label.
-- [Identity band = annotation tolerance](identity-band-annotation-tolerance.md) — the ≥90% insert band exists for imperfect ALT representations; BQ masking can't replace it — test both policies. No new columns/flags: new signal goes to logs/diagnostics/validation tooling.
+- [Identity band (CIGAR fallback only)](identity-band-annotation-tolerance.md) — the ≥90% insert band survives only in the CIGAR fallback; #278 D2 did not adopt it for truncated inserts. Kept: no new columns/flags; new signal goes to logs/diagnostics/validation tooling.
 - [Commit before review workflows](commit-before-review-workflows.md) — same-checkout review agents may `git stash`; concurrent sessions write .agents/memory — commit first, stage explicit paths only.
 - [Genotyper, not caller](genotyper-not-caller.md) — gbcms counts reads whose own bases carry the given allele; alignments can be wrong, so judge bases not placement; validate per read across data types.
 - [Count the given allele](count-the-given-allele.md) — input is taken as correct; never deconvolute a wrong input into counts; explain via status-reason/diagnostic columns; only opt-in rescues differ.
@@ -38,7 +38,7 @@ One line per memory. Full content lives in the linked file. Keep this index tigh
 - [Bin fetch-end must cover the anchor variant](bin-anchor-coverage.md) — CR-1; pinned by the bin property test and binning-invariance tests.
 - [WFA fast-path shares the base-quality gate](wfa-bq-gate-contract.md) — CR-2 cross-backend quality contract.
 - [Engine should be output-aware](engine-output-aware.md) — plumb intent across FFI vs compute-then-discard.
-- [Tolerant large-deletion match — superseded](tolerant-deletion-deliberate.md) — issue #91: real large dels are exact-length; wrong-length pure indels → partial_alt; delins stay Phase-3. The 50bp gate is an artifact-SIZE prior (artifacts are small; a ≥50bp op is real), not an event-rarity claim.
+- [Wrong-length indels and complex events](tolerant-deletion-deliberate.md) — wrong-length pure indels → partial_alt; complex events → exact-carrier rule (RJ-4), 50+ bp deletions → junction judge (RJ-24); Phase 3 decides essentially no reads. The 50bp gate is an artifact-SIZE prior.
 - [Nextflow defaults diverge from CLI](nextflow-cli-default-divergence.md) — keep nextflow.config in sync with CLI defaults.
 - [RNA MAPQ default is 1](rna-mapq-default.md) — keeps STAR's 2–4-locus reads (pseudogene-tied junction reads); unique-only cost PIK3CA E545K ALT; decided 2026-10-03.
 - [MAPQ-0 loci (PMS2)](mapq0-loci-pms2.md) — pseudogene genes run at --min-mapq 0; keep MAPQ-0 alignments countable; validate read-admission changes at --min-mapq 0 too.

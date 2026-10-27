@@ -394,7 +394,8 @@ main back-merged into develop. The release workflow publishes to PyPI, GHCR and
 the docs; the GitHub Release page is created by hand (release guide step 9).
 Cycle plans live on develop (PHI-free) and are removed on the release branch at
 each cut, so they never ship. `CYCLE_6.5.0_PLAN.md` was removed at this cut; a
-private copy is kept locally in `~/test/gbcms/plans/`.
+private copy is kept locally in `~/test/gbcms/plans/`, and the plan is restored in
+`.agents/archive/` (2026-10-27).
 
 6.5.0 contents:
 - T1 cluster exclusive assignment (#99).
@@ -415,7 +416,10 @@ RC check (develop vs the 6.4.0 release, every changed cell attributed; harness
 `~/test/gbcms/harness/rc650/`, local only):
 - DNA, 28 runs (FLT3 IMPACT, ACCESS duplex+simplex incl. BRCA2, complex-cluster,
   MSI-high): 1030/1060 rows byte-identical; 30 changed = 29 T1 cluster rows + 1
-  T3 flag; 0 unexplained. BRCA2 reproduces the T1 record.
+  T3 flag; 0 unexplained. BRCA2 reproduces the T1 record (28/28, 32/32, 21/21 exact; the
+  numbers are in `docs/reference/read-judgment.md`, "Evidence behind RJ-5's cluster
+  contest", and in `.agents/archive/CYCLE_6.5.0_PLAN.md` § T1 and "Release-candidate
+  validation").
 - RNA, FORTE truth cohort (33 samples / 94 rows): zero main-count changes; the six
   T2 marker rows and one T6 exon-edge row; 0 unexplained.
 - Re-checked with #116's code, and finally on the exact 6.5.0 code (an isolated
@@ -423,12 +427,13 @@ RC check (develop vs the 6.4.0 release, every changed cell attributed; harness
   byte-identical, DNA 28/28 runs and RNA 33/33.
 
 **Then → 6.6.0.** The plan was `CYCLE_6.6.0_PLAN.md` (#117; removed at the 6.6.0
-cut, a private copy in `~/test/gbcms/plans/`). It had 35 tickets, each with a GitHub
-issue in the **6.6.0 milestone**, all under the tracking issue **#140**. Grouped
-work is filed as sub-issues: #92 → #141–#144, #112 → #145–#147, #133 → #148–#149,
-#134 → #150–#152, #135 → #153–#154. The other top-level issues are #106, #111, #114,
-#119–#139, #155 and #156. Start with the operator decisions (C2, R1, R2, I1, I3, I4,
-S1/S2), then the count-affecting tickets, each measured first.
+cut, a private copy in `~/test/gbcms/plans/`; restored in `.agents/archive/`,
+2026-10-27). It had 35 tickets, each with a GitHub issue in the **6.6.0 milestone**,
+all under the tracking issue **#140**. Grouped work is filed as sub-issues: #92 →
+#141–#144, #112 → #145–#147, #133 → #148–#149, #134 → #150–#152, #135 → #153–#154. The
+other top-level issues are #106, #111, #114, #119–#139, #155 and #156. Start with the
+operator decisions (C2, R1, R2, I1, I3, I4, S1/S2), then the count-affecting tickets,
+each measured first.
 
 Release comparison: the HPC run was not done before the 6.5.0 tag. It became the
 6.6.0 release gate, on the coverage-driven regression panel (D5, #155) instead
