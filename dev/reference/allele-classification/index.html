@@ -2009,7 +2009,9 @@ silently REF and never the queried ALT:</p>
 <li><strong>Right length, confident base mismatch</strong> (mismatches on ≥<code>--min-baseq</code> bases) — a
   same-length <strong>third allele</strong> → neither + <code>partial_alt</code>. Phase 3 must not arbitrate here
   either: alignment scoring promotes a wrong-sequence insert to ALT because it still beats
-  the gapped REF alignment.</li>
+  the gapped REF alignment. Measured when the rule landed (#91, local panels): ad unchanged
+  everywhere; three insertion rows moved a total of 8 provably mismatched reads from <code>rd</code>
+  to partial, the largest 6 reads on one insertion row.</li>
 <li><strong>Right length, no readable inserted base</strong> (each N or below <code>--min-baseq</code>, or the
   insert runs past the read end) — the read carries the insertion's length, not its
   sequence: flag <code>has_unreadable_insert</code>, and the read is neither + <code>partial_alt</code> unless
@@ -2490,6 +2492,17 @@ Use mouse to pan and zoom
 <p>Example: <strong>TP53 <code>GACCGTGCAAGT→-</code> (12bp)</strong> — left-alignment moves the anchor 3bp left of the actual <code>D(12)</code> position in reads. That placement gives the same haplotype, so S3 (same haplotype) accepts it; before 6.6.0 S3 compared the deleted bases, failed, and Phase 3 classified these reads as ALT.</p>
 <p>Short deletions (1–4bp) failing S3 use <abbr title="Compact Idiosyncratic Gapped Alignment Report - BAM alignment operation string">CIGAR</abbr>-definitive REF: a 1bp Del that gives another haplotype is almost certainly an unrelated noise deletion, not a left-alignment artifact.</p>
 </div>
+<div class="admonition note">
+<p class="admonition-title">Considered and not needed: a repeat-aware gate for deletions under 5bp (#92)</p>
+<p>The windowed rule drops a wrong-length deletion under 5bp as noise, while an insertion of any size is flagged and resolved by repeat. A gate that also flagged a sub-5bp windowed deletion falling inside the variant's tract (so the tract resolved it to neither + <code>partial_alt</code>) was measured on 2026-09-22 on real <abbr title="Microsatellite Instability - Instability in short tandem repeat regions">MSI</abbr>-high truth data and not built (<a href="https://github.com/msk-access/gbcms/issues/92#issuecomment-5780293921">#92 comment</a>). Panel: 6 <abbr title="Microsatellite Instability - Instability in short tandem repeat regions">MSI</abbr>-high samples (<abbr title="Microsatellite Instability - Instability in short tandem repeat regions">MSI</abbr> scores 45-53) carrying 246 signed-out small indels at classic <abbr title="Microsatellite Instability - Instability in short tandem repeat regions">MSI</abbr> target tracts (TGFBR2 A×10, MSH3 A×8, RNF43 C×7, JAK1 T×8, NOTCH4 AGC×7, …), plus a thin MSS control (one locus); the comment also says "all 247 covered loci".</p>
+<ul>
+<li><strong>Truth concordance at the <abbr title="Microsatellite Instability - Instability in short tandem repeat regions">MSI</abbr> loci was already excellent:</strong> median ad-versus-sign-out relative error <strong>+1.4%</strong> (IQR +0.6% to +2.9%) across all 247 covered loci. The wrong-length rule does not degrade <abbr title="Microsatellite Instability - Instability in short tandem repeat regions">MSI</abbr> genotyping.</li>
+<li><strong>Real stutter was present and already handled:</strong> 35 of 247 loci show 3 or more same-tract wrong-length ops (for example an expected D1 with a D2 ladder ×20; an expected D6 in a triplet tract with D3×92, D9×5, D12×3). Across them <strong>481 stutter reads are flagged <code>partial_alt</code> against 35 not flagged (93%)</strong>. Left-alignment collapses same-tract ops onto the shared anchor, where the anchor-position wrong-length rule fires (neither + <code>partial_alt</code>), so the windowed &lt;5bp dismissal rarely sees real stutter: real stutter is not displaced from the anchor.</li>
+<li><strong>The residual does not justify a rule:</strong> unflagged stutter is about 0.14 reads per locus. Off-length sub-5bp ops run at 11.7 per 1000 dp at <abbr title="Microsatellite Instability - Instability in short tandem repeat regions">MSI</abbr>-high signed-out loci against 0 at the MSS control.</li>
+</ul>
+<p>The gate assumed stutter would be absorbed silently into <code>rd</code>; the measurement shows the anchor-position rule already separates it. The measurement used the <abbr title="Compact Idiosyncratic Gapped Alignment Report - BAM alignment operation string">CIGAR</abbr> path, which then judged every deletion. Since 6.7.0 a prepared deletion is judged by its bases (RJ-27), and the noise rule above runs only where the exact-carrier rule cannot judge the row
+(REJ-20260922-002 in <code>.agents/learnings/REJECTED.md</code>).</p>
+</div>
 <div class="admonition warning">
 <p class="admonition-title">No Interior REF for Large Deletions</p>
 <p>Reads that map <strong>entirely within</strong> a large deleted span never see the anchor junction and carry no information about whether the deletion is present. They are classified <strong>neither</strong> — an earlier interior-REF shortcut was removed because it massively inflated <code>rd</code> (claiming thousands of interior reads as REF evidence for a ~1kb deletion). Only reads spanning the anchor position contribute to any count.</p>
@@ -2520,6 +2533,14 @@ Use mouse to pan and zoom
 </code></pre></div>
 <hr>
 <h2 id="wrong-length-pure-indels-partial_alt">Wrong-Length Pure Indels (partial_alt)<a class="headerlink" href="#wrong-length-pure-indels-partial_alt" title="Permanent link">¶</a></h2>
+<div class="admonition note">
+<p class="admonition-title">Which path applies</p>
+<p>These are the <abbr title="Compact Idiosyncratic Gapped Alignment Report - BAM alignment operation string">CIGAR</abbr> checks' rules. Since 6.7.0 every prepared pure indel is judged by
+its bases (RJ-27; RJ-7 as amended), in RNA on the read's spliced reference (RJ-19); the <abbr title="Compact Idiosyncratic Gapped Alignment Report - BAM alignment operation string">CIGAR</abbr>
+checks' length gates (the under-5 bp windowed noise gate, the insert identity band) apply only
+where the rule cannot judge: on the FORTE RNA arms that was no read of about 1.24M (measured
+2026-10-27 on the FORTE RNA slices).</p>
+</div>
 <p>A read whose <abbr title="Compact Idiosyncratic Gapped Alignment Report - BAM alignment operation string">CIGAR</abbr> proves a <strong>pure indel of a different length</strong> at the variant anchor is
 evidence of a <strong>different allele</strong> — never definitive REF, and never the queried ALT. This is
 the load-bearing rule for repeat-tract loci, where coexisting distinct-length populations are
@@ -2851,7 +2872,7 @@ confidence about positions the quality mask rejected.</p>
 - <strong>When the rule cannot run.</strong> <code>prepare_variants</code> fetches reference until it holds the event, grown through any repeat, with its flank and the neighbouring-change reach of 25 bases, and until the windows, with every base the guard could mask masked, reach a base telling the alleles apart (up to 16,384 bases each side, clamped at a contig end: the window holds the bases that exist). For reading reads whole it also holds a whole read's reach, 300 bases each side of the change (<code>Variant.whole_ref</code>, not exposed to Python), which every bin's fetch covers. A variant without that reference (one built without <code>prepare_variants</code>, or an event whose two flank bases would pass a contig end) keeps the previous classifier below. Every variant of a normal run is prepared. A record stored without its bases (SEQ <code>*</code>) is not read.</p>
 <div class="admonition info">
 <p class="admonition-title">Why not a tolerant score</p>
-<p>Local alignment, likelihoods and an edit-distance margin all credit near-matches to the given allele. On real complex variants, those scores credited reads carrying other alleles, and reads that end inside the event. VarDict's rescue and Mutect2's <code>--alleles</code> mode do the same. gbcms reports the given allele's exact support and names a different allele the reads carry in <code>gbcms_diagnostic</code> (<code>OBSERVED_ALLELE</code> / <code>COEXISTING_ALLELE</code>).</p>
+<p>Local alignment, likelihoods and an edit-distance margin all credit near-matches to the given allele. On real complex variants, those scores credited reads carrying other alleles, and reads that end inside the event. VarDict's rescue and Mutect2's <code>--alleles</code> mode do the same (VarDictJava and GATK Mutect2 source: VarDict's rescue moves near-matching reads in by soft-clip consensus with up to 3 mismatches and counts REF as one base; Mutect2 credits each read's best haplotype by likelihood, so under <code>--alleles</code> a read carrying a slightly different, unassembled allele can be credited to the given one). The measurements are in <a href="../read-judgment/">Read Judgment</a>, evidence behind RJ-4. gbcms reports the given allele's exact support and names a different allele the reads carry in <code>gbcms_diagnostic</code> (<code>OBSERVED_ALLELE</code> / <code>COEXISTING_ALLELE</code>).</p>
 </div>
 <h3 id="previous-classifier-variants-without-a-reference-pure-indel-phase-3">Previous classifier (variants without a reference; pure-indel Phase 3)<a class="headerlink" href="#previous-classifier-variants-without-a-reference-pure-indel-phase-3" title="Permanent link">¶</a></h3>
 <p>The phases below still classify complex variants the exact-carrier rule cannot judge (see above). They are also the Phase-3 fallback that <code>check_insertion</code> and <code>check_deletion</code> use for pure indels. They are a <strong>three-phase</strong> algorithm with quality-aware matching and Smith-Waterman fallback.</p>
@@ -3363,6 +3384,16 @@ window shows none of it past the splice, as a read ending there shows none.</p>
 the same as GATK's <abbr title="Alternate Depth - Reads supporting the alternate allele">AD</abbr>, which counts only informative reads. The rule does not
 apply to substitution-bearing events (SNV, <abbr title="Multi-Nucleotide Polymorphism - Multiple adjacent base substitutions">MNP</abbr>, delins): they have no shift
 region, and their first base already discriminates.</p>
+<p><strong>A worked example: counting by base against by allele</strong> (#253, measured 2026-10-08).
+A 9bp deletion in a 51bp trinucleotide repeat, in an IMPACT tumor and its matched
+normal. By base at the indel's position, as IGV, bam-readcount, the original
+GetBaseCounts and the clinical counts do: 159 reads show the reference base, but
+only 16 of them cross the tract. The deletion count of 24 is every length together;
+the given 9bp deletion is 15 of them. By allele, the tumor's <code>vaf</code> is 15/31 ≈ 48%
+and the normal's crossing reads show 0/23 (a working note of the same measurement
+says 0/24). So it is a high-fraction somatic event, which by-base counting reports
+at 6.6%. Whether allele-level <abbr title="Variant Allele Frequency - Fraction of reads supporting the variant allele">VAF</abbr> needs a spanning-bias correction (the shorter
+allele crosses the tract more often) is measured against germline hets in C41 #264.</p>
 <p><strong>The ALT side (6.6.0, #188).</strong> An ALT call stands from the <abbr title="Compact Idiosyncratic Gapped Alignment Report - BAM alignment operation string">CIGAR</abbr> alone when the
 read spans C10's windows read on the ALT haplotype, <code>[lo − 1, hi + 2)</code> or
 <code>[lo − 2, hi + 1)</code>. For an insertion these are its REF windows. For a deletion
@@ -3427,7 +3458,14 @@ They are documented constants, not tuned per locus: an earlier
 <code>dynamic_sw_gap_extend</code> logistic curve rounded to −1 for every <code>repeat_span</code>,
 and traced real runs (ACCESS duplex, <abbr title="Microsatellite Instability - Instability in short tandem repeat regions">MSI</abbr>-high) confirmed <abbr title="Smith-Waterman - Edit-distance based local sequence alignment algorithm">SW</abbr> scores nothing
 under the default backend on well-formed input, so the curve was removed
-(issue #92).</p>
+(issue #92). The traced runs were an ACCESS duplex sample and the heaviest <abbr title="Microsatellite Instability - Instability in short tandem repeat regions">MSI</abbr>-high
+sample: 42 tract indels and 31 Phase-3 classifications, with zero Smith-Waterman
+fallback invocations (<a href="https://github.com/msk-access/gbcms/issues/92#issuecomment-5788174498">#92 comment</a>).
+Under the default <abbr title="Pair Hidden Markov Model - Probabilistic alignment using base quality scores">PairHMM</abbr> backend the pangenomic matrix builds on well-formed input
+(prep supplies <code>ref_context</code>), and on the explicit <abbr title="Smith-Waterman - Edit-distance based local sequence alignment algorithm">SW</abbr> backend the old function was a
+constant −1 anyway. Making the relaxation real (a curve reaching 0 for deep repeats)
+was not adopted: it would change <abbr title="Smith-Waterman - Edit-distance based local sequence alignment algorithm">SW</abbr> alignment scores on a path that never fires, at
+the cost of a validation pass (REJ-20260923-005 in <code>.agents/learnings/REJECTED.md</code>).</p>
 <p>Smith-Waterman has two roles:</p>
 <ul>
 <li><strong>The explicit scorer</strong> under <code>--alignment-backend sw</code> — the primary Phase-3
@@ -3490,7 +3528,7 @@ constants and do not use it).</p>
 <span class="md-icon" title="Last update">
 <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M21 13.1c-.1 0-.3.1-.4.2l-1 1 2.1 2.1 1-1c.2-.2.2-.6 0-.8l-1.3-1.3c-.1-.1-.2-.2-.4-.2m-1.9 1.8-6.1 6V23h2.1l6.1-6.1zM12.5 7v5.2l4 2.4-1 1L11 13V7zM11 21.9c-5.1-.5-9-4.8-9-9.9C2 6.5 6.5 2 12 2c5.3 0 9.6 4.1 10 9.3-.3-.1-.6-.2-1-.2s-.7.1-1 .2C19.6 7.2 16.2 4 12 4c-4.4 0-8 3.6-8 8 0 4.1 3.1 7.5 7.1 7.9l-.1.2z"></path></svg>
 </span>
-<span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-timeago" title="October 26, 2026 19:56:00 UTC"><span class="timeago" datetime="2026-10-26T19:56:00+00:00" locale="en"></span></span><span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-iso_date" title="October 26, 2026 19:56:00 UTC">2026-10-26</span>
+<span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-timeago" title="October 27, 2026 19:20:53 UTC"><span class="timeago" datetime="2026-10-27T19:20:53+00:00" locale="en"></span></span><span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-iso_date" title="October 27, 2026 19:20:53 UTC">2026-10-27</span>
 </span>
 <span class="md-source-file__fact">
 <span class="md-icon" title="Created">

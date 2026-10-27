@@ -563,6 +563,15 @@
     </span>
 </a>
 </li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#how-much-antisense-evidence-there-is-and-why-the-column-counts-it-first">
+<span class="md-ellipsis">
+      
+        How much antisense evidence there is, and why the column counts it first
+      
+    </span>
+</a>
+</li>
 </ul>
 </nav>
 </li>
@@ -990,6 +999,15 @@
 <span class="md-ellipsis">
       
         Strandedness Filter
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#how-much-antisense-evidence-there-is-and-why-the-column-counts-it-first">
+<span class="md-ellipsis">
+      
+        How much antisense evidence there is, and why the column counts it first
       
     </span>
 </a>
@@ -1547,6 +1565,61 @@ same strand (<code>forward</code> swaps them):</p>
 ASJD's strand-discordance check. <code>--no-strandedness</code> alone only stops the filtering; reads are still
 folded under the <code>reverse</code> protocol (see <a href="../../cli/rna/#strandedness-filtering"><code>gbcms rna</code></a>).</p>
 </div>
+<h3 id="how-much-antisense-evidence-there-is-and-why-the-column-counts-it-first">How much antisense evidence there is, and why the column counts it first<a class="headerlink" href="#how-much-antisense-evidence-there-is-and-why-the-column-counts-it-first" title="Permanent link">¶</a></h3>
+<p><code>rna_antisense_depth</code> counts antisense REF and ALT reads before the strand filter drops them
+(as <code>mq0_count</code> is tallied before its filter), and ASJD's <code>STRAND_DISCORDANT</code> is documented as a
+<code>--no-strandedness</code> diagnostic. Decided 2026-09-25 from this census (local data, aggregates only;
+<a href="https://github.com/msk-access/gbcms/issues/114#issuecomment-5834318189">evidence</a>, archived plan
+<code>.agents/archive/CYCLE_6.6.0_PLAN.md</code> § R2). FORTE truth cohort, 33 samples, 71 truth loci inside a
+single gene, reverse-stranded <abbr title="Deoxyuridine Triphosphate - Used in strand-specific RNA-seq protocols">dUTP</abbr>:</p>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">Population</th>
+<th style="text-align: right;">Sense</th>
+<th style="text-align: right;">Antisense</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;">Reads at the truth loci</td>
+<td style="text-align: right;">28,182</td>
+<td style="text-align: right;">143 (0.5%)</td>
+</tr>
+<tr>
+<td style="text-align: left;">What gbcms reported before the change</td>
+<td style="text-align: right;">28,128</td>
+<td style="text-align: right;">0</td>
+</tr>
+<tr>
+<td style="text-align: left;">Junction reads near the loci</td>
+<td style="text-align: right;">125,541</td>
+<td style="text-align: right;">138 (0.1%)</td>
+</tr>
+</tbody>
+</table>
+<ul>
+<li>13 of the 71 loci (18%) have any antisense read; 24 antisense reads carry the ALT.</li>
+<li>On a local sample, 500 random expressed exonic positions: median antisense fraction 0%, 5% of
+  positions have any, the maximum 48% (typical of overlapping antisense transcripts).</li>
+<li><strong>Standard.</strong> None for allele counting. Gene-level counters (HTSeq <code>--stranded</code>, featureCounts
+  <code>-s</code>) drop wrong-strand reads and report no antisense count; ASE counters (GATK ASEReadCounter,
+  phASER, WASP) have no strand option; QC tools (Picard, RNA-SeQC, RSeQC) report antisense only as a
+  library-level rate. The closest precedent for counting before the filter is ASEReadCounter, which
+  reports how many reads each filter removed, counted before exclusion. No tool reports
+  strand-discordant junction evidence; <abbr title="Spliced Transcripts Alignment to a Reference - RNA-seq aligner">STAR</abbr> takes junction strand from the intron motif.</li>
+<li><strong>Why <code>STRAND_DISCORDANT</code> stays unfiltered-only:</strong> before any filter, antisense junction evidence is
+  about 0.1%, so a pre-filter flag would be close to noise. Not adopted: that flag on all junction
+  reads, and keeping the column as "reads that reached classification" (REJ-20260925-003 in
+  <code>.agents/learnings/REJECTED.md</code>).</li>
+<li><strong>Acceptance (2026-09-29).</strong> FORTE truth cohort (94 rows): only <code>rna_antisense_depth</code> changes, from
+  0 to 203 reads on 15 rows, equal to its <code>--no-strandedness</code> value on 94/94 rows. An independent
+  per-read census of the 68 truth SNV rows (the reads' own bases, <abbr title="Deoxyuridine Triphosphate - Used in strand-specific RNA-seq protocols">dUTP</abbr> strand folding, the <abbr title="Mapping Quality - Confidence score for read alignment">MAPQ</abbr>/<abbr title="Number of Hits - BAM tag indicating number of reported alignments">NH</abbr>
+  rule, emulated <abbr title="Base Alignment Quality - Heuristic quality downgrade near indels and splice junctions">BAQ</abbr>): 68/68 rows exact, 181 = 181 reads. Exon-edge probes (978 rows): only the
+  antisense column changes, from 0 to 3,678 reads (0.12% of sense depth, on 393 rows), equal to
+  <code>--no-strandedness</code> on 978/978. DNA (28 runs) byte-identical. The column counts REF and ALT reads
+  over the anchor, so it reports fewer than the 143 raw antisense reads of the census.</li>
+</ul>
 <hr>
 <h2 id="baq-quality-downgrade"><abbr title="Base Alignment Quality - Heuristic quality downgrade near indels and splice junctions">BAQ</abbr> Quality Downgrade<a class="headerlink" href="#baq-quality-downgrade" title="Permanent link">¶</a></h2>
 <p>When <code>--apply-baq</code> is enabled, base qualities near <abbr title="Compact Idiosyncratic Gapped Alignment Report - BAM alignment operation string">CIGAR</abbr> indels and splice junctions (<abbr title="Compact Idiosyncratic Gapped Alignment Report - BAM alignment operation string">CIGAR</abbr> <code>N</code>/RefSkip) are heuristically downgraded to prevent inflated quality scores from causing false-positive allele classifications.</p>
@@ -1630,7 +1703,7 @@ folded under the <code>reverse</code> protocol (see <a href="../../cli/rna/#stra
 <span class="md-icon" title="Last update">
 <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M21 13.1c-.1 0-.3.1-.4.2l-1 1 2.1 2.1 1-1c.2-.2.2-.6 0-.8l-1.3-1.3c-.1-.1-.2-.2-.4-.2m-1.9 1.8-6.1 6V23h2.1l6.1-6.1zM12.5 7v5.2l4 2.4-1 1L11 13V7zM11 21.9c-5.1-.5-9-4.8-9-9.9C2 6.5 6.5 2 12 2c5.3 0 9.6 4.1 10 9.3-.3-.1-.6-.2-1-.2s-.7.1-1 .2C19.6 7.2 16.2 4 12 4c-4.4 0-8 3.6-8 8 0 4.1 3.1 7.5 7.1 7.9l-.1.2z"></path></svg>
 </span>
-<span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-timeago" title="October 26, 2026 19:56:00 UTC"><span class="timeago" datetime="2026-10-26T19:56:00+00:00" locale="en"></span></span><span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-iso_date" title="October 26, 2026 19:56:00 UTC">2026-10-26</span>
+<span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-timeago" title="October 27, 2026 18:31:32 UTC"><span class="timeago" datetime="2026-10-27T18:31:32+00:00" locale="en"></span></span><span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-iso_date" title="October 27, 2026 18:31:32 UTC">2026-10-27</span>
 </span>
 <span class="md-source-file__fact">
 <span class="md-icon" title="Created">
