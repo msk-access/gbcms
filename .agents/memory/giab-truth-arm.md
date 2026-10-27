@@ -56,4 +56,4 @@ scratchpad copies of these tools are mirrored in `plan670/sp_tools/` (scripts on
 - **Reads only phasing can decide leave the bars.** A read whose bases fit its truth sequence and
   another candidate equally is not "decidable by bases".
 
-Use v2d for every HG002 bar from now on.
+Use **`--truth v2dbq20`** for every HG002 bar from now on: v2d plus the decidable-by-bases sidecar (`r2/truth_v2d_bases.py` → `truth_bases_v2d.tsv`). It leaves out 4.2% of c246's decidable reads (mostly X-plus-neighbour pairs) and 1.2% of tr's. Under it, every HG002 class passes for the integration build (`src_c53d`/`c54a`); tandem-repeat SNVs went from fail to pass.
