@@ -273,7 +273,7 @@ The corrected allele is scored as unique sequence (`repeat_span` 0). In RNA with
     The flag appears only when the corrected allele got more ALT support than the called one. If the original gets more, it is used as-is with a normal `PASS` status. The comparison is not an exact haplotype match, though. Reads at real loci carry several forms: the called delins, the corrected allele, a 1bp deletion plus the change, or other alleles of the run. Both classifiers can claim reads of forms neither describes exactly. Inspect the reads at flagged loci; a redesign is tracked in the project plan.
 
 !!! example "Real-World: SOX2"
-    **SOX2** at chr3:181430901: `CCCCCC→T` (6bp→1bp, net −5bp). The reads carry `CCCCT`.
+    **SOX2**, `CCCCCC→T` (6bp→1bp, net −5bp). The reads carry `CCCCT`.
     - **Default:** the row reports `CCCCCC→T` (alt=3), and `gbcms_diagnostic` names `CCCCT`.
     - **With `--rescue-homopolymer`:** the corrected `CCCCCC→CCCCCT` (alt=79) wins, and the row reports `gbcms_status = PASS`, `gbcms_status_reason = WARN_HOMOPOLYMER_DECOMP`.
 
