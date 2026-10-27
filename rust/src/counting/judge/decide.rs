@@ -12,7 +12,7 @@ use rust_htslib::bam::record::{Aux, Cigar, Record};
 use std::borrow::Cow;
 
 use super::graph::{self, ShortReads, Workspace};
-use super::haplotypes::{other_option, AlnTags, Class, Hap, NeitherRule, ReadView, Scorer, ScorerKind, Site, TriageMode};
+use super::haplotypes::{neither_trace, other_option, AlnTags, Class, Hap, NeitherRule, ReadView, Scorer, ScorerKind, Site, TriageMode};
 use super::score::{Alignment, Placed, DELTA, WILD};
 use crate::counting::carrier::{readable_range, ReadRules};
 use crate::counting::utils::{soft_clips, ClassifyPhase, ClassifyResult};
@@ -66,6 +66,32 @@ pub(crate) struct Verdict {
     /// Measurement only, TEMPORARY: where a substitution's telling bases lie in the read's
     /// soft clip (asked for the anchor), the clip's bases around them ([`ClipBases`]).
     pub(crate) clip: Option<ClipBases>,
+    /// Measurement only: what the read shows at X's telling bases that is neither allele's
+    /// ([`NeitherTrace`]), where traced or the switch is on.
+    pub(crate) neither: NeitherTrace,
+}
+
+/// Measurement only, TEMPORARY: a REF or ALT call's read at X's telling bases (on the called
+/// haplotype): how many there are and are read confidently, the neither bases among them (up
+/// to four: offset among the telling bases, base, quality, how many other reads of the row
+/// read it the same at the same place, and that place relative to X by the read's own
+/// alignment, `i32::MIN` where it leaves it unplaced), and the read's confident bases and
+/// mismatches on that haplotype elsewhere.
+#[derive(Debug, Clone, Copy, Default)]
+pub(crate) struct NeitherTrace {
+    pub(crate) on: bool,
+    pub(crate) call: u8,
+    pub(crate) size: u16,
+    pub(crate) telling: u16,
+    pub(crate) conf: u16,
+    pub(crate) n: u8,
+    pub(crate) bases: [(u16, u8, u8, u16, i32); 4],
+    pub(crate) max_recur: u32,
+    pub(crate) bg_conf: u32,
+    pub(crate) bg_mm: u32,
+    /// Of those mismatches, the ones no other read of the row reads the same at that place.
+    pub(crate) bg_single: u32,
+    pub(crate) moved: bool,
 }
 
 /// Measurement only: what the "fits nothing" rule saw of one read (see [`Verdict::fits`]).
@@ -352,7 +378,7 @@ fn judge_enumerated(site: &Site, read: &ReadView, min_baseq: u8, ask_anchor: boo
     // haplotypes do not hold) is depth only: a margin between two misfits is no evidence.
     if top < FITS_NOTHING {
         trace!("haplotype judge: the read fits no haplotype (best at most {top}) → depth only");
-        return Verdict { call: Call::Depth, qual: 0, best: [None; 3], holds_anchor: false, placed: None, triage: None, confirmed: false, spells: 0, clip: None, fits: FitsTrace::default(), fits_none: true };
+        return Verdict { call: Call::Depth, qual: 0, best: [None; 3], holds_anchor: false, placed: None, triage: None, confirmed: false, spells: 0, clip: None, fits: FitsTrace::default(), fits_none: true, neither: NeitherTrace::default() };
     }
     for h in pending {
         let hap = &site.haps[h];
@@ -385,7 +411,7 @@ fn judge_graph(site: &Site, read: &ReadView, min_baseq: u8, ask_anchor: bool) ->
     // The aligner's own tags decide before any programme runs.
     if rule == FitsRule::XsPure && read.tags.fits_elsewhere() {
         let fits = FitsTrace { states: site.graphs.len() as u8, fired: true, ..FitsTrace::default() };
-        return Verdict { call: Call::Depth, qual: 0, best: [None; 3], holds_anchor: false, placed: None, triage: None, confirmed: false, spells: 0, clip: None, fits, fits_none: false };
+        return Verdict { call: Call::Depth, qual: 0, best: [None; 3], holds_anchor: false, placed: None, triage: None, confirmed: false, spells: 0, clip: None, fits, fits_none: false, neither: NeitherTrace::default() };
     }
     let gr = site.graph_read(read);
     let mut ws = Workspace::default();
@@ -397,7 +423,7 @@ fn judge_graph(site: &Site, read: &ReadView, min_baseq: u8, ask_anchor: bool) ->
     };
     if site.triage_mode == TriageMode::On {
         if let Some(t) = triaged {
-            return Verdict { call: t.call, qual: t.qual, best: [None; 3], holds_anchor: false, placed: None, triage: None, confirmed: false, spells: 0, clip: None, fits: FitsTrace::default(), fits_none: false };
+            return Verdict { call: t.call, qual: t.qual, best: [None; 3], holds_anchor: false, placed: None, triage: None, confirmed: false, spells: 0, clip: None, fits: FitsTrace::default(), fits_none: false, neither: NeitherTrace::default() };
         }
     }
     let mut best: [Option<(i32, usize)>; 3] = [None; 3];
@@ -412,7 +438,7 @@ fn judge_graph(site: &Site, read: &ReadView, min_baseq: u8, ask_anchor: bool) ->
     let fits = FitsTrace { full: halves.iter().filter(|h| h.is_none()).count() as u8, states: halves.len() as u8, fired, neighbourhood };
     let verdict = if fired {
         trace!("haplotype judge: the read fits no state's graph (best {top}, {rule:?}) → depth only");
-        Verdict { call: Call::Depth, qual: 0, best: best.map(|b| b.map(|(s, _)| s)), holds_anchor: false, placed: None, triage: None, confirmed: false, spells: 0, clip: None, fits, fits_none: false }
+        Verdict { call: Call::Depth, qual: 0, best: best.map(|b| b.map(|(s, _)| s)), holds_anchor: false, placed: None, triage: None, confirmed: false, spells: 0, clip: None, fits, fits_none: false, neither: NeitherTrace::default() }
     } else {
         let scorer = Scorer::new(read);
         let ws = std::cell::RefCell::new(ws);
@@ -508,10 +534,10 @@ fn conclude<'h>(
         Call::Depth => None,
     };
     let Some(won) = won else {
-        return Verdict { call, qual: 0, best: scores, holds_anchor: false, placed: None, triage: None, confirmed: false, spells: 0, clip: None, fits: FitsTrace::default(), fits_none: false };
+        return Verdict { call, qual: 0, best: scores, holds_anchor: false, placed: None, triage: None, confirmed: false, spells: 0, clip: None, fits: FitsTrace::default(), fits_none: false, neither: NeitherTrace::default() };
     };
     if call == Call::Other && !ask_anchor {
-        return Verdict { call, qual: 0, best: scores, holds_anchor: false, placed: None, triage: None, confirmed: false, spells: 0, clip: None, fits: FitsTrace::default(), fits_none: false };
+        return Verdict { call, qual: 0, best: scores, holds_anchor: false, placed: None, triage: None, confirmed: false, spells: 0, clip: None, fits: FitsTrace::default(), fits_none: false, neither: NeitherTrace::default() };
     }
     let hap_w = match fit_other.or(mixed_on) {
         Some(h) => h,
@@ -519,33 +545,34 @@ fn conclude<'h>(
     };
     let hap_w: &Hap = &hap_w;
     let (wa, off) = scorer.align(site, hap_w);
-    // Measurement only (GBCMS_JUDGE_NEITHER=other): a covered telling base read confidently
-    // as neither allele makes a REF or ALT call another allele.
-    let neither = || {
-        if site.changed_bases() >= 2 {
-            return read_at_x(site, read, hap_w, &wa, off).third;
+    // Measurement only (GBCMS_JUDGE_NEITHER): a covered telling base read confidently as
+    // neither allele makes a REF or ALT call another allele, at every size (`other`), below a
+    // size (`other:N`), or where other reads of the row read it too (`recur:K`).
+    let mut nt = NeitherTrace::default();
+    if matches!(call, Call::Alt | Call::Ref) && (site.neither != NeitherRule::Margin || neither_trace()) {
+        if let Some(t) = neither_bases(site, read, hap_w, &wa, off) {
+            nt = NeitherTrace { on: neither_trace(), call: if call == Call::Alt { 1 } else { 0 }, ..t };
+            nt.moved = nt.n > 0
+                && match site.neither {
+                    NeitherRule::Margin => false,
+                    NeitherRule::Other => true,
+                    NeitherRule::Below(n) => site.x_size() < n,
+                    NeitherRule::Recur(k) => nt.max_recur >= k,
+                };
         }
-        // a delins: the called allele's telling bases (none for a pure indel)
-        !site.is_substitution()
-            && site.telling_in(hap_w).into_iter().any(|(col, base)| {
-                wa.placed
-                    .iter()
-                    .position(|p| matches!(*p, Placed::At(c) if (c + off) as i64 == col))
-                    .is_some_and(|i| read.seq[i] != WILD && read.seq[i] != base)
-            })
-    };
-    if matches!(call, Call::Alt | Call::Ref) && site.neither == NeitherRule::Other && neither() {
+    }
+    if nt.moved {
         trace!("haplotype judge: a {call:?} call on a read with a telling base read as neither allele → another allele");
         call = Call::Other;
         if !ask_anchor {
-            return Verdict { call, qual: 0, best: scores, holds_anchor: false, placed: None, triage: None, confirmed: false, spells: 0, clip: None, fits: FitsTrace::default(), fits_none: false };
+            return Verdict { call, qual: 0, best: scores, holds_anchor: false, placed: None, triage: None, confirmed: false, spells: 0, clip: None, fits: FitsTrace::default(), fits_none: false, neither: nt };
         }
     }
     if matches!(call, Call::Alt | Call::Ref) && site.changed_bases() >= 2 && read_at_x(site, read, hap_w, &wa, off).mixed() {
         trace!("haplotype judge: a {call:?} call on a read carrying some of X's changes → another allele");
         call = Call::Other;
         if !ask_anchor {
-            return Verdict { call, qual: 0, best: scores, holds_anchor: false, placed: None, triage: None, confirmed: false, spells: 0, clip: None, fits: FitsTrace::default(), fits_none: false };
+            return Verdict { call, qual: 0, best: scores, holds_anchor: false, placed: None, triage: None, confirmed: false, spells: 0, clip: None, fits: FitsTrace::default(), fits_none: false, neither: NeitherTrace::default() };
         }
     }
     let column = |p: &Placed| if let Placed::At(c) = *p { Some((c + off) as i64) } else { None };
@@ -556,7 +583,7 @@ fn conclude<'h>(
     let at = |p: &Placed| matches!(p, Placed::At(_));
     let placed = wa.placed.iter().position(at).zip(wa.placed.iter().rposition(at)).map(|(a, b)| (a, b + 1));
     if call == Call::Other {
-        return Verdict { call, qual: 0, best: scores, holds_anchor, placed, triage: None, confirmed: false, spells: 0, clip: None, fits: FitsTrace::default(), fits_none: false };
+        return Verdict { call, qual: 0, best: scores, holds_anchor, placed, triage: None, confirmed: false, spells: 0, clip: None, fits: FitsTrace::default(), fits_none: false, neither: nt };
     }
     // The bases that tell X from REF at its site, covered by the winning alignment: X's
     // own for an ALT call, none of them read confidently as another base; REF's for a REF
@@ -589,7 +616,7 @@ fn conclude<'h>(
     let clip = if ask_anchor && site.is_substitution() && reads_all { clip_bases(read, hap_w, &wa, off, &telling_at) } else { None };
     if !reads_all {
         call = Call::Depth;
-        return Verdict { call, qual: 0, best: scores, holds_anchor: false, placed: None, triage: None, confirmed: false, spells: 0, clip: None, fits: FitsTrace::default(), fits_none: false };
+        return Verdict { call, qual: 0, best: scores, holds_anchor: false, placed: None, triage: None, confirmed: false, spells: 0, clip: None, fits: FitsTrace::default(), fits_none: false, neither: nt };
     }
     // The best losing haplotype: the best of the other classes, the first on a tie (X's,
     // for a REF call the other allele tied: the bases that beat X decided it).
@@ -604,7 +631,7 @@ fn conclude<'h>(
         deciding_quality(read, &wa, &la).map_or(floor, |q| q.max(floor))
     });
     let spells = if call == Call::Alt { site.spelled_holders(read, hap_w, &wa, off) } else { 0 };
-    Verdict { call, qual, best: scores, holds_anchor, placed, triage: None, confirmed, spells, clip, fits: FitsTrace::default(), fits_none: false }
+    Verdict { call, qual, best: scores, holds_anchor, placed, triage: None, confirmed, spells, clip, fits: FitsTrace::default(), fits_none: false, neither: nt }
 }
 
 /// What a read's confident bases show at a substitution X's telling bases, on its
@@ -644,6 +671,65 @@ fn read_at_x(site: &Site, read: &ReadView, hap: &Hap, al: &Alignment, off: usize
         }
     }
     out
+}
+
+/// Measurement only: what `read`'s alignment `al` to `hap` (a haplotype carrying X or holding
+/// REF's bases there, its columns offset by `off`) reads at X's telling bases that is neither
+/// allele's: on a substitution of two bases or more, a confident base neither REF's nor X's
+/// at a base X changes, or other than theirs where they agree; on a delins, a confident base
+/// other than the called allele's. None at any other row.
+fn neither_bases(site: &Site, read: &ReadView, hap: &Hap, al: &Alignment, off: usize) -> Option<NeitherTrace> {
+    let telling: Vec<(i64, Option<u8>, u8)> = if site.changed_bases() >= 2 {
+        site.telling_pairs(hap).into_iter().map(|(col, rb, ab)| (col, Some(rb), ab)).collect()
+    } else if !site.is_substitution() {
+        site.telling_in(hap).into_iter().map(|(col, b)| (col, None, b)).collect()
+    } else {
+        return None;
+    };
+    if telling.is_empty() {
+        return None;
+    }
+    let at = |col: i64| al.placed.iter().position(|p| matches!(*p, Placed::At(c) if (c + off) as i64 == col));
+    let x_pos = site.x_pos();
+    let mut t = NeitherTrace { size: site.x_size() as u16, telling: telling.len() as u16, ..NeitherTrace::default() };
+    for (k, &(col, rb, b)) in telling.iter().enumerate() {
+        let Some(i) = at(col) else { continue };
+        let got = read.seq[i];
+        if got == WILD {
+            continue;
+        }
+        t.conf += 1;
+        let neither = match rb {
+            Some(rb) if rb != b => got != rb && got != b,
+            Some(rb) => got != rb,
+            None => got != b,
+        };
+        if neither {
+            let pos = read.own_position(i);
+            let recur = pos.map_or(0, |p| site.recurrence(p, got));
+            t.max_recur = t.max_recur.max(recur);
+            if (t.n as usize) < t.bases.len() {
+                let off_x = pos.map_or(i32::MIN, |p| (p - x_pos) as i32);
+                t.bases[t.n as usize] = (k as u16, got, read.quals[i], recur.min(u32::from(u16::MAX)) as u16, off_x);
+            }
+            t.n = t.n.saturating_add(1);
+        }
+    }
+    let cols: Vec<i64> = telling.iter().map(|t| t.0).collect();
+    for (i, p) in al.placed.iter().enumerate() {
+        if let Placed::At(c) = *p {
+            let col = (c + off) as i64;
+            let (got, want) = (read.seq[i], hap.base(c + off));
+            if !cols.contains(&col) && got != WILD && want != WILD {
+                t.bg_conf += 1;
+                if got != want {
+                    t.bg_mm += 1;
+                    t.bg_single += u32::from(read.own_position(i).is_some_and(|p| site.recurrence(p, got) == 0));
+                }
+            }
+        }
+    }
+    Some(t)
 }
 
 /// What one read base costs in an alignment, and the haplotype bases skipped on each
@@ -843,6 +929,20 @@ pub(crate) fn classify(record: &Record, variant: &Variant, quals: &[u8], min_bas
             // score per class (kept where the rule made it depth), its confident bases and the
             // errors its qualities lead one to expect, the states the full programme decided,
             // the time the judge took, the aligner's tags and the neighbourhood fit.
+            let nt = verdict.neither;
+            if nt.on {
+                let bases: Vec<String> = nt.bases[..usize::from(nt.n).min(4)]
+                    .iter()
+                    .map(|&(k, b, q, r, o)| format!("{k}:{}:{q}:{r}:{}", b as char, if o == i32::MIN { "-".to_string() } else { o.to_string() }))
+                    .collect();
+                trace!(
+                    "judge neither {}:{} {}>{} read={} mate={} side={} size={} telling={} conf={} n={} bases={} bg={}/{}/{} moved={} final={:?}",
+                    variant.chrom, variant.pos + 1, variant.ref_allele, variant.alt_allele,
+                    String::from_utf8_lossy(record.qname()), if record.is_first_in_template() { 1 } else { 2 },
+                    if nt.call == 1 { "ALT" } else { "REF" }, nt.size, nt.telling, nt.conf, nt.n,
+                    if bases.is_empty() { "-".to_string() } else { bases.join(";") }, nt.bg_single, nt.bg_mm, nt.bg_conf, nt.moved, verdict.call,
+                );
+            }
             let f = verdict.fits;
             trace!(
                 "judge fits {}:{} {}>{} read={} mate={} call={:?} alt={} ref={} other={} conf={} len={} experr={:.2} \

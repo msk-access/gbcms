@@ -301,6 +301,12 @@ impl ReadView {
     pub(crate) fn len(&self) -> usize {
         self.seq.len()
     }
+
+    /// The genome position its own alignment places base `i` at; None for a base it leaves
+    /// unplaced (inserted or clipped).
+    pub(crate) fn own_position(&self, i: usize) -> Option<i64> {
+        (i < self.seq.len() && self.aligned[i]).then(|| self.refpos[i])
+    }
 }
 
 /// The window with a set of rows applied that can be applied together.
@@ -433,6 +439,9 @@ pub(crate) struct Site {
     /// What a covered telling base read confidently as neither allele does to a REF or ALT
     /// call ([`neither_rule`]).
     pub(crate) neither: NeitherRule,
+    /// At a substitution of two bases or more or a delins X: per genome position over the
+    /// window and base, the reads whose own alignments read that base there confidently.
+    tally: HashMap<(i64, u8), u32>,
 }
 
 /// Which scorer weighs a read (`GBCMS_JUDGE_SCORER`): `graph`, the judge's scorer and the
@@ -484,16 +493,51 @@ pub(crate) fn triage_mode() -> TriageMode {
 /// makes the read another allele, partial evidence, as an MNV read whose block is neither
 /// allele counts under the rules and in GetBaseCounts). An SNV's third base is a state of
 /// its site under either. Read when a site is built.
+///
+/// `other:N` moves such reads only at rows whose allele is under N bases ([`Site::x_size`]);
+/// `recur:K` only where a neither base it reads is read the same at the same place by K
+/// other reads of the row, by their own alignments ([`Site::recurrence`]).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum NeitherRule {
     Margin,
     Other,
+    Below(usize),
+    Recur(u32),
 }
 
 pub(crate) fn neither_rule() -> NeitherRule {
-    match std::env::var("GBCMS_JUDGE_NEITHER").as_deref() {
-        Ok("other") => NeitherRule::Other,
+    let v = std::env::var("GBCMS_JUDGE_NEITHER").unwrap_or_default();
+    match v.split_once(':') {
+        None if v == "other" => NeitherRule::Other,
+        Some(("other", n)) => n.parse().map_or(NeitherRule::Margin, NeitherRule::Below),
+        Some(("recur", k)) => k.parse().map_or(NeitherRule::Margin, NeitherRule::Recur),
         _ => NeitherRule::Margin,
+    }
+}
+
+/// Measurement only, TEMPORARY: with `GBCMS_JUDGE_NEITHER_TRACE=1`, every REF or ALT call on
+/// a substitution of two bases or more or a delins traces what the read shows at X's telling
+/// bases that is neither allele's (each such base's quality, place and recurrence), and its
+/// mismatches elsewhere on the called haplotype ("judge neither" lines).
+pub(crate) fn neither_trace() -> bool {
+    static ON: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+    *ON.get_or_init(|| std::env::var("GBCMS_JUDGE_NEITHER_TRACE").is_ok_and(|v| v == "1"))
+}
+
+/// Measurement only, TEMPORARY: where an allele whose equivalent placements end exactly at
+/// an insertion X's point stands (`GBCMS_JUDGE_ENDS`): `site`, the default, at X's site (its
+/// placements meet X's), another allele there; or `beside`, a change beside X, a context, so
+/// a read carrying it is read at X by its bases there. Read when a site is built.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum EndsRule {
+    Site,
+    Beside,
+}
+
+pub(crate) fn ends_rule() -> EndsRule {
+    match std::env::var("GBCMS_JUDGE_ENDS").as_deref() {
+        Ok("beside") => EndsRule::Beside,
+        _ => EndsRule::Site,
     }
 }
 
@@ -1367,6 +1411,24 @@ impl Site {
             .collect()
     }
 
+    /// X's first base, 0-based.
+    pub(crate) fn x_pos(&self) -> i64 {
+        self.rows[0].pos
+    }
+
+    /// X's size, as the class bins measure it: the longer of its two alleles once the bases
+    /// they share at either end are set aside (its telling bases on each allele).
+    pub(crate) fn x_size(&self) -> usize {
+        let (on_ref, on_alt) = telling(&self.rows[0]);
+        on_ref.len().max(on_alt.len())
+    }
+
+    /// How many reads besides the one asking read `base` at genome position `pos` by their
+    /// own alignments (at a substitution of two bases or more or a delins X).
+    pub(crate) fn recurrence(&self, pos: i64, base: u8) -> u32 {
+        self.tally.get(&(pos, base)).map_or(0, |n| n.saturating_sub(1))
+    }
+
     /// The bases X changes (REF's and X's differ), for a substitution X; 0 for a length
     /// change.
     pub(crate) fn changed_bases(&self) -> usize {
@@ -1626,7 +1688,14 @@ impl Site {
         sources: ContextSources,
         bg_rule: BackgroundRule,
     ) -> Option<Site> {
-        Site::build_core(scorer, target, candidates, window, reads, rule, sources, bg_rule, None)
+        Site::build_core(scorer, target, candidates, window, reads, rule, sources, bg_rule, None, ends_rule())
+    }
+
+    /// [`Site::build`] with an allele ending at an insertion X's point placed by `ends`.
+    #[cfg(test)]
+    pub(crate) fn build_ended(target: Row, candidates: &Candidates, window: (i64, Vec<u8>), reads: &[ReadView], ends: EndsRule) -> Option<Site> {
+        let (rule, sources, bg) = (other_option().rule, context_sources(), background_rule());
+        Site::build_core(scorer_kind(), target, candidates, window, reads, rule, sources, bg, None, ends)
     }
 
     /// [`Site::build_backed`], the context items in `dropped` left out where given (the
@@ -1642,6 +1711,7 @@ impl Site {
         sources: ContextSources,
         bg_rule: BackgroundRule,
         dropped: Option<&Dropped>,
+        ends: EndsRule,
     ) -> Option<Site> {
         let wn = reference.len() as i64;
         let holds = |r: &Row| {
@@ -1730,8 +1800,18 @@ impl Site {
             };
             moved.unwrap_or_else(|| r.clone())
         };
+        // Under `GBCMS_JUDGE_ENDS=beside`: an allele changing the length whose equivalent
+        // placements end exactly at an insertion X's point is beside X, a context.
+        let ends_at_x = |r: &Row| {
+            ends == EndsRule::Beside
+                && pure(&target)
+                && target.alt_al.len() > target.ref_al.len()
+                && r.changes_length()
+                && *r != target
+                && place(r).1 == target.end()
+        };
         for r in candidates.listed.iter().map(beside) {
-            let state = meets(&target, &r) && !in_deleted(&r);
+            let state = meets(&target, &r) && !in_deleted(&r) && !ends_at_x(&r);
             if state || sources.listed() {
                 take(&r, state);
             }
@@ -1775,6 +1855,12 @@ impl Site {
         let mut found_states: Vec<(Row, &[usize])> = Vec::new();
         if other_option().found {
             for (r, by) in candidates.found.iter().map(|(r, by)| (beside(r), &by[..])).filter(|(r, _)| meets(&target, r)) {
+                if ends_at_x(&r) {
+                    if sources.found() && take(&r, false) {
+                        found_contexts.push(r);
+                    }
+                    continue;
+                }
                 // An allele of the same length over the bases a substitution X changes,
                 // which reads X's (or REF's) bases there, is X (or REF) with a change
                 // beside it, a phased neighbour: each change beside X is a context, never
@@ -1816,7 +1902,7 @@ impl Site {
                 return whole;
             }
             let build = |d: &Dropped| {
-                Site::build_core(scorer, target.clone(), candidates, (start, reference.clone()), reads, rule, sources, bg_rule, Some(d))
+                Site::build_core(scorer, target.clone(), candidates, (start, reference.clone()), reads, rule, sources, bg_rule, Some(d), ends)
             };
             let Some(kept) = build(&whole) else { return whole };
             let mut out = whole.clone();
@@ -2038,6 +2124,26 @@ impl Site {
         };
         let masked: Vec<i64> = (0..masked.len()).filter(|&i| run_at(i) < MASK_RUN).map(|i| masked[i]).collect();
         let site_window = x_site(&rows[0], start, &reference, place(&rows[0]));
+        // Per position and base over the window, the reads whose own alignments read it there:
+        // a neither base's recurrence, and a mismatch's elsewhere (measurement only).
+        let tally = {
+            let x = &rows[0];
+            let (on_ref, on_alt) = telling(x);
+            let changes = x.ref_al.iter().zip(&x.alt_al).filter(|(a, b)| a != b).count();
+            let applicable = if x.changes_length() { !on_ref.is_empty() && !on_alt.is_empty() } else { changes >= 2 };
+            let mut t: HashMap<(i64, u8), u32> = HashMap::new();
+            if applicable {
+                let (lo, hi) = (start, start + reference.len() as i64);
+                for r in reads {
+                    for i in 0..r.seq.len() {
+                        if r.aligned[i] && r.seq[i] != WILD && (lo..hi).contains(&r.refpos[i]) {
+                            *t.entry((r.refpos[i], r.seq[i])).or_insert(0) += 1;
+                        }
+                    }
+                }
+            }
+            t
+        };
         let mut site = Site {
             start,
             reference,
@@ -2057,6 +2163,7 @@ impl Site {
             triage: None,
             triage_mode: triage_mode(),
             neither: neither_rule(),
+            tally,
         };
 
         // The context rows a read over X can reach: REF span meeting X's ± the longest read

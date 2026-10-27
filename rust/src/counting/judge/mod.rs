@@ -954,6 +954,81 @@ mod tests {
     }
 
     #[test]
+    fn the_neither_switch_below_a_size_leaves_longer_alleles_to_the_margin() {
+        use haplotypes::NeitherRule::{Below, Other as Neither};
+        use Call::*;
+        // A 4-base delins and a 24-base one (their size: the longer allele once the bases
+        // both share at either end are set aside), each read by a REF read with a third base
+        // at a REF telling base. Below 20 bases the switch makes the short one's read another
+        // allele and leaves the long one's REF by the margin; at every size both move.
+        let c = random_seq(600, 5);
+        let other = |b: u8| if b == b'A' { b'C' } else { b'A' };
+        let mut reread = c.clone();
+        reread[302] = other(c[302]);
+        let reads = [read(&reread, 250, 100, 250, "100M")];
+        for (x, below_20, every) in [(Row::new(300, &c[300..304], b"GG"), Other, Other), (Row::new(300, &c[300..324], b"GG"), Ref, Other)] {
+            let call = |rule| {
+                let mut s = site(&c, &x, &[], 100);
+                s.neither = rule;
+                judge(&s, &reads[0], MIN_BQ, false).call
+            };
+            assert_eq!(call(Below(20)), below_20, "{} bases, other:20", x.ref_al.len());
+            assert_eq!(call(Neither), every, "{} bases, other", x.ref_al.len());
+        }
+    }
+
+    #[test]
+    fn the_recurrence_switch_moves_a_neither_base_only_where_other_reads_show_it() {
+        use haplotypes::NeitherRule::Recur;
+        use Call::*;
+        // A TNP: three REF reads read the same third base at its second changed base, one
+        // reads another third base at its third (alone). With one other read required, the
+        // three are another allele and the lone one stays REF; with three required, all stay
+        // REF by the margin.
+        let c = random_seq(600, 5);
+        let other = |b: u8| if b == b'A' { b'C' } else { b'A' };
+        let alt: Vec<u8> = c[300..303].iter().map(|&b| other(b)).collect();
+        let third = |b: u8, a: u8| *b"ACGT".iter().find(|&&t| t != b && t != a).unwrap();
+        let tnp = Row::new(300, &c[300..303], &alt);
+        let with = |i: usize| {
+            let mut h = c.clone();
+            h[300 + i] = third(c[300 + i], alt[i]);
+            h
+        };
+        let mut reads: Vec<ReadView> = (0..3).map(|k| read(&with(1), 250 + k, 100, 250 + k as i64, "100M")).collect();
+        reads.push(read(&with(2), 260, 100, 260, "100M"));
+        reads.extend((0..4).map(|k| read(&c, 255 + k, 100, 255 + k as i64, "100M")));
+        let calls_under = |rule| {
+            let mut s = Site::build(tnp.clone(), &Candidates::default(), (0, c.clone()), &reads).unwrap();
+            s.neither = rule;
+            reads.iter().map(|r| judge(&s, r, MIN_BQ, false).call).collect::<Vec<_>>()
+        };
+        assert_eq!(calls_under(Recur(1)), [vec![Other; 3], vec![Ref; 5]].concat(), "one other read");
+        assert_eq!(calls_under(Recur(3)), vec![Ref; 8], "three other reads");
+    }
+
+    #[test]
+    fn an_allele_ending_at_an_insertions_point_is_beside_it_under_the_measurement_option() {
+        use haplotypes::EndsRule::{Beside, Site as AtSite};
+        use Call::*;
+        // Item 6's shape: a listed 33 bp deletion whose right placement ends exactly where X
+        // inserts its T. At X's site by its placements (the default), its carriers are
+        // another allele; beside X (the option), they are REF at X's row.
+        let c = contig(59, 261, b"CAGAGAACAAAAGAAAGAAAGATTTTCTTACTTCAGAGAATTCTTTGCCACGTATTTCTAGC");
+        let x = row(301, "A", "AT");
+        let del = Row::new(260, &c[260..294], &c[260..261]);
+        let h_del = haplotype(&c, &[&del]);
+        let reads = vec![read(&h_del, 200, 100, 200, "61M33D39M"), read(&c, 240, 100, 240, "100M")];
+        let candidates = Candidates { listed: vec![del], ..Candidates::default() };
+        let calls_under = |ends| {
+            let s = Site::build_ended(x.clone(), &candidates, (0, c.clone()), &reads, ends).unwrap();
+            reads.iter().map(|r| judge(&s, r, MIN_BQ, false).call).collect::<Vec<_>>()
+        };
+        assert_eq!(calls_under(AtSite), vec![Other, Ref], "at X's site");
+        assert_eq!(calls_under(Beside), vec![Ref, Ref], "beside X");
+    }
+
+    #[test]
     fn two_reads_writing_an_indel_find_it_within_the_share_of_the_sites_reads() {
         let c = random_seq(600, 17);
         let base = |p: i64| c.get(p as usize).copied();
