@@ -780,6 +780,17 @@
 <p>The format is based on <a href="https://keepachangelog.com/en/1.0.0/">Keep a Changelog</a>,
 and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semantic Versioning</a>.</p>
 <h2 id="unreleased">[Unreleased]<a class="headerlink" href="#unreleased" title="Permanent link">¶</a></h2>
+<h3 id="changed-a-read-rule-change-starts-from-its-mechanism-304">Changed — a read-rule change starts from its mechanism (#304)<a class="headerlink" href="#changed-a-read-rule-change-starts-from-its-mechanism-304" title="Permanent link">¶</a></h3>
+<ul>
+<li><strong>Fix the class, not the row.</strong> The procedure for changing how reads are judged
+  (<code>read-judgment.md</code>, "How a change to read judgment is made") now asks for the
+  mechanism first, stated without the row that showed the bug, with the rule derived
+  from the principles. Its tests cover the other shapes of the same mechanism, any cutoff
+  comes from a mechanism rather than from where a measurement splits, and a rule narrower
+  than its mechanism says why. The fix is judged on data the bug was not found in.</li>
+<li><strong>Each decided read rule states its mechanism.</strong> The register has a Mechanism column,
+  filled for RJ-1 to RJ-27, and new entries state theirs. Counts are unchanged.</li>
+</ul>
 <h3 id="fixed-the-docs-state-the-unreadable-insert-rule-as-decided-304">Fixed — the docs state the unreadable-insert rule as decided (#304)<a class="headerlink" href="#fixed-the-docs-state-the-unreadable-insert-rule-as-decided-304" title="Permanent link">¶</a></h3>
 <ul>
 <li><strong>An insert of the ALT's length whose bases are all masked is the ALT</strong>, where no other
