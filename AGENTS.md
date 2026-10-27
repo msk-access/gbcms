@@ -72,9 +72,10 @@ Do both, in the same turn:
 2. **Fix at the source** — name the exact `file:line` and make the edit now, so the
    mistake can't recur from stale guidance.
 
-An **external review or proposal** is mapped to current behaviour, the open tickets,
-`REJECTED.md` and prior probes, and its value measured on our data, before any ticket
-is filed.
+An **external review or proposal** is mapped to current behaviour, the open and closed
+tickets, `REJECTED.md` and prior probes, and its value measured on our data, before any
+ticket is filed. An issue closes only once its outcome is in the repo
+(`.agents/rules/git-conventions.md` §Issues).
 
 ## Skills
 Project skills live in `.agents/skills/` (cross-tool / Antigravity-native; mirrored to

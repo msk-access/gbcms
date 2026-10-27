@@ -37,7 +37,10 @@ it shows in review instead of slipping in with an unrelated fix.
    splits or from an oracle's own cut, and is checked across the values users
    set. A rule narrower than its mechanism says why, or is recorded as a known
    partial with the general rule ticketed. Judge it on data the bug was not
-   found in, against a truth that does not share the rule.
+   found in, against a truth that does not share the rule. Before proposing,
+   look for earlier work on the same mechanism: this register, `REJECTED.md`,
+   and closed issues, whose comments hold the measurements behind past
+   decisions.
 2. **Decide.** The operator decides; the decision gets an entry in the register
    below, stating the mechanism it follows from and naming any earlier decision
    it amends.
