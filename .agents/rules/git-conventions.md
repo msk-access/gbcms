@@ -58,6 +58,18 @@ main          ← stable releases (tagged X.Y.Z)
 - Merge with `--no-ff`; never push directly to `main`
 - Releases go through PR: `release/X.Y.Z` → `main`
 
+## Issues
+
+An issue's comments are its working record; the repo is what agents read.
+
+- **Close only after the outcome is in the repo.** The decision goes in the read-rule
+  register (`docs/reference/read-judgment.md`) or a proposal doc, with the numbers that
+  decided it. Rejected ideas go in `.agents/learnings/REJECTED.md`, and shipped changes in
+  `CHANGELOG.md`. The closing comment links each place.
+- **Search closed issues before a fix, proposal or decision**, alongside `REJECTED.md`:
+  `gh search issues --repo msk-access/gbcms --state closed "<terms>"`. Their comments hold
+  the measurements behind past decisions.
+
 ## Commit Discipline
 
 - **Atomic commits**: One logical change per commit
