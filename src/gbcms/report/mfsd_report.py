@@ -20,6 +20,8 @@ from ..io.atomic import atomic_output
 
 logger = logging.getLogger(__name__)
 
+__all__ = ["TOOLTIPS", "generate_mfsd_report"]
+
 # ── Tooltip definitions (single source of truth for hover-over explanations) ──
 # Keys are the short labels displayed in the UI; values are the explanatory text
 # shown on hover. These are rendered as HTML title attributes and via CSS tooltips.

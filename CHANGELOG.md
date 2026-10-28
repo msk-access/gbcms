@@ -41,6 +41,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   not by the block's lowest quality. The help text, the DNA, RNA, quickstart and
   Nextflow parameter tables, and Read Filters now say so. Counts are unchanged.
 
+### Changed — two code-quality rules the code did not meet
+
+- **`__all__` in every module.** `report/mfsd_report.py` and `rescue_audit.py` had none, so
+  a star import or a doc tool took every name, helpers and imports included. Each now
+  lists its public API (`TOOLTIPS` and `generate_mfsd_report`; the rescue audit's two
+  functions, as `io.output` lists its functions and leaves its constants to be imported by
+  name), and a test holds every module of the package to the rule.
+- **No `unwrap()` in production Rust.** The four lines that had one are changed. The KS
+  test of fragment sizes (`mfsd.rs`) sorted with `partial_cmp(..).unwrap()`, which panics
+  on a NaN size; a NaN now makes the test invalid (D = NaN, p = 1.0, as with too few
+  fragments) and is warned about, and the sort is a total order. No size is ever NaN
+  today (they are integers read from alignments). The other two could not panic (a branch
+  that had just matched `Some`; a loop guarded by the allele lengths) and are written
+  without the unwrap (`variant_checks.rs`, `left_align.rs`). Counts and outputs are
+  unchanged.
+
 ### Fixed — companion file names, `.vcf.bgz` in normalize, the amplicon rule, Nextflow RNA defaults (#309)
 
 - **Companion files keep every dot of the output name.** The mFSD Parquet and report
