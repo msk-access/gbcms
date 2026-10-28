@@ -2064,6 +2064,9 @@ impl Site {
         }
         // The contexts the reads' own alleles supply (the found source), each once.
         let mut found_contexts: Vec<Row> = Vec::new();
+        // The found indels clear of X's site taken as contexts: each stays only where the
+        // reads need it (below).
+        let mut beside_found: Vec<Row> = Vec::new();
         // An allele the guard found, spelled over a window: a state where the bases it
         // changes meet X's site, else a change beside X (RJ-8: another indel outside the
         // window is a separate event), a context.
@@ -2110,6 +2113,7 @@ impl Site {
                 if !meets(&target, &r) {
                     let (ps, pe) = place(&r);
                     if (pe <= site_s || ps >= site_e) && sources.found() && take(&r, false) {
+                        beside_found.push(r.clone());
                         found_contexts.push(r);
                     }
                     continue;
@@ -2434,7 +2438,14 @@ impl Site {
                     }
                 }
                 let whole = Dropped { rows: items.iter().zip(&rows).filter(|(_, &k)| k == 2).map(|(r, _)| r.clone()).collect() };
-                let settled = settle(whole, items.iter().zip(&rows).filter(|(_, &k)| k == 1).map(|(r, _)| r).collect());
+                // An indel the reads write beside X's site is a separate event only where the
+                // reads need it for their calls, as a respelling over a read is: one the event's
+                // own reads write (a long insertion's copy of its flank, read into the
+                // reference) is explained by X already, and as a context it would tie them.
+                let settled = settle(
+                    whole,
+                    items.iter().zip(&rows).filter(|(r, &k)| k == 1 || (k == 0 && beside_found.contains(r))).map(|(r, _)| r).collect(),
+                );
                 if respell_trace() {
                     let (forth, _) = respell_directions(&reference, start, site, l, &all_states, &listed, &items, &[], (true, false));
                     let (back, _) = respell_directions(&reference, start, site, l, &all_states, &listed, &items, &[], (false, true));
@@ -4471,6 +4482,35 @@ pub(crate) mod tests {
         let reads = vec![view(&noisy, 301 + 24 + 19 - 100, 100), view(&apply(&x), 240, 100), view(&c, 245, 100)];
         let s = Site::build_ruled(ScorerKind::Enumerated, x.clone(), &candidates, (0, c.clone()), &reads, FoundRule::Clean(1)).unwrap();
         assert_eq!(s.haps.iter().filter(|h| h.class == Class::Other).count(), 0);
+    }
+
+    /// An indel the reads write beside X's site is a context only where the reads need it
+    /// for their calls (as a respelling over a read is): a one-base deletion 40 bases past
+    /// an SNV, on six REF reads, costs REF and X alike and changes no read's call, so it
+    /// explains none of their differences and is left out. One the event's own reads write
+    /// (a long insertion's copy of its flank, read into the reference: HG002 chr16:34590143,
+    /// a 1,795-bp insertion whose reads write a 1-bp insertion four bases before it) would,
+    /// as a context, tie the carriers it does not explain.
+    #[test]
+    fn a_found_indel_beside_the_site_no_read_needs_is_no_context() {
+        let c = random_seq(600, 31);
+        let x = Row::new(299, &[c[299]], &[if c[299] == b'A' { b'C' } else { b'A' }]);
+        let del = Row::new(338, &c[338..340], &c[338..339]);
+        let alt: Vec<u8> = [&c[..299], &x.alt_al[..], &c[300..]].concat();
+        let read = |h: &[u8], s: usize, with_del: bool| {
+            if with_del {
+                let seq: Vec<u8> = [&h[s..339], &h[340..s + 101]].concat();
+                let a = 339 - s;
+                ReadView::new(&seq, &[30; 100], s as i64, &[Cigar::Match(a as u32), Cigar::Del(1), Cigar::Match((100 - a) as u32)], (0, 100), 20).unwrap()
+            } else {
+                ReadView::new(&h[s..s + 100], &[30; 100], s as i64, &[Cigar::Match(100)], (0, 100), 20).unwrap()
+            }
+        };
+        let mut reads: Vec<ReadView> = (0..10).map(|i| read(&c, 250 + i, i < 6)).collect();
+        reads.extend((0..10).map(|i| read(&alt, 250 + i, false)));
+        let candidates = Candidates { found: vec![(del.clone(), (0..6).collect())], ..Candidates::default() };
+        let s = Site::build_with(ScorerKind::Graph, x.clone(), &candidates, (0, c.clone()), &reads).unwrap();
+        assert!(!s.rows.contains(&del), "no read needs the deletion: no context");
     }
 }
 

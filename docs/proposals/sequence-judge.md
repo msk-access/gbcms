@@ -155,7 +155,14 @@ For a row X and each admitted read:
     exact-carrier route makes it depth; open for the operator.
   - *An indel the reads write beside X's site* (two reads and 5%, every placement clear of
     the site, the repeat X changes included) is a context, a separate event (RJ-8), however
-    a read's aligner wrote it. Known partial: where no read writes it beside the site, the
+    a read's aligner wrote it, where the reads need it for their calls (as a respelling
+    over a read is, 2026-10-27: with it, two reads and 5% of those reaching it are REF or
+    ALT that are not so without it). Taken without that test (the first measurement of this
+    round), it cost HG002 14 true ALT reads at insertions of 1 kb or more and 6 at 50-299
+    bp: the event's own reads write such indels (a 1,795-bp insertion at chr16:34590143,
+    whose reads write a 1-bp insertion four bases before it on 639 of 2,393 reads, absent
+    from GIAB), and as a context it tied 13 carriers (ALT -15 against REF -19 without it,
+    -12 against -12 with it). Known partial: where no read writes it beside the site, the
     judge has no candidate holding it (placing a read's own indel by its bases, RJ-27, is not
     yet the judge's).
   - *The other allele's base against a third base (`GBCMS_JUDGE_REFBASE`, measurement
