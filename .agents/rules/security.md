@@ -27,7 +27,7 @@ model's habits and loses under load). The deterministic floor lives in
 - Scan tracked **code and fixtures**, not only data files — secrets hide in test
   fixtures and hardcoded example lists.
 - The pre-commit hook refuses data files outside `tests/testdata/`: parquet, BAM/CRAM
-  and their indexes, TSV/CSV/MAF, `.dat`, and VCF/BED/FASTQ (`.fq`), plain or `.gz`/`.bgz`
+  and their indexes, TSV/CSV/MAF, `.dat`, and VCF/BCF/SAM/BED/FASTQ (`.fq`), plain or `.gz`/`.bgz`
   (a VCF's header and `#CHROM` line name the sample). It also refuses a staged
   `.agents/skills/*/SKILL.md` whose frontmatter does not parse (step 3), and a staged skill or
   rule that names code, a flag or a file that does not exist (step 3b).

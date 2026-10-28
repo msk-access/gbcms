@@ -18,7 +18,7 @@ mypy src/;                                       echo "mypy rc=$?"
 (cd rust && cargo clippy --all-targets -- -D warnings; echo "clippy rc=$?"; cargo test; echo "cargo test rc=$?")
 python -m pytest tests/ --no-header -q > /tmp/pytest.log 2>&1; echo "pytest rc=$?"; tail -3 /tmp/pytest.log
 git status && git diff --stat
-git diff --cached --name-only | grep -Ei '\.(parquet|bam|bai|cram|crai|tsv|csv|maf|dat|vcf|bed|fastq|fq)(\.(gz|bgz))?$' | grep -v '^tests/testdata/'   # must be empty (the pre-commit hook enforces it)
+git diff --cached --name-only | grep -Ei '\.(parquet|bam|bai|cram|crai|tsv|csv|maf|dat|vcf|bcf|sam|bed|fastq|fq)(\.(gz|bgz))?$' | grep -v '^tests/testdata/'   # must be empty (the pre-commit hook enforces it)
 ```
 
 **Read every exit code; never gate on a pipe.** `pytest | tail && git commit` commits when
