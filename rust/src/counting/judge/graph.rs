@@ -33,6 +33,12 @@ pub(crate) trait ErrorModel {
     /// A gap's first base: opening plus one extension.
     fn gap_open(&self) -> i32;
     fn gap_extend(&self) -> i32;
+    /// Where a read base costs nothing against its own base or a masked one ([`WILD`]) on
+    /// either side and one cost against any other: that cost (so a column's substitutions
+    /// are compared bases alone). None where costs depend on the bases otherwise.
+    fn uniform_mismatch(&self) -> Option<i32> {
+        None
+    }
 }
 
 /// Short reads: a confident mismatch 4, a gap of k bases 6 + k, a masked base (below
@@ -56,6 +62,10 @@ impl ErrorModel for ShortReads {
     #[inline]
     fn gap_extend(&self) -> i32 {
         GAP_EXTEND
+    }
+    #[inline]
+    fn uniform_mismatch(&self) -> Option<i32> {
+        Some(score::MISMATCH)
     }
 }
 
@@ -618,12 +628,26 @@ fn run_from<M: ErrorModel, const TRACK: bool>(
             // D (kept in F's place for now), the best of D and E (in A's), and the column's
             // best total
             let mut col_best = NEG;
-            for j in 0..len {
-                let d = diag[j].max(lead_up[j]) + m.substitution(rd[j], base);
-                a_col[j] = d.max(en[j]);
-                e_col[j] = en[j];
-                f_col[j] = d;
-                col_best = col_best.max(d - lead_at[j]);
+            let rows = diag.iter().zip(lead_up).zip(lead_at).zip(rd).zip(en.iter());
+            let cells = a_col.iter_mut().zip(e_col.iter_mut()).zip(f_col.iter_mut());
+            // the substitution as compared bases where the model allows (no branch per row)
+            let mismatch = m.uniform_mismatch().map(|c| if base == WILD { 0 } else { c });
+            for (((((&dg, &lu), &la), &r), &enj), ((ao, eo), fo)) in rows.zip(cells) {
+                let sub = match mismatch {
+                    Some(c) => {
+                        if r == base || r == WILD {
+                            0
+                        } else {
+                            c
+                        }
+                    }
+                    None => m.substitution(r, base),
+                };
+                let d = dg.max(lu) + sub;
+                *ao = d.max(enj);
+                *eo = enj;
+                *fo = d;
+                col_best = col_best.max(d - la);
             }
             // the best ends: every cell scoring the best total (a tie with the read left over
             // whole keeps that, no base aligned)

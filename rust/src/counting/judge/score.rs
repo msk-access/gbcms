@@ -328,41 +328,49 @@ fn run_values(read: &[u8], hap: &[u8], band: &Band, vals: &mut Values) -> Run {
         let len = hi + 1 - lo;
         let (ac, ec, fc) = (&mut vals.a[x0..x0 + len], &mut vals.e[x0..x0 + len], &mut vals.f[x0..x0 + len]);
         let (mut row_best, mut row_end) = (NEG, 0usize);
-        let (mut e, mut a_left) = (NEG, NEG);
         // Column 0 (a row whose band starts there) aligns no base: D is none.
         let skip = usize::from(lo == 0);
         if skip == 1 {
             let f = (pa[0] - open).max(pf[0] - GAP_EXTEND);
-            let a = NEG.max(f);
-            (ac[0], ec[0], fc[0]) = (a, NEG, f);
-            (e, a_left) = (NEG, a);
+            (ac[0], fc[0]) = (NEG.max(f), f);
         }
-        // From column max(lo, 1): A and F above (pa[k], pf[k]) and A on the diagonal
-        // (pa[k - 1]), against haplotype base j - 1, over equal-length slices.
+        // From column max(lo, 1): F from A and F above (pa[k], pf[k]), D from A on the
+        // diagonal (pa[k - 1]) against haplotype base j - 1, and the best of the two (A
+        // before E, kept in A's place), over equal-length slices.
         let j0 = lo + skip;
         let cnt = hi + 1 - j0;
         let k0 = j0 - base;
         let (up_a, up_f, diag) = (&pa[k0..k0 + cnt], &pf[k0..k0 + cnt], &pa[k0 - 1..k0 - 1 + cnt]);
         let hs = &hap[j0 - 1..j0 - 1 + cnt];
-        let (ac, ec, fc) = (&mut ac[skip..], &mut ec[skip..], &mut fc[skip..]);
-        let (ac, ec, fc) = (&mut ac[..cnt], &mut ec[..cnt], &mut fc[..cnt]);
-        for t in 0..cnt {
-            // F: the read base inserted after an aligned base.
-            let f = (up_a[t] - open).max(up_f[t] - GAP_EXTEND);
-            // E: a haplotype base skipped after an aligned base (none in the band's first column).
-            let e_new = if t + skip == 0 { NEG } else { (a_left - open).max(e - GAP_EXTEND) };
-            // D: the read base against haplotype base j - 1, after an aligned path or
-            // starting there.
-            let d = diag[t].max(start) + substitution_cost(rb, hs[t]);
-            let a = d.max(e_new).max(f);
-            if d > row_best {
-                (row_best, row_end) = (d, j0 + t);
+        {
+            let (ac, fc) = (&mut ac[skip..skip + cnt], &mut fc[skip..skip + cnt]);
+            let cells = up_a.iter().zip(up_f).zip(diag).zip(hs).zip(ac.iter_mut().zip(fc.iter_mut()));
+            for (t, ((((&ua, &uf), &dg), &h), (ao, fo))) in cells.enumerate() {
+                // F: the read base inserted after an aligned base.
+                let f = (ua - open).max(uf - GAP_EXTEND);
+                // D: the read base against haplotype base j - 1, after an aligned path or
+                // starting there (a masked base costs nothing against any).
+                let sub = if rb == WILD || h == WILD || h == rb { 0 } else { MISMATCH };
+                let d = dg.max(start) + sub;
+                *ao = d.max(f);
+                *fo = f;
+                if d > row_best {
+                    (row_best, row_end) = (d, j0 + t);
+                }
             }
-            ac[t] = a;
-            ec[t] = e_new;
-            fc[t] = f;
-            e = e_new;
-            a_left = a;
+        }
+        // E along the row: a haplotype base skipped after an aligned base (none in the
+        // band's first column), as the best opening to its left with its extensions. A
+        // deletion is never opened from one (open is at least the extension), so the best
+        // A to the left, E included, is the best of D and F there: E at cell u is
+        // max over k < u of (D-or-F at k) - open - (u - 1 - k) * extend.
+        let mut best = NEG;
+        for (u, (ao, eo)) in ac.iter_mut().zip(ec.iter_mut()).enumerate() {
+            let a0 = *ao;
+            let e = if u > 0 { best - open - (u as i32 - 1) * GAP_EXTEND } else { NEG };
+            *ao = a0.max(e);
+            *eo = e;
+            best = best.max(a0 + u as i32 * GAP_EXTEND);
         }
         vals.rows.push((row_best, row_end));
         if row_best > NEG / 2 {
