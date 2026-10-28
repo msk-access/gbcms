@@ -395,7 +395,8 @@ def dna(
         help=(
             "Read judgment: 'rules' (the size-specific rules, default) or 'sequence' "
             "(which of the row's candidate sequences each read's own bases spell at the "
-            "row; in development, #304). 'haplotype' is its former name (deprecated)."
+            "row; opt-in while it is measured, #304). 'haplotype' is its former name "
+            "(deprecated)."
         ),
     ),
     hmm_llr_threshold: float = typer.Option(

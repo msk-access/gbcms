@@ -98,7 +98,7 @@ Each `GBCMS_RNA` task loads the GTF (plain or `.gtf.gz`) in a few seconds (2 s f
 | Parameter | Default | Description |
 |:----------|:--------|:------------|
 | `--alignment_backend` | `pairhmm` | Phase 3 alignment backend: `pairhmm` (WFA2 + PairHMM, default) or `sw` (Smith-Waterman). See [CLI Reference](../cli/dna.md#alignment-backend). |
-| `--read_judge` | `rules` | **DNA** read judgment, passed as `--read-judge`: `rules` (the size-specific rules, the default) or `sequence` (the sequence judge, opt-in; `haplotype` is its former name). The RNA module does not pass it: the sequence judge refuses RNA mode. See [CLI Reference](../cli/dna.md). |
+| `--read_judge` | `rules` | **DNA** read judgment, passed as `--read-judge`: `rules` (the size-specific rules, the default) or `sequence` (the sequence judge, opt-in; `haplotype` is its former name). The RNA module does not pass it: the sequence judge refuses RNA mode. See [CLI Reference](../cli/dna.md#read-judgment). |
 | `--llr_threshold` | `2.3` | PairHMM log-likelihood ratio threshold for confident calls |
 | `--gap_open_prob` | `1e-4` | **DNA** PairHMM gap-open probability for non-repeat regions |
 | `--gap_extend_prob` | `0.1` | **DNA** PairHMM gap-extend probability for non-repeat regions |
