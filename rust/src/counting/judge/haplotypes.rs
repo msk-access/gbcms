@@ -448,6 +448,9 @@ pub(crate) struct Site {
     /// Which states a read reaching them only through an indel of its own loses
     /// ([`own_gap_rule`]).
     pub(crate) own_gap: OwnGapRule,
+    /// What a confident base of the other allele, or a third, at X's telling bases does to
+    /// a call ([`ref_base_rule`]).
+    pub(crate) ref_base: RefBaseRule,
     /// At a substitution of two bases or more or a delins X: per genome position over the
     /// window and base, the reads whose own alignments read that base there confidently.
     tally: HashMap<(i64, u8), u32>,
@@ -561,6 +564,28 @@ pub(crate) fn own_gap_rule() -> OwnGapRule {
         Ok("all") => OwnGapRule::All,
         Ok("others") => OwnGapRule::Others,
         _ => OwnGapRule::Tie,
+    }
+}
+
+/// Measurement only, TEMPORARY: what a confident base at one of X's telling bases that is
+/// not the called allele's does to a REF or ALT call at a substitution of two bases or more
+/// or a delins (`GBCMS_JUDGE_REFBASE`). `margin`, the default: the margin alone decides a
+/// delins call, and an MNP's ALT call needs every base X changes read as X's (a third base
+/// there leaves it depth only). `partial`: the other allele's base there (under the read's
+/// own placement: at a delins, the other allele's base at the same telling index counted
+/// from either end) is that allele's evidence, not an error, so the read is another
+/// allele (RJ-25, RJ-28); a third base, neither allele's, is an error the margin forgives
+/// (RJ-26), at an MNP as at a delins. Read when a site is built.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum RefBaseRule {
+    Margin,
+    Partial,
+}
+
+pub(crate) fn ref_base_rule() -> RefBaseRule {
+    match std::env::var("GBCMS_JUDGE_REFBASE").as_deref() {
+        Ok("partial") => RefBaseRule::Partial,
+        _ => RefBaseRule::Margin,
     }
 }
 
@@ -1541,6 +1566,39 @@ impl Site {
                 (col, x.ref_al[k], x.alt_al[k])
             })
             .collect()
+    }
+
+    /// For a delins X, the haplotype positions of the telling bases of the allele `hap`
+    /// carries (X's on a haplotype carrying X, REF's on REF's), each with that allele's base
+    /// and the other allele's bases at the same telling index counted from the left and from
+    /// the right (where a read's own placement of the length change may put them). Bases X
+    /// keeps (its two alleles alike there from one end) are left out: they tell nothing.
+    /// Empty for a substitution, a pure indel and another allele's haplotype.
+    pub(crate) fn telling_with_other(&self, hap: &Hap) -> Vec<(i64, u8, [Option<u8>; 2])> {
+        let x = &self.rows[0];
+        if !x.changes_length() || pure_indel(x) {
+            return Vec::new();
+        }
+        let (on_ref, on_alt) = telling(x);
+        let kept = kept_bases(x);
+        // the other allele's bases at telling index `k` of a range `own`, over `other`
+        let at = |own: &std::ops::Range<usize>, k: usize, other: &std::ops::Range<usize>, bases: &[u8]| -> [Option<u8>; 2] {
+            let (j, from_end) = (k - own.start, own.end - 1 - k);
+            [(j < other.len()).then(|| bases[other.start + j]), (from_end < other.len()).then(|| bases[other.end - 1 - from_end])]
+        };
+        match (hap.class, hap.x_seg) {
+            (Class::Alt, Some((hs, _))) => on_alt
+                .clone()
+                .filter(|&k| !kept.iter().any(|&(_, a)| a == k))
+                .map(|k| (hs + k as i64, x.alt_al[k], at(&on_alt, k, &on_ref, &x.ref_al)))
+                .collect(),
+            (Class::Ref, _) => on_ref
+                .clone()
+                .filter(|&i| !kept.iter().any(|&(r, _)| r == i))
+                .map(|i| (hap.to_hap(self.spans[0].0 + i as i64, false), x.ref_al[i], at(&on_ref, i, &on_alt, &x.alt_al)))
+                .collect(),
+            _ => Vec::new(),
+        }
     }
 
     /// X's first base, 0-based.
@@ -2663,6 +2721,7 @@ impl Site {
             triage_mode: triage_mode(),
             neither: neither_rule(),
             own_gap: own_gap_rule(),
+            ref_base: ref_base_rule(),
             tally,
             background_bases,
             background_masks,

@@ -12,7 +12,7 @@ use rust_htslib::bam::record::{Aux, Cigar, Record};
 use std::borrow::Cow;
 
 use super::graph::{self, ShortReads, Workspace};
-use super::haplotypes::{neither_trace, other_option, AlnTags, Class, Hap, NeitherRule, OwnGapRule, ReadView, Scorer, ScorerKind, Site, TriageMode};
+use super::haplotypes::{neither_trace, other_option, AlnTags, Class, Hap, NeitherRule, OwnGapRule, ReadView, RefBaseRule, Scorer, ScorerKind, Site, TriageMode};
 use super::score::{Alignment, Placed, DELTA, WILD};
 use crate::counting::carrier::{readable_range, ReadRules};
 use crate::counting::utils::{soft_clips, ClassifyPhase, ClassifyResult};
@@ -665,6 +665,20 @@ fn conclude_margin<'h>(
             return Verdict { call, qual: 0, best: scores, holds_anchor: false, placed: None, triage: None, confirmed: false, spells: 0, clip: None, fits: FitsTrace::default(), fits_none: false, neither: NeitherTrace::default(), owngap: OwnGapTrace::default() };
         }
     }
+    // Measurement only (GBCMS_JUDGE_REFBASE=partial): at a delins, a REF or ALT call on a
+    // read showing the other allele's base at one of the called allele's telling bases is
+    // another allele (RJ-25: an allele lacking part of the event), as at an MNP (RJ-28).
+    if site.ref_base == RefBaseRule::Partial
+        && matches!(call, Call::Alt | Call::Ref)
+        && !site.is_substitution()
+        && other_allele_base(site, read, hap_w, &wa, off)
+    {
+        trace!("haplotype judge: a {call:?} call on a read showing the other allele's base at a telling base → another allele");
+        call = Call::Other;
+        if !ask_anchor {
+            return Verdict { call, qual: 0, best: scores, holds_anchor: false, placed: None, triage: None, confirmed: false, spells: 0, clip: None, fits: FitsTrace::default(), fits_none: false, neither: nt, owngap: OwnGapTrace::default() };
+        }
+    }
     let column = |p: &Placed| if let Placed::At(c) = *p { Some((c + off) as i64) } else { None };
     let holds_anchor = wa.covers().is_some_and(|(a, b)| {
         let anchor = site.anchor_in(hap_w);
@@ -688,6 +702,13 @@ fn conclude_margin<'h>(
             DelinsOption::Margin => false,
         };
     let telling = if need { site.telling_in(hap_w) } else { Vec::new() };
+    // Measurement only (GBCMS_JUDGE_REFBASE=partial): REF's base at each of them, where a
+    // third base (neither REF's nor X's) is an error the margin forgives (RJ-26).
+    let ref_at: Vec<(i64, u8)> = if site.ref_base == RefBaseRule::Partial && site.is_substitution() {
+        site.telling_pairs(hap_w).into_iter().map(|(c, rb, _)| (c, rb)).collect()
+    } else {
+        Vec::new()
+    };
     let mut confirmed = call == Call::Alt;
     let mut reads_all = true;
     let mut telling_at = Vec::new();
@@ -697,8 +718,9 @@ fn conclude_margin<'h>(
             Some(i) if call == Call::Alt => {
                 telling_at.push(i);
                 let b = read.seq[i];
-                confirmed &= b != WILD;
-                reads_all &= b == WILD || b == base;
+                confirmed &= b == base;
+                let third = b != base && ref_at.iter().any(|&(c, rb)| c == col && rb != b);
+                reads_all &= b == WILD || b == base || third;
             }
             Some(i) => telling_at.push(i),
         }
@@ -761,6 +783,26 @@ fn read_at_x(site: &Site, read: &ReadView, hap: &Hap, al: &Alignment, off: usize
         }
     }
     out
+}
+
+/// Measurement only (`GBCMS_JUDGE_REFBASE=partial`): whether `read`, on its alignment `al`
+/// to `hap` (carrying a delins X or holding REF's bases there; columns offset by `off`),
+/// reads confidently, at one of that allele's telling bases, the other allele's base at the
+/// same telling index from either end: that allele's evidence, not an error. A base the
+/// haplotype holds there (a context it applies) or the guard's background explains is
+/// neither.
+fn other_allele_base(site: &Site, read: &ReadView, hap: &Hap, al: &Alignment, off: usize) -> bool {
+    site.telling_with_other(hap).into_iter().any(|(col, _, other)| {
+        let Some(i) = al.placed.iter().position(|p| matches!(*p, Placed::At(c) if (c + off) as i64 == col)) else {
+            return false;
+        };
+        let (got, held) = (read.seq[i], hap.base(col as usize));
+        got != WILD
+            && held != WILD
+            && got != held
+            && !read.own_position(i).is_some_and(|p| site.background_explains(p, got))
+            && other.contains(&Some(got))
+    })
 }
 
 /// Measurement only: what `read`'s alignment `al` to `hap` (a haplotype carrying X or holding

@@ -158,6 +158,18 @@ For a row X and each admitted read:
     a read's aligner wrote it. Known partial: where no read writes it beside the site, the
     judge has no candidate holding it (placing a read's own indel by its bases, RJ-27, is not
     yet the judge's).
+  - *The other allele's base against a third base (`GBCMS_JUDGE_REFBASE`, measurement
+    only, default `margin`; operator approved measuring it 2026-10-28; class tests in
+    `tests/test_ref_base_option_contract.py`):* at a base an MNP or a delins changes, a
+    read's confident base that is the other allele's (at a delins, the other allele's base
+    at the same telling index counted from either end, where the read's own gap may put
+    it) is that allele's evidence, not an error, so `partial` makes such a REF or ALT call
+    another allele (RJ-25: an allele lacking part of the event; RJ-28 at an MNP, where the
+    default already does so); a third base, neither allele's, is an error the margin
+    forgives (RJ-26), so `partial` keeps an MNP carrier with one ALT instead of depth only.
+    Bases X keeps tell nothing under both. The evidence it answers: a mate test of 72
+    patient delins ALT reads the margin forgave (19 showing REF's base; under 20 bases, 10
+    of 11 decided carry the odd base on both mates).
   - *Open for the operator:* at a delins, reads showing the kept-base change confidently
     count under the judge (the margin, 2026-10-24) where the rules read the event's bases
     exactly and call them neither; and at an MNP an ALT call with a confident third base at
