@@ -19,7 +19,7 @@
 //!       └─ AnnotationIndex
 //!           ├── exon_trees: HashMap<u32, COITree>  (interval queries)
 //!           ├── splice_sites: HashMap<u32, Vec<i32>>  (sorted boundary positions)
-//!           ├── transcript_introns: HashMap<String, Vec<(i32, i32)>>
+//!           ├── transcript_introns: HashMap<TranscriptKey, TranscriptIntrons>  (per ID, chromosome and strand)
 //!           ├── intron_boundaries: HashMap<u32, Vec<(i32, char)>>  (derived: donor/acceptor sites + strand)
 //!           ├── transcript_trees: HashMap<u32, COITree>  (derived: transcript spans, for strand)
 //!           └── chrom_map: HashMap<String, u32>
@@ -58,6 +58,20 @@ pub struct ExonRecord {
     pub strand: char,
 }
 
+/// What tells one transcript from another in the index: its ID *and* where it is. An
+/// ID the GTF uses on another chromosome or strand (PAR copies on X and Y, alternate
+/// loci, version-stripped RefSeq IDs) names another transcript, whose exons are not
+/// joined to this one's. Ordered by ID first, so a sorted list of keys is in ID order.
+#[derive(Clone, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub struct TranscriptKey {
+    /// Transcript ID (a GENCODE version suffix is stripped).
+    pub id: String,
+    /// Numeric chromosome ID (key into `AnnotationIndex::chrom_map`).
+    pub chrom_id: u32,
+    /// Strand of the transcript's exons: '+', '-' or '.'.
+    pub strand: char,
+}
+
 /// Intron structure for a single transcript, derived from sorted exons.
 /// Used by per-transcript counting and ASJD detection.
 #[derive(Clone, Debug)]
@@ -67,6 +81,9 @@ pub struct TranscriptIntrons {
     /// Numeric chromosome ID (key into chrom_map). Used by `is_junction_known()`
     /// to filter transcripts by chromosome before intron matching.
     pub chrom_id: u32,
+    /// Strand of the transcript's exons: '+', '-' or '.' (unstranded). Attributes the
+    /// transcript's intron boundaries to a strand.
+    pub strand: char,
     /// Introns as (start, end) pairs in genomic coordinates (0-based, exclusive end).
     /// Derived from consecutive exon boundaries: intron_start = exon_n.end,
     /// intron_end = exon_{n+1}.start.
@@ -90,9 +107,9 @@ pub struct AnnotationIndex {
     /// Used for binary search in `nearest_splice_distance()`.
     splice_sites: HashMap<u32, Vec<i32>>,
 
-    /// Transcript ID → intron boundaries.
-    /// Used by per-transcript compatibility and ASJD.
-    transcript_introns: HashMap<String, TranscriptIntrons>,
+    /// Transcript (ID, chromosome, strand) → intron boundaries. Only transcripts
+    /// with at least one intron are here. Used by per-transcript compatibility and ASJD.
+    transcript_introns: HashMap<TranscriptKey, TranscriptIntrons>,
 
     /// Chromosome → sorted (position, strand) of every annotated intron
     /// boundary: true donor/acceptor sites only (no transcript termini).
@@ -136,21 +153,17 @@ pub(crate) fn build_exon_trees(exons: &[ExonRecord]) -> HashMap<u32, COITree<usi
 }
 
 /// Per-chromosome sorted, deduplicated (position, strand) list of annotated
-/// intron boundaries (each intron's start and exclusive end), with each
-/// transcript's strand taken from its exons ('.' when unstranded or unknown).
+/// intron boundaries (each intron's start and exclusive end), each with its
+/// transcript's own strand ('.' when unstranded).
 fn derive_intron_boundaries(
-    exons: &[ExonRecord],
-    transcript_introns: &HashMap<String, TranscriptIntrons>,
+    transcript_introns: &HashMap<TranscriptKey, TranscriptIntrons>,
 ) -> HashMap<u32, Vec<(i32, char)>> {
-    let strand_of: HashMap<&str, char> =
-        exons.iter().map(|e| (e.transcript_id.as_str(), e.strand)).collect();
     let mut out: HashMap<u32, Vec<(i32, char)>> = HashMap::new();
     for ti in transcript_introns.values() {
-        let strand = strand_of.get(ti.transcript_id.as_str()).copied().unwrap_or('.');
         let v = out.entry(ti.chrom_id).or_default();
         for &(a, b) in &ti.introns {
-            v.push((a, strand));
-            v.push((b, strand));
+            v.push((a, ti.strand));
+            v.push((b, ti.strand));
         }
     }
     for v in out.values_mut() {
@@ -162,7 +175,7 @@ fn derive_intron_boundaries(
 
 /// Per-chromosome sorted, deduplicated positions of one side of every annotated
 /// intron (`side` of its `[start, end)`), either strand.
-fn intron_sides(transcript_introns: &HashMap<String, TranscriptIntrons>, side: impl Fn(&(i32, i32)) -> i32) -> HashMap<u32, Vec<i32>> {
+fn intron_sides(transcript_introns: &HashMap<TranscriptKey, TranscriptIntrons>, side: impl Fn(&(i32, i32)) -> i32) -> HashMap<u32, Vec<i32>> {
     let mut out: HashMap<u32, Vec<i32>> = HashMap::new();
     for ti in transcript_introns.values() {
         out.entry(ti.chrom_id).or_default().extend(ti.introns.iter().map(&side));
@@ -206,13 +219,13 @@ impl AnnotationIndex {
         exon_trees: HashMap<u32, COITree<usize, u32>>,
         exons: Vec<ExonRecord>,
         splice_sites: HashMap<u32, Vec<i32>>,
-        transcript_introns: HashMap<String, TranscriptIntrons>,
+        transcript_introns: HashMap<TranscriptKey, TranscriptIntrons>,
         chrom_map: HashMap<String, u32>,
     ) -> Self {
         let n_chroms = exon_trees.len();
         let n_exons = exons.len();
         let n_transcripts = transcript_introns.len();
-        let intron_boundaries = derive_intron_boundaries(&exons, &transcript_introns);
+        let intron_boundaries = derive_intron_boundaries(&transcript_introns);
         let exon_starts = intron_sides(&transcript_introns, |&(_, b)| b);
         let exon_ends = intron_sides(&transcript_introns, |&(a, _)| a);
         let (transcript_trees, transcript_strands) = derive_transcript_trees(&exons);
@@ -422,12 +435,42 @@ impl AnnotationIndex {
         }
     }
 
-    /// Get intron boundaries for a specific transcript.
+    /// The transcripts that have introns and whose exons overlap the given position,
+    /// each once, in ascending (ID, chromosome, strand) order.
     ///
-    /// Returns `None` if the transcript ID is not in the index (should not
-    /// happen if the ID came from `overlapping_transcripts()`).
-    pub fn get_transcript_introns(&self, transcript_id: &str) -> Option<&TranscriptIntrons> {
-        self.transcript_introns.get(transcript_id)
+    /// A transcript is an ID at one chromosome and strand, so the exon hit at `pos`
+    /// names the transcript of that place even when the GTF reuses its ID elsewhere.
+    /// A transcript of a single exon has no introns and is not listed. Empty when
+    /// the chromosome is not annotated or `pos` lies in no exon.
+    pub fn spliced_transcripts_at(&self, chrom: &str, pos: i64) -> Vec<&TranscriptIntrons> {
+        let Some(tree) = self.chrom_map.get(chrom).and_then(|id| self.exon_trees.get(id)) else {
+            return Vec::new();
+        };
+        let pos_i32 = pos as i32;
+        let mut found: Vec<&TranscriptIntrons> = Vec::new();
+        tree.query(pos_i32, pos_i32, |node| {
+            // Metadata is an index into `self.exons` (see `overlapping_transcripts`).
+            use std::borrow::Borrow;
+            #[allow(noop_method_call)]
+            let idx: &usize = node.metadata.borrow();
+            let exon = &self.exons[*idx];
+            let key = TranscriptKey {
+                id: exon.transcript_id.clone(),
+                chrom_id: exon.chrom_id,
+                strand: exon.strand,
+            };
+            // A position may overlap several exons of one transcript.
+            if let Some(ti) = self.transcript_introns.get(&key) {
+                if !found.iter().any(|f| std::ptr::eq(*f, ti)) {
+                    found.push(ti);
+                }
+            }
+        });
+        // The tree's visiting order varies by SIMD backend; ID order does not.
+        found.sort_unstable_by(|a, b| {
+            (&a.transcript_id, a.chrom_id, a.strand).cmp(&(&b.transcript_id, b.chrom_id, b.strand))
+        });
+        found
     }
 
     /// Check if a read's observed splice junctions are compatible with a
@@ -549,10 +592,11 @@ mod tests {
 
         let mut transcript_introns = HashMap::new();
         transcript_introns.insert(
-            "ENST00000001".to_string(),
+            TranscriptKey { id: "ENST00000001".to_string(), chrom_id: 0, strand: '+' },
             TranscriptIntrons {
                 transcript_id: "ENST00000001".to_string(),
                 chrom_id: 0,
+                strand: '+',
                 introns: vec![(200, 300)],
             },
         );
@@ -631,6 +675,92 @@ mod tests {
         assert_eq!(idx.strand_at("1", 51), None, "intergenic on chrom 1");
         assert_eq!(idx.strand_at("1", 1120), Some('-'));
         assert_eq!(idx.strand_at("2", 20), Some('-'));
+    }
+
+    // ── spliced_transcripts_at tests ──
+
+    /// A transcript for [`index_of_transcripts`]: (ID, chromosome, strand, exons as
+    /// sorted (start, end) pairs).
+    type Spec<'a> = (&'a str, u32, char, &'a [(i32, i32)]);
+
+    /// An index over the given transcripts; introns are the gaps between consecutive
+    /// exons, and only a transcript of two or more exons has any (as the parser
+    /// derives them).
+    fn index_of_transcripts(transcripts: &[Spec]) -> AnnotationIndex {
+        let mut exons = Vec::new();
+        let mut introns = HashMap::new();
+        for &(id, chrom_id, strand, coords) in transcripts {
+            for &(start, end) in coords {
+                exons.push(ExonRecord { transcript_id: id.into(), chrom_id, start, end, strand });
+            }
+            let gaps: Vec<(i32, i32)> = coords.windows(2).map(|w| (w[0].1, w[1].0)).collect();
+            if !gaps.is_empty() {
+                introns.insert(
+                    TranscriptKey { id: id.into(), chrom_id, strand },
+                    TranscriptIntrons { transcript_id: id.into(), chrom_id, strand, introns: gaps },
+                );
+            }
+        }
+        let exon_trees = build_exon_trees(&exons);
+        let chrom_map = HashMap::from([("1".to_string(), 0u32), ("2".to_string(), 1u32)]);
+        AnnotationIndex::new(exon_trees, exons, HashMap::new(), introns, chrom_map)
+    }
+
+    #[test]
+    fn spliced_transcripts_at_names_the_transcript_of_the_place_asked() {
+        // TD is a transcript of chrom 1 and, reused, another of chrom 2.
+        let idx = index_of_transcripts(&[
+            ("TD", 0, '+', &[(100, 200), (300, 400)]),
+            ("TD", 1, '+', &[(1000, 1100), (1200, 1300)]),
+        ]);
+        let at = |chrom: &str, pos: i64| -> Vec<(u32, Vec<(i32, i32)>)> {
+            idx.spliced_transcripts_at(chrom, pos)
+                .iter()
+                .map(|t| (t.chrom_id, t.introns.clone()))
+                .collect()
+        };
+        assert_eq!(at("1", 150), vec![(0, vec![(200, 300)])]);
+        assert_eq!(at("2", 1050), vec![(1, vec![(1100, 1200)])]);
+        assert!(at("1", 1050).is_empty(), "chrom 2's exon is not on chrom 1");
+        assert!(at("1", 250).is_empty(), "intronic");
+        assert!(at("3", 150).is_empty(), "unannotated chromosome");
+    }
+
+    #[test]
+    fn spliced_transcripts_at_lists_both_strands_of_a_reused_id_plus_strand_first() {
+        // The ID is used on both strands of chrom 1, with exons that overlap at 150.
+        let idx = index_of_transcripts(&[
+            ("TD", 0, '-', &[(120, 220), (300, 400)]),
+            ("TD", 0, '+', &[(100, 200), (500, 600)]),
+        ]);
+        let got: Vec<(char, Vec<(i32, i32)>)> = idx
+            .spliced_transcripts_at("1", 150)
+            .iter()
+            .map(|t| (t.strand, t.introns.clone()))
+            .collect();
+        assert_eq!(got, vec![('+', vec![(200, 500)]), ('-', vec![(220, 300)])]);
+    }
+
+    #[test]
+    fn spliced_transcripts_at_is_in_id_order_and_leaves_out_single_exon_transcripts() {
+        let spliced: &[(i32, i32)] = &[(100, 200), (300, 400)];
+        let one_exon: &[(i32, i32)] = &[(100, 200)];
+        let mut transcripts = vec![
+            ("C", 0, '+', spliced),
+            ("A", 0, '+', spliced),
+            ("D", 0, '+', one_exon),
+            ("B", 0, '+', spliced),
+        ];
+        let ids = |ts: &[Spec]| -> Vec<String> {
+            index_of_transcripts(ts)
+                .spliced_transcripts_at("1", 150)
+                .iter()
+                .map(|t| t.transcript_id.clone())
+                .collect()
+        };
+        assert_eq!(ids(&transcripts), vec!["A", "B", "C"]);
+        transcripts.reverse();
+        assert_eq!(ids(&transcripts), vec!["A", "B", "C"], "not by the order they arrive in");
     }
 
     #[test]
@@ -751,7 +881,7 @@ mod tests {
     #[test]
     fn test_compatible_matching_junction() {
         let idx = build_test_index();
-        let tx = idx.get_transcript_introns("ENST00000001").unwrap();
+        let tx = idx.spliced_transcripts_at("1", 150)[0];
         // Junction [200, 300) matches the annotated intron exactly
         assert!(idx.is_read_compatible(&[(200, 300)], tx, 5));
     }
@@ -759,7 +889,7 @@ mod tests {
     #[test]
     fn test_compatible_within_tolerance() {
         let idx = build_test_index();
-        let tx = idx.get_transcript_introns("ENST00000001").unwrap();
+        let tx = idx.spliced_transcripts_at("1", 150)[0];
         // Junction [198, 302) is within ±5bp
         assert!(idx.is_read_compatible(&[(198, 302)], tx, 5));
     }
@@ -767,7 +897,7 @@ mod tests {
     #[test]
     fn test_incompatible_outside_tolerance() {
         let idx = build_test_index();
-        let tx = idx.get_transcript_introns("ENST00000001").unwrap();
+        let tx = idx.spliced_transcripts_at("1", 150)[0];
         // Junction [190, 310) is outside ±5bp
         assert!(!idx.is_read_compatible(&[(190, 310)], tx, 5));
     }
@@ -775,7 +905,7 @@ mod tests {
     #[test]
     fn test_no_junctions_always_compatible() {
         let idx = build_test_index();
-        let tx = idx.get_transcript_introns("ENST00000001").unwrap();
+        let tx = idx.spliced_transcripts_at("1", 150)[0];
         assert!(idx.is_read_compatible(&[], tx, 5));
     }
 }

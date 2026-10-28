@@ -18,6 +18,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Each decided read rule states its mechanism.** The register has a Mechanism column,
   filled for RJ-1 to RJ-27, and new entries state theirs. Counts are unchanged.
 
+### Fixed — a GTF transcript ID that another chromosome or strand reuses is another transcript (#216)
+
+- **The GTF parser keyed transcripts by ID alone.** An ID used on more than one chromosome
+  or strand (the same RefSeq `NM_` on chrX and chrY, alternate loci) merged into one
+  transcript: its exons from both places were sorted together, so the consecutive pairs
+  made introns that exist nowhere and missed the real ones, and the whole transcript sat on
+  the first chromosome seen. A spliced read over a real intron then matched none of them
+  and was left out of the transcript's counts; the same introns fed the intron boundaries
+  (`RETENTION_DOMINANT`, the exon-edge BAQ rule, RNA clip edges) and ASJD's known-junction
+  check. A transcript is now an ID at one chromosome and strand, as the strand spans
+  already were (#185): its exons, introns, boundaries and `transcript_read_counts` /
+  `transcript_fragment_counts` entries are its own. The parser warns once when a GTF
+  reuses an ID. Exons of one ID at the same chromosome and strand still join (versions that
+  differ only by suffix share a transcript). Counts are unchanged for a GTF that reuses
+  no ID: Ensembl GRCh38.111 (FORTE's) has none among its 252,989 transcript IDs.
+
 ### Fixed — the docs state the unreadable-insert rule as decided (#304)
 
 - **An insert of the ALT's length whose bases are all masked is the ALT**, where no other
