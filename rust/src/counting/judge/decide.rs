@@ -430,11 +430,16 @@ fn judge_graph(site: &Site, read: &ReadView, min_baseq: u8, ask_anchor: bool) ->
         return Verdict { call: Call::Depth, qual: 0, best: [None; 3], holds_anchor: false, placed: None, triage: None, confirmed: false, spells: 0, clip: None, fits, fits_none: false, neither: NeitherTrace::default(), owngap: OwnGapTrace::default() };
     }
     let gr = site.graph_read(read);
-    let mut ws = Workspace::default();
+    graph::with_workspaces(site.graphs.len(), |wss| judge_states(site, read, min_baseq, ask_anchor, rule, &gr, wss))
+}
+
+/// [`judge_graph`] over the site's states, a workspace each (`wss`): each state's path is
+/// traced back from the values its scoring left there.
+fn judge_states(site: &Site, read: &ReadView, min_baseq: u8, ask_anchor: bool, rule: FitsRule, gr: &graph::GraphRead, wss: &mut [Workspace]) -> Verdict {
     // Triage first: a read whose confident k-mers name one state.
     let triaged = match (site.triage_mode, &site.triage) {
         (TriageMode::Off, _) | (_, None) => None,
-        (_, Some(ix)) if !ask_anchor => ix.decide(site, read, &gr, min_baseq),
+        (_, Some(ix)) if !ask_anchor => ix.decide(site, read, gr, min_baseq),
         _ => None,
     };
     if site.triage_mode == TriageMode::On {
@@ -445,7 +450,7 @@ fn judge_graph(site: &Site, read: &ReadView, min_baseq: u8, ask_anchor: bool) ->
     let mut best: [Option<(i32, usize)>; 3] = [None; 3];
     let mut halves = Vec::with_capacity(site.graphs.len());
     for (k, st) in site.graphs.iter().enumerate() {
-        let (s, half) = graph::decided(&ShortReads, &gr, &st.graph, &mut ws);
+        let (s, half) = graph::decided(&ShortReads, gr, &st.graph, &mut wss[k]);
         halves.push(half);
         raise(&mut best, st.class as usize, s, k);
     }
@@ -457,9 +462,9 @@ fn judge_graph(site: &Site, read: &ReadView, min_baseq: u8, ask_anchor: bool) ->
         Verdict { call: Call::Depth, qual: 0, best: best.map(|b| b.map(|(s, _)| s)), holds_anchor: false, placed: None, triage: None, confirmed: false, spells: 0, clip: None, fits, fits_none: false, neither: NeitherTrace::default(), owngap: OwnGapTrace::default() }
     } else {
         let scorer = Scorer::new(read);
-        let ws = std::cell::RefCell::new(ws);
+        let wss = &*wss;
         let ex = Examined::new(site, &scorer, |k| {
-            let p = graph::path(&ShortReads, &gr, &site.graphs[k].graph, halves[k], &mut ws.borrow_mut());
+            let p = graph::kept_path(&ShortReads, gr, &site.graphs[k].graph, halves[k], &wss[k]);
             if best.iter().flatten().any(|&(s, h)| h == k && s != p.score) {
                 trace!("haplotype judge: state {k}'s traced path scores {} against its score", p.score);
             }
