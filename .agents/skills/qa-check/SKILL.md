@@ -1,6 +1,6 @@
 ---
 name: qa-check
-description: "Procedure for the gbcms pre-commit and pre-merge DEV QA gate — ruff, black (CI's version), mypy, clippy, cargo test, pytest (which includes the agent-skill checks) and a staged-data-file guard — with every exit code read. Use before every commit or merge, and when asked to QA a change. NOTE: this is developer QA (lint/test). For genomic read-level QC (filters, BQ gating, BAQ) see the read-filters-qc skill."
+description: "The pre-commit and pre-merge DEV gate: ruff, CI's black, mypy, clippy, cargo test, pytest (with the agent-skill checks), a staged-data-file guard, every exit code read. Use before every commit or merge. Developer QA, not genomic QC (see read-filters-qc)."
 ---
 
 # qa-check

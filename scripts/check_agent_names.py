@@ -63,8 +63,15 @@ EXTERNAL = {
     "count_checked",
     "count_bam_checked",
     "find_read_pos",
-    # Git's own flags.
+    # Git's, gh's and pip's own names.
+    "HEAD",
     "--no-ff",
+    "--add-sub-issue",
+    "--body-file",
+    "--require-hashes",
+    "--no-deps",
+    # A gitignored directory that `git worktree add` creates.
+    ".claude/worktrees/",
     # Exists only on checkpoint-wheels/* branches, where the pre-commit hook admits it.
     "scripts/regression_panel/checkpoints.tsv",
 }
@@ -74,7 +81,18 @@ EXTRA_ROOTS = {"nextflow-pipeline": ["nextflow"], "read-filters-qc": ["nextflow"
 #: Files that exist but are not module-map entries (every package has them).
 MAP_IGNORED = {"__init__.py", "__main__.py", "py.typed", "mod.rs"}
 #: A path-like span starts with one of these top-level names, or ends in a file suffix.
-TOP_LEVEL = ("src/", "rust/", "docs/", "tests/", "nextflow/", "scripts/", ".agents/", ".claude/", ".githooks/", ".github/")
+TOP_LEVEL = (
+    "src/",
+    "rust/",
+    "docs/",
+    "tests/",
+    "nextflow/",
+    "scripts/",
+    ".agents/",
+    ".claude/",
+    ".githooks/",
+    ".github/",
+)
 SUFFIXES = (".rs", ".py", ".pyi", ".md", ".nf", ".toml", ".config", ".yml", ".yaml")
 
 WORD = r"[A-Za-z_][A-Za-z0-9_]*"
@@ -163,7 +181,8 @@ def check_span(span: str, skill: str, names: list[str], text: str, flag_text: st
     if (
         (head.endswith(SUFFIXES) or head.startswith(TOP_LEVEL))
         and re.fullmatch(r"[\w./*<>${}-]+", head)
-        and not head.startswith(("-", "."))
+        and not head.startswith("-")
+        and (not head.startswith(".") or head.startswith(TOP_LEVEL))
     ):
         if not path_exists(span, names):
             return f"path {head} does not exist"
@@ -228,7 +247,8 @@ def main(argv: list[str]) -> int:
     paths = (
         [Path(a).resolve() for a in argv]
         if argv
-        else sorted(ROOT.glob(".agents/skills/*/SKILL.md")) + sorted(ROOT.glob(".agents/rules/*.md"))
+        else sorted(ROOT.glob(".agents/skills/*/SKILL.md"))
+        + sorted(ROOT.glob(".agents/rules/*.md"))
     )
     code = read_tree(["src", "rust/src"], names)
     flag_text = code + "\n" + read_tree(["nextflow"], names)

@@ -1,16 +1,14 @@
 ---
 name: counting-engine
-description: "Map of the gbcms counting core: how check_allele_with_qual dispatches a read (splice triage, SNV/MNP checks, the exact-carrier rule, the 50 bp deletion junction judge, CIGAR checks as the residual fallback), the key files, and genomic binning. Use when modifying engine.rs, carrier.rs, junction.rs or variant_checks.rs, debugging a count discrepancy, or reasoning about binning invariance. For fragment/consensus see fragment-counting; for filters/quality see read-filters-qc."
+description: "Map of the counting core: how check_allele_with_qual routes a read (splice triage, SNV/MNP checks, exact-carrier rule, 50 bp deletion junction judge, CIGAR fallback), key files, and binning. Use when changing engine.rs, carrier.rs, junction.rs or variant_checks.rs, or debugging a count. Fragments: fragment-counting. Filters: read-filters-qc."
 ---
 
 # Counting Engine Map
 
 What call each read shape gets, and the decision behind it (register RJ-n), is specified in
 `docs/reference/read-judgment.md`; how the engine computes it is
-`docs/reference/allele-classification.md`. Read those first; this page maps the code.
-A fix to a call starts from the mechanism, not the failing row: state it without the row,
-test the other shapes of its class, derive any cutoff from it, and justify any narrowing
-(read-judgment.md, "How a change to read judgment is made").
+`docs/reference/allele-classification.md`. Read those first; this page maps the code. A change
+to a call follows `.agents/rules/decision-protocol.md`.
 
 ## Dispatch: `check_allele_with_qual` (engine.rs), in order
 1. **Splice triage** (`splice_skip_triage`, variant_checks.rs): a CIGAR `N` spanning every
@@ -48,10 +46,9 @@ The `read call` trace line names the deciding rule (`deciding_rule`: `exact_carr
 - `alignment.rs` (SW), `pairhmm.rs`, `pangenome.rs`, `wfa_router.rs`. The CLI default
   backend is `pairhmm`; all backends and the WFA fast path share one base-quality gate.
 
-## Binning (load-bearing: AGENTS.md invariant 1)
+## Binning (AGENTS.md invariant 1; `architecture.md` §"Binning invariance")
 Variants group into bins of at least `BIN_WINDOW` (10 kb) and at most `BIN_MAX_VARIANTS`
-(200); one `bam.fetch()` per bin, rayon over bins. Bin geometry is performance only: each
-bin's fetch must hold every member's full read window, anchor included, and its guard
-window (`window::guard_window`). Keep `tests/test_binning_invariance.py` and the
-`build_genomic_bins` property test green. A co-annotated sibling's ALT read is not REF for
-this row, and a tie between rows is neither row's AD (RJ-5).
+(200); one `bam.fetch()` per bin, rayon over bins (`build_genomic_bins`). Bin geometry is
+performance only, so each bin's fetch must hold every member's full read window, anchor
+included, and its guard window (`window::guard_window`). A co-annotated sibling's ALT read is
+not REF for this row, and a tie between rows is neither row's AD (RJ-5).

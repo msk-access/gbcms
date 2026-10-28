@@ -21,23 +21,10 @@ alwaysApply: true
 - [ ] Update monitoring — timing/counts for data operations, progress for long loops
 - [ ] Reproduce every claim before stating it (a review finding, an "unreachable" branch,
       behavior across inputs) with a run — synthetic BAM or CLI; otherwise say it is unverified
-- [ ] Count-changing step: real-data acceptance on every data type it reaches (DNA tissue
-      tumour + matched normal; cfDNA duplex/simplex via `gbcms merge`; WES/WGS without
-      realignment; RNA) and more than one truth source — one dataset (e.g. GIAB) is a data
-      point, not acceptance; DNA and RNA may need different rules (see add-feature step 6)
-- [ ] A decision whose options all cost something is not settled by the least-bad one:
-      name what the measurements cannot see (the risk the rule guards, a missing truth
-      source), measure it, and look for a rule better on every axis before recommending
-- [ ] Analysis aims past the standard: stress each candidate with synthetic shapes for
-      what real data cannot show (the guarded risk, the realistic mix, the phantom where
-      the allele is absent, natural quality), score what matters (VAF vs truth, phantom
-      share), check the oracle trusts no alignment, and size a suspected defect with a
-      count-neutral diagnostic on every arm before deciding
-- [ ] Implementation carries the analysis: every stress shape becomes a red-first test,
-      the rule lands in every path that judges the same question, a rule extended to
-      the other allele carries each exclusion and threshold with a mirrored test, each
-      new component gets its own unit test, and the measurements are rerun on the
-      final build
+- [ ] Count-changing step: follow `.agents/rules/decision-protocol.md` (real-data acceptance on
+      every data type and more than one truth source, the best rule rather than the least bad,
+      red-first tests for every stress shape, the rule landed in every path that judges the
+      same question, the measurements rerun on the final build)
 
 **AFTER implementing, compare code against implementation plan:**
 - [ ] Re-read the relevant plan section(s)
@@ -45,19 +32,11 @@ alwaysApply: true
 - [ ] If there are **gaps**: classify as intentional or unintentional, notify user
 - [ ] If the implementation **diverged**: update plan to match reality
 
-## Lint Suite — All Must Pass Before Every Commit
+## Lint Suite
 
-```bash
-# Python (in order)
-ruff check src/ tests/
-black --check src/ tests/
-mypy src/
-
-# Rust
-cd rust && cargo clippy --all-targets -- -D warnings && cargo test && cd ..
-```
-
-Fix in this order: ruff → black → mypy → clippy.
+All of it must pass before every commit: ruff → black (CI's version) → mypy → clippy → cargo
+test → pytest, in that fix order. The commands, the exit-code rule and the tool-version notes
+are in the qa-check skill (`.agents/skills/qa-check/SKILL.md`).
 
 ## Python Standards
 
@@ -96,12 +75,29 @@ Fix in this order: ruff → black → mypy → clippy.
 - [ ] Missing files logged with path context
 - [ ] Errors include context (file path, sample name, variant position)
 
+## Dependencies
+
+`pyproject.toml` is the single source of truth: runtime dependencies in `[project.dependencies]`
+(floors measured by bisection; CI's floors leg installs them with `uv --resolution lowest-direct`
+and `scripts/check_floors.py` checks it), contributors' tools in the PEP 735
+`[dependency-groups]` (`test`, `docs`, `dev`).
+- If code, tests included, does `import X`, declare `X` where it is imported (runtime, or the
+  `test` group when only tests import it, as `click` is); never rely on it arriving transitively.
+  A transitive `click` once vanished from a fresh CI resolve and broke collection on every platform.
+- There is no committed `uv.lock` (it is gitignored): CI, the Dockerfile and Nextflow build the
+  wheel and resolve fresh, so a lock only drifts. Reintroduce one only with `uv sync --frozen` in
+  CI and Docker and a `uv lock --check` drift gate: all or nothing.
+- Reproducibility belongs in the Docker image: `docker/requirements.lock` (uv pip compile, hashes,
+  linux/amd64, Python 3.11) is installed with `--require-hashes --no-deps`, then `pip check` gates
+  drift. It is refreshed at release (release guide, step 4). The org's containers image does not
+  use it (`.agents/memory/references.md`).
+
 ## Comment & Log Hygiene
 
 Comments and log strings (`debug!`/`warn!`/`info!`, Python `logging`) are read by
 someone with **no plan or PR context**. State what the code does, why, and how —
 never cite ticket/milestone labels (`CR-1`, `HI-11`, `ME-8`, `P4c`, `M2`, …) in
-code or logs. Those are ephemeral and meaningless to a future reader; the ticket
+code or logs (operator, 2026-06-27). Those are ephemeral and meaningless to a future reader; the ticket
 context belongs in the commit message and is recoverable via `git blame`. (This
 applies to source only — plan/design docs are exactly where labels belong.)
 
@@ -112,12 +108,7 @@ applies to source only — plan/design docs are exactly where labels belong.)
 
 ## Test Invariants (Assert in Every Counting Test)
 
-```python
-assert counts.dp >= counts.rd + counts.ad      # DP includes 'neither'
-assert counts.dpf >= counts.rdf + counts.adf   # DPF includes discarded fragments
-assert counts.rd == counts.rd_fwd + counts.rd_rev  # strand consistency
-assert counts.ad == counts.ad_fwd + counts.ad_rev
-```
+The four invariants (DP, DPF, strand consistency) are in AGENTS.md ("Counting test invariants").
 
 A new test file starts with a name check: `git ls-files tests/<name>.py` prints nothing,
 or create it with the Write tool (it refuses to overwrite a file it has not read). A
@@ -125,7 +116,8 @@ shell write (`open(p, "w")`, `>`) once replaced an existing contract's tests uns
 
 ## Test Suite
 
-Counts drift; get them from the tools (`python -m pytest --collect-only -q | tail -1`,
+Keep tests minimal and high-signal: each is a maintenance contract, and a fix that removes duplication
+is better than added code. Counts drift; get them from the tools (`python -m pytest --collect-only -q | tail -1`,
 `cd rust && cargo test`) and never write them down. Find a file with `ls tests`; the
 families:
 
