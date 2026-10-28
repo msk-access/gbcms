@@ -22,7 +22,8 @@ comparison was incomplete.
 **How to apply:** in every decision table add a row for "what this measurement cannot
 see" and how to measure it; prefer building that measurement (spike-in, a hotspot
 audit, a synthetic competitor) over choosing among under-measured options. Related:
-[[better-than-standard]], [[test-across-data-types]], [[decisions-worked-examples]].
+[[better-than-standard]], [[test-across-data-types]], [[decisions-worked-examples]],
+[[fix-the-class-not-the-row]].
 
 **Both phases (operator, 2026-10-14):** the best and most accurate route, past the
 current standard, holds in the analysis before implementation *and* in the

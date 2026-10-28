@@ -84,13 +84,46 @@ Each run reports:
 | C18 #177 | Long events split across alignments (supplementary reads) are not joined | ALT reads lost at 50+ bp events |
 | C15 #173 | Clipped carriers of pure deletions (DNA; an RNA read's clips are not evidence, RJ-18) | Clip-only carriers outside counts, by stratum |
 | C31 #212 | A mate's clipped 5' end makes TLEN short (soft clips past it are clipped) | Rows changed (none in the group 1 data) |
-| C6 #143 | Exact-length insertions with a sequencing error count partial | Carriers at long-insertion loci |
 | R3 #178 | Catalogued RNA editing positions inside carrier windows | Rows whose window holds an editing site |
 | O6 #180 | No read-orientation evidence for oxoG/FFPE artifacts (IMPACT FFPE) | Strand-skewed ALT at C>T/G>T rows |
 | O5 #179 | No mapping-bias diagnostic | ALT vs REF MAPQ and clipping skew |
 | C24 #195 | Stale scores in the no-reference fallback (partial only) | Rows on that path (unprepared input only) |
 | C33 #214 | A REF molecule with one clear error just outside the window its ALT reading is anchored away from can count ALT (pre-existing) | Spurious ALT at the synthetic probes after RJ-16 |
 | C34 #216 | A GTF that reuses a transcript ID on another chromosome merges its introns (per-transcript counts, ASJD, exon-edge rules) | Transcript IDs reused across chromosomes or strands in the production GTF (Ensembl 111: 0) |
+
+**Resolved since this table was written.** C6 #143 (an exact-length insertion read with one
+sequencing error counted partial) is closed by #289: one substitution is an error on REF and
+ALT reads alike unless it recurs (RJ-26), covered by
+`test_one_inserted_base_read_wrong_is_an_error`. The identity band for truncated inserts
+was measured and not adopted (#278 D2: 13 agreeing panel ALT calls against 111); a truncated
+copy counts `partial_alt`. See `docs/reference/bam-evidence-caveats.md`.
+
+### Bounds measured so far
+
+**C7 #144, clip-borne ITD carriers (FLT3-ITD).** The stratified truth batch of 2026-09-22
+([#92 comment](https://github.com/msk-access/gbcms/issues/92#issuecomment-5780022052)), on the
+engine of that date; the D5 bound for this row is still to be measured on the release
+candidate. 10 samples, 15-66bp, sign-out t_alt 3-3336: 8 of 10 tight. Exact hits at t_alt=3
+(15bp) and t_alt=6 (57bp at 579×), 77/77 exact (42bp), +2-5% on the rest including a
+cross-timepoint replicate pair (527/506 and 344/332) and a high-depth 36bp case (3402 vs 3336
+at 6781×). The truncation-smear class separates into `partial_alt` as designed. The two
+outliers:
+- *Soft-clip-only carriers are invisible.* A 30bp ITD with sign-out t_alt=7 has zero I-op reads;
+  its carriers exist only as soft clips whose clip start sits 9-47bp downstream of the anchor.
+  This is the loss the C7 row above bounds. It is a sensitivity-tail case, not systematic:
+  12 further ITD loci (15-63bp, t_alt 11-409) are 12/12 I-op-dominant (I carriers 16-597
+  against 1-10 clip candidates per locus), and a different timepoint of the same patient shows
+  587 I-op carriers
+  ([comment](https://github.com/msk-access/gbcms/issues/92#issuecomment-5788174498)). The rescue
+  stays at low priority with `CLIP_CANDIDATES(n)` as the stopgap; anatomy and the candidate fix
+  are in `docs/reference/bam-evidence-caveats.md`.
+- *A 66bp ITD at 334 against sign-out 887 is a counting-basis difference, not a miss:* the
+  deduplicated BAM holds only about 380 I-bearing reads in total (233 exact I66 plus a
+  truncation ladder), and sign-out's 887/1550 exceeds that population (pre-dedup or pair-level
+  counting upstream).
+
+**ACCESS duplex and simplex fragment counts against sign-out** (4 samples, 256 signed-out variants,
+2026-09-23): median relative error +0.0%, no missed variants; numbers in `docs/cli/merge.md`.
 
 ## 4. Release and reproducibility
 
@@ -135,7 +168,8 @@ Open:
 
 1. The spurious-ALT threshold per million reads for the negative-control probes.
 2. Whether any section 3 limit (FLT3-ITD sensitivity in particular) must move to
-   section 1 for the clinical use of fillouts.
+   section 1 for the clinical use of fillouts. The FLT3-ITD bound measured so far is under
+   "Bounds measured so far" in section 3.
 
 ## Order
 

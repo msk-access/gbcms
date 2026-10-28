@@ -1,6 +1,6 @@
 ---
 name: add-feature
-description: Procedure for adding a feature to gbcms following its Git Flow and Rust/Python architecture (branch from develop, plan the layer, implement, sync type stubs, add tests with the 4 counting invariants, update docs/CHANGELOG, QA, PR to develop). Use when starting new feature work.
+description: "Procedure for adding a feature to gbcms following its Git Flow and Rust/Python architecture (branch from develop, plan the layer, implement, sync type stubs, add tests with the 4 counting invariants, update docs/CHANGELOG, QA, PR to develop). Use when starting new feature work."
 ---
 
 # add-feature
@@ -17,7 +17,8 @@ description: Procedure for adding a feature to gbcms following its Git Flow and 
    - Check existing code for reusable patterns (don't re-implement)
 
 3. **Implement**:
-   - Rust: `rust/src/` → rebuild with `maturin develop --release`
+   - Rust: `rust/src/` → rebuild with `maturin develop --release` from the repo root, with
+     `VIRTUAL_ENV` set (rust-python-ffi, "Build & environment")
    - Python: `src/gbcms/`
    - CLI option: add to `cli.py`, validate in `models/core.py`
    - Type stubs: update `src/gbcms/_rs.pyi` (the single stub for `gbcms._rs`)
@@ -36,8 +37,9 @@ description: Procedure for adding a feature to gbcms following its Git Flow and 
    genome, one aligner, germline hets only: add normals as hom-REF controls and spike-ins
    where no truth exists), and judge DNA and RNA separately where their reads differ,
    one BAM at a time, and score against the reads — reads' own bases are the evidence (not the aligner's placement, not sign-out): gbcms genotypes, it does not call.
-   Build base and candidate in isolation (`git archive <sha>` + own venv, `BUILT_FROM`
-   recorded); once the PR merges, delete those builds and gzip raw `--trace` logs
+   Build base and candidate in isolation (`git archive <sha>` + own venv, the commit each
+   build came from recorded beside it; see rust-python-ffi "Build & environment"); once
+   the PR merges, delete those builds and gzip raw `--trace` logs
    (memory: harness-cleanup-after-merge).
 
 7. **PR to develop**:

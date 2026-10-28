@@ -18,6 +18,7 @@ from pathlib import Path
 
 import typer
 
+from .io.input import variant_format
 from .io.output import build_identity
 from .models.core import (
     AlignmentConfig,
@@ -60,14 +61,6 @@ class ReadJudge(StrEnum):
     HAPLOTYPE = "haplotype"
 
 
-# Valid variant file extensions (checked before Pydantic config construction).
-# .vcf.gz  — bgzip/gzip-compressed VCF (tabix-indexable, most common HPC format)
-# .vcf.bgz — BGZip-compressed VCF, alternative extension used by some pipelines
-# .vcf     — uncompressed VCF
-# .maf     — Mutation Annotation Format
-_VALID_VARIANT_EXTENSIONS: frozenset[str] = frozenset({".vcf", ".maf"})
-_COMPRESSED_VCF_SUFFIXES: tuple[str, ...] = (".vcf.gz", ".vcf.bgz")
-
 # Column-prefix charset: only letters, digits, underscores
 _COLUMN_PREFIX_RE = re.compile(r"^[A-Za-z0-9_]*$")
 
@@ -107,31 +100,15 @@ def _log_command() -> str:
     return command_line
 
 
-def _is_compressed_vcf(path: Path) -> bool:
-    """Return True if *path* has a compressed-VCF suffix (.vcf.gz or .vcf.bgz).
-
-    BGZip (.vcf.bgz) and gzip (.vcf.gz) are both block-gzip compatible and
-    are handled identically by pysam.  We accept both so users can pass
-    tabix-indexed .bgz files without renaming.
-    """
-    name_lower = path.name.lower()
-    return any(name_lower.endswith(suffix) for suffix in _COMPRESSED_VCF_SUFFIXES)
-
-
 def _variant_format(path: Path) -> str:
-    """``"vcf"`` or ``"maf"`` by extension; an unsupported extension is logged
-    and exits 1 before any I/O (every command that reads a variant file)."""
-    if _is_compressed_vcf(path) or path.suffix.lower() == ".vcf":
-        return "vcf"
-    if path.suffix.lower() == ".maf":
-        return "maf"
-    logger.error(
-        "Unsupported variant file extension '%s'. "
-        "Expected .vcf, .vcf.gz, .vcf.bgz, or .maf. Got: %s",
-        path.suffix.lower(),
-        path,
-    )
-    raise typer.Exit(code=1)
+    """``"vcf"`` or ``"maf"`` by extension (:func:`gbcms.io.input.variant_format`); an
+    unsupported extension is logged and exits 1 before any I/O (every command that
+    reads a variant file)."""
+    try:
+        return variant_format(path)
+    except ValueError as e:
+        logger.error("%s", e)
+        raise typer.Exit(code=1) from e
 
 
 def _exit_on_sample_failure(result: dict) -> None:
@@ -264,7 +241,7 @@ def dna(
         help=(
             "Generate an interactive HTML report with per-variant fragment "
             "size distributions and graded fragment-size evidence. "
-            "Implies --mfsd and --mfsd-parquet. Output: "
+            "Implies --mfsd and --mfsd-parquet; requires --format maf. Output: "
             "<sample>.mfsd_report.html alongside the main output."
         ),
     ),
@@ -297,7 +274,16 @@ def dna(
     ),
     # Quality thresholds
     min_mapq: int = typer.Option(20, "--min-mapq", help="Minimum mapping quality"),
-    min_baseq: int = typer.Option(20, "--min-baseq", help="Minimum base quality"),
+    min_baseq: int = typer.Option(
+        20,
+        "--min-baseq",
+        help=(
+            "Minimum base quality. A base below it is read as unknown, like N: it "
+            "supports no allele and counts against none. Reads are not dropped: a "
+            "read still counts toward depth and is judged on its other bases. "
+            "0 masks only N bases."
+        ),
+    ),
     fragment_qual_threshold: int = typer.Option(
         10,
         "--fragment-qual-threshold",
@@ -477,6 +463,16 @@ def dna(
             mfsd_parquet = True
             logger.info("--mfsd-report implies --mfsd-parquet; auto-enabled.")
 
+    # The report reads its per-variant statistics from the main output as a MAF
+    # (CLI-level check matches the model-level validator).
+    if mfsd_report and output_format != OutputFormat.MAF:
+        logger.error(
+            "--mfsd-report requires --format maf: the report reads its mFSD statistics "
+            "from the MAF output. Re-run with --format maf, or drop --mfsd-report "
+            "(--mfsd-parquet still writes the raw fragment sizes)."
+        )
+        raise typer.Exit(code=1)
+
     # Validate --mfsd-parquet requires --mfsd (CLI-level check matches model-level validator).
     if mfsd_parquet and not mfsd:
         logger.error(
@@ -634,7 +630,8 @@ def rna(
         "--enforce-strandedness/--no-strandedness",
         help=(
             "Filter reads by strand orientation relative to gene strand. "
-            "Disable for unstranded RNA-seq libraries (or pass --strandedness unstranded)."
+            "For an unstranded library pass --strandedness unstranded instead: "
+            "--no-strandedness only stops the filtering."
         ),
     ),
     strandedness: str = typer.Option(
@@ -679,7 +676,16 @@ def rna(
         "--min-mapq",
         help="Minimum mapping quality (default: 1 for STAR-aligned reads).",
     ),
-    min_baseq: int = typer.Option(20, "--min-baseq", help="Minimum base quality"),
+    min_baseq: int = typer.Option(
+        20,
+        "--min-baseq",
+        help=(
+            "Minimum base quality. A base below it is read as unknown, like N: it "
+            "supports no allele and counts against none. Reads are not dropped: a "
+            "read still counts toward depth and is judged on its other bases. "
+            "0 masks only N bases."
+        ),
+    ),
     fragment_qual_threshold: int = typer.Option(
         10,
         "--fragment-qual-threshold",

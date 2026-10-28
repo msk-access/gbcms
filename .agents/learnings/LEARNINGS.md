@@ -17,6 +17,31 @@ regenerating a section.
 
 ---
 
+## [LRN-20261026-001] rule-body | an amended read rule was read from its superseded text
+- **Status:** open: promotion waits on the operator re-confirming RJ-20.
+- **Cause:** rule-body.
+- **Summary:**
+  - On #304 I said the sequence judge "breaks RJ-20" (an unreadable insert of the ALT's length should be neither + partial), queued a port, recorded it on #304 and in CONTINUITY, and wrote it into #329's Read Filters text.
+  - RJ-20 was amended on 2026-10-15 (#278): such an insert inside the discrimination window *is* the ALT. Both paths follow the amended rule, and `tests/test_unreadable_insert_contract.py` pins it.
+  - The register row states the old rule first and the amendment last. `allele-classification.md` (§Insertion, the wrong-length table, the flowchart) and `glossary.md` (`has_unreadable_insert`) were never updated. The fix round caught it before any code changed.
+- **Promotion target:**
+  - `docs/reference/read-judgment.md`: an amended row leads with the current rule, history after.
+  - `docs/reference/allele-classification.md`, `glossary.md` and `read-filters.md` (#329): state the current rule.
+  - Memory `read-rule-register-to-the-end`: read the whole row and the contract test's docstring before stating a rule (done).
+
+## [LRN-20261024-001] rule-body | a docs-only change still runs the whole test suite
+- **Status:** resolved (rule promoted)
+- **Cause:** rule-body
+- **Summary:** PR #321 (harness accuracy) moved a retired plan into `docs/archive/` and
+  was pushed after the hook and path checks but without pytest, because it changed no
+  code. Its CI failed on all four test legs: a docs contract walks every `docs/**/*.md`
+  for stale mFSD wording, and the old plan carried it. Contract tests read `docs/`,
+  `nextflow/` and the README, so no change is "docs only" to the suite.
+  The plan moved to `.agents/archive/` (no test edited).
+- **Promotion target:** `.agents/skills/qa-check/SKILL.md`: the full gate runs for a
+  docs-, skills- or Nextflow-only change too, and a file moved into `docs/` is checked
+  against the tests that walk it. (Done.)
+
 ## [LRN-20261021-001] rule-body | every option offered for a decision is measured, not estimated
 - **Status:** resolved (rule promoted)
 - **Cause:** rule-body
@@ -287,7 +312,7 @@ regenerating a section.
   it, caveats go to the status-reason and diagnostic columns.
 - **Promotion target:** `AGENTS.md` invariant 7 "Count the given allele";
   `.agents/memory/bam-is-truth.md` clarifies that a finding is never ALT evidence; new
-  memory `count-the-given-allele.md`; `CYCLE_6.6.0_PLAN.md` C1 drops the exception,
+  memory `count-the-given-allele.md`; `.agents/archive/CYCLE_6.6.0_PLAN.md` C1 drops the exception,
   and C3 is re-scoped to report the given allele, with the default-on decomposition
   as an open decision.
 

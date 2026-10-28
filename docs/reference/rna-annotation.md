@@ -14,7 +14,7 @@ With `--gtf`, GTF mode appends **17 columns** total: `exon_boundary_dist` (1),
 !!! important "`gene_strand` is the keystone"
     Parsing the GTF also back-fills each variant's **`gene_strand`** (the transcript's
     `+`/`-` strand). This is what makes strand-aware features work: without it,
-    `--enforce_strandedness` and the ASJD strand-discordance test are silent no-ops
+    `--enforce-strandedness` and the ASJD strand-discordance test are silent no-ops
     (every read reads as sense, so `antisense_depth` stays 0). Strand-specific counting
     therefore requires `--gtf`, not just `--strandedness`.
 
@@ -182,6 +182,13 @@ overlaps multiple transcripts with different exon structures.
     For each transcript: `fragment_count ≤ read_count` (fragments are
     R1/R2 consensus; reads are individual observations).
 
+!!! note "What a transcript's DP counts"
+    A transcript's DP (DPF) counts every compatible read (fragment) that observes the
+    locus, as the row's `total_count` does: reads carrying another allele (the row's
+    `partial_alt`) and reads that cannot tell the alleles apart are in DP but in neither AD
+    nor RD. The entry has no partial field; for a transcript holding every read of the row,
+    its partial evidence is the row's `partial_alt`.
+
 ---
 
 ## Feature 3: Aberrant Splice Junction Detection (ASJD)
@@ -206,7 +213,9 @@ For each variant:
 1. All reads with CIGAR `N` operations (splice junctions) are collected.
 2. Each observed junction `(chrom, start, end)` is looked up in the GTF splice mask.
 3. Junctions present in the annotation are **annotated**; absent ones are **novel**.
-4. Counts are stratified by allele (REF vs ALT) for differential analysis.
+4. Counts are stratified by allele (REF vs ALT) for differential analysis. Only reads
+   judged REF or ALT vote: a read carrying another allele is in neither partition, as its
+   junction is not the given ALT's, so `LOW_ALT_JUNC` can fire where `partial_alt` is high.
 5. Counts are deduped **per fragment** (by QNAME): a molecule whose R1 and R2 both
    span the same junction votes once, so the junction totals and the strand-discordance
    test reflect independent fragments, not mates.

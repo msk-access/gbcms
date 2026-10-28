@@ -30,7 +30,7 @@ Complex indels fall into four categories that require special handling beyond th
 
 ### The Variant
 
-**Gene:** SOX9 · **Position:** chr17:70119766 · **REF:** `GC` · **ALT:** `T`
+**Gene:** SOX9 · **REF:** `GC` · **ALT:** `T`
 
 This is a deletion-format variant (`len(REF)=2 > len(ALT)=1`), but it is **not** a pure deletion:
 the anchor base G also changes to T. This makes it a complex Del+SNV — one net base is deleted
@@ -62,7 +62,7 @@ Smith-Waterman. ALT reads align better to `ALT_hap` → classified as **ALT**.
 ### Read-Level Example
 
 ```
-Variant: chr17:70119766  GC → T
+Variant: SOX9  GC → T
 Reference:  ... A  G  C  T  A  T ...
                    ↑
                anchor pos (G)
@@ -94,7 +94,7 @@ The same fix handles any Del+SNV with this anatomy:
 
 ### The Variant
 
-**Gene:** NF2 · **Position:** chr22:30038094 · **Type:** ~100bp deletion with a short (7bp) replacement — a large **delins** (`ref_len > alt_len > 1`), dispatched to `check_complex`
+**Gene:** NF2 · **Type:** ~100bp deletion with a short (7bp) replacement — a large **delins** (`ref_len > alt_len > 1`), dispatched to `check_complex`
 
 !!! note "Why this case is check_complex's problem, not check_deletion's"
     A PURE large deletion never reaches this fallback: its clean anchor-spanning REF reads
@@ -133,11 +133,11 @@ without needing haplotype alignment.
 ### Read-Level Example
 
 ```
-Variant: chr22:30038094  [~100bp REF] → [7bp ALT]  (large delins)
-Anchor position: 30038094
+Variant: NF2  [~100bp REF] → [7bp ALT]  (large delins)
+Anchor position: P
 
-REF read CIGAR: 150M  (spans anchor at 30038094)
-    M-block: [30038040 ── 30038190]  ← covers anchor ✅, anchor BQ ≥ min_baseq ✅
+REF read CIGAR: 150M  (spans anchor at P)
+    M-block: [P−54 ── P+96]  ← covers anchor ✅, anchor BQ ≥ min_baseq ✅
     is_worth_realignment = false (clean CIGAR)
     Old: return Neither
     New: deletion-direction (ref_len > alt_len) + M coverage + anchor BQ → REF ✅
@@ -160,7 +160,7 @@ ALT read (deletion + replacement in CIGAR)
 
 ### The Variant
 
-**Gene:** TP53 · **Position:** chr17:7579309 · **REF:** `GACCGTGCAAGT` (12bp) · **ALT:** `-` (deletion)
+**Gene:** TP53 · **REF:** `GACCGTGCAAGT` (12bp) · **ALT:** `-` (deletion)
 
 ### Root Cause: BWA Left-Alignment
 
@@ -169,17 +169,17 @@ a region with a partial repeat (`ACC` motif), BWA places the anchor 3bp **left**
 CIGAR `D(12)` operation actually appears in the reads.
 
 ```
-Left-aligned anchor position (what MAF/gbcms sees):  chr17:7579309
-Actual CIGAR D(12) position in reads:                chr17:7579312  (+3bp right)
+Left-aligned anchor position (what MAF/gbcms sees):  P
+Actual CIGAR D(12) position in reads:                P+3  (+3bp right)
 ```
 
 ### Why the Old Code Returned alt=0
 
 `check_deletion` windowed scan:
-1. Finds `D(12)` within the ±5bp window (at position 7579312)
+1. Finds `D(12)` within the ±5bp window (at position P+3)
 2. Passes **S1**: length matches (12bp)
-3. Applies **S3**: compares reference bases at `7579312` against expected deleted sequence `GACCGTGCAAGT`
-4. Reference at `7579312` is `CGTGCAAGT...`, not `GACCGTGCAAGT` → **S3 fails**
+3. Applies **S3**: compares reference bases at `P+3` against expected deleted sequence `GACCGTGCAAGT`
+4. Reference at `P+3` is `CGTGCAAGT...`, not `GACCGTGCAAGT` → **S3 fails**
 5. Old code: S3 fail → Continue → read not counted → `found_ref_coverage = true` → REF
 
 All 221 ALT reads fail S3 → `alt = 0`, `ref = 775`.
@@ -218,13 +218,13 @@ spanning a small repeat motif (e.g., dinucleotide repeat `ACAC`).
 ### Read-Level Example
 
 ```
-Variant (left-aligned): chr17:7579309  GACCGTGCAAGT → -
-Anchor (gbcms):          pos = 7579309
+Variant (left-aligned): TP53 P  GACCGTGCAAGT → -
+Anchor (gbcms):          pos = P
 
 ALT read CIGAR: 48M 12D 52M
-    D(12) at pos 7579312  (3bp right of anchor)
+    D(12) at pos P+3  (3bp right of anchor)
     S1: length 12 == 12 ✅
-    S3: ref[7579312..7579324] = "CGTGCAAGT..." ≠ "GACCGTGCAAGT" ❌
+    S3: ref[P+3..P+15] = "CGTGCAAGT..." ≠ "GACCGTGCAAGT" ❌
     Old: Continue → REF (incorrect)
     New: del_len(12) ≥ 5 → has_shifted_same_length = true
     → Phase 3: ALT haplotype aligns correctly → ALT ✅
@@ -344,9 +344,10 @@ awk -F'\t' 'NR > 1 && $2 != $5' /tmp/norm/normalized.tsv
 import pysam
 
 bam = pysam.AlignmentFile("sample.bam")
-anchor = 7579308  # 0-based
+CHROM, POS = "chr17", 1_000_000  # the variant's chromosome and 1-based position
+anchor = POS - 1  # 0-based
 
-for read in bam.fetch("chr17", anchor - 10, anchor + 15):
+for read in bam.fetch(CHROM, anchor - 10, anchor + 15):
     for op, length in read.cigartuples:
         if op == 2:  # D (deletion)
             print(f"D({length}) at ref_pos ~ {read.reference_start}")

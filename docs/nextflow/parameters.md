@@ -25,6 +25,8 @@ Complete reference for all pipeline parameters.
 | `--suffix` | `''` | Suffix for output filenames |
 | `--column_prefix` | `''` | Prefix for gbcms count columns in MAF output |
 | `--preserve_barcode` | `false` | Keep original Tumor_Sample_Barcode from input MAF |
+| `--publish_dir_mode` | `copy` | How Nextflow stages results into `--outdir` (`publishDir` mode: `copy`, `symlink`, `link`, `move`, ...) |
+| `--tracedir` | `${params.outdir}/pipeline_info` | Directory for the execution trace, report, timeline and DAG files |
 
 ## mFSD Options (DNA only)
 
@@ -32,7 +34,7 @@ Complete reference for all pipeline parameters.
 |:----------|:--------|:------------|
 | `--mfsd` | `false` | Enable mFSD analysis — adds 41 mFSD columns to MAF and 13 `MFSD_*` INFO fields to VCF. See [mFSD metrics](../reference/counting-metrics.md#mfsd). |
 | `--mfsd_parquet` | `false` | Write a companion `<sample>.fsd.parquet` with raw per-variant fragment size arrays. Requires `--mfsd`. |
-| `--mfsd_report` | `false` | Generate an interactive HTML report with per-variant fragment size distributions. Implies `--mfsd` and `--mfsd_parquet`. See [mFSD Report](../reference/mfsd-report.md). |
+| `--mfsd_report` | `false` | Generate an interactive HTML report with per-variant fragment size distributions. Implies `--mfsd` and `--mfsd_parquet`; requires `--format maf` (the pipeline stops at launch otherwise). See [mFSD Report](../reference/mfsd-report.md). |
 | `--observations_parquet` | `false` | Write a companion `<sample>.observations.parquet` recording which molecule carried which allele at each variant. Enables read-backed phasing and allelic-imbalance analyses. Counts output is unchanged. See [Per-Molecule Observations](../reference/molecule-observations.md). |
 | `--mfsd_report_min_alt` | `3` | Minimum ALT fragment count to include a variant in the HTML report. |
 | `--mfsd_report_max_variants` | `20` | Maximum variants in the HTML report. Use `-1` for no limit. |
@@ -43,7 +45,7 @@ Complete reference for all pipeline parameters.
 |:----------|:--------|:------------|
 | `--min_mapq` | `20` | Minimum mapping quality for **DNA** counting |
 | `--rna_min_mapq` | `1` | Minimum mapping quality for **RNA** counting. Defaults to `1` to match the `gbcms rna` CLI: STAR gives uniquely-mapped reads MAPQ 255 but 2–4-locus multi-mappers MAPQ 3/1, so a DNA-style floor of 20 silently drops those primaries (~16% of reads genome-wide on a FORTE sample; up to ~6% of depth at an individual locus). Raise it to 20 for unique-only RNA counting. |
-| `--min_baseq` | `20` | Minimum base quality |
+| `--min_baseq` | `20` | Minimum base quality, passed to `--min-baseq`: a base below it is read as unknown, like `N`; reads still count toward depth (see [Read Filters → Quality Thresholds](../reference/read-filters.md#quality-thresholds)) |
 | `--fragment_qual_threshold` | `10` | Quality margin for [fragment consensus](../reference/counting-metrics.md#fragment-counting) — when R1/R2 disagree on a non-INDEL variant, the higher-quality allele wins only if the difference exceeds this. INDEL conflicts with structural CIGAR evidence bypass this threshold. |
 | `--context_padding` | `5` | Minimum flanking bases for [Phase 3 alignment](../reference/allele-classification.md#phase-3-alignment-fallback) (auto-increased in repeats) |
 | `--adaptive_context` | `true` | Dynamically increase context padding in [tandem repeat regions](../reference/variant-normalization.md#adaptive-context-padding) |
@@ -64,7 +66,8 @@ Complete reference for all pipeline parameters.
 | Parameter | Default | Description |
 |:----------|:--------|:------------|
 | `--umi_tag` | `''` | UMI BAM tag for deduplication (e.g., `XM`, `RX`). When set, reads sharing the same UMI are grouped as a single observation. |
-| `--apply_baq` | `false` (DNA) / `true` (RNA) | Apply Base Alignment Quality downgrade. Reduces false positives near indels and splice junctions (CIGAR `N`). See [BAQ Options](../cli/dna.md#baq-options). |
+| `--apply_baq` | `false` | **DNA** Base Alignment Quality downgrade (matches `gbcms dna`, off). Reduces false positives near indels. See [BAQ Options](../cli/dna.md#baq-options). |
+| `--rna_apply_baq` | `true` | **RNA** Base Alignment Quality downgrade (matches `gbcms rna`, on): RNA BAMs typically lack BQSR, and the penalty also applies near splice junctions (CIGAR `N`). Set `false` to pass `--no-baq`. |
 
 ## RNA-Specific Options
 
@@ -72,13 +75,14 @@ These parameters are only used when `--mode rna` is specified.
 
 | Parameter | Default | Description |
 |:----------|:--------|:------------|
+| `--gtf` | `''` | Path to an Ensembl/GENCODE GTF, plain or `.gtf.gz`. Enables exon-boundary distance, per-transcript counts and ASJD, and supplies each variant's gene strand, which `--enforce_strandedness` needs (without it every read counts as sense). See [GTF loading](#gtf-loading-rna). |
 | `--rna_editing_db` | `''` | Path to [REDIportal](http://srv00.recas.ba.infn.it/atlas/index.html) editing database file (e.g., `TABLE1_hg38_v3.txt`). Flags ALT sites that overlap known A→I RNA editing positions. |
-| `--enforce_strandedness` | `true` | Enforce strand-specific library prep. Disable with `false` for unstranded RNA-seq libraries (`--no-strandedness` equivalent). |
+| `--enforce_strandedness` | `true` | Filter reads by orientation relative to the gene strand (needs `--gtf` for the strand). `false` passes `--no-strandedness`, which only stops the filtering. For an unstranded RNA-seq library set `--strandedness unstranded` instead. |
 | `--strandedness` | `'reverse'` | RNA library strand protocol: `'reverse'` (dUTP/fr-firststrand, featureCounts `-s 2` — the FORTE default), `'forward'` (fr-secondstrand, `-s 1`), or `'unstranded'` (`-s 0`). Sets the read→transcript-strand fold used by `--enforce_strandedness` and ASJD strand-discordance; `'unstranded'` disables both. |
 | `--library_type` | `'capture'` | `'capture'` (default) or `'amplicon'`. Amplicon mode treats R1 and R2 as **independent observations** (no fragment-level consensus) and auto-disables strandedness — use it for amplicon/primer-based RNA panels where mates aren't independent fragments. |
 
 !!! tip "RNA mode defaults"
-    RNA mode uses different PairHMM gap penalties by default (`gap_open=5e-3`, `gap_extend=0.25`) to tolerate RT-induced stutter at homopolymers. These can be overridden via the alignment backend parameters below.
+    RNA mode uses its own PairHMM gap penalties (`--rna_gap_open_prob 5e-3`, `--rna_gap_extend_prob 0.25`, the `gbcms rna` defaults) to tolerate RT-induced stutter at homopolymers, and its own BAQ switch (`--rna_apply_baq`, on). The `--gap_*` and `--apply_baq` params are DNA's and do not reach RNA tasks. See the alignment backend parameters below.
 
 ## GTF loading (RNA)
 
@@ -94,11 +98,16 @@ Each `GBCMS_RNA` task loads the GTF (plain or `.gtf.gz`) in a few seconds (2 s f
 | Parameter | Default | Description |
 |:----------|:--------|:------------|
 | `--alignment_backend` | `pairhmm` | Phase 3 alignment backend: `pairhmm` (WFA2 + PairHMM, default) or `sw` (Smith-Waterman). See [CLI Reference](../cli/dna.md#alignment-backend). |
+| `--read_judge` | `rules` | **DNA** read judgment, passed as `--read-judge`: `rules` (the size-specific rules, the default) or `sequence` (the sequence judge, opt-in; `haplotype` is its former name). The RNA module does not pass it: the sequence judge refuses RNA mode. See [CLI Reference](../cli/dna.md). |
 | `--llr_threshold` | `2.3` | PairHMM log-likelihood ratio threshold for confident calls |
-| `--gap_open_prob` | `1e-4` | PairHMM gap-open probability for non-repeat regions |
-| `--gap_extend_prob` | `0.1` | PairHMM gap-extend probability for non-repeat regions |
-| `--gap_open_prob_repeat` | `1e-2` | PairHMM gap-open probability for tandem repeat regions |
-| `--gap_extend_prob_repeat` | `0.5` | PairHMM gap-extend probability for tandem repeat regions |
+| `--gap_open_prob` | `1e-4` | **DNA** PairHMM gap-open probability for non-repeat regions |
+| `--gap_extend_prob` | `0.1` | **DNA** PairHMM gap-extend probability for non-repeat regions |
+| `--gap_open_prob_repeat` | `1e-2` | **DNA** PairHMM gap-open probability for tandem repeat regions |
+| `--gap_extend_prob_repeat` | `0.5` | **DNA** PairHMM gap-extend probability for tandem repeat regions |
+| `--rna_gap_open_prob` | `5e-3` | **RNA** PairHMM gap-open probability for non-repeat regions (the `gbcms rna` default; the `--gap_*` params above are DNA's) |
+| `--rna_gap_extend_prob` | `0.25` | **RNA** PairHMM gap-extend probability for non-repeat regions |
+| `--rna_gap_open_prob_repeat` | `1e-2` | **RNA** PairHMM gap-open probability for tandem repeat regions |
+| `--rna_gap_extend_prob_repeat` | `0.5` | **RNA** PairHMM gap-extend probability for tandem repeat regions |
 
 ## Merge Options
 

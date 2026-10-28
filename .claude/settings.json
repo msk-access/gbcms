@@ -29,6 +29,11 @@
             "type": "command",
             "command": "python3 \"$CLAUDE_PROJECT_DIR/.claude/hooks/injection-guard.py\"",
             "timeout": 5
+          },
+          {
+            "type": "command",
+            "command": "python3 \"$CLAUDE_PROJECT_DIR/.claude/hooks/protect-cbioportal.py\"",
+            "timeout": 5
           }
         ]
       },
@@ -38,6 +43,16 @@
           {
             "type": "command",
             "command": "python3 \"$CLAUDE_PROJECT_DIR/.claude/hooks/block-env-edits.py\"",
+            "timeout": 5
+          }
+        ]
+      },
+      {
+        "matcher": "Read|Grep|Glob|Edit|MultiEdit|Write|NotebookEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"$CLAUDE_PROJECT_DIR/.claude/hooks/protect-cbioportal.py\"",
             "timeout": 5
           }
         ]

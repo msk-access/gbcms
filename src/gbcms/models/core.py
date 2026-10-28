@@ -270,8 +270,8 @@ class OutputConfig(BaseModel):
         default=False,
         description=(
             "Enable Mutant Fragment Size Distribution (mFSD) analysis. "
-            "Adds 34 mFSD columns (KS test, LLR, mean sizes, pairwise comparisons, "
-            "derived metrics) to MAF output and 7 MFSD INFO fields to VCF. "
+            "Adds 41 mFSD columns (KS test, LLR, mean sizes, pairwise comparisons, "
+            "derived metrics) to MAF output and 13 MFSD INFO fields to VCF. "
             "Required when mfsd_parquet=True."
         ),
     )
@@ -297,7 +297,8 @@ class OutputConfig(BaseModel):
         default=False,
         description=(
             "Generate an interactive HTML report with per-variant fragment size "
-            "distributions. Implies mfsd=True and mfsd_parquet=True. Output: "
+            "distributions. Implies mfsd=True and mfsd_parquet=True; requires "
+            "format='maf'. Output: "
             "<sample>.mfsd_report.html alongside the main output."
         ),
     )
@@ -342,6 +343,12 @@ class OutputConfig(BaseModel):
             raise ValueError(
                 "mfsd_parquet=True requires mfsd=True. "
                 "Enable mFSD analysis before requesting Parquet export."
+            )
+        # The report reads its per-variant statistics from the main output as a MAF.
+        if self.mfsd_report and self.format != OutputFormat.MAF:
+            raise ValueError(
+                "mfsd_report=True requires format='maf': the report reads its mFSD "
+                "statistics from the MAF output."
             )
         return self
 
@@ -491,7 +498,8 @@ class GbcmsRnaConfig(GbcmsBaseConfig):
 
     Inherits all shared fields from GbcmsBaseConfig. Overrides:
     - mode = "rna"
-    - Default MAPQ = 1 (STAR assigns low MAPQ to novel splice junctions)
+    - Default MAPQ = 1 (keeps the primaries of reads STAR placed at two to four loci,
+      MAPQ 3 or 1; see docs/reference/read-filters.md)
     - Default alignment backend = pairhmm (WFA2 + marginalized PairHMM)
     - Gap penalties relaxed for RT stutter tolerance
     - Strandedness filtering enabled by default
@@ -628,19 +636,29 @@ class GbcmsRnaConfig(GbcmsBaseConfig):
 
     @model_validator(mode="after")
     def validate_amplicon_strandedness(self) -> "GbcmsRnaConfig":
-        """Auto-disable strandedness for amplicon libraries.
+        """Read amplicon libraries unstranded, and enforce no strand when unstranded.
 
-        Amplicon libraries are not strand-specific, so enforcing dUTP
-        strandedness filtering would incorrectly discard ~50% of reads.
-        This model-level guard ensures both CLI and programmatic callers
-        get correct behavior without needing to know the dependency.
+        Amplicon libraries are not strand-specific: folding their reads under a
+        stranded protocol mislabels sense/antisense (and ASJD strand discordance),
+        and enforcing it would discard ~50% of reads. An unstranded protocol has no
+        transcript strand, so enforcement would be a silent no-op. The CLI applies
+        both rules before building the config; applying them here too gives
+        programmatic callers the same configuration.
         """
-        if self.library_type == "amplicon" and self.enforce_strandedness:
-            import logging
+        import logging
 
-            logging.getLogger("gbcms.models").warning(
-                "library_type='amplicon' is incompatible with enforce_strandedness=True. "
-                "Auto-disabling strandedness filtering (amplicon libraries are not strand-specific)."
+        log = logging.getLogger("gbcms.models")
+        if self.library_type == "amplicon" and self.strandedness != "unstranded":
+            log.warning(
+                "library_type='amplicon' with strandedness=%r: reading the library as "
+                "unstranded (amplicon libraries are not strand-specific).",
+                self.strandedness,
+            )
+            self.strandedness = "unstranded"
+        if self.strandedness == "unstranded" and self.enforce_strandedness:
+            log.info(
+                "strandedness='unstranded' with enforce_strandedness=True: disabling "
+                "strandedness filtering (no transcript strand to filter against)."
             )
             self.enforce_strandedness = False
         return self

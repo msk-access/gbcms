@@ -1,6 +1,6 @@
 ---
 name: fragment-counting
-description: Reference for fragment-level counting in gbcms — R1/R2 quality-weighted consensus, FAD/FAF (fragment alt depth/fraction), QNAME/UMI deduplication, duplex vs singleton UMI families, strand consistency, and amplicon split. Use when touching shared/fragment.rs or any DPF/RDF/ADF logic, or debugging fragment-level VAF.
+description: "Reference for fragment-level counting in gbcms — R1/R2 quality-weighted consensus, the DPF/RDF/ADF fragment counts (FAD/FAF in VCF), QNAME/UMI molecule hashing (--umi-tag), duplex/simplex merging, strand consistency, and amplicon split. Use when touching shared/fragment.rs or any DPF/RDF/ADF logic, or debugging fragment-level VAF."
 ---
 
 # Fragment-Level Counting
@@ -26,7 +26,7 @@ locus, evidence is collapsed to one molecule:
   per-locus depth.
 - Overlapping mate pairs map to one `mol_hash` → counted once at fragment level.
 
-## FAD / FAF and the invariants
+## Fragment counts (DPF/RDF/ADF; FAD/FAF in VCF) and invariants
 
 ```
 assert dpf >= rdf + adf          # DPF includes discarded fragments
@@ -34,11 +34,15 @@ assert adf == adf_fwd + adf_rev  # fragment strand consistency
 assert rdf == rdf_fwd + rdf_rev
 ```
 
-## UMI families
+## UMI molecules, duplex and simplex
 
-- `singleton_alt_count`: ALT from singleton UMI families (no mate confirmation).
-- `duplex_alt_count`: ALT from duplex families (both strands confirmed).
-- `--umi-tag` selects the tag used for molecule hashing.
+- gbcms does not see UMI families, and cannot tell a duplex read from a singleton one.
+  `--umi-tag` (e.g. `RX`) only changes the molecule key (`hash_molecule(qname, umi)` via
+  `molecule_key` in engine.rs): reads that share a QNAME but carry different UMIs are
+  different molecules.
+- Duplex and simplex are separate BAMs, counted separately and combined afterwards:
+  `gbcms merge` (merge.py) joins the per-BAM-type MAFs and adds the `simplex_duplex_*`
+  columns (`bam_type` in the Nextflow samplesheet).
 
 ## Amplicon mode
 

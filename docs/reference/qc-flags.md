@@ -14,8 +14,8 @@ anywhere else in the docs.
 | [Verdict and status reasons](#verdict-and-status-reasons) | `gbcms_status`, `gbcms_status_reason` | INFO `GS`, `GSR` | all |
 | [Diagnostics](#diagnostics) | `gbcms_diagnostic` | INFO `GD` | all (some RNA, some PairHMM only) |
 | [MNP rescue](#mnp-rescue) | `gbcms_rescue` | INFO `GR` | `--rescue-mnp` |
-| [ASJD splice flags](#asjd-splice-flags) | `asjd_diagnostic`, `asjd_*_motif` | not in VCF | RNA with `--gtf` |
-| [QC columns](#qc-columns) | `rna_editing_site`, `asjd_flag`, `mfsd_ks_valid`, `mfsd_alt_confidence`, `mfsd_ch_flag` | INFO `RED`; mFSD INFO | RNA; `--mfsd` |
+| [ASJD splice flags](#asjd-splice-flags) | `asjd_diagnostic`, `asjd_*_motif` | INFO `ASJDD`, `ASJDRM`, `ASJDAM` | RNA with `--gtf` |
+| [QC columns](#qc-columns) | `rna_editing_site`, `asjd_flag`, `mfsd_ks_valid`, `mfsd_alt_confidence`, `mfsd_ch_flag` | INFO `RED`, `ASJD`; mFSD INFO | RNA; `--mfsd` |
 | [mFSD report classes](#mfsd-report-classes) | — (HTML report) | — | `--mfsd-report` |
 | [Record shapes in VCF output](#record-shapes-in-vcf-output) | — | ALT `<NON_SEQUENCE>`, INFO `MAF_*`, `NORM_*` | MAF input; `--show-normalization` |
 
@@ -77,6 +77,14 @@ are taken over the reads the counts read (first-class reads the mapping rule
 admits: in RNA a unique mapper, `NH:i:1`, below `--min-mapq`; under strandedness
 enforcement, sense reads only), so they compare with `alt_count` and `ref_count`.
 <!-- --8<-- [end:diagnostics] -->
+
+Before 6.6.0 the scan used its own filter (not secondary, not supplementary, `mapq >= min_mapq`):
+it had no strand filter, so antisense reads that enforcement keeps out of the counts still entered
+`n` and `m`, and it did not keep the loop's `NH:i:1` rescue. A review measured
+`COEXISTING_ALLELE(...:16/12)` with antisense reads present against `8/6` without them, both
+enforced. The diagnostic now shares the counting loop's admission rule (O8 #186, built in #217). Measured on FORTE: counts unchanged everywhere; the diagnostic changes
+on 1 exon-edge probe row (100/0 → 98/0) and 5 of 7,224 splice-probe rows. Other tools tally other alleles over the
+same filtered reads as their primary counts (bam-readcount, ASEReadCounter `otherBases`, VarDict).
 
 ## MNP rescue
 

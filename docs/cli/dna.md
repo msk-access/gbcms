@@ -8,8 +8,11 @@ Count alleles at variant positions across one or more DNA/cfDNA BAM/CRAM files.
 ## Synopsis
 
 ```bash
-gbcms dna [OPTIONS] --variants <FILE> --bam <NAME:PATH>... --fasta <FILE>
+gbcms dna [OPTIONS] --variants <FILE> --bam <NAME:PATH>... --fasta <FILE> --output-dir <DIR>
 ```
+
+`--variants`, `--fasta` and `--output-dir` are required, and so is one of `--bam` or
+`--bam-list`; a command without them exits with a usage error.
 
 ## Required Arguments
 
@@ -55,7 +58,7 @@ short-fragment enrichment associated with tumor-derived cfDNA
 |:-------|:--------|:------------|
 | `--mfsd` | `false` | Enable mFSD analysis. Adds 41 mFSD columns (KS test, LLR, mean sizes, pairwise comparisons, derived metrics) to MAF output and 13 `MFSD_*` INFO fields to VCF. |
 | `--mfsd-parquet` | `false` | Write a companion `<sample>.fsd.parquet` with per-variant raw fragment size arrays (`ref_sizes`, `alt_sizes`). Enables downstream visualizations. **Requires `--mfsd`**. |
-| `--mfsd-report` | `false` | Generate an interactive HTML report (`<sample>.mfsd_report.html`) with per-variant fragment size distributions, dual-axis histograms, and graded fragment-size evidence (leans somatic, no size evidence, insufficient). **Implies `--mfsd` and `--mfsd-parquet`** (both are auto-enabled). See [mFSD Report](../reference/mfsd-report.md). |
+| `--mfsd-report` | `false` | Generate an interactive HTML report (`<sample>.mfsd_report.html`) with per-variant fragment size distributions, dual-axis histograms, and graded fragment-size evidence (leans somatic, no size evidence, insufficient). **Implies `--mfsd` and `--mfsd-parquet`** (both are auto-enabled). **Requires `--format maf`**: the report reads its statistics from the MAF, so `--format vcf` is refused. See [mFSD Report](../reference/mfsd-report.md). |
 | `--mfsd-report-min-alt` | `3` | Minimum ALT fragment count to include a variant in the HTML report. |
 | `--mfsd-report-max-variants` | `20` | Maximum variants in the HTML report (selected by highest ALT count). Use `-1` for no limit. |
 
@@ -83,7 +86,7 @@ flag is passed.
 | Option | Default | Description |
 |:-------|:--------|:------------|
 | `--min-mapq` | `20` | Minimum MAPQ |
-| `--min-baseq` | `20` | Minimum BASEQ |
+| `--min-baseq` | `20` | Minimum base quality. A base below it is read as unknown, like `N`: it supports no allele and counts against none. Reads are not dropped: a read still counts toward depth and is judged on its other bases. `0` masks only `N` bases. See [Read Filters → Quality Thresholds](../reference/read-filters.md#quality-thresholds) |
 | `--filter-duplicates` | `true` | Filter duplicate reads |
 | `--filter-secondary` | `true` | Filter secondary alignments |
 | `--filter-supplementary` | `true` | Filter supplementary alignments |
@@ -232,7 +235,8 @@ Phase 3 (haplotype-based) classification uses a **two-stage pipeline**:
         --bam tumor:tumor.bam \
         --bam normal:normal.bam \
         --fasta reference.fa \
-        --format maf # (1)!
+        --format maf \ # (1)!
+        --output-dir results/
     ```
 
     1. MAF output preserves all input MAF columns and appends gbcms count columns.
@@ -245,7 +249,8 @@ Phase 3 (haplotype-based) classification uses a **two-stage pipeline**:
         --bam sample:sample.bam \
         --fasta reference.fa \
         --filter-duplicates \
-        --min-mapq 30
+        --min-mapq 30 \
+        --output-dir results/
     ```
 
 === "With Normalization"
@@ -256,10 +261,11 @@ Phase 3 (haplotype-based) classification uses a **two-stage pipeline**:
         --bam sample:sample.bam \
         --fasta reference.fa \
         --format maf \
-        --show-normalization # (1)!
+        --show-normalization \ # (1)!
+        --output-dir results/
     ```
 
-    1. Appends `norm_chrom`, `norm_pos`, `norm_ref`, `norm_alt` columns showing left-aligned coordinates.
+    1. MAF output appends `norm_Start_Position`, `norm_End_Position`, `norm_Reference_Allele` and `norm_Tumor_Seq_Allele2` (after any `--column-prefix`) showing the left-aligned variant; VCF output carries `NORM_POS`, `NORM_REF` and `NORM_ALT` INFO fields.
 
 === "With UMI Tags"
 

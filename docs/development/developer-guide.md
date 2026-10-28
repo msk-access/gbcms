@@ -185,8 +185,8 @@ gbcms dna \
     --format maf \
     --output-dir /tmp/regression_out/
 
-# Diff against baseline
-python scripts/concordance.py /tmp/regression_baseline/ /tmp/regression_out/
+# Diff against baseline: match rows by locus, never by position. The release gate's
+# comparison is scripts/regression_panel/compare_panel.py (see Regression Panel).
 ```
 
 Key invariants to check:
@@ -199,7 +199,7 @@ Key invariants to check:
 | `any_alt = ad + partial_alt` | Must hold for every row (Phase 2 decomposition invariant) |
 | `any_alt >= ad` | Must hold for every row |
 | `n_count / DP ratio` | Should be low (<5%) for clean sites; high ratios flag duplex masking hotspots |
-| `gbcms_status` starts with `PASS` or `FAIL_` | First token is always the verdict; no empty values |
+| `gbcms_status` is exactly `PASS` or `FAIL` | The verdict is never empty; the reason of a `FAIL` (or a `PASS` with a warning) is in `gbcms_status_reason` |
 | `gbcms_diagnostic` empty for FAIL variants | Diagnostics only computed for PASS variants |
 | `gbcms_diagnostic` semicolon-separated | Flags use `;` delimiter (MAF) or `\|` (VCF) |
 | `gbcms_rescue` conditional column | Only present when `--rescue-mnp` is enabled (v4.3.0) |
@@ -239,10 +239,10 @@ gbcms dna --verbose --rescue-mnp --variants input.maf --bam sample:sample.bam --
 # Rescue log lines:
 # WARNING — "MNP rescue enabled (--rescue-mnp, threshold=1.00): rescued rows report a component SNV's counts ..."  (once per run)
 # INFO    — "MNP rescue for SAMPLE: rescued=2, skipped_grouped=1 (0.342s)"   (per-sample outcome summary)
-# WARNING — "MNP rescue: 5:1295250 GAGGG>AAGGA now reports component 5:1295250(G>A) (ALT 88, REF 487); the MNP itself had ALT 1 (0 showing the whole haplotype), partial 88"
+# WARNING — "MNP rescue: 1:1000 GAGGG>AAGGA now reports component 1:1000(G>A) (ALT 88, REF 487); the MNP itself had ALT 1 (0 showing the whole haplotype), partial 88"
 # DEBUG   — "MNP rescue: ... skipped — co-annotated group 3 owns its reads"
 # DEBUG   — "MNP rescue: ... kept — 36 read(s) show the whole haplotype"
-# WARNING — "Mixed MNP rescue at 5:1295250 GAGGG>AAGGA — duplex reports component ..., simplex reports the MNP ..."  (gbcms merge)
+# WARNING — "Mixed MNP rescue at 1:1000 GAGGG>AAGGA — duplex reports component ..., simplex reports the MNP ..."  (gbcms merge)
 # DEBUG   — "MNP rescue: ... not rescued (no_improvement) ..."  (partial evidence was not component carriers)
 # WARNING — "MNP rescue: ... not rescued (ref_validation_failed) ..."  (anomaly: investigate)
 # WARNING — "MNP rescue: synthetic SNV ... failed preparation (...) — reported as ref_fail"

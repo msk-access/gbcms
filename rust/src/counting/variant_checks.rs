@@ -939,7 +939,7 @@ pub fn check_complex<F: Fn(u8, u8) -> i32>(
     //    evidence. Skip Phase 2 for this case — let Phase 3 (SW/HMM) decide
     //    with full haplotype context.
     //
-    // Example: ARID1A 1:27024008 REF=42bp ALT=5bp. Reads with 5bp recon
+    // Example: an ARID1A delins, REF=42bp ALT=5bp. Reads with 5bp recon
     // would match alt_len=5 in Case B → false ALT. Guard catches ref_len=42
     // > 2*5=10 and skips to Phase 3.
     let ref_len = ref_bytes.len();
@@ -1196,6 +1196,14 @@ pub fn check_complex<F: Fn(u8, u8) -> i32>(
                         }
                         _ => {}
                     }
+                }
+                if anchor_qual.is_some() && only_n_in(record, window::discrimination_window(variant)) {
+                    trace!(
+                        "check_complex: clean M covers anchor {} but every base it aligns \
+                         inside the window is N → neither (N)",
+                        anchor_pos,
+                    );
+                    return ClassifyResult::neither_n(ClassifyPhase::Alignment);
                 }
                 if let Some(aq) = anchor_qual {
                     trace!(
@@ -2186,6 +2194,16 @@ fn resolve_walk<F: Fn(u8, u8) -> i32>(
         );
         return ClassifyResult::neither_with_nearby(w.anchor_qual, ClassifyPhase::Structural);
     }
+    if only_n_in(record, window::discrimination_window(variant)) {
+        // REF by coverage rests on the read's placement; a read whose every base
+        // there is N calls no base at all, so it shows neither allele.
+        trace!(
+            "check_{}: the read covers the anchor {} but every base it aligns inside the \
+             window is N → neither (N)",
+            w.kind, anchor_pos
+        );
+        return ClassifyResult::neither_n(ClassifyPhase::Structural);
+    }
     if w.distinct_allele_nearby {
         trace!(
             "check_{}: another allele outside the window after {} is a separate event → REF",
@@ -2193,6 +2211,38 @@ fn resolve_walk<F: Fn(u8, u8) -> i32>(
         );
     }
     ClassifyResult::is_ref(w.anchor_qual, ClassifyPhase::Structural)
+}
+
+/// Whether the read aligns at least one base inside the reference interval
+/// `[lo, hi)` and every base it aligns there is N: it calls no base where the
+/// alleles differ. The reference-coverage REF rules (a deletion's anchor covered
+/// with no gap, a deletion-direction delins' anchor covered by a clean match) read
+/// placement, not bases, so they hold such a read to neither allele.
+fn only_n_in(record: &Record, (lo, hi): (i64, i64)) -> bool {
+    let seq = record.seq();
+    let (mut rp, mut qp, mut aligned) = (record.pos(), 0usize, false);
+    for op in record.cigar().iter() {
+        match op {
+            Cigar::Match(n) | Cigar::Equal(n) | Cigar::Diff(n) => {
+                for g in rp.max(lo)..(rp + *n as i64).min(hi) {
+                    let q = qp + (g - rp) as usize;
+                    if q >= seq.len() {
+                        break;
+                    }
+                    if !seq[q].eq_ignore_ascii_case(&b'N') {
+                        return false;
+                    }
+                    aligned = true;
+                }
+                rp += *n as i64;
+                qp += *n as usize;
+            }
+            Cigar::Ins(n) | Cigar::SoftClip(n) => qp += *n as usize,
+            Cigar::Del(n) | Cigar::RefSkip(n) => rp += *n as i64,
+            _ => {}
+        }
+    }
+    aligned
 }
 
 /// The ALT written across several ops: a read with two or more insertion or

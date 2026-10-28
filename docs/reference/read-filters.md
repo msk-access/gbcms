@@ -143,17 +143,37 @@ Beyond the read-level filters above, gbcms also applies **base-level quality thr
 
 | Parameter | CLI Flag | Default | Description |
 |:----------|:---------|:--------|:------------|
-| Min base quality | `--min-baseq` | **20** | Bases below this are masked or rejected |
+| Min base quality | `--min-baseq` | **20** | Bases below this are read as unknown (like `N`); reads are kept |
 | Fragment consensus threshold | `--fragment-qual-threshold` | **10** | Quality margin for R1/R2 conflict resolution |
 
-!!! info "How Base Quality Is Used"
-    The effect of `--min-baseq` varies by variant type:
-    
-    - **SNP**: Read is rejected if the base at the variant position has quality < threshold
-    - **MNP**: Read is rejected if **any** base in the MNP region has quality < threshold
-    - **Insertion/Deletion (windowed scan)**: Inserted/deleted bases below threshold are **masked** (treated as wildcards) rather than rejecting the entire read
+!!! info "What `--min-baseq` does"
+    A base below `--min-baseq` is read as unknown, exactly like an `N`: it supports no
+    allele and counts against none. The threshold masks bases, never reads. A read with
+    masked bases still counts toward depth (`DP`, `DPF`) and is classified on its other
+    bases; when those cannot tell REF from ALT, it counts toward depth only (neither REF
+    nor ALT). `--min-baseq 0` masks only `N` bases. With `--apply-baq`, qualities near
+    indels and splice junctions are lowered first, then compared with the threshold
+    (see [BAQ](#baq-quality-downgrade)).
+
+    By variant type:
+
+    - **SNP**: a masked base at the variant position leaves the read neither REF nor ALT.
+    - **MNP**: each position where REF and ALT differ is judged on its own. Masked
+      positions are skipped and the confident ones decide; a read with every differing
+      position masked counts toward depth only.
+    - **Insertion/Deletion**: masked bases match any base when the read is compared with
+      each allele. A masked base's identity is unknown, but the base is still there.
+      So an insertion read whose inserted bases are all masked still shows the
+      insertion's length: inside the discrimination window, an insert of the ALT's
+      length is the ALT where no other allele of that length is at the locus (RJ-20 in
+      the [read-judgment register](read-judgment.md)). The CIGAR checks, used only for an
+      insertion without a prepared reference, count it neither, in `partial_alt`.
     - **Complex (exact carriers)**: Bases at or above the threshold must match the allele; every base is also weighed by its quality, and an ALT call needs the read's evidence for ALT over REF to reach at least what one base at the threshold gives (about 2.5 log10 at 20), so a read whose window is mostly low quality cannot be called ALT on one clear base
     - **Complex (Phase 3 SW)**: Low-quality bases are replaced with `N`, which scores 0 against any base
+
+    The original GBCMS applies no base-quality threshold by default; when one is set, a
+    read whose deciding base falls below it is left out of depth (`DP`) as well. gbcms
+    keeps such a read in depth.
 
 ---
 
@@ -210,9 +230,9 @@ default), reads that fail the MAPQ threshold are checked for the `NH:i:1` tag
 flowchart TD
     Read(["📖 RNA Read"])
     Read -->|"read.mapq"| MAPQ{"MAPQ ≥ min_mapq?\n(default: 1)"}
-    MAPQ -->|"Yes — MAPQ=255\nunique alignment"| Pass(["✅ Pass"]):::pass
-    MAPQ -->|"No — MAPQ=0\n(check NH tag)"| NH{"NH:i:1?"}
-    NH -->|"Yes — novel junction\nunique but low MAPQ"| Rescue(["✅ Rescued"]):::rescue
+    MAPQ -->|"Yes — e.g. STAR 255\n(unique), 3 or 1"| Pass(["✅ Pass"]):::pass
+    MAPQ -->|"No — below min_mapq\n(check NH tag)"| NH{"NH:i:1?"}
+    NH -->|"Yes — uniquely aligned\nbut low MAPQ"| Rescue(["✅ Rescued"]):::rescue
     NH -->|"No — NH>1\nmulti-mapper"| Drop(["❌ Discard"]):::drop
 
     classDef pass fill:#27ae60,color:#fff,stroke:#1e8449,stroke-width:2px;
@@ -267,7 +287,45 @@ same strand (`forward` swaps them):
 | R2 | Reverse | + | Antisense |
 
 !!! tip
-    Disable strandedness filtering with `--no-strandedness` for unstranded RNA-seq libraries.
+    For an unstranded RNA-seq library pass `--strandedness unstranded`: it turns off both the filter and
+    ASJD's strand-discordance check. `--no-strandedness` alone only stops the filtering; reads are still
+    folded under the `reverse` protocol (see [`gbcms rna`](../cli/rna.md#strandedness-filtering)).
+
+### How much antisense evidence there is, and why the column counts it first
+
+`rna_antisense_depth` counts antisense REF and ALT reads before the strand filter drops them
+(as `mq0_count` is tallied before its filter), and ASJD's `STRAND_DISCORDANT` is documented as a
+`--no-strandedness` diagnostic. Decided 2026-09-25 from this census (local data, aggregates only;
+[evidence](https://github.com/msk-access/gbcms/issues/114#issuecomment-5834318189), archived plan
+`.agents/archive/CYCLE_6.6.0_PLAN.md` § R2). FORTE truth cohort, 33 samples, 71 truth loci inside a
+single gene, reverse-stranded dUTP:
+
+| Population | Sense | Antisense |
+|:--|--:|--:|
+| Reads at the truth loci | 28,182 | 143 (0.5%) |
+| What gbcms reported before the change | 28,128 | 0 |
+| Junction reads near the loci | 125,541 | 138 (0.1%) |
+
+- 13 of the 71 loci (18%) have any antisense read; 24 antisense reads carry the ALT.
+- On a local sample, 500 random expressed exonic positions: median antisense fraction 0%, 5% of
+  positions have any, the maximum 48% (typical of overlapping antisense transcripts).
+- **Standard.** None for allele counting. Gene-level counters (HTSeq `--stranded`, featureCounts
+  `-s`) drop wrong-strand reads and report no antisense count; ASE counters (GATK ASEReadCounter,
+  phASER, WASP) have no strand option; QC tools (Picard, RNA-SeQC, RSeQC) report antisense only as a
+  library-level rate. The closest precedent for counting before the filter is ASEReadCounter, which
+  reports how many reads each filter removed, counted before exclusion. No tool reports
+  strand-discordant junction evidence; STAR takes junction strand from the intron motif.
+- **Why `STRAND_DISCORDANT` stays unfiltered-only:** before any filter, antisense junction evidence is
+  about 0.1%, so a pre-filter flag would be close to noise. Not adopted: that flag on all junction
+  reads, and keeping the column as "reads that reached classification" (REJ-20260925-003 in
+  `.agents/learnings/REJECTED.md`).
+- **Acceptance (2026-09-29).** FORTE truth cohort (94 rows): only `rna_antisense_depth` changes, from
+  0 to 203 reads on 15 rows, equal to its `--no-strandedness` value on 94/94 rows. An independent
+  per-read census of the 68 truth SNV rows (the reads' own bases, dUTP strand folding, the MAPQ/NH
+  rule, emulated BAQ): 68/68 rows exact, 181 = 181 reads. Exon-edge probes (978 rows): only the
+  antisense column changes, from 0 to 3,678 reads (0.12% of sense depth, on 393 rows), equal to
+  `--no-strandedness` on 978/978. DNA (28 runs) byte-identical. The column counts REF and ALT reads
+  over the anchor, so it reports fewer than the 143 raw antisense reads of the census.
 
 ---
 

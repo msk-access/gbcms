@@ -1,13 +1,14 @@
 ---
 name: external-review-measure-first
-description: An external review or proposal is mapped to current behaviour, open tickets, REJECTED.md and prior probes, and its value measured on our data, before any ticket is filed.
+description: An external review or proposal is mapped to current behaviour, open and closed tickets, REJECTED.md and prior probes, and its value measured on our data, before any ticket is filed.
 metadata:
   type: feedback
 ---
 
 When the operator brings an outside review (another model's framework, a paper's
 proposal), compare it against all four: current behaviour (verified in code/docs, not
-from memory), the open tickets and parents of the cycle, `REJECTED.md`, and the
+from memory), the open and closed tickets and parents of the cycle (closed ones' comments hold
+past measurements), `REJECTED.md`, and the
 earlier review probes (rerun on the release build and now). Then measure each
 proposal's value on our data before offering a ticket: only what measurement shows
 relevant becomes one.

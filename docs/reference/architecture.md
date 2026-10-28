@@ -293,7 +293,7 @@ flowchart TB
     classDef base fill:#9b59b6,color:#fff,stroke:#7d3c98,stroke-width:2px;
 ```
 
-See [models/core.py](file:///src/gbcms/models/core.py) for definitions.
+See [models/core.py](https://github.com/msk-access/gbcms/blob/main/src/gbcms/models/core.py) for definitions.
 
 ---
 
@@ -424,14 +424,14 @@ MNP evaluation: ref 486, alt 1, partial_alt 88   (carriers hold only the first G
                                                    counts illustrative, TERT-shaped)
 
 Components, counted as SNVs with the sample's own settings:
-  5:1295250 G>A  → ad=88
-  5:1295254 G>A  → ad=1
+  1:1000 G>A  → ad=88
+  1:1004 G>A  → ad=1
 
-Best component beats the MNP's ad (88 > 1) → the row reports the 5:1295250 G>A SNV's
+Best component beats the MNP's ad (88 > 1) → the row reports the 1:1000 G>A SNV's
 BaseCounts wholesale.
 gbcms_rescue: method=decomposed;outcome=rescued;original_ref=486;original_alt=1;
-              original_partial=88;original_confirmed=0;adopted=5:1295250(G>A);
-              positions=5:1295250(G>A):88+5:1295254(G>A):1
+              original_partial=88;original_confirmed=0;adopted=1:1000(G>A);
+              positions=1:1000(G>A):88+1:1004(G>A):1
 ```
 
 Ties go to the leftmost position. Adopting the component's **whole** `BaseCounts` (not

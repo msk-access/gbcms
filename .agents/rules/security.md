@@ -26,13 +26,27 @@ model's habits and loses under load). The deterministic floor lives in
   `.githooks/pre-push` runs gitleaks.)
 - Scan tracked **code and fixtures**, not only data files — secrets hide in test
   fixtures and hardcoded example lists.
+- The pre-commit hook refuses data files outside `tests/testdata/`: parquet, BAM/CRAM
+  and their indexes, TSV/CSV/MAF, `.dat`, and VCF/BED/FASTQ (`.fq`), plain or `.gz`/`.bgz`
+  (a VCF's header and `#CHROM` line name the sample). It also refuses a staged
+  `.agents/skills/*/SKILL.md` whose frontmatter does not parse (step 3).
 - Test fixtures (`tests/testdata/`) are **synthetic**. The pre-commit hook lets data
-  files in there only after scanning each staged one (decoded where binary) for MSK
+  files in there only after scanning each staged one (decoded where binary or
+  compressed, so a `.vcf.gz` header is read) for MSK
   sample, CMO and anonymized-BAM identifiers, under 2 MB; a slice of a real BAM
   never goes there, renamed or not — its reads are the patient's. (Enforced:
   `.githooks/pre-commit` step 1b.) The one other data-extension file it admits is
   `scripts/regression_panel/checkpoints.tsv` (commit SHAs and PR labels), only in
   `checkpoints.py`'s shape and with no identifier in it (step 1a).
+
+## Tool output leaves the machine
+- Everything a tool prints, for the session and every agent, is sent to the model
+  provider as part of the conversation. Patient test slices may be worked on, never
+  used downstream; report aggregates and allele shapes, never sample IDs or read names.
+- **cBioPortal study files never enter tool output.** Use the fixed summary script
+  (schema and counts, small counts hidden) or a script whose every output stream goes to
+  a file in a protected directory; protected paths live in `~/.claude/protected-paths.txt`,
+  outside the repo. (Enforced: `.claude/hooks/protect-cbioportal.py`.)
 
 ## Outward-facing actions
 - **Ask before public.** The default destination for any artifact is private. A

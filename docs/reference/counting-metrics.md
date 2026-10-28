@@ -289,7 +289,7 @@ N bases are **strictly uninformative** — they do NOT contribute to RD, AD, any
 
 ## mFSD — Mutant Fragment Size Distribution {#mfsd}
 
-mFSD compares insert-size distributions for **REF-classified** vs **ALT-classified** fragments at each variant position. Short-fragment enrichment in the ALT class indicates tumor-derived cfDNA.
+mFSD compares insert-size distributions for **REF-classified** vs **ALT-classified** fragments at each variant position. Short-fragment enrichment in the ALT class is graded evidence toward a tumor origin, never an origin call ([mFSD report classes](qc-flags.md#mfsd-report-classes)).
 
 Enabled with `--mfsd`. All 41 columns (and their VCF INFO equivalents) are absent from output without this flag.
 
