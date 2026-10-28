@@ -95,7 +95,7 @@ Antigravity v1.20.3+, Cursor, Codex, Copilot, Windsurf, Zed, Junie, …). Princi
 |-------|--------------------|----------------|----------------------|
 | Standing context | `AGENTS.md` | `CLAUDE.md` = `@AGENTS.md` import | read `AGENTS.md` natively (`GEMINI.md` = Google override only) |
 | Skills | `.agents/skills/<name>/SKILL.md` | `.claude/skills/` → symlink | Antigravity reads `.agents/skills/` |
-| Enforcement | `.githooks/pre-commit` + `.githooks/pre-push` | `.claude/settings.json` wires `.claude/hooks/` (`block-rm-rf.py`, `block-push-main.py`, `block-env-edits.py`, `injection-guard.py`) and time injection | git hooks are tool-agnostic |
+| Enforcement | `.githooks/pre-commit` + `.githooks/pre-push` | `.claude/settings.json` wires `.claude/hooks/` (`block-rm-rf.py`, `block-push-main.py`, `block-env-edits.py`, `injection-guard.py`, `protect-cbioportal.py`) and time injection | git hooks are tool-agnostic |
 | Memory | `.agents/memory/*.md` (in-repo) | Claude recall dir → symlink | any tool ingests the same files |
 | Continuity | `CONTINUITY.md` | referenced from `AGENTS.md` | referenced from `AGENTS.md` |
 | Learning loop | convention in `AGENTS.md` | inherited | inherited |

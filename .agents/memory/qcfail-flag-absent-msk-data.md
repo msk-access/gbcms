@@ -23,4 +23,4 @@ dropped by default, `--no-filter-qc-failed` restores byte-identical counts.
 toggling it never changes MSK results.
 **How to apply:** if a future upstream (Illumina chastity passthrough, fgbio
 consensus marking) starts setting 0x200, the filter becomes load-bearing — the
-contract test already covers it. See [[nextflow-cli-default-divergence]].
+contract test already covers it.

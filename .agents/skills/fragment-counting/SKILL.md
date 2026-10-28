@@ -14,9 +14,10 @@ locus, evidence is collapsed to one molecule:
 - **Structural ALT wins**: if either mate carries a CIGAR I/D op matching the ALT
   indel, ALT wins (correct for indels). Caution: a single mate with a spurious
   indel CIGAR can override a high-BQ REF mate.
-- **Discard band**: if mates disagree and neither allele's quality clears the
-  threshold, the fragment is **discarded** — counted in DPF, excluded from RDF/ADF.
-- `fragment_qual_threshold` (default 10) governs the discard band.
+- **Discard band**: if mates disagree and the better allele's quality does not beat the
+  other's by more than the threshold, the fragment is **discarded** — counted in DPF,
+  excluded from RDF/ADF.
+- `fragment_qual_threshold` (`--fragment-qual-threshold`, default 10) governs the discard band.
 
 ## Deduplication / hashing
 
@@ -46,10 +47,11 @@ assert rdf == rdf_fwd + rdf_rev
 
 ## Amplicon mode
 
-`--library-type amplicon` **bypasses** R1/R2 consensus: mates are XOR-split into
-separate fragments (both are PCR duplicates of one template). Disagreeing mates then
-count as two independent fragments rather than discarding — FAF for the same physical
-disagreement differs between capture and amplicon libraries by design.
+`gbcms rna --library-type amplicon` (an RNA option; DNA has none) **bypasses** R1/R2
+consensus: mates are XOR-split into separate fragments (both are PCR duplicates of one
+template). Disagreeing mates then count as two independent fragments rather than
+discarding — FAF for the same physical disagreement differs between capture and amplicon
+libraries by design. It also forces `--strandedness unstranded`.
 
 ## Read-level vs fragment-level (caution)
 

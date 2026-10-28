@@ -121,4 +121,16 @@ if [ -n "$skills" ]; then
   done <<< "$skills"
 fi
 
+# 3b) Every code name, flag and path a staged skill or rule mentions must exist
+#     (scripts/check_agent_names.py; stdlib only). A renamed function or a deleted file
+#     stays in the text agents trust until a check reads it. Skipped if the script is absent.
+agent_docs="$(printf '%s\n' "$staged" | grep -E '^\.agents/(skills/[^/]+/SKILL\.md|rules/[^/]+\.md)$' || true)"
+repo_root="$(git rev-parse --show-toplevel)"
+if [ -n "$agent_docs" ] && [ -f "$repo_root/scripts/check_agent_names.py" ]; then
+  if ! (cd "$repo_root" && printf '%s\n' "$agent_docs" | xargs python3 -I scripts/check_agent_names.py); then
+    echo "pre-commit BLOCKED: a skill or rule names code, a flag or a file that does not exist (above). Fix the text, or EXTERNAL in scripts/check_agent_names.py if the name belongs to another tool." >&2
+    exit 1
+  fi
+fi
+
 exit 0

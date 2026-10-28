@@ -49,6 +49,7 @@ out, unless it is an opt-in rescue.
   errors, truncated inserts in reads that end inside them) is fine; that is
   reading the given allele accurately.
 - Tolerating a *wrong input* is not.
-- Default-on features that report another allele's counts under the row's
-  label (homopolymer decomposition, `WARN_HOMOPOLYMER_DECOMP`) conflict with
-  this. They are open decisions in the 6.6.0 plan.
+- Features that report another allele's counts under the row's label are opt-in and
+  flagged: `--rescue-mnp` and `--rescue-homopolymer` (homopolymer decomposition,
+  `WARN_HOMOPOLYMER_DECOMP`) are both off by default (checked in `src/gbcms/cli.py`,
+  2026-10-28); without them `OBSERVED_ALLELE` in `gbcms_diagnostic` names what the reads carry.
