@@ -182,6 +182,11 @@ overlaps multiple transcripts with different exon structures.
     For each transcript: `fragment_count ≤ read_count` (fragments are
     R1/R2 consensus; reads are individual observations).
 
+!!! note "Entry order"
+    Entries are in ascending transcript-ID order (byte order), in both columns,
+    on every machine. The order does not depend on the GTF's line order or on the
+    CPU, so the same run on two machines writes the same bytes.
+
 !!! note "What a transcript's DP counts"
     A transcript's DP (DPF) counts every compatible read (fragment) that observes the
     locus, as the row's `total_count` does: reads carrying another allele (the row's

@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed — per-transcript count lists in a machine-independent order (#284)
+
+- **`transcript_read_counts` and `transcript_fragment_counts` list their transcripts in
+  ascending ID order**, on every machine. They listed them in the order the exon interval
+  tree visited the overlapping exons, which depends on the CPU's SIMD backend (NEON, AVX
+  or none) and on how equal intervals fall, so one build on one input wrote the same
+  entries in another order on another machine (23 of 73,649 cells differed between an
+  Apple Silicon run and an x86 Linux run of the 6.6.0 release panel). Counts are
+  unchanged; only the order of entries is. The cells of two machines now compare as
+  bytes, with no set comparison. The RNA docs state the order.
+
 ### Changed — a read-rule change starts from its mechanism (#304)
 
 - **Fix the class, not the row.** The procedure for changing how reads are judged
