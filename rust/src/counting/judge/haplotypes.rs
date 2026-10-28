@@ -96,7 +96,7 @@ pub(crate) enum Class {
 /// `--min-baseq` or where not A, C, G or T) with their qualities, each base's reference
 /// position (a soft clip's extrapolated, an inserted base's at its anchor), and its
 /// aligned span.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub(crate) struct ReadView {
     pub(crate) seq: Vec<u8>,
     pub(crate) quals: Vec<u8>,
@@ -120,7 +120,7 @@ pub(crate) struct ReadView {
 /// What a read's aligner wrote about its placement: MAPQ, the AS and XS tags (the best
 /// alignment's score and the best score elsewhere, BWA-MEM's scale) and NM. None where
 /// the record carries no such tag.
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash)]
 pub(crate) struct AlnTags {
     pub(crate) mapq: u8,
     pub(crate) best: Option<i64>,

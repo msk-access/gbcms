@@ -1007,10 +1007,16 @@ pub(crate) fn classify(record: &Record, variant: &Variant, quals: &[u8], min_bas
     let overlaps_anchor = start <= variant.pos && end > variant.pos;
     let out = match read_view(record, quals, min_baseq, rules) {
         None => depth(),
-        Some(read) => {
+        Some(mut read) => {
+            // The judge never reads a read's name: a read alike in all else (bases, qualities,
+            // placement, the aligner's tags) to one this row judged gets that read's verdict.
+            read.name.clear();
+            let view = (read, !overlaps_anchor, min_baseq);
             let clock = std::time::Instant::now();
-            let verdict = judge(site, &read, min_baseq, !overlaps_anchor);
+            let judged = haplotypes.judged(&view);
+            let verdict = judged.unwrap_or_else(|| judge(site, &view.0, min_baseq, !overlaps_anchor));
             let ns = clock.elapsed().as_nanos();
+            let read = &view.0;
             let mut out = match verdict.call {
                 Call::Alt => ClassifyResult::is_alt(verdict.qual, PHASE),
                 Call::Ref => ClassifyResult::is_ref(verdict.qual, PHASE),
@@ -1120,6 +1126,9 @@ pub(crate) fn classify(record: &Record, variant: &Variant, quals: &[u8], min_bas
                     String::from_utf8_lossy(record.qname()), if record.is_first_in_template() { 1 } else { 2 },
                     t, verdict.call, t == verdict.call, tq, verdict.qual, unknown,
                 );
+            }
+            if judged.is_none() {
+                haplotypes.keep_judged(view, verdict);
             }
             out
         }

@@ -98,7 +98,15 @@ pub(crate) struct Haplotypes<'a> {
     #[allow(clippy::type_complexity)]
     build: Box<dyn Fn(&ReadRules) -> Option<Site> + 'a>,
     verdicts: RefCell<HashMap<ReadKey, ClassifyResult>>,
+    /// Each read view this row's site judged (its name cleared), whether it was asked for
+    /// the anchor, and `--min-baseq`, with its verdict: the judge is a function of these
+    /// alone, so a read alike to one judged gets its verdict (deep duplex reads are often
+    /// alike: one start, one end, binned qualities).
+    judged: RefCell<HashMap<JudgedKey, decide::Verdict>>,
 }
+
+/// A judged read view, whether its anchor was asked for, and `--min-baseq`.
+pub(crate) type JudgedKey = (ReadView, bool, u8);
 
 impl<'a> Haplotypes<'a> {
     pub(crate) fn new(v: &Variant, build: impl Fn(&ReadRules) -> Option<Site> + 'a) -> Self {
@@ -107,7 +115,17 @@ impl<'a> Haplotypes<'a> {
             site: OnceCell::new(),
             build: Box::new(build),
             verdicts: RefCell::new(HashMap::new()),
+            judged: RefCell::new(HashMap::new()),
         }
+    }
+
+    /// The verdict a read alike to `view`'s got at this row ([`Haplotypes::judged`]'s key).
+    pub(crate) fn judged(&self, view: &JudgedKey) -> Option<decide::Verdict> {
+        self.judged.borrow().get(view).copied()
+    }
+
+    pub(crate) fn keep_judged(&self, view: JudgedKey, verdict: decide::Verdict) {
+        self.judged.borrow_mut().insert(view, verdict);
     }
 
     /// The call a read already got at this row.
@@ -339,6 +357,34 @@ mod tests {
         ];
         assert_eq!(calls(&c, &rows, &ins, &reads), vec![Alt, Alt, Alt, Ref, Ref, Ref, Ref], "insertion row");
         assert_eq!(calls(&c, &rows, &snv, &reads), vec![Ref, Ref, Ref, Alt, Alt, Ref, Ref], "SNV row");
+    }
+
+    #[test]
+    fn a_reads_name_never_changes_its_verdict() {
+        // Reads alike but for their names (duplex reads of one start and end) share one
+        // verdict per row (Haplotypes::judged): the judge reads no name.
+        let (c, ins, snv) = case_246();
+        let rows = vec![ins.clone(), snv.clone()];
+        let (h_ins, h_snv) = (haplotype(&c, &[&ins]), haplotype(&c, &[&snv]));
+        let mut quals = vec![Q; 151];
+        quals[80] = 2;
+        let reads = [
+            read(&h_ins, 220, 151, 220, "151M"),
+            read(&h_ins, 225, 151, 225, "75M6I70M"),
+            read(&h_snv, 221, 151, 221, "151M"),
+            read(&c, 232, 151, 232, "151M"),
+            read_q(&h_snv[231..382], quals, 231, "151M"),
+            read(&h_ins, 290, 60, 290, "10S50M"),
+        ];
+        for target in [&ins, &snv] {
+            let s = site(&c, target, &rows, 151);
+            for (k, r) in reads.iter().enumerate() {
+                for ask in [false, true] {
+                    let (a, b) = (judge(&s, &r.clone().named(b"one"), MIN_BQ, ask), judge(&s, &r.clone().named(b"two"), MIN_BQ, ask));
+                    assert_eq!(format!("{a:?}"), format!("{b:?}"), "read {k}, anchor asked {ask}");
+                }
+            }
+        }
     }
 
     #[test]
