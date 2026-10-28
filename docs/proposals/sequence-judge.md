@@ -150,7 +150,7 @@ Measured (HG002 phased truth, R2): see #304. The prototype is `plan670/r2/hapjud
 ## 2. Where it enters
 | Seam | Where | Change |
 |---|---|---|
-| Flag | `cli.py:387/755` → `models/core.py:159` (`AlignmentConfig`) → `pipeline.py:887 _engine_kwargs` → `#[pyo3(signature)]` `engine.rs:924/985` → `count_bam_binned_core` (385) → `count_bin_shared` (1076) → `count_variant_from_cache` (1477); stub `_rs.pyi:225–296` (parity test) | `read_judge: "rules" \| "haplotype"`, plumbed like `alignment_backend`; also the MNP-rescue recount (`pipeline.py:1340`) and Nextflow (`dna/main.nf:60`) |
+| Flag | `cli.py:387/755` → `models/core.py:159` (`AlignmentConfig`) → `pipeline.py:887 _engine_kwargs` → `#[pyo3(signature)]` `engine.rs:924/985` → `count_bam_binned_core` (385) → `count_bin_shared` (1076) → `count_variant_from_cache` (1477); stub `_rs.pyi:225–296` (parity test) | `read_judge: "rules" \| "sequence"` (`"haplotype"`, the former name, taken as `"sequence"`), plumbed like `alignment_backend`; also the MNP-rescue recount (`pipeline.py:1340`) and Nextflow (`dna/main.nf:60`) |
 | Rows in reach | prep, a whole-input post-pass after `assign_listed_neighbours` (`normalize/engine.rs:131`) | new `Variant::reach_rows`: every other PASS row whose REF span lies within X's ± `READ_REACH` (300, as `carrier::WHOLE_READ_REACH`); computed also for the decomposed twin (1066) and the MNP-rescue rows (prepared apart, `pipeline.py:1306`) |
 | Reference | prep, beside `whole_ref` (1104–1105) | `Variant::judge_ref`: X ± (`READ_REACH` + the widest reach row), for every kind (SNVs and deletions ≥ 50 bp have no `whole_ref` today) |
 | Classifier | `engine.rs:1662`, after `splice_skip_triage` | under the flag, `judge::classify` returns a `ClassifyResult`; the sibling guards (1691, 1699) are bypassed (the judge weighs the site's alleles itself) |
@@ -235,3 +235,43 @@ placement, bases). Cost within 2× develop. The HPC gate.
    its bases; mates resolve by quality) or kept for reads whose CIGAR writes X's exact op.
    The build carries a measurement-only switch for both; the arms decide, and the switch is
    removed before the merge.
+
+## 11. Open tickets the judge resolves (measured 2026-10-28)
+On the merged branch (develop 6efeb5bb merged in), against its own default path, which gives
+develop's counts. HG002 (public) and synthetic shapes; HG002 truth is v2dbq20 (reads whose own
+bases at the run's `--min-baseq` decide them). Each is resolved for users only with the default
+flip (#331): the default rules path keeps today's behaviour.
+- **#246** (an SNV beside an insertion credited with the insertion's carriers): resolved. The
+  listed insertion is a context in every candidate sequence, so a carrier whose first inserted
+  base an aligner wrote on the SNV's base fits REF at the SNV. #246 arm (4,578 rows), SNV class:
+  REF reads called ALT 243 → 0, ALT reads called REF 322 → 0, true ALT credited 92.9% → 99.3%,
+  true REF 94.9% → 99.5%, Σ|AD − truth| 1,702 → 734; insertions 1-9 bp true ALT 59.6% → 98.6%.
+- **#144** (clip-borne duplication carriers): resolved on HG002. Clipped bases inside the
+  fragment are the read's own (RJ-13) and admit it, and carriers written through count by their
+  bases. The 89-bp duplication: AD 2 → 7 (bases-only ceiling 10); the 98-bp: 6 → 16 (ceiling 16).
+  The panel's ITD rows were not read read by read.
+- **#290** (another length of the repeat written upstream counts REF): resolved by its decided
+  rule (another allele wherever written). The found alleles make the expansion a state of the
+  site: its synthetic counts 6/6/6 (RD/AD/partial) written 0 to 60 bases upstream, where the rules
+  give 6/6/6 up to 30 bases and 12/6/0 at 60. The five strict xfails pinning RJ-27's named limit
+  pass under the judge; in the 40-bp VNTR compound het the rules call 22 of the insertion
+  haplotype's reads REF, the judge none.
+- **#301** (a 33-bp deletion row counting a co-located 22-bp deletion's reads): resolved. The
+  other deletion is a state whether listed or not. Against a per-read bases oracle at the site
+  (12 reads the 33-bp allele's, 14 the 22-bp's, 21 ties, 3 fitting none): with the 33-bp row
+  listed alone the rules count 11 of the 22-bp allele's reads ALT, the judge none (AD 25 → 14,
+  12 of them its own); the counts no longer depend on which rows are listed.
+- **#297** (a long deletion's unit count in a repeat): partly. Its synthetic (three 60-bp
+  units; 4 REF, 4 row and 4 two-unit carriers of 100 bp): units differing at one or two bases
+  give 4/4/4 under both judges (since #285); identical units give 4/8/0 under both, the
+  two-unit carriers counted ALT where no read shows the other unit count; with 4 more two-unit
+  carriers of 190 bp that read past the repeat, the rules give 4/12/0 and the judge 4/0/12.
+  Open for the operator: the identical-units case with no read past the repeat (count the given
+  allele, or depth only as #297 proposes), and the phased-change shape of
+  `test_a_change_the_input_lists_beside_the_deletion_is_its_neighbour`, which the judge counts
+  ALT (no read writes the two-unit allele).
+- **#264** (REF and VAF of indels in repeats): the long-insertion shortfall it handed to #304.
+  HG002 het median VAF (rows in 0.35-0.65): tandem-repeat insertions 10-49 bp 0.471 (18/41) →
+  0.500 (23/44), 50-299 bp 0.238 (6/34) → 0.429 (17/41), 300-999 bp 0.200 → 0.368, 1 kb+
+  0.241 → 0.348; SV-subset insertions 50-299 bp 0.364 → 0.474, 1 kb+ 0.125 → 0.444. Its
+  decided documentation (allele-level REF and VAF) is still open on #264.
