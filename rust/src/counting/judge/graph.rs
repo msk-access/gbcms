@@ -265,6 +265,30 @@ impl Graph {
         }
     }
 
+    /// Where `other`'s bases first differ from this graph's (its length where none does),
+    /// where the two are laid out alike: the same segments (spans, bases' places, whether
+    /// each spells a row), coordinates, edges and length changes, so a programme over them
+    /// differs only from that base on. None where they are not laid out alike (as REF's
+    /// graph, not cut at X's span, and X's).
+    pub(crate) fn layout_until(&self, other: &Graph) -> Option<usize> {
+        let segments = self.segments.len() == other.segments.len()
+            && self.segments.iter().zip(&other.segments).all(|(a, b)| {
+                (a.span, a.first, a.after, a.row.is_some()) == (b.span, b.first, b.after, b.row.is_some())
+            });
+        let alike = segments
+            && self.topological
+            && other.topological
+            && self.coord == other.coord
+            && self.seg_of == other.seg_of
+            && self.pred_off == other.pred_off
+            && self.preds == other.preds
+            && self.succ_off == other.succ_off
+            && self.succs == other.succs
+            && self.shifts == other.shifts
+            && self.end_max == other.end_max;
+        alike.then(|| self.bases.iter().zip(&other.bases).position(|(a, b)| a != b).unwrap_or(self.bases.len()))
+    }
+
     /// The length changes of the rows within `by` of the reference span `[lo, hi]`.
     pub(crate) fn shifts_near(&self, lo: i64, hi: i64, by: i64) -> i64 {
         self.shifts.iter().filter(|&&(s, e, _)| s < hi + by && e > lo - by).map(|s| s.2).sum()
@@ -411,6 +435,9 @@ pub(crate) struct Workspace {
     /// The band that decided the last score ([`decided`]) and its run, whose values the
     /// arrays still hold: the path is traced back from them ([`kept_path`]).
     last: Option<(GraphBand, GraphRun)>,
+    /// The programme's best total and ends as they stood before a base's column, kept for
+    /// the states laid out alike that start from it ([`decided_states`]).
+    snap: (i32, Vec<(u32, u32)>),
     touched: Vec<u8>,
     dir: Vec<u8>,
     dpred: Vec<u8>,
@@ -473,6 +500,23 @@ fn interior(g: &Graph, band: &GraphBand, v: usize, lo: u32, hi: u32, n: u32) -> 
 /// [`run_reference`]'s, cell for cell: a maximum keeps the first predecessor reaching it,
 /// the edge flag is the OR over every tie, and the best end the first by row, then base.
 fn run<M: ErrorModel, const TRACK: bool>(m: &M, read: &[u8], g: &Graph, band: &GraphBand, ws: &mut Workspace) -> GraphRun {
+    run_from::<M, TRACK>(m, read, g, band, ws, None, None)
+}
+
+/// [`run`], its columns before base `start.1` taken from `start.0`'s run over the same
+/// band of a graph laid out alike whose bases are the same before it ([`Graph::layout_until`];
+/// its best total and ends there from its snapshot), and with `snap_at` its own best total
+/// and ends kept as they stand before that base's column. Every cell, the score and its end
+/// are [`run`]'s.
+fn run_from<M: ErrorModel, const TRACK: bool>(
+    m: &M,
+    read: &[u8],
+    g: &Graph,
+    band: &GraphBand,
+    ws: &mut Workspace,
+    start: Option<(&Workspace, usize)>,
+    snap_at: Option<usize>,
+) -> GraphRun {
     let n = read.len() as u32;
     let (open, ext) = (m.gap_open(), m.gap_extend());
     ws.lead.clear();
@@ -498,10 +542,25 @@ fn run<M: ErrorModel, const TRACK: bool>(m: &M, read: &[u8], g: &Graph, band: &G
     ws.ends.clear();
     let total_lead = ws.lead[n as usize];
     let mut score = total_lead;
+    let mut from = band.v0;
+    if let Some((src, q)) = start {
+        let q = q.clamp(band.v0, band.v1);
+        let cells = band.off[q - band.v0] as usize;
+        ws.a[..cells].copy_from_slice(&src.a[..cells]);
+        ws.e[..cells].copy_from_slice(&src.e[..cells]);
+        ws.f[..cells].copy_from_slice(&src.f[..cells]);
+        score = src.snap.0;
+        ws.ends.extend_from_slice(&src.snap.1);
+        from = q;
+    }
+    let snap_at = snap_at.map(|q| q.clamp(band.v0, band.v1));
     {
-        let Workspace { a, e, f, lead, col, ends, .. } = &mut *ws;
+        let Workspace { a, e, f, lead, col, ends, snap, .. } = &mut *ws;
         let lead = &lead[..];
-        for v in band.v0..band.v1 {
+        for v in from..band.v1 {
+            if snap_at == Some(v) {
+                *snap = (score, ends.clone());
+            }
             let (lo, hi) = (band.lo[v - band.v0], band.hi[v - band.v0]);
             if lo > hi {
                 continue;
@@ -601,6 +660,9 @@ fn run<M: ErrorModel, const TRACK: bool>(m: &M, read: &[u8], g: &Graph, band: &G
                 }
             }
         }
+    }
+    if snap_at == Some(band.v1) {
+        ws.snap = (score, ws.ends.clone());
     }
     // The first end by row, then base; none where the read left over whole scores as well.
     let end = if score > total_lead { ws.ends.iter().copied().min() } else { None };
@@ -1081,6 +1143,74 @@ fn run_tracked<M: ErrorModel>(m: &M, read: &[u8], g: &Graph, band: &GraphBand, w
         return r;
     }
     GraphRun { clipped: touches_edge(m, read, g, band, ws), ..r }
+}
+
+/// [`decided`] for each of a site's state graphs at once (`graphs[k]`, its workspace
+/// `wss[k]`, which keeps its deciding run for [`kept_path`]): every state's narrow band,
+/// then the wider band of those it did not decide, then the full programme of the rest. A
+/// graph laid out as an earlier one (`shares[k] = Some((s, p))`: state `s`'s graph, its
+/// bases the same before base `p`, [`Graph::layout_until`]) takes the columns before the
+/// first such base from state `s`'s run over the same band at that step, where `s` ran it
+/// (the same band: bands are fixed by the layout). Each state's score and band are its
+/// [`decided`]'s.
+pub(crate) fn decided_states<M: ErrorModel>(m: &M, read: &GraphRead, graphs: &[&Graph], shares: &[Option<(usize, usize)>], wss: &mut [Workspace]) -> Vec<(i32, Option<i64>)> {
+    let k = graphs.len();
+    let mut out: Vec<Option<(i32, Option<i64>)>> = vec![None; k];
+    for ws in wss.iter_mut() {
+        ws.last = None;
+    }
+    if read.seq.is_empty() {
+        return vec![(0, None); k];
+    }
+    let planned: Vec<((i64, i64), [i64; 2])> = graphs.iter().map(|g| bands(g, read)).collect();
+    for step in 0..3 {
+        let runs: Vec<bool> = out.iter().map(Option::is_none).collect();
+        // a state shares at this step from one that runs it too; that state keeps its total
+        // and ends before the first base any of them takes over
+        let from: Vec<Option<usize>> = (0..k).map(|i| shares[i].filter(|&(s, _)| runs[i] && runs[s]).map(|(s, _)| s)).collect();
+        let mut snap_at: Vec<Option<usize>> = vec![None; k];
+        for i in 0..k {
+            if let (Some(s), Some((_, p))) = (from[i], shares[i]) {
+                snap_at[s] = Some(snap_at[s].map_or(p, |q: usize| q.min(p)));
+            }
+        }
+        for i in 0..k {
+            if !runs[i] {
+                continue;
+            }
+            let g = graphs[i];
+            let (trim, halves) = planned[i];
+            let half = (step < 2).then(|| halves[step]);
+            let band = GraphBand::new(g, &read.rp, half, trim);
+            let (head, rest) = wss.split_at_mut(i);
+            let ws = &mut rest[0];
+            let start = from[i].map(|s| (&head[s], snap_at[s].unwrap_or(0)));
+            let r = if !g.topological {
+                if step < 2 {
+                    run_reference::<M, true, false>(m, read.seq, g, &band, ws)
+                } else {
+                    run_reference::<M, false, false>(m, read.seq, g, &band, ws)
+                }
+            } else {
+                run_from::<M, false>(m, read.seq, g, &band, ws, start, snap_at[i])
+            };
+            let stands = match step {
+                0 | 1 => {
+                    let floor = floor_for([BAND_SLACK, WIDE_SLACK][step]);
+                    let clipped = if g.topological { r.score >= floor && touches_edge(m, read.seq, g, &band, ws) } else { r.clipped };
+                    !clipped && r.score >= floor && (r.score == 0 || !copy_off_band(read.seq, g, &band))
+                }
+                _ => true,
+            };
+            if stands {
+                out[i] = Some((r.score, half));
+                if g.topological {
+                    ws.last = Some((band, r));
+                }
+            }
+        }
+    }
+    out.into_iter().map(|o| o.expect("the full programme decides every state")).collect()
 }
 
 /// [`score`], with the band that decided it (its half-width; None for the full
@@ -1588,6 +1718,50 @@ mod tests {
             copies += usize::from(copy);
         }
         assert!(copies > 300, "the cases find copies off the band ({copies})");
+    }
+
+    #[test]
+    fn states_laid_out_alike_take_their_first_columns_from_one_another_and_decide_alike() {
+        // a substitution's site: graphs laid out alike whose bases differ from some base on
+        // (one base, or a base and the bases after it), beside a graph laid out otherwise
+        let mut st = 0x2468_ace0_1357_9bdfu64;
+        let mut shared = 0;
+        for case in 0..1500u64 {
+            let g0 = random_graph_of(&mut st, 200, 6);
+            let mut graphs: Vec<Graph> = vec![g0.clone()];
+            for _ in 0..1 + roll(&mut st, 3) {
+                let mut g = g0.clone();
+                let p = roll(&mut st, g.len() as u64) as usize;
+                for v in p..(p + 1 + roll(&mut st, 3) as usize).min(g.len()) {
+                    g.bases[v] = b"ACGT"[roll(&mut st, 4) as usize];
+                }
+                graphs.push(g);
+            }
+            if roll(&mut st, 2) == 0 {
+                graphs.insert(roll(&mut st, graphs.len() as u64 + 1) as usize, random_graph_of(&mut st, 200, 6));
+            }
+            let mut shares: Vec<Option<(usize, usize)>> = Vec::new();
+            for k in 0..graphs.len() {
+                let share = (0..k).filter(|&s| shares[s].is_none()).find_map(|s| graphs[s].layout_until(&graphs[k]).map(|p| (s, p)));
+                shares.push(share);
+            }
+            shared += shares.iter().flatten().count();
+            let base = &graphs[shares.iter().position(|s| s.is_some()).map_or(0, |k| shares[k].unwrap().0)];
+            let (read, rp) = random_read_of(base, &mut st, 100);
+            let (lo, hi) = (rp[0], *rp.last().unwrap());
+            let gr = GraphRead { seq: &read, rp: rp.clone(), span: (lo, hi + 1) };
+            let refs: Vec<&Graph> = graphs.iter().collect();
+            let mut wss: Vec<Workspace> = (0..graphs.len()).map(|_| Workspace::default()).collect();
+            let all = decided_states(&ShortReads, &gr, &refs, &shares, &mut wss);
+            for (k, g) in graphs.iter().enumerate() {
+                let mut ws = Workspace::default();
+                let one = decided(&ShortReads, &gr, g, &mut ws);
+                assert_eq!(all[k], one, "case {case} state {k}: score and band");
+                let (p0, p1) = (kept_path(&ShortReads, &gr, g, one.1, &ws), kept_path(&ShortReads, &gr, g, all[k].1, &wss[k]));
+                assert_eq!((p0.score, p0.rows), (p1.score, p1.rows), "case {case} state {k}: path");
+            }
+        }
+        assert!(shared > 1500, "the cases share layouts ({shared})");
     }
 
     #[test]

@@ -448,9 +448,11 @@ fn judge_states(site: &Site, read: &ReadView, min_baseq: u8, ask_anchor: bool, r
         }
     }
     let mut best: [Option<(i32, usize)>; 3] = [None; 3];
+    let graphs: Vec<&graph::Graph> = site.graphs.iter().map(|st| &st.graph).collect();
+    let shares: Vec<Option<(usize, usize)>> = site.graphs.iter().map(|st| st.share).collect();
+    let decided = graph::decided_states(&ShortReads, gr, &graphs, &shares, wss);
     let mut halves = Vec::with_capacity(site.graphs.len());
-    for (k, st) in site.graphs.iter().enumerate() {
-        let (s, half) = graph::decided(&ShortReads, gr, &st.graph, &mut wss[k]);
+    for (k, (st, &(s, half))) in site.graphs.iter().zip(&decided).enumerate() {
         halves.push(half);
         raise(&mut best, st.class as usize, s, k);
     }
