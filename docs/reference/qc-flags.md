@@ -18,6 +18,7 @@ that fired and the rows that need a look: [End-of-run summary](#end-of-run-summa
 | [MNP rescue](#mnp-rescue) | `gbcms_rescue` | INFO `GR` | `--rescue-mnp` |
 | [ASJD splice flags](#asjd-splice-flags) | `asjd_diagnostic`, `asjd_*_motif` | INFO `ASJDD`, `ASJDRM`, `ASJDAM` | RNA with `--gtf` |
 | [QC columns](#qc-columns) | `rna_editing_site`, `asjd_flag`, `mfsd_ks_valid`, `mfsd_alt_confidence`, `mfsd_ch_flag` | INFO `RED`, `ASJD`; mFSD INFO | RNA; `--mfsd` |
+| [Merged output](#merged-output) | — (read from the `simplex_duplex_*` cells) | — | `gbcms merge` with combined columns |
 | [mFSD report classes](#mfsd-report-classes) | — (HTML report) | — | `--mfsd-report` |
 | [Record shapes in VCF output](#record-shapes-in-vcf-output) | — | ALT `<NON_SEQUENCE>`, INFO `MAF_*`, `NORM_*` | MAF input; `--show-normalization` |
 
@@ -144,6 +145,18 @@ Columns whose value is itself a flag. Each column's place in the output is in
 | `mfsd_ch_flag` | `--mfsd` | `True` when the variant falls in a clonal-hematopoiesis (CH) gene (from `Hugo_Symbol`) | A prior, not fragment evidence; matched-normal data decide CH |
 <!-- --8<-- [end:qc-columns] -->
 
+## Merged output
+
+`gbcms merge` writes a combined `simplex_duplex_*` cell as `NA` where it cannot add the
+two inputs' counts. The flag below is not a column: the
+[end-of-run summary](#end-of-run-summary) derives it from a merged MAF.
+
+<!-- --8<-- [start:merge] -->
+| Flag | Set when | What to do |
+|:-----|:---------|:-----------|
+| `COMBINED_NA` | A combined count, total or VAF cell (`simplex_duplex_*`, the strand-bias statistics left out) is `NA` on the row: an input's count was missing or not a number, or the duplex and simplex MNP rescues adopted different alleles (the merge log names each) | Do not use the combined counts or VAF there; read each input's own columns |
+<!-- --8<-- [end:merge] -->
+
 ## mFSD report classes
 
 The `--mfsd-report` HTML grades each variant's fragment-size evidence (see
@@ -226,6 +239,9 @@ listed apart and is not counted as needing a look, except on a `FAIL` row.
 The run's last line is a `WARNING` when any row needs a look and an `INFO` line when none
 does; the exit code is unchanged, so flagged rows never fail a pipeline.
 
+[`gbcms summarize`](../cli/summarize.md) makes the same summary from outputs already written
+(older runs, many samples, a merged MAF), as text, JSON, a cohort table or MultiQC content.
+
 The mFSD report classes are not in the output rows, so the summary leaves them out.
 
 An example, from 2,000 synthetic rows:
@@ -301,6 +317,7 @@ an informational flag). The definitions are above; the tests keep the two in ste
 | `RETENTION_DOMINANT` | Most reads splice over the locus, so the counted reads are the intron-retaining minority: read vaf as the VAF within them, not as allelic balance |
 | `NOVEL_JUNC_AT_SPLICE_LOSS` | Carriers of a splice-destroying variant may splice around the locus while alt_count is low: read asjd_diagnostic for the junction |
 | `rna_editing_site` | The locus overlaps a known A-to-I editing site: an A>G or T>C call there is likely editing, not a somatic mutation |
+| `COMBINED_NA` | A combined simplex_duplex count is NA (a count missing in one flavour, or mixed MNP rescue): the combined VAF is unusable, so read each flavour's own columns |
 
 ### Informational
 

@@ -134,6 +134,7 @@ nextflow run nextflow/main.nf \
 | `--merge_counts` | Enable the `MERGE_COUNTS` process (multi-BAM merge; needs `bam_type` in the samplesheet) | `false` |
 | `--merge_add_combined` | Compute `simplex_duplex_*` combined columns during merge | `true` |
 | `--merge_legacy_naming` | Use `t_{metric}_{type}` naming (genotype_variants compat) | `false` |
+| `--qc_summary` | After all samples, run `gbcms summarize` over every output and publish MultiQC custom content and a JSON per output to `gbcms/qc_summary/` | `false` |
 
 See [Full Parameter Reference](../docs/nextflow/parameters.md) for all options including PairHMM tuning parameters.
 
@@ -184,5 +185,6 @@ Pipeline info and logs are in `${params.outdir}/pipeline_info/`.
 | `GBCMS_RNA` | RNA allele counting via `gbcms rna` |
 | `GBCMS_NORMALIZE` | Variant normalization via `gbcms normalize`. Defined in `modules/local/gbcms/normalize` but included by no workflow, so a run never executes it; run `gbcms normalize` directly |
 | `MERGE_COUNTS` | Merge per-BAM counts into simplex/duplex combined columns (`--merge_counts`) |
+| `QC_SUMMARY` | QC flag summary of every output as MultiQC custom content and JSON (`--qc_summary`) |
 | `FILTER_MAF` | Pre-filter multi-sample MAF by sample |
 | `PIPELINE_SUMMARY` | Aggregate filtering statistics |

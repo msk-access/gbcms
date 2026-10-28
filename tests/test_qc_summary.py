@@ -158,7 +158,7 @@ def test_the_page_lists_each_flag_with_the_code_tier_and_action():
 def test_each_flag_is_in_the_family_the_page_defines_it_under():
     """A flag's family is the section of the page it is defined in."""
     family = {"status": Kind.REASON, "diagnostics": Kind.DIAGNOSTIC, "rescue": Kind.RESCUE}
-    family |= {"asjd": Kind.ASJD, "qc-columns": Kind.COLUMN}
+    family |= {"asjd": Kind.ASJD, "qc-columns": Kind.COLUMN, "merge": Kind.MERGE}
     defined = {}
     for name, body in _SECTION.findall(PAGE.read_text()):
         if name in family:

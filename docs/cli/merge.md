@@ -191,3 +191,4 @@ from the type label, so counts are pre-prefixed in the per-BAM MAF output.
 - [Output Formats](../reference/output-formats.md) — Column schema reference
 - [Architecture](../reference/architecture.md) — System design
 - [gbcms dna](dna.md) — Per-BAM DNA counting
+- [gbcms summarize](summarize.md) — QC summary of a merged MAF, with a flag for rows whose combined cells are `NA`
