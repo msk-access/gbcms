@@ -199,8 +199,11 @@ def maf_vcf_record(variant: Variant, base: Any, length: int | None = None) -> tu
     it to anchor the record). ``base(pos)`` returns the reference base at a
     1-based position; ``length`` is the contig's length, when known."""
     pos = variant.pos + 1
+    # A record's POS is a base of the contig: an insertion at Start 0 (before the first
+    # base) is written at position 1, the base after it.
+    at = max(pos, 1)
     if not (is_sequence_allele(variant.ref) and is_sequence_allele(variant.alt)):
-        return pos, base(pos), NON_SEQUENCE_ALT
+        return at, base(at), NON_SEQUENCE_ALT
 
     def bounded(at: int) -> str:
         if length is not None and at > length:
@@ -210,7 +213,7 @@ def maf_vcf_record(variant: Variant, base: Any, length: int | None = None) -> tu
     try:
         return CoordinateKernel.maf_to_vcf(pos, variant.ref, variant.alt, bounded)
     except _NoBase:
-        return pos, base(pos), NON_SEQUENCE_ALT
+        return at, base(at), NON_SEQUENCE_ALT
 
 
 def maf_origin_info(variant: Variant) -> list[str]:

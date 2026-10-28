@@ -31,6 +31,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   only for an insertion the exact-carrier rule cannot judge (no prepared reference), still
   count such a read neither, in `partial_alt`. Counts are unchanged.
 
+### Fixed — a MAF dash insertion at Start 0 is kept and counted (#219)
+
+- **An insertion before a contig's first base is no longer dropped.** A MAF row with
+  `Reference_Allele` `-` and `Start_Position` 0 (`Start_Position` is the base before an
+  insertion, so 0 is before base 1) failed the internal model's `pos >= 0` check in the
+  reader and vanished with a warning: no output row, no `FAIL` row. It is now resolved
+  to the VCF spec's form at position 1, the base after the event (`REF` the first base,
+  `ALT` the inserted bases then that base), and counted as the same event given as VCF
+  is, as a deletion at Start 1 is (#122). MAF output keeps the row's input columns; VCF
+  output and `gbcms convert` write the position-1 record with the row in
+  `MAF_START`/`MAF_REF`/`MAF_ALT`. Where the first base is `N` (human contigs), the
+  `ALT` contains `N` and the row is a visible `FAIL` with `ALT_CONTAINS_N`. Any other
+  row at Start 0 (a substitution or a deletion: a base that does not exist) is skipped
+  with a warning, as before. None in the sign-out data (vcf2maf writes such an event
+  with sequence alleles at Start 1).
+
 ### Fixed — `--min-baseq` help and docs say what it does (#304)
 
 - **`--min-baseq` masks bases, never reads.** The CLI help ("Minimum base quality") and

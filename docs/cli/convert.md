@@ -24,7 +24,8 @@ use for their own output, without a BAM:
   totals by reason.
 - **MAF → VCF** — each row as maf2vcf writes it: the reference base is prepended
   when an allele is `-`, or when the alleles differ in length and first base
-  (the base after, at position 1). Alleles are read as maf2vcf reads them
+  (the base after, at position 1; an insertion at `Start_Position` 0, before the
+  first base, is written the same way). Alleles are read as maf2vcf reads them
   (`Tumor_Seq_Allele1` when `Tumor_Seq_Allele2` is the reference). Records are
   written in input order; contigs keep the MAF's naming.
 

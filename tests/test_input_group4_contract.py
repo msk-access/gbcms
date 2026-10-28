@@ -12,6 +12,10 @@ Operator decisions (2026-09-25 for I1, I3, I4; 2026-10-05 for the rest):
 - C9 #122: a MAF deletion at Start_Position 1 (no base before it) is resolved to
   the VCF spec's form at position 1, the base after the event, and counted, as
   the same event given as VCF already is.
+- I7 #219: a MAF dash insertion at Start_Position 0 (before the contig's first base) is
+  kept: resolved to the VCF spec's form at position 1, the base after the event, and
+  counted, as the C9 deletion at Start 1 is. It was dropped before it reached
+  preparation, so the output had no row for it.
 - I2 #124: End_Position is optional. gbcms merge joins on contig, Start and
   alleles, not End_Position, and fills it from the inputs that have each row.
 - I3 #125: VCF input's MAF output fills Tumor_Seq_Allele1 with the reference
@@ -25,15 +29,19 @@ Operator decisions (2026-09-25 for I1, I3, I4; 2026-10-05 for the rest):
 
 import csv
 import glob
+import logging
 import random
 
 import pysam
 import pytest
 from helpers import make_read, read_maf_output
+from pydantic import ValidationError
 from typer.testing import CliRunner
 
 from gbcms import _rs
 from gbcms.cli import app
+from gbcms.core.kernel import CoordinateKernel
+from gbcms.io.input import MafReader
 from gbcms.io.output import MafWriter
 from gbcms.models.core import Variant, VariantType
 
@@ -248,6 +256,162 @@ def test_a_maf_deletion_at_start_1_counts_in_the_base_after_form(tmp_path):
     assert (rec.pos, rec.ref, rec.alts[0]) == (1, REF[0:3], REF[2])
     assert rec.info["GS"] == "PASS"
     assert (rec.info["MAF_START"], rec.info["MAF_REF"], rec.info["MAF_ALT"]) == (1, REF[0:2], "-")
+
+
+# ── I7: a MAF dash insertion at Start_Position 0 ─────────────────────────────
+
+INS = "GT"  # the inserted bases
+
+
+def _start_0_reads():
+    """Six REF reads from the contig's first base; three reads that open with the inserted
+    bases as an insertion and three that open with them as a soft clip (no base precedes
+    them); and REF reads over the site the valid row uses."""
+    rest = READ - len(INS)
+    return (
+        [make_read(f"r{i}", REF[:READ], 0, ((0, READ),)) for i in range(6)]
+        + [make_read(f"i{i}", INS + REF[:rest], 0, ((1, len(INS)), (0, rest))) for i in range(3)]
+        + [make_read(f"s{i}", INS + REF[:rest], 0, ((4, len(INS)), (0, rest))) for i in range(3)]
+        + _ref_reads()
+    )
+
+
+def _good_row():
+    return _row(P + 1, REF[P], "A" if REF[P] != "A" else "C")
+
+
+def _vcf_form_of_the_insertion(tmp_path):
+    """The same event given as VCF: the base after the event at POS 1 (REF the first base,
+    ALT the inserted bases then that base), and the valid row."""
+    g = _good_row()
+    vcf = tmp_path / "twin.vcf"
+    vcf.write_text(
+        f"##fileformat=VCFv4.2\n##contig=<ID=1,length={len(REF)}>\n"
+        "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\n"
+        f"1\t1\t.\t{REF[0]}\t{INS + REF[0]}\t.\t.\t.\n"
+        f"1\t{P + 1}\t.\t{g['Reference_Allele']}\t{g['Tumor_Seq_Allele2']}\t.\t.\t.\n"
+    )
+    return vcf
+
+
+def _counts(row):
+    return tuple(row[c] for c in ("ref_count", "alt_count", "total_count", "partial_alt"))
+
+
+def test_a_maf_insertion_at_start_0_is_kept_and_counts_as_its_vcf_form(tmp_path):
+    """A MAF insertion's Start is the base before it, so Start 0 puts it before the contig's
+    first base. The row was dropped before preparation (a two-row MAF gave one row); it is now
+    kept with its input columns and counts as the same event given as VCF does (the base
+    after it, at position 1): the REF reads, and the reads that open with the inserted bases."""
+    reads = _start_0_reads()
+    out = _maf_rows(_run(tmp_path, _maf(tmp_path, [_row(0, "-", INS), _good_row()]), reads))
+    assert len(out) == 2
+    first, second = out
+    assert (first["Start_Position"], first["Reference_Allele"], first["Tumor_Seq_Allele2"]) == (
+        "0",
+        "-",
+        INS,
+    )
+    assert (first["gbcms_status"], first["gbcms_status_reason"]) == ("PASS", "")
+    assert second["Start_Position"] == str(P + 1) and second["gbcms_status"] == "PASS"
+
+    (tmp_path / "twin").mkdir()
+    twin = _maf_rows(_run(tmp_path / "twin", _vcf_form_of_the_insertion(tmp_path), reads))
+    assert [_counts(r) for r in out] == [_counts(r) for r in twin]
+    assert first["ref_count"] == "6" and int(first["alt_count"]) > 0
+
+
+def test_vcf_output_of_a_maf_insertion_at_start_0_is_the_base_after_form(tmp_path):
+    """POS 1, REF the first base, ALT the inserted bases then the first base; the MAF row it
+    came from (Start 0, '-') rides along in MAF_START/MAF_REF/MAF_ALT."""
+    maf = _maf(tmp_path, [_row(0, "-", INS), _good_row()])
+    recs = _vcf_records(_run(tmp_path, maf, _start_0_reads(), fmt="vcf"))
+    assert len(recs) == 2
+    first = recs[0]
+    assert (first.pos, first.ref, first.alts[0]) == (1, REF[0], INS + REF[0])
+    assert first.info["GS"] == "PASS"
+    assert (first.info["MAF_START"], first.info["MAF_REF"], first.info["MAF_ALT"]) == (0, "-", INS)
+
+
+def test_convert_writes_a_maf_insertion_at_start_0_in_the_base_after_form(tmp_path):
+    """gbcms convert writes the same record, and keeps the row (it dropped it)."""
+    fa, _ = _files(tmp_path, [])
+    out = tmp_path / "o.vcf"
+    maf = _maf(tmp_path, [_row(0, "-", INS), _good_row()])
+    res = runner.invoke(app, ["convert", "-v", str(maf), "-f", str(fa), "-o", str(out)])
+    assert res.exit_code == 0, res.output
+    recs = _vcf_records(str(out))
+    assert [(r.pos, r.ref, r.alts[0]) for r in recs][0] == (1, REF[0], INS + REF[0])
+    assert len(recs) == 2
+
+
+def test_maf_to_vcf_for_an_insertion_at_start_0_uses_the_base_after():
+    """The base after an insertion at Start 0 is position 1's (an insertion at Start s lies
+    between s and s + 1); POS is 1, as for an event at position 1."""
+    asked = []
+
+    def base_at(pos):
+        asked.append(pos)
+        return {1: "C", 2: "G"}[pos]
+
+    assert CoordinateKernel.maf_to_vcf(0, "-", "TT", base_at) == (1, "C", "TTC")
+    assert asked == [1]
+    # An insertion after position 1 is anchored on it, as before.
+    assert CoordinateKernel.maf_to_vcf(1, "-", "TT", base_at) == (1, "C", "CTT")
+
+
+def test_the_variant_model_allows_position_minus_1_only_for_an_insertion_before_the_contig():
+    """Internally a MAF insertion is placed by its anchor, the base before it; before the
+    first base there is none (-1). Nothing else may sit before the first base."""
+    v = Variant(chrom="1", pos=-1, ref="-", alt=INS, variant_type=VariantType.INSERTION)
+    assert v.pos == -1
+    for ref, alt, pos in [("A", "C", -1), ("AC", "-", -1), ("-", INS, -2), ("A", INS, -1)]:
+        with pytest.raises(ValidationError):
+            Variant(chrom="1", pos=pos, ref=ref, alt=alt, variant_type=VariantType.INSERTION)
+
+
+def test_maf_reader_reads_an_insertion_at_start_0_and_still_skips_other_start_0_rows(
+    tmp_path, caplog
+):
+    """Only an insertion can lie before the first base: a substitution or a deletion at Start 0
+    names a base that does not exist, and is skipped with a warning as before."""
+    maf = _maf(tmp_path, [_row(0, "-", INS), _row(0, REF[0], "T"), _row(0, REF[0], "-")])
+    with caplog.at_level(logging.WARNING):
+        got = [(v.pos, v.ref, v.alt) for v in MafReader(maf)]
+    assert got == [(-1, "-", INS)]
+    assert any("Skipped MAF row" in m for m in caplog.messages)
+
+
+def _plain_fasta(tmp_path, seq):
+    fa = tmp_path / "p.fa"
+    fa.write_text(f">1\n{seq}\n")
+    pysam.faidx(str(fa))
+    return str(fa)
+
+
+def test_prepare_resolves_an_insertion_before_the_first_base(tmp_path):
+    """The prepared variant is the base-after form at position 1 (0-based 0)."""
+    fa = _plain_fasta(tmp_path, REF[:60])
+    (pv,) = _rs.prepare_variants(
+        [_rs.Variant("1", -1, "-", INS, "INSERTION")], fa, 5, True, 1, True
+    )
+    assert (pv.gbcms_status, pv.gbcms_status_reason) == ("PASS", "")
+    assert (pv.variant.pos, pv.variant.ref_allele, pv.variant.alt_allele) == (
+        0,
+        REF[0],
+        INS + REF[0],
+    )
+    assert pv.was_anchor_resolved and pv.original_pos == -1
+
+
+def test_an_insertion_before_a_first_base_that_is_n_is_a_visible_fail_row(tmp_path):
+    """Human contigs open with N: the base-after form has an N in its ALT, which no read
+    can carry. The row is kept as FAIL ALT_CONTAINS_N, not dropped."""
+    fa = _plain_fasta(tmp_path, "N" + REF[1:60])
+    (pv,) = _rs.prepare_variants(
+        [_rs.Variant("1", -1, "-", INS, "INSERTION")], fa, 5, True, 1, True
+    )
+    assert (pv.gbcms_status, pv.gbcms_status_reason) == ("FAIL", "ALT_CONTAINS_N")
 
 
 # ── I2: End_Position optional ────────────────────────────────────────────────

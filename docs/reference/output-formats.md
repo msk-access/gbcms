@@ -186,7 +186,9 @@ with their options (see [INFO Fields](#info-fields)).
     `Start_Position` for a `-` insertion, whose Start is the base before the
     insertion) and `POS` moves to it. Anything else is written as-is at
     `Start_Position`. An event at position 1 has no base before it, so the base
-    after it is appended instead (VCF spec; maf2vcf skips such rows). The anchor
+    after it is appended instead (VCF spec; maf2vcf skips such rows); so is an
+    insertion at `Start_Position` 0, which lies before the first base, written at
+    position 1. The anchor
     base comes from `--fasta`; one the reference cannot supply is written as `N`
     and counted in a WARNING. The MAF alleles are read as maf2vcf reads them
     (see [Input Formats](input-formats.md#maf-alleles)); unlike maf2vcf, a

@@ -124,7 +124,7 @@ Delete `CG` at chr1:101–102 (where the reference base at position 100 is `A`):
 | ALT | `-` | `A` (anchor only) |
 
 !!! note "Position Shift for Deletions"
-    For insertions, `Start_Position` already points to the anchor base. For deletions, `Start_Position` points to the *first deleted base*, so gbcms shifts back by one position to find the anchor. A deletion at `Start_Position` 1 has no base before it: the base after it is appended instead (the VCF spec's form at position 1, as gbcms's VCF output writes it), and the row is counted as the same event given as VCF is.
+    For insertions, `Start_Position` already points to the anchor base. For deletions, `Start_Position` points to the *first deleted base*, so gbcms shifts back by one position to find the anchor. A deletion at `Start_Position` 1 has no base before it: the base after it is appended instead (the VCF spec's form at position 1, as gbcms's VCF output writes it), and the row is counted as the same event given as VCF is. An insertion at `Start_Position` 0 lies before the contig's first base and has no anchor either: the first base is appended after the inserted bases (`REF` the first base, `ALT` the inserted bases then that base, at position 1), and the row is counted the same way. A reference whose first base is `N` (human contigs) makes that `ALT` contain `N`, so the row is kept as `FAIL` with `ALT_CONTAINS_N`. Any other row at `Start_Position` 0 names a base that does not exist and is skipped with a warning.
 
 A MAF row whose alleles are both sequences (an SNP, an MNP, or a delins such as
 `TTAC>A`) is used as written, at `Start_Position`, with no anchor base.
