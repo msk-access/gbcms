@@ -307,6 +307,12 @@ impl ReadView {
     pub(crate) fn own_position(&self, i: usize) -> Option<i64> {
         (i < self.seq.len() && self.aligned[i]).then(|| self.refpos[i])
     }
+
+    /// The base its own alignment places at genome position `g`, read confidently; None
+    /// where it places none there or reads it below `--min-baseq`.
+    fn aligned_base(&self, g: i64) -> Option<u8> {
+        (0..self.seq.len()).find(|&i| self.aligned[i] && self.refpos[i] == g).map(|i| self.seq[i]).filter(|&b| b != WILD)
+    }
 }
 
 /// The window with a set of rows applied that can be applied together.
@@ -340,7 +346,7 @@ impl Hap {
         }
         for &r in order.iter().rev() {
             let (s, e) = site.spans[r];
-            seq.splice(s as usize..e as usize, site.rows[r].alt_al.iter().copied());
+            seq.splice(s as usize..e as usize, site.row_bases(r));
         }
         let mut segs = Vec::with_capacity(order.len());
         let mut x_seg = None;
@@ -449,6 +455,10 @@ pub(crate) struct Site {
     /// the positions it masks (any base). A base it explains is no allele's third base.
     background_bases: HashSet<(i64, u8)>,
     background_masks: Vec<i64>,
+    /// Where a pure indel X's repeat runs to a contig edge (the base past it, which tells
+    /// its lengths apart, lies past the edge, where a circular contig runs on at its
+    /// start): that edge, genome coordinates, as (first base, one past the last).
+    edge: (Option<i64>, Option<i64>),
 }
 
 /// Which scorer weighs a read (`GBCMS_JUDGE_SCORER`): `graph`, the judge's scorer and the
@@ -617,6 +627,9 @@ pub(crate) struct Candidates {
     /// reads (indices into the site's reads) that write it: states where they lie at X's
     /// site and those reads' bases tell them from X and REF, else left out.
     pub(crate) found: Vec<(Row, Vec<usize>)>,
+    /// The contig's edges inside the window, genome coordinates: its first base where the
+    /// window would run past its start, one past its last where it would run past its end.
+    pub(crate) edges: (Option<i64>, Option<i64>),
 }
 
 /// Measurement only, TEMPORARY: which of the judge's other-allele options are on
@@ -1399,6 +1412,36 @@ fn telling(r: &Row) -> (std::ops::Range<usize>, std::ops::Range<usize>) {
     (p..a.len() - s, p..b.len() - s)
 }
 
+/// The bases a substitution or delins `x` keeps among those it changes: pairs of offsets
+/// (into REF, into ALT) inside its telling bases where its two alleles read alike, aligned
+/// from the left and, for a delins, from the right. A change there that the REF molecules
+/// carry too is a separate event on both haplotypes (RJ-25), never another allele. Empty
+/// for a pure insertion or deletion.
+fn kept_bases(x: &Row) -> Vec<(usize, usize)> {
+    if pure_indel(x) {
+        return Vec::new();
+    }
+    let (on_ref, on_alt) = telling(x);
+    let n = on_ref.len().min(on_alt.len());
+    let mut out: Vec<(usize, usize)> = (0..n)
+        .map(|j| (on_ref.start + j, on_alt.start + j))
+        .filter(|&(i, k)| x.ref_al[i] == x.alt_al[k])
+        .collect();
+    if x.changes_length() {
+        for j in 0..n {
+            let (i, k) = (on_ref.end - 1 - j, on_alt.end - 1 - j);
+            if x.ref_al[i] == x.alt_al[k] && !out.iter().any(|&(a, _)| a == i) {
+                out.push((i, k));
+            }
+        }
+    }
+    out
+}
+
+fn pure_indel(r: &Row) -> bool {
+    super::super::window::is_pure_indel(&String::from_utf8_lossy(&r.ref_al), &String::from_utf8_lossy(&r.alt_al))
+}
+
 impl Site {
     fn is_state(&self, r: usize) -> bool {
         r >= 1 && r <= self.n_states
@@ -1452,7 +1495,9 @@ impl Site {
 
     /// The haplotype positions, with their bases, where `hap` tells X from REF at X's
     /// site: X's own differing bases (ALT) or REF's (REF). None for a pure insertion or
-    /// deletion (its tract is read by the scores) and for another allele's haplotype.
+    /// deletion (its tract is read by the scores) and for another allele's haplotype. A
+    /// base a substitution keeps tells nothing (REF's and X's read alike there): a change
+    /// there is a separate event or another allele, the scores weighing it on both sides.
     pub(crate) fn telling_in(&self, hap: &Hap) -> Vec<(i64, u8)> {
         let x = &self.rows[0];
         if x.changes_length() && super::super::window::is_pure_indel(
@@ -1462,6 +1507,9 @@ impl Site {
             return Vec::new();
         }
         let (on_ref, on_alt) = telling(x);
+        let same = !x.changes_length();
+        let on_ref = on_ref.filter(|&k| !same || x.ref_al[k] != x.alt_al[k]);
+        let on_alt = on_alt.filter(|&k| !same || x.ref_al[k] != x.alt_al[k]);
         match (hap.class, hap.x_seg) {
             (Class::Alt, Some((hs, _))) => on_alt.map(|k| (hs + k as i64, x.alt_al[k])).collect(),
             // a state holding X's change: X's bases at their places in it
@@ -1550,6 +1598,10 @@ impl Site {
         let (xs, xe) = self.spans[0];
         let spells = |r: usize| {
             let row = &self.rows[r];
+            if row.changes_length() {
+                // X with a change at a base it keeps (a delins): no listed MNV
+                return false;
+            }
             let (s, _) = self.spans[r];
             (0..row.ref_al.len()).filter(|&i| row.ref_al[i] != row.alt_al[i] && !(xs..xe).contains(&(s + i as i64))).all(|i| {
                 let col = self.column_in(hap, s + i as i64);
@@ -1984,7 +2036,26 @@ impl Site {
         // The found states, each with the reads that spell it.
         let mut found_states: Vec<(Row, &[usize])> = Vec::new();
         if other_option().found {
-            for (r, by) in candidates.found.iter().map(|(r, by)| (beside(r), &by[..])).filter(|(r, _)| meets(&target, r)) {
+            // X's site: where another indel makes a read another allele (its discrimination
+            // window, the repeat it changes, perfect or not: #290).
+            let (site_s, site_e) = {
+                let (s0, e0) = x_site(&target, start, &reference, place(&target));
+                (s0 + start, e0 + start)
+            };
+            for (r, by) in candidates.found.iter().map(|(r, by)| (beside(r), &by[..])) {
+                // An indel the reads write recurringly clear of X's site is a separate event
+                // (RJ-8): a context explaining the reads that carry it, wherever their
+                // aligner wrote it (one written inside the site, its bases placing it
+                // beside, fits a state with it there; RJ-27). One meeting the site but not
+                // X stays out, as before (another length of the repeat X changes is another
+                // allele wherever written, #290).
+                if !meets(&target, &r) {
+                    let (ps, pe) = place(&r);
+                    if (pe <= site_s || ps >= site_e) && sources.found() && take(&r, false) {
+                        found_contexts.push(r);
+                    }
+                    continue;
+                }
                 if ends_at_x(&r) {
                     if sources.found() && take(&r, false) {
                         found_contexts.push(r);
@@ -2009,6 +2080,238 @@ impl Site {
                 }
                 if take(&r, true) {
                     found_states.push((r, by));
+                }
+            }
+        }
+        // A change at a base X keeps (REF's and X's alleles read alike there, inside the
+        // bases X changes) that the REF molecules carry too is a separate event on both
+        // haplotypes, not another allele (RJ-25; operator, 2026-10-14). It explains a read's
+        // base there on REF and on X alike: a context lying with REF (and any state keeping
+        // that base), and X with it, a state of X's class. A listed, found or discovered
+        // allele that is REF or X but for such changes is that, never another allele. The
+        // REF molecules carry it where the guard's background holds it, or where it recurs
+        // ([`GUARD_MIN_READS`] fragments and [`GUARD_REF_SHARE`] of those reading the base)
+        // on reads showing REF's bases where X changes them.
+        let kept = kept_bases(&target);
+        let spell = |r: &Row| -> Vec<u8> {
+            let (s, e) = ((r.pos - start) as usize, (r.end() - start) as usize);
+            [&reference[..s], &r.alt_al[..], &reference[e..]].concat()
+        };
+        let mut x_kept: BTreeSet<Vec<u8>> = BTreeSet::new();
+        if !kept.is_empty() {
+            let (on_ref, _) = telling(&target);
+            let x0 = target.pos - start;
+            let x_hap = spell(&target);
+            // (REF offset, ALT offset, base) of each change at a kept base a candidate shows
+            let mut changes: BTreeSet<(usize, usize, u8)> = BTreeSet::new();
+            for r in candidates.background.iter().chain(&candidates.listed) {
+                if !r.changes_length() && r.ref_al.len() == 1 {
+                    if let Some(&(i, k)) = kept.iter().find(|&&(i, _)| target.pos + i as i64 == r.pos) {
+                        changes.insert((i, k, r.alt_al[0]));
+                    }
+                }
+            }
+            for s in &states {
+                let h = spell(s);
+                let diff = |a: &[u8], b: &[u8]| -> Vec<usize> { (0..a.len()).filter(|&c| a[c] != b[c]).collect() };
+                if h.len() == reference.len() {
+                    let d = diff(&h, &reference);
+                    let at: Vec<Option<&(usize, usize)>> = d.iter().map(|&c| kept.iter().find(|&&(i, _)| x0 + i as i64 == c as i64)).collect();
+                    if !d.is_empty() && at.iter().all(Option::is_some) {
+                        for (&c, k) in d.iter().zip(at) {
+                            let &(i, k) = k.expect("checked");
+                            changes.insert((i, k, h[c]));
+                        }
+                    }
+                }
+                if h.len() == x_hap.len() {
+                    let d = diff(&h, &x_hap);
+                    let at: Vec<Option<&(usize, usize)>> = d.iter().map(|&c| kept.iter().find(|&&(_, k)| x0 + k as i64 == c as i64)).collect();
+                    if !d.is_empty() && at.iter().all(Option::is_some) {
+                        for (&c, k) in d.iter().zip(at) {
+                            let &(i, k) = k.expect("checked");
+                            changes.insert((i, k, h[c]));
+                        }
+                    }
+                }
+            }
+            // Fragments reading base `b` at genome `p` among those whose own alignments read
+            // `want` there (each position its base): (carrying it, reading p).
+            let carried = |p: i64, b: u8, want: &[(i64, u8)]| -> (usize, usize) {
+                let (mut reading, mut carrying): (BTreeSet<Vec<u8>>, BTreeSet<Vec<u8>>) = Default::default();
+                for (n, r) in reads.iter().enumerate() {
+                    if !want.iter().all(|&(g, w)| r.aligned_base(g) == Some(w)) {
+                        continue;
+                    }
+                    let Some(c) = r.aligned_base(p) else { continue };
+                    let key = if r.name.is_empty() { n.to_string().into_bytes() } else { r.name.clone() };
+                    if c == b {
+                        carrying.insert(key.clone());
+                    }
+                    reading.insert(key);
+                }
+                (carrying.len(), reading.len())
+            };
+            let recurs = |(c, r): (usize, usize)| c as u32 >= GUARD_MIN_READS && c as f64 >= GUARD_REF_SHARE * r as f64;
+            // REF's bases where X changes them, and (a substitution) X's
+            let on_ref_side: Vec<(i64, u8)> = on_ref
+                .clone()
+                .filter(|i| !kept.iter().any(|&(a, _)| a == *i))
+                .filter_map(|i| base(target.pos + i as i64).map(|b| (target.pos + i as i64, b)))
+                .collect();
+            let on_alt_side: Vec<(i64, u8)> = if target.changes_length() {
+                Vec::new()
+            } else {
+                (0..target.ref_al.len()).filter(|&i| target.ref_al[i] != target.alt_al[i]).map(|i| (target.pos + i as i64, target.alt_al[i])).collect()
+            };
+            let with = |set: &[(usize, usize, u8)]| -> Row {
+                let mut alt = target.alt_al.clone();
+                for &(_, k, b) in set {
+                    alt[k] = b;
+                }
+                Row::new(target.pos, &target.ref_al, &alt)
+            };
+            let ref_with = |set: &[(usize, usize, u8)]| -> Vec<u8> {
+                let mut h = reference.clone();
+                for &(i, _, b) in set {
+                    h[(x0 + i as i64) as usize] = b;
+                }
+                h
+            };
+            let state_spells: BTreeSet<Vec<u8>> = states.iter().map(spell).collect();
+            let listed_spells: BTreeSet<Vec<u8>> = candidates.listed.iter().filter(|r| holds(r)).map(spell).collect();
+            // A change on both haplotypes (the REF molecules and the ALT's, each on the
+            // floor), or the guard's background there (a base it masks as REF's or the
+            // change's) unless the input lists REF with it (a co-annotated sibling, RJ-5).
+            let mut both: BTreeSet<(usize, usize, u8)> = BTreeSet::new();
+            let changes: Vec<(usize, usize, u8)> = changes
+                .into_iter()
+                .filter(|&(i, k, b)| {
+                    let p = target.pos + i as i64;
+                    if b == target.ref_al[i] {
+                        return false;
+                    }
+                    let alt_side = (!on_alt_side.is_empty() && recurs(carried(p, b, &on_alt_side)))
+                        || state_spells.contains(&spell(&with(&[(i, k, b)])));
+                    if alt_side && recurs(carried(p, b, &on_ref_side)) {
+                        both.insert((i, k, b));
+                        return true;
+                    }
+                    let bg = candidates.background.iter().any(|r| !r.changes_length() && r.ref_al.len() == 1 && r.pos == p && r.alt_al[0] == b);
+                    bg && !listed_spells.contains(&ref_with(&[(i, k, b)]))
+                })
+                .collect();
+            let mut sets: Vec<Vec<(usize, usize, u8)>> = changes.iter().map(|&c| vec![c]).collect();
+            if changes.len() > 1 {
+                sets.push(changes.clone());
+            }
+            for set in &sets {
+                let row = with(set);
+                x_kept.insert(spell(&row));
+                if holds(&row) && seen.insert(row.clone()) {
+                    states.push(row);
+                }
+            }
+            if !changes.is_empty() {
+                // REF but for such changes: REF with a separate event, a context's work (a
+                // listed one stays a state unless the change is on both haplotypes).
+                let ref_kept: BTreeSet<Vec<u8>> = sets.iter().map(|set| ref_with(set)).collect();
+                let ref_both: BTreeSet<Vec<u8>> =
+                    sets.iter().filter(|set| set.iter().all(|c| both.contains(c))).map(|set| ref_with(set)).collect();
+                states.retain(|s| {
+                    let h = spell(s);
+                    !(ref_both.contains(&h) || (ref_kept.contains(&h) && !listed_spells.contains(&h)))
+                });
+                found_states.retain(|(r, _)| !x_kept.contains(&spell(r)) && !ref_kept.contains(&spell(r)));
+                for &(i, _, b) in &changes {
+                    let c = Row::new(target.pos + i as i64, &target.ref_al[i..=i], &[b]);
+                    seen.insert(c.clone());
+                    if !contexts.contains(&c) {
+                        contexts.push(c);
+                    }
+                }
+                log::debug!(
+                    "haplotype judge {}: {} change(s) at bases it keeps that the REF molecules carry: separate events",
+                    named(&target),
+                    changes.len(),
+                );
+            }
+        }
+        // A co-annotated sibling of X's length at X's site is another allele only where the
+        // fragments spelling it in full (past the masks) are at least one and
+        // [`GUARD_REF_SHARE`] of those spelling the allele it is nearest, REF or X (the
+        // larger when as near): a component the reads never show apart from the event is
+        // part of it, and at depth one read spelling it is an error's share (RJ-25;
+        // operator, 2026-10-14). Read on the reads' own alignments over the sibling's and
+        // X's bases; a sibling changing the length, and one holding X's change (RJ-28), are
+        // left as they are.
+        {
+            let listed_states: Vec<Row> = candidates
+                .listed
+                .iter()
+                .map(beside)
+                .filter(|r| meets(&target, r) && !in_deleted(r) && !ends_at_x(r) && !r.changes_length() && states.contains(r))
+                .collect();
+            let x_same = !target.changes_length();
+            for row in listed_states {
+                let holds = x_same
+                    && row.pos <= target.pos
+                    && row.end() >= target.end()
+                    && (0..target.ref_al.len()).all(|k| {
+                        target.ref_al[k] == target.alt_al[k] || row.alt_al[(target.pos + k as i64 - row.pos) as usize] == target.alt_al[k]
+                    });
+                if holds {
+                    continue;
+                }
+                let (u0, u1) = (row.pos.min(target.pos), row.end().max(target.end()));
+                let on = |allele: &Row, g: i64| -> Option<u8> {
+                    (allele.pos <= g && g < allele.end()).then(|| allele.alt_al[(g - allele.pos) as usize])
+                };
+                let ref_at = |g: i64| base(g).unwrap_or(WILD);
+                let sib_at = |g: i64| on(&row, g).unwrap_or_else(|| ref_at(g));
+                let x_at = |g: i64| if x_same { on(&target, g).unwrap_or_else(|| ref_at(g)) } else { WILD };
+                // the positions telling the three apart must be read confidently
+                let telling: Vec<i64> = (u0..u1).filter(|&g| sib_at(g) != ref_at(g) || (x_same && x_at(g) != ref_at(g))).collect();
+                let spells = |r: &ReadView, at: &dyn Fn(i64) -> u8| -> bool {
+                    (u0..u1).all(|g| match r.aligned_base(g) {
+                        Some(b) => b == at(g),
+                        None => !telling.contains(&g) && (0..r.seq.len()).any(|i| r.aligned[i] && r.refpos[i] == g),
+                    })
+                };
+                let mut by_sib: BTreeSet<Vec<u8>> = BTreeSet::new();
+                let mut by_ref: BTreeSet<Vec<u8>> = BTreeSet::new();
+                let mut by_x: BTreeSet<Vec<u8>> = BTreeSet::new();
+                let mut reading = 0usize;
+                for (n, r) in reads.iter().enumerate() {
+                    let key = if r.name.is_empty() { n.to_string().into_bytes() } else { r.name.clone() };
+                    reading += usize::from((u0..u1).all(|g| (0..r.seq.len()).any(|i| r.aligned[i] && r.refpos[i] == g)));
+                    if spells(r, &sib_at) {
+                        by_sib.insert(key);
+                    } else if spells(r, &ref_at) {
+                        by_ref.insert(key);
+                    } else if x_same && spells(r, &x_at) {
+                        by_x.insert(key);
+                    }
+                }
+                let dist = |at: &dyn Fn(i64) -> u8| (u0..u1).filter(|&g| sib_at(g) != at(g)).count();
+                let (dr, dx) = (dist(&ref_at), if x_same { dist(&x_at) } else { usize::MAX });
+                let near = match dr.cmp(&dx) {
+                    std::cmp::Ordering::Less => by_ref.len(),
+                    std::cmp::Ordering::Greater => by_x.len(),
+                    std::cmp::Ordering::Equal => by_ref.len().max(by_x.len()),
+                };
+                // with no read over the sibling's and X's bases nothing shows it absent
+                let seen_apart = reading == 0 || (!by_sib.is_empty() && by_sib.len() as f64 >= GUARD_REF_SHARE * near as f64);
+                log::debug!(
+                    "haplotype judge {}: the co-annotated {} spelled on {} fragment(s), its nearest allele on {} → {}",
+                    named(&target),
+                    named(&row),
+                    by_sib.len(),
+                    near,
+                    if seen_apart { "another allele, a state" } else { "part of the event, not a state" },
+                );
+                if !seen_apart {
+                    states.retain(|r| *r != row);
                 }
             }
         }
@@ -2235,7 +2538,8 @@ impl Site {
         let n_states = states.len();
         let rows: Vec<Row> = std::iter::once(target).chain(states).chain(contexts).collect();
         // A state holding X's change at X's site: for a substitution X, an allele of the
-        // same length over X's bases that reads X's bases where X changes them.
+        // same length over X's bases that reads X's bases where X changes them; and X with
+        // a change both haplotypes carry at a base it keeps (above).
         let holds_x: Vec<bool> = {
             let x = &rows[0];
             let (on_ref, _) = telling(x);
@@ -2243,11 +2547,12 @@ impl Site {
                 .enumerate()
                 .map(|(r, row)| {
                     (1..=n_states).contains(&r)
-                        && !x.changes_length()
-                        && !row.changes_length()
-                        && row.pos <= x.pos
-                        && row.end() >= x.end()
-                        && on_ref.clone().all(|k| row.alt_al[(x.pos + k as i64 - row.pos) as usize] == x.alt_al[k])
+                        && ((!x.changes_length()
+                            && !row.changes_length()
+                            && row.pos <= x.pos
+                            && row.end() >= x.end()
+                            && on_ref.clone().all(|k| row.alt_al[(x.pos + k as i64 - row.pos) as usize] == x.alt_al[k]))
+                            || x_kept.contains(&spelled(row)))
                 })
                 .collect()
         };
@@ -2257,6 +2562,8 @@ impl Site {
         // A mask where a row changes a base is that row's base: the row explains the reads
         // carrying it (a context with every state, or a state of the site). A row spelled
         // over a wider window (an allele the guard found) changes only some of its bases.
+        // A base a row of the same length keeps (its two alleles alike there) it does not
+        // change: a mask there stays, on that row's haplotypes as on the rest.
         let changed: Vec<(i64, i64)> = rows
             .iter()
             .map(|r| {
@@ -2267,7 +2574,14 @@ impl Site {
         let mut masked: Vec<i64> = kept_masks
             .iter()
             .map(|&p| p - start)
-            .filter(|&m| m >= 0 && m < wn && !changed.iter().any(|&(s, e)| s <= m && m < e))
+            .filter(|&m| {
+                m >= 0
+                    && m < wn
+                    && rows.iter().zip(&changed).all(|(r, &(s, e))| {
+                        !(s <= m && m < e)
+                            || (!r.changes_length() && r.ref_al[(m - (r.pos - start)) as usize] == r.alt_al[(m - (r.pos - start)) as usize])
+                    })
+            })
             .collect();
         masked.sort_unstable();
         masked.dedup();
@@ -2323,6 +2637,12 @@ impl Site {
             masks.sort_unstable();
             (bases, masks)
         };
+        let edge = if pure(&rows[0]) {
+            let (lo, hi) = run(&rows[0]);
+            (candidates.edges.0.filter(|&first| lo <= first), candidates.edges.1.filter(|&end| hi >= end))
+        } else {
+            (None, None)
+        };
         let mut site = Site {
             start,
             reference,
@@ -2346,6 +2666,7 @@ impl Site {
             tally,
             background_bases,
             background_masks,
+            edge,
         };
 
         // The context rows a read over X can reach: REF span meeting X's ± the longest read
@@ -3179,6 +3500,23 @@ impl Site {
             .collect()
     }
 
+    /// Row `r`'s bases as its haplotypes spell them: its ALT, a base it keeps (a row of
+    /// one length, its alleles alike there) taking any base where the guard masks it, as
+    /// REF's haplotypes take it there.
+    fn row_bases(&self, r: usize) -> Vec<u8> {
+        let row = &self.rows[r];
+        let mut b = row.alt_al.clone();
+        if !row.changes_length() {
+            let s = self.spans[r].0;
+            for (i, c) in b.iter_mut().enumerate() {
+                if row.ref_al[i] == *c && self.masked.binary_search(&(s + i as i64)).is_ok() {
+                    *c = WILD;
+                }
+            }
+        }
+        b
+    }
+
     fn spans_meet(&self, a: usize, b: usize) -> bool {
         let ((s, e), (t, f)) = (self.spans[a], self.spans[b]);
         s < f && t < e
@@ -3391,7 +3729,7 @@ impl Site {
             if self.rows[r].alt_al.is_empty() {
                 continue;
             }
-            let id = gb.segment(Some(r), (s, e), self.rows[r].alt_al.clone());
+            let id = gb.segment(Some(r), (s, e), self.row_bases(r));
             starting.entry(s).or_default().push(id);
             ending.entry(e).or_default().push(id);
         }
@@ -3550,6 +3888,12 @@ impl Site {
     /// X's REF span in window coordinates.
     pub(crate) fn x_span(&self) -> (i64, i64) {
         self.spans[0]
+    }
+
+    /// Whether the genome span `[s, e)` of a read reaches a contig edge X's repeat runs to
+    /// ([`Site::edge`]; RJ-3).
+    pub(crate) fn edge_reached(&self, s: i64, e: i64) -> bool {
+        self.edge.0.is_some_and(|first| s <= first) || self.edge.1.is_some_and(|end| e >= end)
     }
 }
 
@@ -3920,6 +4264,7 @@ pub(crate) mod tests {
             background: vec![background],
             masked: vec![250],
             found: Vec::new(),
+            edges: (None, None),
         };
         let read = ReadView::new(&[b'A'; 150], &[30; 150], 230, &[Cigar::Match(150)], (0, 150), 20).unwrap();
         // The sources' rows as they come, before the respelling check (the default) leaves

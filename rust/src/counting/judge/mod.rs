@@ -150,7 +150,8 @@ pub(crate) fn site_for(v: &Variant, guard: Option<&Guard>, reference: &CachedFas
         .map(|g| g.others.iter().chain(&g.ref_others).map(|o| Row::new(o.pos, &o.ref_allele, &o.alt_allele)).collect())
         .unwrap_or_default();
     let ends = || std::iter::once(&target).chain(&listed).chain(&discovered);
-    let lo = (ends().map(|r| r.pos).min().unwrap_or(v.pos) - READ_REACH).max(0);
+    let want_lo = ends().map(|r| r.pos).min().unwrap_or(v.pos) - READ_REACH;
+    let lo = want_lo.max(0);
     let hi = ends().map(|r| r.pos + r.ref_al.len() as i64).max().unwrap_or(v.pos + 1) + READ_REACH;
     let Some(window) = reference.window(&v.chrom, lo, hi) else {
         warn!(
@@ -182,7 +183,11 @@ pub(crate) fn site_for(v: &Variant, guard: Option<&Guard>, reference: &CachedFas
     let mut guarded: Vec<i64> = guard.map(|g| g.masked.clone()).unwrap_or_default();
     guarded.sort_unstable();
     let found = found_indels(&base, reads, &guarded);
-    let candidates = Candidates { listed, discovered, background, masked, found };
+    // A contig edge inside the window: past it the reference is not known (a circular
+    // contig runs on at its start), so a call resting on no base there is withdrawn (RJ-3).
+    let right_edge = (window.len() as i64) < hi - lo;
+    let edges = ((want_lo < 0).then_some(lo), right_edge.then_some(lo + window.len() as i64));
+    let candidates = Candidates { listed, discovered, background, masked, found, edges };
     let site = Site::build(target, &candidates, (lo, window), reads);
     match &site {
         Some(s) if s.scorer == haplotypes::ScorerKind::Graph => debug!(

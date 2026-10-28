@@ -128,6 +128,41 @@ For a row X and each admitted read:
     allele's bases (25 of 26 such panel reads wrong). Neither replaces the decided tie rule.
   - decided 2026-10-27 (operator): respell is the default, replacing the narrow guard-indel
     rule; the tie fix stays narrow, `all` and `others` off.
+- **Decided-rule fix round (operator, 2026-10-28; each red-first, class tests in
+  `tests/test_kept_base_change_contract.py`, `test_listed_sibling_floor_contract.py`,
+  `test_contig_edge_judge_contract.py`, `test_beside_site_indel_contract.py`):**
+  - *A change at a base X keeps* (REF's and X's alleles alike there, inside the bases X
+    changes; for a delins, aligned from either end) that the REF molecules carry too is a
+    separate event, not another allele (RJ-25): it is a context lying with REF, and X with it
+    is a state of X's class, so carriers holding it stay ALT and REF molecules REF. It
+    qualifies where it recurs on both haplotypes (3 fragments and 5% of the REF molecules,
+    and of X's, or a state spelling X with it), or where the guard's background holds it and
+    the input does not list REF with it (a co-annotated sibling stays one, RJ-5). Until now
+    the judge took X's span from its first to its last change as X's own bases: such a
+    change was dropped as meeting X, a mask there taken for X's base, and an ALT call needed
+    X's base there while a REF call needed none. A base X keeps now tells nothing on either
+    side, and a mask there holds on X's haplotypes as on REF's.
+  - *A co-annotated sibling of X's length at X's site* is a state only where the reads'
+    own alignments spell it in full on at least one fragment and on 5% of those spelling
+    the allele it is nearest (RJ-25, 2026-10-14): a component never shown apart is part of
+    the event, and at depth one fragment is an error's share.
+  - *A pure indel whose repeat runs to a contig edge:* a read reaching the edge can only be
+    called for the longer allele (the shorter fits it as a read ending early), a call
+    resting on the shorter allele holding no base past the edge, where a circular contig's
+    runs on (RJ-3). An ALT call there (an insertion's) is depth only, counted and warned,
+    as under the rules. A REF call there (a deletion's) stands: two decided tests count it
+    REF (`test_contig_end_n_read_contract`, the MAF deletion at Start 1), where the rules'
+    exact-carrier route makes it depth; open for the operator.
+  - *An indel the reads write beside X's site* (two reads and 5%, every placement clear of
+    the site, the repeat X changes included) is a context, a separate event (RJ-8), however
+    a read's aligner wrote it. Known partial: where no read writes it beside the site, the
+    judge has no candidate holding it (placing a read's own indel by its bases, RJ-27, is not
+    yet the judge's).
+  - *Open for the operator:* at a delins, reads showing the kept-base change confidently
+    count under the judge (the margin, 2026-10-24) where the rules read the event's bases
+    exactly and call them neither; and at an MNP an ALT call with a confident third base at
+    a base X changes is depth only (the phase C rule above) while a REF call with one stays
+    REF and a delins forgives one either way (RJ-26, round 3).
 - **The background refinement (measured 2026-10-26, not adopted; `GBCMS_JUDGE_BACKGROUND`,
   default `asis`):** `respell` leaves out a context item of the guard's background or the
   found alleles that respells the site's own candidate sequences: one that turns one

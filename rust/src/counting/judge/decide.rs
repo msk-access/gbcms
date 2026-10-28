@@ -964,8 +964,16 @@ pub(crate) fn classify(record: &Record, variant: &Variant, quals: &[u8], min_bas
         None => depth(),
         Some(read) => {
             let clock = std::time::Instant::now();
-            let verdict = judge(site, &read, min_baseq, !overlaps_anchor);
+            let mut verdict = judge(site, &read, min_baseq, !overlaps_anchor);
             let ns = clock.elapsed().as_nanos();
+            // X's repeat runs to a contig edge and the read reaches it: an ALT call there
+            // rests on REF holding no base past the edge, which a circular contig would
+            // hold (RJ-3), so the read is depth only, counted and warned. A REF call rests
+            // on REF's own bases inside the contig and stands.
+            let edge_alt = verdict.call == Call::Alt && site.edge_reached(start, end);
+            if edge_alt {
+                verdict.call = Call::Depth;
+            }
             let mut out = match verdict.call {
                 Call::Alt => ClassifyResult::is_alt(verdict.qual, PHASE),
                 Call::Ref => ClassifyResult::is_ref(verdict.qual, PHASE),
@@ -977,6 +985,7 @@ pub(crate) fn classify(record: &Record, variant: &Variant, quals: &[u8], min_bas
             out.mnp_confirmed = out.is_alt && verdict.confirmed;
             // A read no candidate sequence explains, counted or not (UNEXPLAINED_READS).
             out.fits_none = verdict.fits_none;
+            out.alt_unjudged = edge_alt;
             if out.is_alt && verdict.spells != 0 {
                 out.spells_listed = spelled_listed(site, variant, verdict.spells);
             }
