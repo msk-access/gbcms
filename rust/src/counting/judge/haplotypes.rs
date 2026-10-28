@@ -1029,11 +1029,15 @@ fn row_between(w: &[u8], h: &[u8], start: i64) -> Option<Row> {
     Some(Row::new(start + s as i64, &w[s..we], &h[s..he]))
 }
 
-/// Measurement only, TEMPORARY: which of the guard's background (its recurring changes,
-/// any-base masks and recurring indels beside the event) the judge keeps as contexts
-/// (`GBCMS_JUDGE_BACKGROUND`): `asis` (all of it, the default), `respell` (all but the
-/// items that respell the site's own candidate sequences, [`respellings`]) or `off`
-/// (none, the found alleles kept). Read when a site is built.
+/// Which of the guard's background (its recurring changes, any-base masks and recurring
+/// indels beside the event) and of the found alleles the judge keeps as contexts
+/// (`GBCMS_JUDGE_BACKGROUND`): `respell`, the default (decided 2026-10-27), all but the items
+/// that respell the site's own candidate sequences ([`respellings`]), alone or joined into
+/// one change at X's site, either way, for any state and any X, where no read needs them, the
+/// masks kept; and, for measurement only, `asis` (the narrow rule it generalises: at a
+/// substitution X, a recurring indel with which REF reads as X, left out where no read needs
+/// it, the rest kept) and `off` (none of the background, the found alleles kept). Read when
+/// a site is built.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum BackgroundRule {
     AsIs,
@@ -1046,16 +1050,16 @@ pub(crate) fn background_rule() -> BackgroundRule {
     *RULE.get_or_init(|| {
         let v = std::env::var("GBCMS_JUDGE_BACKGROUND").unwrap_or_default();
         parse_background(&v).unwrap_or_else(|| {
-            log::warn!("GBCMS_JUDGE_BACKGROUND={v:?} is not asis, respell or off; the background is kept as it is");
-            BackgroundRule::AsIs
+            log::warn!("GBCMS_JUDGE_BACKGROUND={v:?} is not respell, asis or off; the default, respell, is used");
+            BackgroundRule::Respell
         })
     })
 }
 
 fn parse_background(v: &str) -> Option<BackgroundRule> {
     match v {
-        "asis" | "" => Some(BackgroundRule::AsIs),
-        "respell" => Some(BackgroundRule::Respell),
+        "respell" | "" => Some(BackgroundRule::Respell),
+        "asis" => Some(BackgroundRule::AsIs),
         "off" => Some(BackgroundRule::Off),
         _ => None,
     }
@@ -2009,10 +2013,10 @@ impl Site {
             }
         }
         // A background change at X's place cannot share a haplotype with X: crossed with
-        // REF alone it would favour REF, so it is left to the reads' bases there. Under
-        // `GBCMS_JUDGE_BACKGROUND=respell` an item of the guard's background or of the found
-        // contexts that respells the site's own candidate sequences ([`respellings`]) is
-        // left out, change or mask.
+        // REF alone it would favour REF, so it is left to the reads' bases there. Under the
+        // default (`respell`) an item of the guard's background or of the found contexts that
+        // respells the site's own candidate sequences ([`respellings`]) is left out where no
+        // read needs it; the guard's masks stay.
         let bg_rule = if sources.background() { bg_rule } else { BackgroundRule::Off };
         let background: Vec<Row> = match bg_rule {
             BackgroundRule::Off => Vec::new(),
@@ -2093,14 +2097,15 @@ impl Site {
                 }
                 settled
             }
-            // Under the default, at a substitution X, a recurring indel of the guard's with
-            // which REF reads as X over a read reaching X's site is X's change respelled (a
-            // repeat X lengthens, written as more units of it beside X: AGCA>TGCT between a
-            // GCT run and a GCA run, REF with two GCT units more reads as X into the GCA
-            // run), never a context: left out where no reads need it for their call. A
-            // substitution's carriers hold its bases at X; an indel there is a shift of the
-            // repeat beside it. The masks, the substitutions and the found alleles stay
-            // contexts, and an indel X's site keeps its background as it is.
+            // Under `asis` (the narrow rule `respell` generalises, kept for measurement), at a
+            // substitution X, a recurring indel of the guard's with which REF reads as X over
+            // a read reaching X's site is X's change respelled (a repeat X lengthens, written
+            // as more units of it beside X: AGCA>TGCT between a GCT run and a GCA run, REF
+            // with two GCT units more reads as X into the GCA run), never a context: left out
+            // where no reads need it for their call. A substitution's carriers hold its bases
+            // at X; an indel there is a shift of the repeat beside it. The masks, the
+            // substitutions and the found alleles stay contexts, and an indel X's site keeps
+            // its background as it is.
             None if bg_rule == BackgroundRule::AsIs && !target.changes_length() && background.iter().any(|r| r.changes_length()) => {
                 let l = reads.iter().map(|r| r.len() as i64).max().unwrap_or(0);
                 let (s0, e0) = x_site(&target, start, &reference, place(&target));
@@ -3917,8 +3922,11 @@ pub(crate) mod tests {
             found: Vec::new(),
         };
         let read = ReadView::new(&[b'A'; 150], &[30; 150], 230, &[Cigar::Match(150)], (0, 150), 20).unwrap();
+        // The sources' rows as they come, before the respelling check (the default) leaves
+        // out the items no read needs: the narrow background rule keeps every one here.
         let shape = |sources| {
-            let s = Site::build_sourced(ScorerKind::Graph, x.clone(), &candidates, (0, c.clone()), std::slice::from_ref(&read), FoundRule::All, sources)
+            let (window, reads) = ((0, c.clone()), std::slice::from_ref(&read));
+            let s = Site::build_backed(ScorerKind::Graph, x.clone(), &candidates, window, reads, FoundRule::All, sources, BackgroundRule::AsIs)
                 .unwrap();
             (s.n_states, s.rows.len() - 1 - s.n_states, s.masked.len())
         };
@@ -3979,6 +3987,17 @@ pub(crate) mod tests {
         assert_eq!(got, vec![true, true, false], "the deletion and the insertion spell X's carrier together");
         // alone, neither does
         assert_eq!(joined_at_site(&c, 0, (x.pos, x.end()), 100, &[deletion, far], meets_x), vec![false, false]);
+    }
+
+    #[test]
+    fn the_default_background_rule_is_respell() {
+        // Decided 2026-10-27: `respell` is the default; `asis` and `off` stay for measurement,
+        // and an unknown value falls back to the default.
+        assert_eq!(parse_background(""), Some(BackgroundRule::Respell));
+        assert_eq!(parse_background("respell"), Some(BackgroundRule::Respell));
+        assert_eq!(parse_background("asis"), Some(BackgroundRule::AsIs));
+        assert_eq!(parse_background("off"), Some(BackgroundRule::Off));
+        assert_eq!(parse_background("other"), None);
     }
 
     #[test]

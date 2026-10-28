@@ -126,6 +126,8 @@ For a row X and each admitted read:
     delins under 20 bases and gate insertions on oracle v3: where another allele wins by the
     margin, a read writing an indel of its own beside that allele's change still carries the
     allele's bases (25 of 26 such panel reads wrong). Neither replaces the decided tie rule.
+  - decided 2026-10-27 (operator): respell is the default, replacing the narrow guard-indel
+    rule; the tie fix stays narrow, `all` and `others` off.
 - **The background refinement (measured 2026-10-26, not adopted; `GBCMS_JUDGE_BACKGROUND`,
   default `asis`):** `respell` leaves out a context item of the guard's background or the
   found alleles that respells the site's own candidate sequences: one that turns one
@@ -139,7 +141,9 @@ For a row X and each admitted read:
   its pre-registered bar it kept every class and every contract test but recovered under
   half of what removing the background gains: none of the gate set's 36 bp insertion rows
   (INS 20-49 +7.7 points with `off`), 28% of the HG002 insertion reads, 21 of 442 gate
-  wrong calls. It stays behind the switch, off.
+  wrong calls. It stays behind the switch, off. (The fourth round measured it as the general
+  form of the guard-indel rule; it was adopted as the default on 2026-10-27, `asis` and `off`
+  kept for measurement.)
 
 Measured (HG002 phased truth, R2): see #304. The prototype is `plan670/r2/hapjudge` (local).
 
