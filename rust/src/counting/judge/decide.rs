@@ -406,7 +406,8 @@ fn judge_enumerated(site: &Site, read: &ReadView, min_baseq: u8, ask_anchor: boo
         };
         raise(&mut best, class, s, h);
     }
-    conclude(site, read, &scorer, best, min_baseq, ask_anchor, |h| Cow::Borrowed(&site.haps[h]))
+    let ex = Examined::new(site, &scorer, |h| Cow::Borrowed(&site.haps[h]));
+    conclude(site, read, &ex, best, min_baseq, ask_anchor)
 }
 
 /// Per class, the best score and the first candidate (haplotype or state) reaching it.
@@ -457,32 +458,76 @@ fn judge_graph(site: &Site, read: &ReadView, min_baseq: u8, ask_anchor: bool) ->
     } else {
         let scorer = Scorer::new(read);
         let ws = std::cell::RefCell::new(ws);
-        conclude(site, read, &scorer, best, min_baseq, ask_anchor, |k| {
+        let ex = Examined::new(site, &scorer, |k| {
             let p = graph::path(&ShortReads, &gr, &site.graphs[k].graph, halves[k], &mut ws.borrow_mut());
             if best.iter().flatten().any(|&(s, h)| h == k && s != p.score) {
                 trace!("haplotype judge: state {k}'s traced path scores {} against its score", p.score);
             }
             Cow::Owned(site.hap_on_path(k, &p.rows))
-        })
+        });
+        conclude(site, read, &ex, best, min_baseq, ask_anchor)
     };
     Verdict { triage: triaged.map(|t| (t.call, t.qual, t.unknown)), fits, fits_none: top < FITS_NOTHING, ..verdict }
 }
 
+/// The candidates a read's call is examined on, each built where first asked for and kept
+/// for the call: its haplotype (from `build`: under the graph scorer the haplotype the
+/// state's best path spells, from a traced programme) and the read's alignment to it. The
+/// margin's checks and the call ask for one candidate's more than once (the fit check and
+/// the winning haplotype are mostly one); both are fixed by the candidate, so each is
+/// computed once.
+pub(crate) struct Examined<'h, 'a, F: Fn(usize) -> Cow<'h, Hap>> {
+    site: &'h Site,
+    scorer: &'a Scorer<'a>,
+    build: F,
+    haps: std::cell::RefCell<Vec<(usize, std::rc::Rc<Cow<'h, Hap>>)>>,
+    aligns: std::cell::RefCell<Vec<(usize, Aligned)>>,
+}
+
+/// A read's alignment to a candidate's haplotype, and where the haplotype's trim starts.
+type Aligned = std::rc::Rc<(Alignment, usize)>;
+
+impl<'h, 'a, F: Fn(usize) -> Cow<'h, Hap>> Examined<'h, 'a, F> {
+    pub(crate) fn new(site: &'h Site, scorer: &'a Scorer<'a>, build: F) -> Self {
+        Examined { site, scorer, build, haps: Default::default(), aligns: Default::default() }
+    }
+
+    /// Candidate `k`'s haplotype.
+    fn hap(&self, k: usize) -> std::rc::Rc<Cow<'h, Hap>> {
+        if let Some((_, h)) = self.haps.borrow().iter().find(|(j, _)| *j == k) {
+            return h.clone();
+        }
+        let h = std::rc::Rc::new((self.build)(k));
+        self.haps.borrow_mut().push((k, h.clone()));
+        h
+    }
+
+    /// The read's alignment to candidate `k`'s haplotype, and where its trim starts.
+    fn align(&self, k: usize) -> Aligned {
+        if let Some((_, a)) = self.aligns.borrow().iter().find(|(j, _)| *j == k) {
+            return a.clone();
+        }
+        let hap = self.hap(k);
+        let a = std::rc::Rc::new(self.scorer.align(self.site, &hap));
+        self.aligns.borrow_mut().push((k, a.clone()));
+        a
+    }
+}
+
 /// A read's call from its best score per class (`best`: score and candidate), its
-/// candidates' haplotypes from `hap` (built where needed): the margin decides; the fit
+/// candidates examined through `ex` (built where needed): the margin decides; the fit
 /// check, X's telling bases, the anchor and the deciding quality are read off the
 /// alignments to the winning and best losing haplotypes.
-fn conclude<'h>(
+fn conclude<'h, F: Fn(usize) -> Cow<'h, Hap>>(
     site: &'h Site,
     read: &ReadView,
-    scorer: &Scorer,
+    ex: &Examined<'h, '_, F>,
     best: [Option<(i32, usize)>; 3],
     min_baseq: u8,
     ask_anchor: bool,
-    hap: impl Fn(usize) -> Cow<'h, Hap>,
 ) -> Verdict {
     if site.own_gap == OwnGapRule::Tie {
-        return conclude_margin(site, read, scorer, best, min_baseq, ask_anchor, hap);
+        return conclude_margin(site, read, ex, best, min_baseq, ask_anchor);
     }
     // Measurement only (`GBCMS_JUDGE_OWNGAP=all` or `others`): a state the read reaches only
     // through an indel of its own at that state's change is not the read's, whatever it ties
@@ -495,10 +540,9 @@ fn conclude<'h>(
     if other_option().fit {
         let overall = best.iter().flatten().copied().max_by(|a, b| a.0.cmp(&b.0).then(b.1.cmp(&a.1)));
         if let Some((_, h)) = overall.filter(|&(s, _)| s < 0) {
-            let candidate = hap(h);
-            let (al, off) = scorer.align(site, &candidate);
-            if site.gap_at_site(&candidate, &read.seq, &al, off) {
-                return conclude_margin(site, read, scorer, best, min_baseq, ask_anchor, hap);
+            let (candidate, al) = (ex.hap(h), ex.align(h));
+            if site.gap_at_site(&candidate, &read.seq, &al.0, al.1) {
+                return conclude_margin(site, read, ex, best, min_baseq, ask_anchor);
             }
         }
     }
@@ -516,9 +560,8 @@ fn conclude<'h>(
                 continue;
             }
             checked[c] = true;
-            let state = hap(h);
-            let (al, off) = scorer.align(site, &state);
-            if site.own_gap_at(&state, &read.seq, &al, off) {
+            let (state, al) = (ex.hap(h), ex.align(h));
+            if site.own_gap_at(&state, &read.seq, &al.0, al.1) {
                 og.dropped[c] = true;
                 changed = true;
             }
@@ -528,7 +571,7 @@ fn conclude<'h>(
         }
     }
     if !og.dropped.iter().any(|&d| d) {
-        return conclude_margin(site, read, scorer, best, min_baseq, ask_anchor, hap);
+        return conclude_margin(site, read, ex, best, min_baseq, ask_anchor);
     }
     let mut kept = best;
     for (k, &d) in kept.iter_mut().zip(&og.dropped) {
@@ -542,18 +585,17 @@ fn conclude<'h>(
         return Verdict { call: Call::Other, qual: 0, best: scores, holds_anchor: false, placed: None, triage: None, confirmed: false, spells: 0, clip: None, fits: FitsTrace::default(), fits_none: false, neither: NeitherTrace::default(), owngap: og };
     }
     trace!("haplotype judge: states reached only through an indel of the read's own dropped ({:?})", og.dropped);
-    Verdict { owngap: og, ..conclude_margin(site, read, scorer, kept, min_baseq, ask_anchor, hap) }
+    Verdict { owngap: og, ..conclude_margin(site, read, ex, kept, min_baseq, ask_anchor) }
 }
 
 /// [`conclude`] by the margin alone.
-fn conclude_margin<'h>(
+fn conclude_margin<'h, F: Fn(usize) -> Cow<'h, Hap>>(
     site: &'h Site,
     read: &ReadView,
-    scorer: &Scorer,
+    ex: &Examined<'h, '_, F>,
     best: [Option<(i32, usize)>; 3],
     min_baseq: u8,
     ask_anchor: bool,
-    hap: impl Fn(usize) -> Cow<'h, Hap>,
 ) -> Verdict {
     let scores = best.map(|b| b.map(|(s, _)| s));
     let mut call = decide(scores);
@@ -567,14 +609,14 @@ fn conclude_margin<'h>(
     // and reads REF where REF and X differ.
     if call == Call::Other && tied_with(scores) == Some(Class::Ref as usize) {
         if let Some((_, k)) = best[Class::Other as usize] {
-            let other = hap(k);
+            let other = ex.hap(k);
             if !site.reaches_state(read, &other) {
                 trace!("haplotype judge: REF ties another allele the read never reaches → REF");
                 call = Call::Ref;
                 ref_by_reach = true;
             } else {
-                let (al, off) = scorer.align(site, &other);
-                if site.gap_at_state(&other, &read.seq, &al, off) {
+                let al = ex.align(k);
+                if site.gap_at_state(&other, &read.seq, &al.0, al.1) {
                     trace!("haplotype judge: REF ties another allele the read writes its own indel across → REF");
                     call = Call::Ref;
                     ref_by_reach = true;
@@ -585,15 +627,14 @@ fn conclude_margin<'h>(
     // The haplotype the read fits best of all, where its alignment there leaves an indel
     // unexplained inside X's site: the read carries another allele there, never REF or X.
     let overall = best.iter().flatten().copied().max_by(|a, b| a.0.cmp(&b.0).then(b.1.cmp(&a.1)));
-    let mut fit_other: Option<Cow<'h, Hap>> = None;
+    let mut fit_other: Option<usize> = None;
     if other_option().fit {
         if let Some((s, h)) = overall.filter(|&(s, _)| s < 0) {
-            let candidate = hap(h);
-            let (al, off) = scorer.align(site, &candidate);
-            if site.gap_at_site(&candidate, &read.seq, &al, off) {
+            let (candidate, al) = (ex.hap(h), ex.align(h));
+            if site.gap_at_site(&candidate, &read.seq, &al.0, al.1) {
                 trace!("haplotype judge: the best haplotype ({s}) leaves an indel at X's site unexplained → another allele");
                 call = Call::Other;
-                fit_other = Some(candidate);
+                fit_other = Some(h);
             }
         }
     }
@@ -602,16 +643,15 @@ fn conclude_margin<'h>(
     // read carrying only some of its components), wherever the margin leaves it: REF by a
     // base (one change of three), X by a base (two of three) or a tie of the two (one of
     // two). A base below `--min-baseq` there weighs nothing either way.
-    let mut mixed_on: Option<Cow<'h, Hap>> = None;
+    let mut mixed_on: Option<usize> = None;
     if call == Call::Depth && site.changed_bases() >= 2 {
         if let (Some((a, _)), Some((r, h))) = (best[Class::Alt as usize], best[Class::Ref as usize]) {
             if (a - r).abs() < DELTA {
-                let candidate = hap(h);
-                let (al, off) = scorer.align(site, &candidate);
-                if read_at_x(site, read, &candidate, &al, off).mixed() {
+                let (candidate, al) = (ex.hap(h), ex.align(h));
+                if read_at_x(site, read, &candidate, &al.0, al.1).mixed() {
                     trace!("haplotype judge: REF and X tie on a read carrying some of X's changes → another allele");
                     call = Call::Other;
-                    mixed_on = Some(candidate);
+                    mixed_on = Some(h);
                 }
             }
         }
@@ -628,18 +668,16 @@ fn conclude_margin<'h>(
     if call == Call::Other && !ask_anchor {
         return Verdict { call, qual: 0, best: scores, holds_anchor: false, placed: None, triage: None, confirmed: false, spells: 0, clip: None, fits: FitsTrace::default(), fits_none: false, neither: NeitherTrace::default(), owngap: OwnGapTrace::default() };
     }
-    let hap_w = match fit_other.or(mixed_on) {
-        Some(h) => h,
-        None => hap(best[won as usize].map_or(0, |(_, h)| h)),
-    };
+    let w = fit_other.or(mixed_on).unwrap_or_else(|| best[won as usize].map_or(0, |(_, h)| h));
+    let (hap_w, w_al) = (ex.hap(w), ex.align(w));
     let hap_w: &Hap = &hap_w;
-    let (wa, off) = scorer.align(site, hap_w);
+    let (wa, off) = (&w_al.0, w_al.1);
     // Measurement only (GBCMS_JUDGE_NEITHER): a covered telling base read confidently as
     // neither allele makes a REF or ALT call another allele, at every size (`other`), below a
     // size (`other:N`), or where other reads of the row read it too (`recur:K`).
     let mut nt = NeitherTrace::default();
     if matches!(call, Call::Alt | Call::Ref) && (site.neither != NeitherRule::Margin || neither_trace()) {
-        if let Some(t) = neither_bases(site, read, hap_w, &wa, off) {
+        if let Some(t) = neither_bases(site, read, hap_w, wa, off) {
             nt = NeitherTrace { on: neither_trace(), call: if call == Call::Alt { 1 } else { 0 }, ..t };
             nt.moved = nt.n > 0
                 && match site.neither {
@@ -658,7 +696,7 @@ fn conclude_margin<'h>(
             return Verdict { call, qual: 0, best: scores, holds_anchor: false, placed: None, triage: None, confirmed: false, spells: 0, clip: None, fits: FitsTrace::default(), fits_none: false, neither: nt, owngap: OwnGapTrace::default() };
         }
     }
-    if matches!(call, Call::Alt | Call::Ref) && site.changed_bases() >= 2 && read_at_x(site, read, hap_w, &wa, off).mixed() {
+    if matches!(call, Call::Alt | Call::Ref) && site.changed_bases() >= 2 && read_at_x(site, read, hap_w, wa, off).mixed() {
         trace!("haplotype judge: a {call:?} call on a read carrying some of X's changes → another allele");
         call = Call::Other;
         if !ask_anchor {
@@ -703,7 +741,7 @@ fn conclude_margin<'h>(
             Some(i) => telling_at.push(i),
         }
     }
-    let clip = if ask_anchor && site.is_substitution() && reads_all { clip_bases(read, hap_w, &wa, off, &telling_at) } else { None };
+    let clip = if ask_anchor && site.is_substitution() && reads_all { clip_bases(read, hap_w, wa, off, &telling_at) } else { None };
     if !reads_all {
         call = Call::Depth;
         return Verdict { call, qual: 0, best: scores, holds_anchor: false, placed: None, triage: None, confirmed: false, spells: 0, clip: None, fits: FitsTrace::default(), fits_none: false, neither: nt, owngap: OwnGapTrace::default() };
@@ -717,10 +755,10 @@ fn conclude_margin<'h>(
         .max_by(|a, b| a.0.cmp(&b.0).then(b.1.cmp(&a.1)))
         .map(|(_, h)| h);
     let qual = lost.map_or(floor, |l| {
-        let (la, _) = scorer.align(site, &hap(l));
-        deciding_quality(read, &wa, &la).map_or(floor, |q| q.max(floor))
+        let la = ex.align(l);
+        deciding_quality(read, wa, &la.0).map_or(floor, |q| q.max(floor))
     });
-    let spells = if call == Call::Alt { site.spelled_holders(read, hap_w, &wa, off) } else { 0 };
+    let spells = if call == Call::Alt { site.spelled_holders(read, hap_w, wa, off) } else { 0 };
     Verdict { call, qual, best: scores, holds_anchor, placed, triage: None, confirmed, spells, clip, fits: FitsTrace::default(), fits_none: false, neither: nt, owngap: OwnGapTrace::default() }
 }
 
