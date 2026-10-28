@@ -96,7 +96,7 @@ pub(crate) enum Class {
 /// `--min-baseq` or where not A, C, G or T) with their qualities, each base's reference
 /// position (a soft clip's extrapolated, an inserted base's at its anchor), and its
 /// aligned span.
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct ReadView {
     pub(crate) seq: Vec<u8>,
     pub(crate) quals: Vec<u8>,
@@ -136,6 +136,18 @@ impl AlnTags {
             (Some(a), Some(x)) => x >= a,
             _ => self.mapq == 0,
         }
+    }
+}
+
+/// Some of a view's fields (views equal in all are equal in these), for the judge's maps of
+/// views alike (`judge::Haplotypes`), which compare views whole.
+impl std::hash::Hash for ReadView {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        self.seq.hash(state);
+        self.quals.hash(state);
+        self.ref_start.hash(state);
+        self.ref_end.hash(state);
+        self.tags.hash(state);
     }
 }
 
@@ -300,6 +312,12 @@ impl ReadView {
 
     pub(crate) fn len(&self) -> usize {
         self.seq.len()
+    }
+
+    /// The view without its qualities, its aligner's tags and its name: its bases (masked)
+    /// and placement alone, which a read's programmes and alignments are fixed by.
+    pub(crate) fn placed_alone(&self) -> ReadView {
+        ReadView { quals: Vec::new(), tags: AlnTags::default(), name: Vec::new(), ..self.clone() }
     }
 
     /// The genome position its own alignment places base `i` at; None for a base it leaves

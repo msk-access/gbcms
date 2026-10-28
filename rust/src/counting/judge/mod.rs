@@ -103,6 +103,10 @@ pub(crate) struct Haplotypes<'a> {
     /// alone, so a read alike to one judged gets its verdict (deep duplex reads are often
     /// alike: one start, one end, binned qualities).
     judged: RefCell<HashMap<JudgedKey, decide::Verdict, std::hash::BuildHasherDefault<ViewHasher>>>,
+    /// Each read's bases (masked) and placement this row's site scored (a view without its
+    /// qualities, tags and name), with what its programmes gave: a read alike there has
+    /// the same scores, paths and alignments, its call its own.
+    scored: RefCell<HashMap<ReadView, std::rc::Rc<decide::Scored>, std::hash::BuildHasherDefault<ViewHasher>>>,
 }
 
 /// The judged views' hasher: keys are compared whole on a hit, so the hash need only
@@ -164,6 +168,7 @@ impl<'a> Haplotypes<'a> {
             build: Box::new(build),
             verdicts: RefCell::new(HashMap::new()),
             judged: RefCell::new(HashMap::default()),
+            scored: RefCell::new(HashMap::default()),
         }
     }
 
@@ -174,6 +179,15 @@ impl<'a> Haplotypes<'a> {
 
     pub(crate) fn keep_judged(&self, view: JudgedKey, verdict: decide::Verdict) {
         self.judged.borrow_mut().insert(view, verdict);
+    }
+
+    /// What the programmes gave a read alike to `placed` (bases and placement) at this row.
+    pub(crate) fn scored(&self, placed: &ReadView) -> Option<std::rc::Rc<decide::Scored>> {
+        self.scored.borrow().get(placed).cloned()
+    }
+
+    pub(crate) fn keep_scored(&self, placed: ReadView, scored: std::rc::Rc<decide::Scored>) {
+        self.scored.borrow_mut().insert(placed, scored);
     }
 
     /// The call a read already got at this row.
@@ -430,6 +444,47 @@ mod tests {
                 for ask in [false, true] {
                     let (a, b) = (judge(&s, &r.clone().named(b"one"), MIN_BQ, ask), judge(&s, &r.clone().named(b"two"), MIN_BQ, ask));
                     assert_eq!(format!("{a:?}"), format!("{b:?}"), "read {k}, anchor asked {ask}");
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn a_read_alike_in_bases_and_placement_is_called_on_the_kept_scoring_as_afresh() {
+        // Reads alike in their bases (masked) and placement share their programmes' scores,
+        // paths and alignments (decide::Scored); qualities above the floor, the aligner's
+        // tags and the anchor asked are each read's own, and its call is as if judged afresh.
+        let (c, ins, snv) = case_246();
+        let rows = vec![ins.clone(), snv.clone()];
+        let (h_ins, h_snv) = (haplotype(&c, &[&ins]), haplotype(&c, &[&snv]));
+        let reads = [
+            read(&h_ins, 220, 151, 220, "151M"),
+            read(&h_ins, 225, 151, 225, "75M6I70M"),
+            read(&h_snv, 221, 151, 221, "151M"),
+            read(&c, 232, 151, 232, "151M"),
+            read(&h_ins, 290, 60, 290, "10S50M"),
+        ];
+        let tags = [
+            haplotypes::AlnTags { mapq: 60, best: Some(151), elsewhere: Some(40), nm: Some(0) },
+            haplotypes::AlnTags { mapq: 0, best: Some(140), elsewhere: Some(140), nm: Some(2) },
+        ];
+        for target in [&ins, &snv] {
+            let s = site(&c, target, &rows, 151);
+            for (k, r) in reads.iter().enumerate() {
+                for ask in [false, true] {
+                    let (_, kept) = decide::judge_kept(&s, r, MIN_BQ, ask, None);
+                    let kept = kept.expect("the graph scorer keeps its scoring");
+                    for (t, &tag) in tags.iter().enumerate() {
+                        // the same bases and placement, other qualities (none below the floor)
+                        let mut other = r.clone().tagged(tag);
+                        for (i, q) in other.quals.iter_mut().enumerate() {
+                            *q = if i % 3 == 0 { 25 } else { 41 };
+                        }
+                        assert_eq!(other.placed_alone(), r.placed_alone(), "read {k}: alike");
+                        let afresh = judge(&s, &other, MIN_BQ, ask);
+                        let (on_kept, _) = decide::judge_kept(&s, &other, MIN_BQ, ask, Some(kept.clone()));
+                        assert_eq!(format!("{afresh:?}"), format!("{on_kept:?}"), "read {k}, tags {t}, anchor asked {ask}");
+                    }
                 }
             }
         }

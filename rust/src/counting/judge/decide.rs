@@ -9,7 +9,6 @@
 use log::trace;
 use rust_htslib::bam::record::{Aux, Cigar, Record};
 
-use std::borrow::Cow;
 
 use super::graph::{self, ShortReads, Workspace};
 use super::haplotypes::{neither_trace, other_option, AlnTags, Class, Hap, NeitherRule, OwnGapRule, ReadView, Scorer, ScorerKind, Site, TriageMode};
@@ -351,6 +350,12 @@ fn tied_with(best: [Option<i32>; 3]) -> Option<usize> {
         .map(|(tied, _)| tied)
 }
 
+/// [`judge_kept`] with nothing kept from another read.
+#[cfg(test)]
+pub(crate) fn judge(site: &Site, read: &ReadView, min_baseq: u8, ask_anchor: bool) -> Verdict {
+    judge_kept(site, read, min_baseq, ask_anchor, None).0
+}
+
 /// Judge one read against the site's haplotypes. A REF or ALT call stands only where
 /// the read's alignment to the winning haplotype reads the bases that tell X from REF
 /// at X's site: an ALT call (X a substitution or a delins) every one of X's own,
@@ -359,11 +364,30 @@ fn tied_with(best: [Option<i32>; 3]) -> Option<usize> {
 /// depth only. With `ask_anchor` (a read the genome places
 /// off X's anchor), the verdict says whether its alignment to the winning haplotype
 /// holds the anchor there.
-pub(crate) fn judge(site: &Site, read: &ReadView, min_baseq: u8, ask_anchor: bool) -> Verdict {
+///
+/// `kept`: what an earlier read alike in its bases (masked) and placement left (its
+/// programmes' scores, bands and paths, and the alignments built since, all fixed by those
+/// alone); under the graph scorer the read's [`Scored`] is given back for the next such
+/// read. The call is the read's own: the aligner's tags, its qualities and whether its
+/// anchor is asked for are weighed afresh.
+pub(crate) fn judge_kept(site: &Site, read: &ReadView, min_baseq: u8, ask_anchor: bool, kept: Option<std::rc::Rc<Scored>>) -> (Verdict, Option<std::rc::Rc<Scored>>) {
     match site.scorer {
-        ScorerKind::Enumerated => judge_enumerated(site, read, min_baseq, ask_anchor),
-        ScorerKind::Graph => judge_graph(site, read, min_baseq, ask_anchor),
+        ScorerKind::Enumerated => (judge_enumerated(site, read, min_baseq, ask_anchor), None),
+        ScorerKind::Graph => judge_graph(site, read, min_baseq, ask_anchor, kept),
     }
+}
+
+/// A read's programmes over a site's state graphs, fixed by its bases (masked) and
+/// placement: each state's best score (per class, the best and the first state reaching
+/// it), the band that decided each, the rows each state's best path takes, and the
+/// haplotypes those spell and the read's alignments to them, built as asked for and kept
+/// for the reads alike.
+pub(crate) struct Scored {
+    best: [Option<(i32, usize)>; 3],
+    halves: Vec<Option<i64>>,
+    rows: Vec<Vec<usize>>,
+    haps: std::cell::RefCell<Vec<(usize, std::rc::Rc<Hap>)>>,
+    aligns: std::cell::RefCell<Vec<(usize, Aligned)>>,
 }
 
 /// [`judge`] against the enumerated haplotypes.
@@ -406,7 +430,8 @@ fn judge_enumerated(site: &Site, read: &ReadView, min_baseq: u8, ask_anchor: boo
         };
         raise(&mut best, class, s, h);
     }
-    let ex = Examined::new(site, &scorer, |h| Cow::Borrowed(&site.haps[h]));
+    let aligns = std::cell::RefCell::new(Vec::new());
+    let ex = Examined::new(site, &scorer, |h| std::rc::Rc::new(site.haps[h].clone()), &aligns);
     conclude(site, read, &ex, best, min_baseq, ask_anchor)
 }
 
@@ -422,31 +447,59 @@ fn raise(best: &mut [Option<(i32, usize)>; 3], class: usize, s: i32, h: usize) {
 /// every context row in reach as a bubble. The haplotype a call is examined on (the fit
 /// check, the bases that tell X from REF, the deciding quality, the anchor) is the one the
 /// state's best path spells.
-fn judge_graph(site: &Site, read: &ReadView, min_baseq: u8, ask_anchor: bool) -> Verdict {
+fn judge_graph(site: &Site, read: &ReadView, min_baseq: u8, ask_anchor: bool, kept: Option<std::rc::Rc<Scored>>) -> (Verdict, Option<std::rc::Rc<Scored>>) {
     let rule = fits_rule();
     // The aligner's own tags decide before any programme runs.
     if rule == FitsRule::XsPure && read.tags.fits_elsewhere() {
         let fits = FitsTrace { states: site.graphs.len() as u8, fired: true, ..FitsTrace::default() };
-        return Verdict { call: Call::Depth, qual: 0, best: [None; 3], holds_anchor: false, placed: None, triage: None, confirmed: false, spells: 0, clip: None, fits, fits_none: false, neither: NeitherTrace::default(), owngap: OwnGapTrace::default() };
+        let verdict = Verdict { call: Call::Depth, qual: 0, best: [None; 3], holds_anchor: false, placed: None, triage: None, confirmed: false, spells: 0, clip: None, fits, fits_none: false, neither: NeitherTrace::default(), owngap: OwnGapTrace::default() };
+        return (verdict, kept);
     }
     let gr = site.graph_read(read);
-    graph::with_workspaces(site.graphs.len(), |wss| judge_states(site, read, min_baseq, ask_anchor, rule, &gr, wss))
-}
-
-/// [`judge_graph`] over the site's states, a workspace each (`wss`): each state's path is
-/// traced back from the values its scoring left there.
-fn judge_states(site: &Site, read: &ReadView, min_baseq: u8, ask_anchor: bool, rule: FitsRule, gr: &graph::GraphRead, wss: &mut [Workspace]) -> Verdict {
     // Triage first: a read whose confident k-mers name one state.
     let triaged = match (site.triage_mode, &site.triage) {
         (TriageMode::Off, _) | (_, None) => None,
-        (_, Some(ix)) if !ask_anchor => ix.decide(site, read, gr, min_baseq),
+        (_, Some(ix)) if !ask_anchor => ix.decide(site, read, &gr, min_baseq),
         _ => None,
     };
     if site.triage_mode == TriageMode::On {
         if let Some(t) = triaged {
-            return Verdict { call: t.call, qual: t.qual, best: [None; 3], holds_anchor: false, placed: None, triage: None, confirmed: false, spells: 0, clip: None, fits: FitsTrace::default(), fits_none: false, neither: NeitherTrace::default(), owngap: OwnGapTrace::default() };
+            let verdict = Verdict { call: t.call, qual: t.qual, best: [None; 3], holds_anchor: false, placed: None, triage: None, confirmed: false, spells: 0, clip: None, fits: FitsTrace::default(), fits_none: false, neither: NeitherTrace::default(), owngap: OwnGapTrace::default() };
+            return (verdict, kept);
         }
     }
+    let scored = kept.unwrap_or_else(|| std::rc::Rc::new(graph::with_workspaces(site.graphs.len(), |wss| score_states(site, &gr, wss))));
+    let (best, halves) = (scored.best, &scored.halves);
+    let top = best.iter().flatten().map(|b| b.0).max().unwrap_or(i32::MIN);
+    let (fired, neighbourhood) = fits_nothing(rule, site, read, top);
+    let fits = FitsTrace { full: halves.iter().filter(|h| h.is_none()).count() as u8, states: halves.len() as u8, fired, neighbourhood };
+    let verdict = if fired {
+        trace!("haplotype judge: the read fits no state's graph (best {top}, {rule:?}) → depth only");
+        Verdict { call: Call::Depth, qual: 0, best: best.map(|b| b.map(|(s, _)| s)), holds_anchor: false, placed: None, triage: None, confirmed: false, spells: 0, clip: None, fits, fits_none: false, neither: NeitherTrace::default(), owngap: OwnGapTrace::default() }
+    } else {
+        let scorer = Scorer::new(read);
+        let ex = Examined::new(
+            site,
+            &scorer,
+            |k| {
+                if let Some((_, h)) = scored.haps.borrow().iter().find(|(j, _)| *j == k) {
+                    return h.clone();
+                }
+                let h = std::rc::Rc::new(site.hap_on_path(k, &scored.rows[k]));
+                scored.haps.borrow_mut().push((k, h.clone()));
+                h
+            },
+            &scored.aligns,
+        );
+        conclude(site, read, &ex, best, min_baseq, ask_anchor)
+    };
+    (Verdict { triage: triaged.map(|t| (t.call, t.qual, t.unknown)), fits, fits_none: top < FITS_NOTHING, ..verdict }, Some(scored))
+}
+
+/// The read's programmes over the site's states, a workspace each (`wss`): each state's
+/// score, the band that decided it, and its best path traced back from the values its
+/// scoring left there ([`Scored`]).
+fn score_states(site: &Site, gr: &graph::GraphRead, wss: &mut [Workspace]) -> Scored {
     let mut best: [Option<(i32, usize)>; 3] = [None; 3];
     let graphs: Vec<&graph::Graph> = site.graphs.iter().map(|st| &st.graph).collect();
     let shares: Vec<Option<(usize, usize)>> = site.graphs.iter().map(|st| st.share).collect();
@@ -456,25 +509,16 @@ fn judge_states(site: &Site, read: &ReadView, min_baseq: u8, ask_anchor: bool, r
         halves.push(half);
         raise(&mut best, st.class as usize, s, k);
     }
-    let top = best.iter().flatten().map(|b| b.0).max().unwrap_or(i32::MIN);
-    let (fired, neighbourhood) = fits_nothing(rule, site, read, top);
-    let fits = FitsTrace { full: halves.iter().filter(|h| h.is_none()).count() as u8, states: halves.len() as u8, fired, neighbourhood };
-    let verdict = if fired {
-        trace!("haplotype judge: the read fits no state's graph (best {top}, {rule:?}) → depth only");
-        Verdict { call: Call::Depth, qual: 0, best: best.map(|b| b.map(|(s, _)| s)), holds_anchor: false, placed: None, triage: None, confirmed: false, spells: 0, clip: None, fits, fits_none: false, neither: NeitherTrace::default(), owngap: OwnGapTrace::default() }
-    } else {
-        let scorer = Scorer::new(read);
-        let wss = &*wss;
-        let ex = Examined::new(site, &scorer, |k| {
+    let rows = (0..site.graphs.len())
+        .map(|k| {
             let p = graph::kept_path(&ShortReads, gr, &site.graphs[k].graph, halves[k], &wss[k]);
             if best.iter().flatten().any(|&(s, h)| h == k && s != p.score) {
                 trace!("haplotype judge: state {k}'s traced path scores {} against its score", p.score);
             }
-            Cow::Owned(site.hap_on_path(k, &p.rows))
-        });
-        conclude(site, read, &ex, best, min_baseq, ask_anchor)
-    };
-    Verdict { triage: triaged.map(|t| (t.call, t.qual, t.unknown)), fits, fits_none: top < FITS_NOTHING, ..verdict }
+            p.rows
+        })
+        .collect();
+    Scored { best, halves, rows, haps: Default::default(), aligns: Default::default() }
 }
 
 /// The candidates a read's call is examined on, each built where first asked for and kept
@@ -483,28 +527,30 @@ fn judge_states(site: &Site, read: &ReadView, min_baseq: u8, ask_anchor: bool, r
 /// margin's checks and the call ask for one candidate's more than once (the fit check and
 /// the winning haplotype are mostly one); both are fixed by the candidate, so each is
 /// computed once.
-pub(crate) struct Examined<'h, 'a, F: Fn(usize) -> Cow<'h, Hap>> {
+pub(crate) struct Examined<'h, 'a, F: Fn(usize) -> std::rc::Rc<Hap>> {
     site: &'h Site,
     scorer: &'a Scorer<'a>,
     build: F,
-    haps: std::cell::RefCell<Vec<(usize, std::rc::Rc<Cow<'h, Hap>>)>>,
-    aligns: std::cell::RefCell<Vec<(usize, Aligned)>>,
+    haps: std::cell::RefCell<Vec<(usize, std::rc::Rc<Hap>)>>,
+    /// The read's alignments to the candidates: the call's own, or those kept for the reads
+    /// alike in bases and placement ([`Scored`]), which the alignment is fixed by.
+    aligns: &'a std::cell::RefCell<Vec<(usize, Aligned)>>,
 }
 
 /// A read's alignment to a candidate's haplotype, and where the haplotype's trim starts.
 type Aligned = std::rc::Rc<(Alignment, usize)>;
 
-impl<'h, 'a, F: Fn(usize) -> Cow<'h, Hap>> Examined<'h, 'a, F> {
-    pub(crate) fn new(site: &'h Site, scorer: &'a Scorer<'a>, build: F) -> Self {
-        Examined { site, scorer, build, haps: Default::default(), aligns: Default::default() }
+impl<'h, 'a, F: Fn(usize) -> std::rc::Rc<Hap>> Examined<'h, 'a, F> {
+    pub(crate) fn new(site: &'h Site, scorer: &'a Scorer<'a>, build: F, aligns: &'a std::cell::RefCell<Vec<(usize, Aligned)>>) -> Self {
+        Examined { site, scorer, build, haps: Default::default(), aligns }
     }
 
     /// Candidate `k`'s haplotype.
-    fn hap(&self, k: usize) -> std::rc::Rc<Cow<'h, Hap>> {
+    fn hap(&self, k: usize) -> std::rc::Rc<Hap> {
         if let Some((_, h)) = self.haps.borrow().iter().find(|(j, _)| *j == k) {
             return h.clone();
         }
-        let h = std::rc::Rc::new((self.build)(k));
+        let h = (self.build)(k);
         self.haps.borrow_mut().push((k, h.clone()));
         h
     }
@@ -525,7 +571,7 @@ impl<'h, 'a, F: Fn(usize) -> Cow<'h, Hap>> Examined<'h, 'a, F> {
 /// candidates examined through `ex` (built where needed): the margin decides; the fit
 /// check, X's telling bases, the anchor and the deciding quality are read off the
 /// alignments to the winning and best losing haplotypes.
-fn conclude<'h, F: Fn(usize) -> Cow<'h, Hap>>(
+fn conclude<'h, F: Fn(usize) -> std::rc::Rc<Hap>>(
     site: &'h Site,
     read: &ReadView,
     ex: &Examined<'h, '_, F>,
@@ -596,7 +642,7 @@ fn conclude<'h, F: Fn(usize) -> Cow<'h, Hap>>(
 }
 
 /// [`conclude`] by the margin alone.
-fn conclude_margin<'h, F: Fn(usize) -> Cow<'h, Hap>>(
+fn conclude_margin<'h, F: Fn(usize) -> std::rc::Rc<Hap>>(
     site: &'h Site,
     read: &ReadView,
     ex: &Examined<'h, '_, F>,
@@ -1016,7 +1062,17 @@ pub(crate) fn classify(record: &Record, variant: &Variant, quals: &[u8], min_bas
             let view = (read, !overlaps_anchor, min_baseq);
             let clock = std::time::Instant::now();
             let judged = haplotypes.judged(&view);
-            let verdict = judged.unwrap_or_else(|| judge(site, &view.0, min_baseq, !overlaps_anchor));
+            let verdict = judged.unwrap_or_else(|| {
+                // what a read alike in bases (masked) and placement left: its programmes
+                let placed = view.0.placed_alone();
+                let kept = haplotypes.scored(&placed);
+                let fresh = kept.is_none();
+                let (verdict, scored) = judge_kept(site, &view.0, min_baseq, !overlaps_anchor, kept);
+                if let Some(s) = scored.filter(|_| fresh) {
+                    haplotypes.keep_scored(placed, s);
+                }
+                verdict
+            });
             let ns = clock.elapsed().as_nanos();
             let read = &view.0;
             let mut out = match verdict.call {
