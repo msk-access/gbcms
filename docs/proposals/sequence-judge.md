@@ -177,11 +177,18 @@ For a row X and each admitted read:
     Bases X keeps tell nothing under both. The evidence it answers: a mate test of 72
     patient delins ALT reads the margin forgave (19 showing REF's base; under 20 bases, 10
     of 11 decided carry the odd base on both mates).
-  - *Open for the operator:* at a delins, reads showing the kept-base change confidently
-    count under the judge (the margin, 2026-10-24) where the rules read the event's bases
-    exactly and call them neither; and at an MNP an ALT call with a confident third base at
-    a base X changes is depth only (the phase C rule above) while a REF call with one stays
-    REF and a delins forgives one either way (RJ-26, round 3).
+  - *Decided (operator, 2026-10-28): a germline change at a base a delins keeps.* Carried on
+    both haplotypes, it is a separate event (RJ-25), and each read counts by the bases where
+    REF and ALT differ: under the judge a delins carrier with the change counts ALT and a REF
+    read with it counts REF, as at an MNP (`test_locus_alleles_contract.py`: the delins test
+    `test_a_germline_change_inside_a_delins_the_carriers_carry_too_leaves_ref_reads_ref`
+    gives (RD, AD) (46, 16) under the judge, the rules' exact reading (26, 6); its MNP twin
+    `test_a_germline_change_the_carriers_carry_too_leaves_ref_reads_ref` expects (40, 10) on
+    both). The delins expectation updates at the default flip (#331); the rules path keeps it.
+  - *Open for the operator:* at an MNP an ALT call with a confident third base at a base X
+    changes is depth only (the phase C rule above) while a REF call with one stays REF and a
+    delins forgives one either way (RJ-26, round 3); `GBCMS_JUDGE_REFBASE=partial` measures
+    one rule for both.
 - **The background refinement (measured 2026-10-26, not adopted; `GBCMS_JUDGE_BACKGROUND`,
   default `asis`):** `respell` leaves out a context item of the guard's background or the
   found alleles that respells the site's own candidate sequences: one that turns one
