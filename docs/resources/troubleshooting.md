@@ -93,6 +93,11 @@ Common issues and solutions for gbcms. Issues are grouped by phase — work top-
 
 ## Allele Count Issues
 
+Start with the **QC summary** at the end of the run log: it counts the rows by what
+they need (fix the input, check the call, or nothing), names the first rows to look at and
+says what to do about each flag
+([End-of-run summary](../reference/qc-flags.md#end-of-run-summary)).
+
 ??? question "`alt_count = 0` for a variant I can see reads for in IGV"
 
     Check in this order:

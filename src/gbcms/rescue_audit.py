@@ -6,6 +6,7 @@ use the names and functions here, so renaming an outcome or field cannot leave
 one side silently matching nothing.
 """
 
+import re
 from typing import Any
 
 # Diagnostic flag that makes an MNP a rescue candidate. Written by the
@@ -63,3 +64,10 @@ def rescued_component(audit: str) -> str | None:
     if fields.get(_FIELD_OUTCOME) != OUTCOME_RESCUED:
         return None
     return fields.get(_FIELD_ADOPTED)
+
+
+def rescue_outcome(audit: str) -> str | None:
+    """The ``outcome`` of a ``gbcms_rescue`` value (``MAF``: ``;``-separated; VCF
+    ``GR``: the same with ``|``), or None for an empty value."""
+    fields = dict(part.split("=", 1) for part in re.split(r"[;|]", audit) if "=" in part)
+    return fields.get(_FIELD_OUTCOME)

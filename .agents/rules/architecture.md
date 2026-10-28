@@ -17,6 +17,7 @@ gbcms/
 │   ├── merge.py         # `gbcms merge`: per-BAM-type MAFs (duplex, simplex) -> one, simplex_duplex_* columns
 │   ├── observations.py  # Per-molecule observation export (public API; companion Parquet)
 │   ├── rescue_audit.py  # The gbcms_rescue audit contract, shared by the MNP rescue pass and merge
+│   ├── qc_summary.py    # End-of-run QC summary: the flag tier table, read from the written output, one log block
 │   ├── _rs.pyi          # Primary Rust type stubs (authoritative)
 │   ├── core/
 │   │   └── kernel.py    # Coordinates; the one VCF<->MAF rule (vcf2maf/maf2vcf) + type labels
