@@ -439,12 +439,15 @@ pub(crate) struct Workspace {
     lead: Vec<i32>,
     col: Column,
     ends: Vec<(u32, u32)>,
-    marks: Vec<u8>,
+    /// Per cell, the edge search that last marked it (above the low four bits) and the
+    /// kinds it marked (D, E, F, A), so no search clears the marks of the one before.
+    marks: Vec<u32>,
+    mark_gen: u32,
     stack: Vec<(u32, u32, u8)>,
     interiors: Vec<(u32, u32)>,
     /// The band that decided the last score ([`decided`]) and its run, whose values the
     /// arrays still hold: the path is traced back from them ([`kept_path`]).
-    last: Option<(GraphBand, GraphRun)>,
+    last: Option<(std::rc::Rc<GraphBand>, GraphRun)>,
     /// The programme's best total and ends as they stood before a base's column, kept for
     /// the states laid out alike that start from it ([`decided_states`]).
     snap: (i32, Vec<(u32, u32)>),
@@ -747,8 +750,15 @@ fn touches_edge<M: ErrorModel>(m: &M, read: &[u8], g: &Graph, band: &GraphBand, 
     let mut marks = std::mem::take(&mut ws.marks);
     let mut stack = std::mem::take(&mut ws.stack);
     let mut interiors = std::mem::take(&mut ws.interiors);
-    marks.clear();
-    marks.resize(band.cells, 0);
+    ws.mark_gen += 1;
+    if ws.mark_gen >= 1 << 27 {
+        marks.fill(0);
+        ws.mark_gen = 1;
+    }
+    if marks.len() < band.cells {
+        marks.resize(band.cells, 0);
+    }
+    let gen = ws.mark_gen;
     stack.clear();
     stack.extend(ws.ends.iter().map(|&(i, v)| (i, v, D)));
     // per column, its cells off the edge, once asked (u32::MAX: not yet)
@@ -759,10 +769,11 @@ fn touches_edge<M: ErrorModel>(m: &M, read: &[u8], g: &Graph, band: &GraphBand, 
         let vu = v as usize;
         let (lo, hi) = (band.lo[vu - band.v0], band.hi[vu - band.v0]);
         let idx = (band.off[vu - band.v0] + i - lo) as usize;
-        if marks[idx] & kind != 0 {
+        let held = if marks[idx] >> 4 == gen { marks[idx] & 15 } else { 0 };
+        if held & u32::from(kind) != 0 {
             continue;
         }
-        marks[idx] |= kind;
+        marks[idx] = gen << 4 | held | u32::from(kind);
         let slot = &mut interiors[vu - band.v0];
         if slot.0 == u32::MAX {
             *slot = interior(g, band, vu, lo, hi, n);
@@ -1189,6 +1200,8 @@ pub(crate) fn decided_states<M: ErrorModel>(m: &M, read: &GraphRead, graphs: &[&
     let planned: Vec<((i64, i64), [i64; 2])> = graphs.iter().map(|g| bands(g, read)).collect();
     for step in 0..3 {
         let runs: Vec<bool> = out.iter().map(Option::is_none).collect();
+        // this step's band per state; a state laid out as the one it shares from has its band
+        let mut stepped: Vec<Option<std::rc::Rc<GraphBand>>> = vec![None; k];
         // a state shares at this step from one that runs it too; that state keeps its total
         // and ends before the first base any of them takes over
         let from: Vec<Option<usize>> = (0..k).map(|i| shares[i].filter(|&(s, _)| runs[i] && runs[s]).map(|(s, _)| s)).collect();
@@ -1205,7 +1218,11 @@ pub(crate) fn decided_states<M: ErrorModel>(m: &M, read: &GraphRead, graphs: &[&
             let g = graphs[i];
             let (trim, halves) = planned[i];
             let half = (step < 2).then(|| halves[step]);
-            let band = GraphBand::new(g, &read.rp, half, trim);
+            let band = match from[i].and_then(|s| stepped[s].clone()) {
+                Some(b) => b,
+                None => std::rc::Rc::new(GraphBand::new(g, &read.rp, half, trim)),
+            };
+            stepped[i] = Some(band.clone());
             let (head, rest) = wss.split_at_mut(i);
             let ws = &mut rest[0];
             let start = from[i].map(|s| (&head[s], snap_at[s].unwrap_or(0)));
@@ -1250,7 +1267,7 @@ pub(crate) fn decided<M: ErrorModel>(m: &M, read: &GraphRead, g: &Graph, ws: &mu
         let r = if g.topological { run_tracked(m, read.seq, g, &band, ws, floor_for(slack)) } else { run_reference::<M, true, false>(m, read.seq, g, &band, ws) };
         if !r.clipped && r.score >= floor_for(slack) && (r.score == 0 || !copy_off_band(read.seq, g, &band)) {
             if g.topological {
-                ws.last = Some((band, r));
+                ws.last = Some((std::rc::Rc::new(band), r));
             }
             return (r.score, Some(half));
         }
@@ -1258,7 +1275,7 @@ pub(crate) fn decided<M: ErrorModel>(m: &M, read: &GraphRead, g: &Graph, ws: &mu
     let full = GraphBand::new(g, &read.rp, None, trim);
     let r = if g.topological { run::<M, false>(m, read.seq, g, &full, ws) } else { run_reference::<M, false, false>(m, read.seq, g, &full, ws) };
     if g.topological {
-        ws.last = Some((full, r));
+        ws.last = Some((std::rc::Rc::new(full), r));
     }
     (r.score, None)
 }

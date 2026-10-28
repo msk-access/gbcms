@@ -1011,6 +1011,8 @@ pub(crate) fn classify(record: &Record, variant: &Variant, quals: &[u8], min_bas
             // The judge never reads a read's name: a read alike in all else (bases, qualities,
             // placement, the aligner's tags) to one this row judged gets that read's verdict.
             read.name.clear();
+            // the per-read trace lines' arguments are built only where they are written
+            let tracing = log::log_enabled!(log::Level::Trace);
             let view = (read, !overlaps_anchor, min_baseq);
             let clock = std::time::Instant::now();
             let judged = haplotypes.judged(&view);
@@ -1058,7 +1060,7 @@ pub(crate) fn classify(record: &Record, variant: &Variant, quals: &[u8], min_bas
                 } else {
                     out.read_from_right = allowed;
                 }
-                if sub {
+                if sub && tracing {
                     let c = verdict.clip;
                     trace!(
                         "judge clipsub {}:{} {}>{} read={} mate={} call={:?} soft=({},{}) clip={} inside={} admitted={} \
@@ -1072,13 +1074,15 @@ pub(crate) fn classify(record: &Record, variant: &Variant, quals: &[u8], min_bas
                     );
                 }
             }
-            trace!(
-                "haplotype judge {}:{} {}>{} read={}: {:?} (best alt={:?} ref={:?} other={:?}) qual={} \
-                 holds the anchor={} over {} haplotypes",
-                variant.chrom, variant.pos + 1, variant.ref_allele, variant.alt_allele,
-                String::from_utf8_lossy(record.qname()), verdict.call, verdict.best[0], verdict.best[1],
-                verdict.best[2], out.qual, overlaps_anchor || verdict.holds_anchor, site.haps.len(),
-            );
+            if tracing {
+                trace!(
+                    "haplotype judge {}:{} {}>{} read={}: {:?} (best alt={:?} ref={:?} other={:?}) qual={} \
+                     holds the anchor={} over {} haplotypes",
+                    variant.chrom, variant.pos + 1, variant.ref_allele, variant.alt_allele,
+                    String::from_utf8_lossy(record.qname()), verdict.call, verdict.best[0], verdict.best[1],
+                    verdict.best[2], out.qual, overlaps_anchor || verdict.holds_anchor, site.haps.len(),
+                );
+            }
             // Measurement only, the "fits nothing" decision package: per judged read, its best
             // score per class (kept where the rule made it depth), its confident bases and the
             // errors its qualities lead one to expect, the states the full programme decided,
@@ -1109,15 +1113,17 @@ pub(crate) fn classify(record: &Record, variant: &Variant, quals: &[u8], min_bas
                 );
             }
             let f = verdict.fits;
-            trace!(
-                "judge fits {}:{} {}>{} read={} mate={} call={:?} alt={} ref={} other={} conf={} len={} experr={:.2} \
-                 full={}/{} ns={} mapq={} as={} xs={} nm={} nb={} fired={} rule={:?}",
-                variant.chrom, variant.pos + 1, variant.ref_allele, variant.alt_allele,
-                String::from_utf8_lossy(record.qname()), if record.is_first_in_template() { 1 } else { 2 },
-                verdict.call, opt(verdict.best[0]), opt(verdict.best[1]), opt(verdict.best[2]), read.confident(), read.seq.len(),
-                read.expected_errors(), f.full, f.states, ns, read.tags.mapq, opt(read.tags.best), opt(read.tags.elsewhere),
-                opt(read.tags.nm), opt(f.neighbourhood), f.fired, fits_rule(),
-            );
+            if tracing {
+                trace!(
+                    "judge fits {}:{} {}>{} read={} mate={} call={:?} alt={} ref={} other={} conf={} len={} experr={:.2} \
+                     full={}/{} ns={} mapq={} as={} xs={} nm={} nb={} fired={} rule={:?}",
+                    variant.chrom, variant.pos + 1, variant.ref_allele, variant.alt_allele,
+                    String::from_utf8_lossy(record.qname()), if record.is_first_in_template() { 1 } else { 2 },
+                    verdict.call, opt(verdict.best[0]), opt(verdict.best[1]), opt(verdict.best[2]), read.confident(), read.seq.len(),
+                    read.expected_errors(), f.full, f.states, ns, read.tags.mapq, opt(read.tags.best), opt(read.tags.elsewhere),
+                    opt(read.tags.nm), opt(f.neighbourhood), f.fired, fits_rule(),
+                );
+            }
             if let Some((t, tq, unknown)) = verdict.triage {
                 // Measurement only: triage's call beside the scorer's, for every read it decided.
                 trace!(

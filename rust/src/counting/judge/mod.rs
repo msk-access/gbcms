@@ -102,7 +102,55 @@ pub(crate) struct Haplotypes<'a> {
     /// the anchor, and `--min-baseq`, with its verdict: the judge is a function of these
     /// alone, so a read alike to one judged gets its verdict (deep duplex reads are often
     /// alike: one start, one end, binned qualities).
-    judged: RefCell<HashMap<JudgedKey, decide::Verdict>>,
+    judged: RefCell<HashMap<JudgedKey, decide::Verdict, std::hash::BuildHasherDefault<ViewHasher>>>,
+}
+
+/// The judged views' hasher: keys are compared whole on a hit, so the hash need only
+/// spread them; a multiply-rotate over each word, cheaper than the default's per read.
+#[derive(Default)]
+pub(crate) struct ViewHasher(u64);
+
+impl ViewHasher {
+    #[inline]
+    fn add(&mut self, w: u64) {
+        self.0 = (self.0.rotate_left(5) ^ w).wrapping_mul(0x517c_c1b7_2722_0a95);
+    }
+}
+
+impl std::hash::Hasher for ViewHasher {
+    fn finish(&self) -> u64 {
+        self.0
+    }
+    fn write(&mut self, bytes: &[u8]) {
+        let mut chunks = bytes.chunks_exact(8);
+        for c in &mut chunks {
+            self.add(u64::from_le_bytes([c[0], c[1], c[2], c[3], c[4], c[5], c[6], c[7]]));
+        }
+        let rest = chunks.remainder();
+        if !rest.is_empty() {
+            let mut w = [0u8; 8];
+            w[..rest.len()].copy_from_slice(rest);
+            self.add(u64::from_le_bytes(w) ^ (rest.len() as u64) << 56);
+        }
+    }
+    fn write_u8(&mut self, i: u8) {
+        self.add(u64::from(i));
+    }
+    fn write_u32(&mut self, i: u32) {
+        self.add(u64::from(i));
+    }
+    fn write_u64(&mut self, i: u64) {
+        self.add(i);
+    }
+    fn write_usize(&mut self, i: usize) {
+        self.add(i as u64);
+    }
+    fn write_i64(&mut self, i: i64) {
+        self.add(i as u64);
+    }
+    fn write_isize(&mut self, i: isize) {
+        self.add(i as u64);
+    }
 }
 
 /// A judged read view, whether its anchor was asked for, and `--min-baseq`.
@@ -115,7 +163,7 @@ impl<'a> Haplotypes<'a> {
             site: OnceCell::new(),
             build: Box::new(build),
             verdicts: RefCell::new(HashMap::new()),
-            judged: RefCell::new(HashMap::new()),
+            judged: RefCell::new(HashMap::default()),
         }
     }
 

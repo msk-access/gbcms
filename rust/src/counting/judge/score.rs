@@ -263,6 +263,10 @@ struct Values {
     f: Vec<i32>,
     lead: Vec<i32>,
     rows: Vec<(i32, usize)>,
+    /// Per cell, the edge search that last marked it (above the low four bits) and the
+    /// kinds it marked, so no search clears the marks of the one before.
+    marks: Vec<u32>,
+    mark_gen: u32,
 }
 
 impl Values {
@@ -427,13 +431,28 @@ fn cell_sources(read: &[u8], hap: &[u8], band: &Band, vals: &Values, i: usize, j
 /// opening or E by an extension; F through the cell above, A by an opening or F by an
 /// extension; A through whichever of D, E and F it equals), to a row's first column (past
 /// column 0) or last (short of the haplotype's end).
-fn touches_edge(read: &[u8], hap: &[u8], band: &Band, vals: &Values, score: i32) -> bool {
+fn touches_edge(read: &[u8], hap: &[u8], band: &Band, vals: &mut Values, score: i32) -> bool {
+    let mut marks = std::mem::take(&mut vals.marks);
+    vals.mark_gen += 1;
+    if vals.mark_gen >= 1 << 27 {
+        marks.fill(0);
+        vals.mark_gen = 1;
+    }
+    if marks.len() < vals.cells {
+        marks.resize(vals.cells, 0);
+    }
+    let found = touches_edge_marked(read, hap, band, vals, score, &mut marks, vals.mark_gen);
+    vals.marks = marks;
+    found
+}
+
+/// [`touches_edge`] over `marks` (this search's generation `gen`).
+fn touches_edge_marked(read: &[u8], hap: &[u8], band: &Band, vals: &Values, score: i32, marks: &mut [u32], gen: u32) -> bool {
     let (n, m) = (read.len(), hap.len());
     const D: u8 = 1;
     const E: u8 = 2;
     const F: u8 = 4;
     const A: u8 = 8;
-    let mut marks = vec![0u8; vals.cells];
     let mut stack: Vec<(usize, usize, u8)> = Vec::new();
     for i in 1..=n {
         let (row_best, _) = vals.rows[i];
@@ -448,10 +467,11 @@ fn touches_edge(read: &[u8], hap: &[u8], band: &Band, vals: &Values, score: i32)
     }
     while let Some((i, j, kind)) = stack.pop() {
         let Some(x) = vals.at(band, i, j) else { continue };
-        if marks[x] & kind != 0 {
+        let held = if marks[x] >> 4 == gen { marks[x] & 15 } else { 0 };
+        if held & u32::from(kind) != 0 {
             continue;
         }
-        marks[x] |= kind;
+        marks[x] = gen << 4 | held | u32::from(kind);
         let (lo, hi) = (band.lo[i], band.hi[i]);
         if (j == lo && lo > 0) || (j == hi && hi < m) {
             return true;
@@ -620,7 +640,7 @@ pub(crate) fn align(read: &[u8], hap: &[u8], band: Option<&Band>) -> Alignment {
         // reused across calls on this thread (taken out for the call)
         let mut vals = VALUES.with(|v| std::mem::take(&mut *v.borrow_mut()));
         let r = run_values(read, hap, b, &mut vals);
-        let stands = r.score >= BAND_FLOOR && !touches_edge(read, hap, b, &vals, r.score) && (r.score == 0 || !copy_off_band(read, hap, b));
+        let stands = r.score >= BAND_FLOOR && !touches_edge(read, hap, b, &mut vals, r.score) && (r.score == 0 || !copy_off_band(read, hap, b));
         let out = stands.then(|| traceback_values(read, hap, b, &vals, r));
         VALUES.with(|v| *v.borrow_mut() = vals);
         if let Some(a) = out {
@@ -937,7 +957,7 @@ mod tests {
             let mut vals = Values::default();
             let r = run_values(&read, &hap, &band, &mut vals);
             assert_eq!((r.score, r.end), (tracked.score, tracked.end), "case {case}: score and end");
-            assert_eq!(touches_edge(&read, &hap, &band, &vals, r.score), tracked.clipped, "case {case}: the edge");
+            assert_eq!(touches_edge(&read, &hap, &band, &mut vals, r.score), tracked.clipped, "case {case}: the edge");
             clipped += usize::from(tracked.clipped);
         }
         assert!(clipped > 300, "the cases reach the band's edge ({clipped})");
