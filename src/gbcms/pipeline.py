@@ -32,7 +32,7 @@ from .io.atomic import atomic_path, commit_partial, discard_partial, partial_pat
 from .io.input import MafReader, VariantReader, VcfReader, variant_format
 from .io.output import MafWriter, VcfWriter, build_identity, declared_contigs
 from .models.core import GbcmsBaseConfig, OutputFormat, Variant, VariantType
-from .qc_summary import QcSummary, log_qc_summary, summarize_output
+from .qc_summary import QcSummary, Skipped, log_qc_summary, summarize_output
 from .rescue_audit import (
     MNP_RESCUE_ELIGIBLE,
     OUTCOME_HAPLOTYPE_CONFIRMED,
@@ -479,6 +479,8 @@ class Pipeline:
         self._logged_naming: set[tuple[str, str]] = set()
         # One QC tally per written sample, for the end-of-run summary.
         self._qc_summaries: list[QcSummary] = []
+        # Samples whose output could not be read for it: named in the summary, not dropped.
+        self._qc_skipped: list[Skipped] = []
 
     def _log_naming_difference(
         self, variants: list[Variant], other_names: list[str], other: str
@@ -722,7 +724,13 @@ class Pipeline:
             self._stats["total_time"],
         )
         # Last in the log: which flags fired, which rows need a look, what to do.
-        log_qc_summary(self._qc_summaries)
+        # A sample that failed has no output to check; one whose output could not be read was
+        # not checked either. Both are named, so the check never reads as complete.
+        not_checked = [
+            *self._qc_skipped,
+            *(Skipped(f["name"], f"counting failed ({f['error']})") for f in self._failed_samples),
+        ]
+        log_qc_summary(self._qc_summaries, not_checked)
 
         # Include failed_samples in returned stats for callers
         return {**self._stats, "failed_samples": self._failed_samples}
@@ -887,6 +895,7 @@ class Pipeline:
                 summarize_output(self._output_file(sample_name, ext), sample_name, ext)
             )
         except Exception as exc:
+            self._qc_skipped.append(Skipped(sample_name, f"{type(exc).__name__}: {exc}"))
             logger.warning(
                 "QC summary skipped for sample %s (%s: %s); the output is unaffected",
                 sample_name,

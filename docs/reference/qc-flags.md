@@ -217,8 +217,10 @@ users read the counts and the VAF and never open the flag columns; the summary p
 the few rows where that is not enough.
 
 It reads the output the run has written, MAF or VCF, after writing it. It changes no count,
-column or row, writes no file and does not change the exit code. If the output cannot be
-read, the run logs a warning and carries on.
+column or row, writes no file and does not change the exit code. If a sample's output
+cannot be read, the run logs a warning and carries on; the sample is named in the block
+under "Not checked", with a sample that failed to count, and the closing line is a `WARNING`
+that says "k of n samples not checked", so an incomplete check never reads as a clean one.
 
 Each flag is in one of three tiers. The first two are the rows that **need a look**.
 

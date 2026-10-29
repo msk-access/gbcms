@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed — an unchecked sample no longer reads as a clean one (#227)
+
+- **The QC summary names a sample whose output could not be read.** When one sample's
+  output could not be read, the combined block left it out and the closing line said "No row
+  needs a look". Now the block counts "k of n samples" and lists the sample under "Not
+  checked" with the reason, a sample whose counting failed is named too, and the closing line
+  is a `WARNING` ("1 of 3 samples not checked: ..."). The exit code is unchanged.
+  `gbcms summarize` does the same for an input it refuses or cannot read: it summarizes the
+  others, names the input, and still exits 1. A MultiQC report carries the warning.
+- **The MultiQC table is built in one pass over the cohort.** It looked for the flags that
+  fired once for every sample, so its time grew with the square of the cohort; the output is
+  byte-identical.
+
 ### Added — `gbcms summarize`, the merge NA flag and `--qc_summary` (#227)
 
 - **`gbcms summarize <outputs...>` makes the QC summary of finished outputs.** It reads

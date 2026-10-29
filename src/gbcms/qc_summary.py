@@ -405,6 +405,15 @@ def _base(token: str) -> str:
     return token.split("(", 1)[0]
 
 
+class Skipped(NamedTuple):
+    """A sample whose output was not checked, and why (it could not be read, was refused,
+    or never got written). The summary names it: an incomplete check must not read as a
+    complete one."""
+
+    sample: str
+    reason: str
+
+
 @dataclass
 class QcSummary:
     """The tally of one sample's output. ``flag_rows`` counts rows per flag;
@@ -422,6 +431,7 @@ class QcSummary:
     unknown_only: int = 0
     written_by: str = ""
     merged: bool = False
+    source: str = ""  # the output file this was read from, as given
     flag_rows: Counter[str] = field(default_factory=Counter)
     tier_rows: Counter[Tier] = field(default_factory=Counter)
     unlisted: Counter[str] = field(default_factory=Counter)
@@ -517,6 +527,7 @@ def summarize_output(
     rows = _vcf_rows(path) if fmt == "vcf" else _maf_rows(path, meta)
     summary = _tally(rows, sample or sample_name(path), fmt, max_examples, keep_rows)
     summary.written_by = _written_by(path, fmt)
+    summary.source = str(path)
     summary.merged = meta.get("merged", False)
     return summary
 
@@ -567,8 +578,32 @@ def _tier_lines(tier: Tier, summaries: Sequence[QcSummary]) -> list[str]:
     return lines
 
 
-def render_summary(summaries: Sequence[QcSummary], max_examples: int = MAX_EXAMPLES) -> str:
-    """The summary block for one sample, or the cohort block for several."""
+def _not_checked_lines(skipped: Sequence[Skipped], total: int) -> list[str]:
+    """The samples that were not checked, each with its reason (the first ten)."""
+    lines = [f"  Not checked: {len(skipped)} of {total} samples"]
+    for item in skipped[:MAX_SAMPLES]:
+        lines += _fill(f"{item.sample}: {item.reason}", 4, 8)
+    if len(skipped) > MAX_SAMPLES:
+        lines.append(f"    and {len(skipped) - MAX_SAMPLES} more")
+    return lines
+
+
+def render_summary(
+    summaries: Sequence[QcSummary],
+    max_examples: int = MAX_EXAMPLES,
+    skipped: Sequence[Skipped] = (),
+) -> str:
+    """The summary block for one sample, or the cohort block for several. Samples in
+    ``skipped`` were not checked: the block counts "k of n" samples and names them."""
+    total = len(summaries) + len(skipped)
+    if not summaries:
+        return "\n".join(
+            [
+                f"QC summary for 0 of {total} samples: no output could be read",
+                *_not_checked_lines(skipped, total),
+                "  What each flag means and what to do: " + QC_FLAGS_URL,
+            ]
+        )
     many = len(summaries) > 1
     rows = sum(s.rows for s in summaries)
     need = sum(s.need_look for s in summaries)
@@ -576,14 +611,21 @@ def render_summary(summaries: Sequence[QcSummary], max_examples: int = MAX_EXAMP
     unknown_only = sum(s.unknown_only for s in summaries)
     fmt = summaries[0].fmt
 
-    who = f"{len(summaries)} samples" if many else f"sample {summaries[0].sample}"
+    if skipped:
+        who = f"{len(summaries)} of {total} samples"
+    else:
+        who = f"{len(summaries)} samples" if many else f"sample {summaries[0].sample}"
     lines = [
         f"QC summary for {who}: {need:,} of {_count(rows)} {_need(need)} a look "
-        f"({_share(need, rows)})",
+        f"({_share(need, rows)})"
+    ]
+    if skipped:
+        lines += _not_checked_lines(skipped, total)
+    lines.append(
         f"  Rows with only informational flags: {info_only:,}; with no flag: "
         f"{rows - need - info_only - unknown_only:,}"
-        + (f"; with only flags this build does not know: {unknown_only:,}" if unknown_only else ""),
-    ]
+        + (f"; with only flags this build does not know: {unknown_only:,}" if unknown_only else "")
+    )
     for tier in Tier:
         lines += _tier_lines(tier, summaries)
 
@@ -634,35 +676,55 @@ def _need(n: int) -> str:
     return "needs" if n == 1 else "need"
 
 
-def closing_line(summaries: Sequence[QcSummary]) -> tuple[int, str]:
+def _not_checked_note(skipped: Sequence[Skipped], total: int) -> str:
+    """``1 of 3 samples not checked: B (why)``; the first three are named."""
+    named = ", ".join(f"{item.sample} ({item.reason})" for item in skipped[:3])
+    if len(skipped) > 3:
+        named += f" and {len(skipped) - 3} more"
+    noun = "sample" if total == 1 else "samples"
+    return f"{len(skipped)} of {total} {noun} not checked: {named}"
+
+
+def closing_line(
+    summaries: Sequence[QcSummary], skipped: Sequence[Skipped] = ()
+) -> tuple[int, str]:
     """The line that ends a summary: ``(logging level, message)``. A WARNING when any
-    row needs a look, an INFO line when none does."""
+    row needs a look or any sample was not checked, an INFO line when every sample was
+    checked and none needs a look."""
     rows = sum(s.rows for s in summaries)
     need = sum(s.need_look for s in summaries)
+    tail = ": see the QC summary above and " + QC_FLAGS_URL
+    note = _not_checked_note(skipped, len(summaries) + len(skipped)) if skipped else ""
     if not need:
-        return (
-            logging.INFO,
-            f"No row needs a look: {_count(rows)} checked (QC flags: " + QC_FLAGS_URL + ")",
-        )
+        if not skipped:
+            return (
+                logging.INFO,
+                f"No row needs a look: {_count(rows)} checked (QC flags: " + QC_FLAGS_URL + ")",
+            )
+        if not summaries:
+            return (
+                logging.WARNING,
+                note + "; nothing could be checked (QC flags: " + QC_FLAGS_URL + ")",
+            )
+        checked = f"no row needs a look in the {len(summaries)} checked ({_count(rows)})"
+        return logging.WARNING, f"{note}; {checked}" + tail
     fix = sum(s.tier_rows[Tier.FIX_INPUT] for s in summaries)
     where = ""
     if len(summaries) > 1:
         k = sum(1 for s in summaries if s.need_look)
         where = f" in {k} of {len(summaries)} samples"
     head = f"{need:,} of {_count(rows)} {_need(need)} a look{where}"
-    return logging.WARNING, (
-        head
-        + f" ({fix:,} with a problem in the input): see the QC summary above and "
-        + QC_FLAGS_URL
-    )
+    head += f" ({fix:,} with a problem in the input)"
+    return logging.WARNING, head + (f"; {note}" if skipped else "") + tail
 
 
-def log_qc_summary(summaries: Sequence[QcSummary]) -> None:
-    """Log the summary block (INFO), then, as the run's last line, a WARNING when
-    any row needs a look and an INFO line when none does."""
-    if not summaries:
+def log_qc_summary(summaries: Sequence[QcSummary], skipped: Sequence[Skipped] = ()) -> None:
+    """Log the summary block (INFO), then, as the run's last line, a WARNING when any
+    row needs a look or any sample was not checked, and an INFO line when none does."""
+    if not summaries and not skipped:
         return
     # markup off: sample names and labels are user text, not Rich markup.
-    logger.info("%s", render_summary(summaries), extra={"markup": False})
-    level, message = closing_line(summaries)
+    if summaries:  # with none read there is no block, only the line that says so
+        logger.info("%s", render_summary(summaries, skipped=skipped), extra={"markup": False})
+    level, message = closing_line(summaries, skipped)
     logger.log(level, "%s", message, extra={"markup": False})

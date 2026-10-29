@@ -12,7 +12,9 @@ gbcms summarize [OPTIONS] <OUTPUT>...
 
 `gbcms dna` and `gbcms rna` end their log with a QC summary ([QC Flags → End-of-run summary](../reference/qc-flags.md#end-of-run-summary)). `gbcms summarize` makes the same summary from outputs that are already written: an older run, many samples together, or a merged MAF. The text format is the block the run logs; the other formats are the same summary as JSON, a cohort table, or MultiQC content.
 
-It reads each output once and changes nothing in it. The exit code is `0` whether or not rows need a look; a file that cannot be read, or is not a gbcms output, exits `1`.
+It reads each output once and changes nothing in it. The exit code is `0` whether or not rows need a look.
+
+An input that is refused (not a `.maf` or `.vcf`), cannot be read, is not a gbcms output, or shares a sample name with an earlier input is **not checked**: the others are summarized, the block names it under "Not checked" with the reason ("1 of 3 samples not checked"), the closing line is a `WARNING`, and the exit code is `1`. A MultiQC report carries the same warning. With the text format that is all on standard output; the other formats print `not checked: <sample>: <reason>` on standard error.
 
 Every flag, and what to do about it, is defined on the [QC Flags](../reference/qc-flags.md) page.
 

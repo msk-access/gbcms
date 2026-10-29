@@ -1349,28 +1349,33 @@ def summarize(
     """
     from .qc_export import (
         render_tsv,
-        summarize_paths,
+        summarize_inputs,
         text_report,
         write_summaries,
     )
 
     setup_logging(verbose=verbose, trace=False)
+    summaries, skipped = summarize_inputs(outputs, keep_rows=output_format is SummaryFormat.JSON)
+
     try:
-        summaries = summarize_paths(outputs, keep_rows=output_format is SummaryFormat.JSON)
+        if output_format is SummaryFormat.TEXT:
+            # The block names every input that was not checked; no second message.
+            typer.echo(text_report(summaries, skipped))
+        else:
+            # Standard error: the table or the files are the output, and the line is not part of it.
+            for item in skipped:
+                typer.echo(f"not checked: {item.sample}: {item.reason}", err=True)
+            if output_format is SummaryFormat.TSV and output_dir is None:
+                typer.echo(render_tsv(summaries), nl=False)
+            else:
+                write_summaries(summaries, outputs, output_format, output_dir, skipped)
     except (OSError, ValueError) as e:
         logger.error("%s", e)
         raise typer.Exit(code=1) from e
-
-    if output_format is SummaryFormat.TEXT:
-        typer.echo(text_report(summaries))
-    elif output_format is SummaryFormat.TSV and output_dir is None:
-        typer.echo(render_tsv(summaries), nl=False)
-    else:
-        try:
-            write_summaries(summaries, outputs, output_format, output_dir)
-        except (OSError, ValueError) as e:
-            logger.error("%s", e)
-            raise typer.Exit(code=1) from e
+    # An input that was refused or could not be read is an error, as it was before; the
+    # others are summarized all the same.
+    if skipped:
+        raise typer.Exit(code=1)
 
 
 if __name__ == "__main__":

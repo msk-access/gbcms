@@ -29,8 +29,10 @@ from .qc_summary import (
     QC_FLAGS,
     QC_FLAGS_URL,
     QcSummary,
+    Skipped,
     Tier,
     _label,
+    _not_checked_note,
     closing_line,
     render_summary,
     sample_name,
@@ -60,25 +62,47 @@ class SummaryFormat(StrEnum):
     MULTIQC = "multiqc"
 
 
-def summarize_paths(paths: Sequence[Path | str], keep_rows: bool = False) -> list[QcSummary]:
-    """The summary of each output file, in the order given. Two files may not share a
-    sample name (the file name without ``.maf`` or ``.vcf``): the cohort table and the
-    per-sample files would otherwise overwrite or repeat each other."""
-    for p in paths:
-        if Path(p).suffix not in (".maf", ".vcf"):
-            raise ValueError(
-                f"{Path(p).name}: expected a .maf or .vcf output (compressed files are not read)"
+def summarize_inputs(
+    paths: Sequence[Path | str], keep_rows: bool = False
+) -> tuple[list[QcSummary], list[Skipped]]:
+    """The summary of each output file that can be read, in the order given, and the
+    inputs that could not be: refused (not a ``.maf`` or ``.vcf``), unreadable, not a
+    gbcms output, or sharing a sample name (the file name without ``.maf`` or ``.vcf``)
+    with an earlier input, which the cohort table and the per-sample files could not
+    tell apart. A skipped input is named with its reason and is never dropped silently."""
+    summaries: list[QcSummary] = []
+    skipped: list[Skipped] = []
+    taken: dict[str, Path] = {}
+    for raw in paths:
+        path = Path(raw)
+        name = sample_name(path)
+        if path.suffix not in (".maf", ".vcf"):
+            reason = f"{path.name}: expected a .maf or .vcf output (compressed files are not read)"
+            skipped.append(Skipped(name, reason))
+        elif name in taken:
+            reason = (
+                f"two outputs share the sample name {name}: {path} is not checked, "
+                f"{taken[name]} is (rename one, or summarize them separately)"
             )
-    names = [sample_name(p) for p in paths]
-    repeated = sorted({n for n in names if names.count(n) > 1})
-    if repeated:
-        raise ValueError(
-            f"two outputs share the sample name {', '.join(repeated)}: "
-            "rename one, or summarize them separately"
-        )
-    return [
-        summarize_output(p, name, keep_rows=keep_rows) for p, name in zip(paths, names, strict=True)
-    ]
+            skipped.append(Skipped(name, reason))
+        else:
+            try:
+                summaries.append(summarize_output(path, name, keep_rows=keep_rows))
+            except (OSError, ValueError, csv.Error) as e:
+                reason = str(e) if isinstance(e, ValueError) else f"{type(e).__name__}: {e}"
+                skipped.append(Skipped(name, reason))
+                continue
+            taken[name] = path
+    return summaries, skipped
+
+
+def summarize_paths(paths: Sequence[Path | str], keep_rows: bool = False) -> list[QcSummary]:
+    """:func:`summarize_inputs` for a caller that wants all or nothing: the first input
+    that is skipped raises ``ValueError`` with its reason."""
+    summaries, skipped = summarize_inputs(paths, keep_rows)
+    if skipped:
+        raise ValueError(skipped[0].reason)
+    return summaries
 
 
 # ── JSON ──────────────────────────────────────────────────────────────────────
@@ -254,15 +278,17 @@ def multiqc_table(summaries: Sequence[QcSummary]) -> dict[str, Any]:
             "scale": False,
         },
     }
-    for f in QC_FLAGS:
-        if any(s.flag_rows[f.name] for s in summaries):
-            headers[f.name] = {
-                "title": f.name,
-                "description": f"{f.tier.title}: {f.action}",
-                "format": "{:,.0f}",
-                "scale": False,
-                "hidden": True,
-            }
+    # Which flags fired anywhere, worked out once: a flag that never fires costs a scan of
+    # the whole cohort to find out, so asking again for each sample would cost its square.
+    fired = [f for f in QC_FLAGS if any(s.flag_rows[f.name] for s in summaries)]
+    for f in fired:
+        headers[f.name] = {
+            "title": f.name,
+            "description": f"{f.tier.title}: {f.action}",
+            "format": "{:,.0f}",
+            "scale": False,
+            "hidden": True,
+        }
     data: dict[str, dict[str, float]] = {}
     for s in summaries:
         data[s.sample] = {
@@ -272,11 +298,7 @@ def multiqc_table(summaries: Sequence[QcSummary]) -> dict[str, Any]:
             "check_call": s.tier_rows[Tier.CHECK_CALL],
             "informational": s.tier_rows[Tier.INFORMATIONAL],
             "need_look_pct": round(100 * s.need_look / s.rows, 2) if s.rows else 0.0,
-            **{
-                f.name: s.flag_rows[f.name]
-                for f in QC_FLAGS
-                if any(t.flag_rows[f.name] for t in summaries)
-            },
+            **{f.name: s.flag_rows[f.name] for f in fired},
         }
     return {
         "id": MULTIQC_TABLE_ID,
@@ -299,47 +321,76 @@ def multiqc_table(summaries: Sequence[QcSummary]) -> dict[str, Any]:
     }
 
 
-def multiqc_warning(summaries: Sequence[QcSummary]) -> dict[str, Any] | None:
-    """The section that says rows need a look, or None when none do: a report shows
-    it only when there is something to read. MultiQC puts a custom-content section the
-    report's ``custom_content: order`` does not name at the top."""
+def multiqc_warning(
+    summaries: Sequence[QcSummary], skipped: Sequence[Skipped] = ()
+) -> dict[str, Any] | None:
+    """The section that says rows need a look or a sample was not checked, or None when
+    neither: a report shows it only when there is something to read. MultiQC puts a
+    custom-content section the report's ``custom_content: order`` does not name at the
+    top."""
     flagged = [s for s in summaries if s.need_look]
-    if not flagged:
+    if not flagged and not skipped:
         return None
     rows = sum(s.rows for s in summaries)
     need = sum(s.need_look for s in summaries)
-    return {
-        "id": MULTIQC_WARNING_ID,
-        "section_name": "WARNING: gbcms rows need a look",
-        "section_href": QC_FLAGS_URL,
-        "description": (
+    headers = _tier_headers(only_need=True)
+    data: dict[str, dict[str, float]] = {
+        s.sample: {
+            "need_look": s.need_look,
+            "fix_input": s.tier_rows[Tier.FIX_INPUT],
+            "check_call": s.tier_rows[Tier.CHECK_CALL],
+        }
+        for s in flagged
+    }
+    description = ""
+    if flagged:
+        description = (
             f"{need:,} of {rows:,} rows need a look, in {len(flagged)} of {len(summaries)} "
             "samples. Only the samples with such rows are listed."
+        )
+    if skipped:
+        # A sample that was not checked is not a clean one.
+        headers["not_checked"] = {
+            "title": "Not checked",
+            "description": "The output could not be read, or was refused: nothing was checked",
+            "cond_formatting_rules": {"pass": [{"eq": 0}], "fail": [{"gt": 0}]},
+            "format": "{:,.0f}",
+            "scale": False,
+        }
+        for row in data.values():
+            row["not_checked"] = 0
+        for item in skipped:
+            data[item.sample] = {"not_checked": 1}
+        note = _not_checked_note(skipped, len(summaries) + len(skipped))
+        description = (description + " " + note + ".").strip()
+    return {
+        "id": MULTIQC_WARNING_ID,
+        "section_name": (
+            "WARNING: gbcms rows need a look" if flagged else "WARNING: gbcms outputs not checked"
         ),
+        "section_href": QC_FLAGS_URL,
+        "description": description,
         "helptext": _HELP,
         "plot_type": "table",
         "pconfig": {
             "id": "gbcms_qc_warning_table",
-            "title": "gbcms: rows that need a look",
+            "title": "gbcms: rows that need a look" if flagged else "gbcms: outputs not checked",
             "namespace": "gbcms",
             "col1_header": "Sample",
         },
-        "headers": _tier_headers(only_need=True),
-        "data": {
-            s.sample: {
-                "need_look": s.need_look,
-                "fix_input": s.tier_rows[Tier.FIX_INPUT],
-                "check_call": s.tier_rows[Tier.CHECK_CALL],
-            }
-            for s in flagged
-        },
+        "headers": headers,
+        "data": data,
     }
 
 
-def multiqc_documents(summaries: Sequence[QcSummary]) -> dict[str, dict[str, Any]]:
+def multiqc_documents(
+    summaries: Sequence[QcSummary], skipped: Sequence[Skipped] = ()
+) -> dict[str, dict[str, Any]]:
     """The MultiQC files to write: file name -> content (the warning only if needed)."""
-    docs = {MULTIQC_TABLE_NAME: multiqc_table(summaries)}
-    warning = multiqc_warning(summaries)
+    docs: dict[str, dict[str, Any]] = {}
+    if summaries:
+        docs[MULTIQC_TABLE_NAME] = multiqc_table(summaries)
+    warning = multiqc_warning(summaries, skipped)
     if warning:
         docs[MULTIQC_WARNING_NAME] = warning
     return docs
@@ -364,11 +415,13 @@ def write_summaries(
     inputs: Sequence[Path],
     fmt: SummaryFormat,
     output_dir: Path | None = None,
+    skipped: Sequence[Skipped] = (),
 ) -> list[Path]:
     """Write the files of a file format; return their paths. ``json`` puts a file
     beside each input unless ``output_dir`` is given; ``tsv`` and ``multiqc`` write one
-    cohort file to ``output_dir`` (the current directory where none is given). An output
-    never replaces an input."""
+    cohort file to ``output_dir`` (the current directory where none is given). ``inputs`` is
+    every file the caller was given, read or not: an output never replaces one. ``skipped``
+    reaches the MultiQC warning, so a report does not read as complete."""
     written: list[Path] = []
     taken = {Path(p).resolve() for p in inputs}
 
@@ -380,14 +433,14 @@ def write_summaries(
     if output_dir is not None:
         output_dir.mkdir(parents=True, exist_ok=True)
     if fmt is SummaryFormat.JSON:
-        for s, src in zip(summaries, inputs, strict=True):
-            folder = output_dir or Path(src).parent
+        for i, s in enumerate(summaries):
+            folder = output_dir or (Path(s.source) if s.source else Path(inputs[i])).parent
             put(folder / (s.sample + JSON_SUFFIX), _dump(summary_to_dict(s)))
     elif fmt is SummaryFormat.TSV:
         put((output_dir or Path.cwd()) / TSV_NAME, render_tsv(summaries))
     elif fmt is SummaryFormat.MULTIQC:
         folder = output_dir or Path.cwd()
-        documents = multiqc_documents(summaries)
+        documents = multiqc_documents(summaries, skipped)
         for name, document in documents.items():
             put(folder / name, _dump(document))
         stale = folder / MULTIQC_WARNING_NAME
@@ -398,6 +451,6 @@ def write_summaries(
     return written
 
 
-def text_report(summaries: Sequence[QcSummary]) -> str:
+def text_report(summaries: Sequence[QcSummary], skipped: Sequence[Skipped] = ()) -> str:
     """The ``text`` format: the run's block, then its closing line."""
-    return render_summary(summaries) + "\n" + closing_line(summaries)[1]
+    return render_summary(summaries, skipped=skipped) + "\n" + closing_line(summaries, skipped)[1]
