@@ -7,6 +7,46 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed — an unchecked sample no longer reads as a clean one (#227)
+
+- **The QC summary names a sample whose output could not be read.** When one sample's
+  output could not be read, the combined block left it out and the closing line said "No row
+  needs a look". Now the block counts "k of n samples" and lists the sample under "Not
+  checked" with the reason, a sample whose counting failed is named too, and the closing line
+  is a `WARNING` ("1 of 3 samples not checked: ..."). The exit code is unchanged.
+  `gbcms summarize` does the same for an input it refuses or cannot read: it summarizes the
+  others, names the input, and still exits 1. A MultiQC report carries the warning.
+- **`gbcms summarize` refuses a VCF that is not gbcms's.** An ordinary VCF, a bare header
+  and an empty `.vcf` read as clean outputs (every record a PASS row with no flags). A VCF
+  now needs gbcms's own `GS` INFO field, declared in its header or on its first record; the
+  rest are named under "Not checked".
+- **A MultiQC file left by an earlier run is removed when this run has nothing for it**, the
+  summary table as well as the warning, so a report never reads old counts. A skipped input
+  that shares a name with a checked sample gets a row of its own in the warning instead of
+  replacing the checked sample's.
+- **The MultiQC table is built in one pass over the cohort.** It looked for the flags that
+  fired once for every sample, so its time grew with the square of the cohort; the output is
+  byte-identical.
+
+### Added — `gbcms summarize`, the merge NA flag and `--qc_summary` (#227)
+
+- **`gbcms summarize <outputs...>` makes the QC summary of finished outputs.** It reads
+  `.maf` or `.vcf` outputs (a run's, or a merge's) with the code the run's own summary uses,
+  and changes nothing in them. `--format text` (the default) is the block the run logs, for
+  one sample or many; `json` writes one `<sample>.qc_summary.json` per output (every flag,
+  zeros included, and every row that needs a look); `tsv` writes one cohort table; `multiqc`
+  writes MultiQC custom content (`gbcms_qc_summary_mqc.json`, and a
+  `gbcms_qc_warning_mqc.json` section only when a row needs a look). The exit code is 0
+  whether or not rows need a look. `gbcms dna` and `gbcms rna` gain no option.
+- **A merged MAF is summarized too, with a flag for NA combined cells.** The summary reads
+  each input's flags under its prefix, and `COMBINED_NA` ("check the call") marks a row whose
+  `simplex_duplex_*` count, total or VAF is `NA`: an input count was missing or not a number,
+  or the duplex and simplex rescues adopted different alleles. It is built from what
+  `gbcms merge` writes; no column is added.
+- **Nextflow: `--qc_summary` (default `false`).** After all samples finish, one task runs
+  `gbcms summarize --format multiqc` and `--format json` over every output, merged MAFs
+  included, and publishes them to `gbcms/qc_summary/`.
+
 ### Added — an end-of-run QC summary in the run log (#227)
 
 - **The run log now ends with a QC summary.** `gbcms dna` and `gbcms rna` log one block

@@ -32,9 +32,10 @@ from .models.core import (
     StrEnum,  # canonical backport (Python ≤ 3.10 compatible), defined in models.core
 )
 from .pipeline import Pipeline
+from .qc_export import SummaryFormat
 from .utils import setup_logging
 
-__all__ = ["app", "dna", "rna", "normalize", "convert", "merge"]
+__all__ = ["app", "dna", "rna", "normalize", "convert", "merge", "summarize"]
 
 logger = logging.getLogger(__name__)
 
@@ -1299,6 +1300,82 @@ def _parse_bam_arg(bam_arg: Path) -> tuple[str, Path]:
         parts = bam_str.split(":", 1)
         return parts[0], Path(parts[1])
     return bam_arg.stem, bam_arg
+
+
+@app.command()
+def summarize(
+    outputs: list[Path] = typer.Argument(
+        ...,
+        exists=True,
+        dir_okay=False,
+        readable=True,
+        help="Finished gbcms outputs: .maf or .vcf from gbcms dna, rna or merge.",
+    ),
+    output_format: SummaryFormat = typer.Option(
+        SummaryFormat.TEXT,
+        "--format",
+        help=(
+            "text: the block a run logs, on standard output. json: one "
+            "<sample>.qc_summary.json per output, beside it. tsv: one cohort table. "
+            "multiqc: MultiQC custom content (*_mqc.json)."
+        ),
+    ),
+    output_dir: Path | None = typer.Option(
+        None,
+        "--output-dir",
+        "-o",
+        file_okay=False,
+        help=(
+            "Where json, tsv and multiqc files are written. Default: json beside each "
+            "output, tsv on standard output, multiqc in the current directory."
+        ),
+    ),
+    verbose: bool = typer.Option(False, "--verbose", "-V", help="Enable verbose debug logging"),
+):
+    """
+    Summarize the QC flags of finished outputs: which fired, on how many rows, which
+    rows need a look, and what to do about each.
+
+    Reads each output once and changes nothing in it. The text format is the block
+    gbcms dna and rna log at the end of a run, for one sample or many; the other
+    formats are the same summary as JSON, a cohort table, or MultiQC content. Every
+    flag is defined on the QC Flags page of the docs. The exit code is 0 whether or
+    not rows need a look.
+
+    Example::
+
+        gbcms summarize results/*.maf
+        gbcms summarize --format multiqc --output-dir qc/ results/*.maf
+    """
+    from .qc_export import (
+        render_tsv,
+        summarize_inputs,
+        text_report,
+        write_summaries,
+    )
+
+    setup_logging(verbose=verbose, trace=False)
+    summaries, skipped = summarize_inputs(outputs, keep_rows=output_format is SummaryFormat.JSON)
+
+    try:
+        if output_format is SummaryFormat.TEXT:
+            # The block names every input that was not checked; no second message.
+            typer.echo(text_report(summaries, skipped))
+        else:
+            # Standard error: the table or the files are the output, and the line is not part of it.
+            for item in skipped:
+                typer.echo(f"not checked: {item.sample}: {item.reason}", err=True)
+            if output_format is SummaryFormat.TSV and output_dir is None:
+                typer.echo(render_tsv(summaries), nl=False)
+            else:
+                write_summaries(summaries, outputs, output_format, output_dir, skipped)
+    except (OSError, ValueError) as e:
+        logger.error("%s", e)
+        raise typer.Exit(code=1) from e
+    # An input that was refused or could not be read is an error, as it was before; the
+    # others are summarized all the same.
+    if skipped:
+        raise typer.Exit(code=1)
 
 
 if __name__ == "__main__":

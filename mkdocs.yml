@@ -85,6 +85,7 @@ nav:
     - Merge Command: cli/merge.md
     - Normalize Command: cli/normalize.md
     - Convert Command: cli/convert.md
+    - Summarize Command: cli/summarize.md
   
   - Nextflow Pipeline:
     - Overview: nextflow/index.md

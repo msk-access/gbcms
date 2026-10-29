@@ -154,6 +154,12 @@ gbcms convert --variants variants.vcf --output variants.maf
 gbcms convert --variants variants.maf --fasta hg19.fa --output variants.vcf
 ```
 
+### CLI: QC summary of finished outputs
+```bash
+gbcms summarize results/*.maf                                   # the block a run logs
+gbcms summarize --format multiqc --output-dir qc/ results/*.maf # MultiQC custom content
+```
+
 ### CLI: Multiple Samples (Sequential)
 ```bash
 gbcms dna \
