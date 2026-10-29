@@ -13,10 +13,14 @@ import pytest
 
 import gbcms
 
-# The compiled extension (typed by _rs.pyi) is not Python source and has no __all__.
-MODULES = sorted(
-    m.name for m in pkgutil.walk_packages(gbcms.__path__, "gbcms.") if m.name != "gbcms._rs"
-)
+# walk_packages yields the submodules only, so the package root is named here. The compiled
+# extension (typed by _rs.pyi) is not Python source and has no __all__.
+MODULES = [
+    "gbcms",
+    *sorted(
+        m.name for m in pkgutil.walk_packages(gbcms.__path__, "gbcms.") if m.name != "gbcms._rs"
+    ),
+]
 
 
 @pytest.mark.parametrize("name", MODULES)
