@@ -194,10 +194,12 @@ with their options (see [INFO Fields](#info-fields)).
     (see [Input Formats](input-formats.md#maf-alleles)); unlike maf2vcf, a
     differing `Tumor_Seq_Allele1` is not written as a second ALT. A row whose
     allele is not a base sequence (FAIL `NON_SEQUENCE_ALLELE`, or an empty
-    allele, FAIL `EMPTY_ALLELE`), or a deletion spanning its whole contig (no base
-    before or after it to anchor a record; FAIL `FETCH_FAILED`), is written as the
-    symbolic record `<NON_SEQUENCE>` at `Start_Position`, REF the reference base
-    there (declared in a `##ALT` header line), so the VCF stays valid. A MAF
+    allele, FAIL `EMPTY_ALLELE`), a deletion spanning its whole contig (no base
+    before or after it to anchor a record; FAIL `FETCH_FAILED`), or a row at
+    `Start_Position` 0 that is not an insertion (FAIL `START_BEFORE_CONTIG`), is
+    written as the symbolic record `<NON_SEQUENCE>` at `Start_Position` (position 1
+    for a row at Start 0), REF the reference base there (declared in a `##ALT`
+    header line), so the VCF stays valid. A MAF
     deletion at `Start_Position` 1 is otherwise counted in the base-after form.
 
     | MAF `Start` `Ref` > `Alt` | VCF `POS` `REF` > `ALT` |

@@ -192,6 +192,7 @@ Every N/masked/partial path must produce a deterministic, traceable outcome:
 | ALT = "N" in input VCF/MAF | `FAIL` + reason `ALT_CONTAINS_N` | — | — | `warn` (validation) |
 | ALT equal to REF in input VCF/MAF | `FAIL` + reason `ALT_EQUALS_REF` | — | — | `warn` (validation) |
 | Allele that is not a base sequence (IUPAC code, stray character; `-` outside MAF input) | `FAIL` + reason `NON_SEQUENCE_ALLELE` | — | — | `warn` (validation) |
+| MAF row at `Start_Position` 0 that is not a dash insertion | `FAIL` + reason `START_BEFORE_CONTIG` | — | — | `warn` (validation) |
 | ThirdAllele with partial match | neither + partial | — | +1 | `trace` |
 
 ---

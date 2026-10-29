@@ -31,7 +31,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   only for an insertion the exact-carrier rule cannot judge (no prepared reference), still
   count such a read neither, in `partial_alt`. Counts are unchanged.
 
-### Fixed — a MAF dash insertion at Start 0 is kept and counted (#219)
+### Fixed — a MAF row at Start 0 is kept: an insertion is counted, any other fails visibly (#219)
 
 - **An insertion before a contig's first base is no longer dropped.** A MAF row with
   `Reference_Allele` `-` and `Start_Position` 0 (`Start_Position` is the base before an
@@ -42,10 +42,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   is, as a deletion at Start 1 is (#122). MAF output keeps the row's input columns; VCF
   output and `gbcms convert` write the position-1 record with the row in
   `MAF_START`/`MAF_REF`/`MAF_ALT`. Where the first base is `N` (human contigs), the
-  `ALT` contains `N` and the row is a visible `FAIL` with `ALT_CONTAINS_N`. Any other
-  row at Start 0 (a substitution or a deletion: a base that does not exist) is skipped
-  with a warning, as before. None in the sign-out data (vcf2maf writes such an event
-  with sequence alleles at Start 1).
+  `ALT` contains `N` and the row is a visible `FAIL` with `ALT_CONTAINS_N`. None in the
+  sign-out data (vcf2maf writes such an event with sequence alleles at Start 1).
+- **Any other row at Start 0 is a visible `FAIL` row, not a dropped one.** A substitution,
+  a deletion, a delins, or an insertion written with sequence alleles at `Start_Position`
+  0 names a base that does not exist. The reader dropped it with a warning (only the first
+  five named); it is now kept as `FAIL` with the new reason `START_BEFORE_CONTIG`, its
+  input columns as written, not counted. VCF output and `gbcms convert` write it as the
+  symbolic `<NON_SEQUENCE>` record at position 1 (REF the first base, reason in `GSR`).
+  A negative `Start_Position` is still skipped with a warning. A VCF `POS` of 0 is still
+  an error.
 
 ### Fixed — `--min-baseq` help and docs say what it does (#304)
 

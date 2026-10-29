@@ -57,8 +57,9 @@ class Variant(BaseModel):
     chrom: str
     pos: int = Field(
         ge=-1,
-        description="0-based position of the variant (-1 only for a MAF insertion before "
-        "the contig's first base, which has no anchor base)",
+        description="0-based position of the variant. -1 is a MAF row at Start_Position 0, "
+        "before the contig's first base: preparation resolves an insertion there (it has no "
+        "anchor base) and fails any other row (START_BEFORE_CONTIG)",
     )
     ref: str
     alt: str
@@ -74,18 +75,6 @@ class Variant(BaseModel):
     metadata: dict[str, str] = Field(
         default_factory=dict, description="Original input metadata/columns"
     )
-
-    @model_validator(mode="after")
-    def _only_an_insertion_lies_before_the_first_base(self) -> "Variant":
-        """Position -1 is the anchor of a MAF dash insertion at ``Start_Position`` 0, which
-        lies before the contig's first base (preparation resolves it to the base after it).
-        Every other variant sits on a base of the contig: ``pos >= 0``."""
-        if self.pos < 0 and not (self.pos == -1 and self.ref == "-" and self.alt != "-"):
-            raise ValueError(
-                f"pos must be >= 0 (got {self.pos}); -1 is allowed only for a MAF insertion "
-                "(ref '-') before the contig's first base"
-            )
-        return self
 
     @property
     def output_chrom(self) -> str:

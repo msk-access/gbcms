@@ -15,7 +15,9 @@ Operator decisions (2026-09-25 for I1, I3, I4; 2026-10-05 for the rest):
 - I7 #219: a MAF dash insertion at Start_Position 0 (before the contig's first base) is
   kept: resolved to the VCF spec's form at position 1, the base after the event, and
   counted, as the C9 deletion at Start 1 is. It was dropped before it reached
-  preparation, so the output had no row for it.
+  preparation, so the output had no row for it. Any other row at Start 0 (a
+  substitution, a deletion) names a base that does not exist: a visible FAIL row,
+  START_BEFORE_CONTIG, not a dropped one.
 - I2 #124: End_Position is optional. gbcms merge joins on contig, Start and
   alleles, not End_Position, and fills it from the inputs that have each row.
 - I3 #125: VCF input's MAF output fills Tumor_Seq_Allele1 with the reference
@@ -360,26 +362,33 @@ def test_maf_to_vcf_for_an_insertion_at_start_0_uses_the_base_after():
     assert CoordinateKernel.maf_to_vcf(1, "-", "TT", base_at) == (1, "C", "CTT")
 
 
-def test_the_variant_model_allows_position_minus_1_only_for_an_insertion_before_the_contig():
-    """Internally a MAF insertion is placed by its anchor, the base before it; before the
-    first base there is none (-1). Nothing else may sit before the first base."""
-    v = Variant(chrom="1", pos=-1, ref="-", alt=INS, variant_type=VariantType.INSERTION)
-    assert v.pos == -1
-    for ref, alt, pos in [("A", "C", -1), ("AC", "-", -1), ("-", INS, -2), ("A", INS, -1)]:
+def test_the_variant_model_allows_position_minus_1_and_nothing_below():
+    """Internally a MAF row is placed by Start - 1. Start 0 is -1: before the contig's first
+    base, where preparation resolves an insertion and fails any other row. Lower is no
+    position at all."""
+    for ref, alt in [("-", INS), ("A", "C"), ("AC", "-"), ("A", INS)]:
+        v = Variant(chrom="1", pos=-1, ref=ref, alt=alt, variant_type=VariantType.COMPLEX)
+        assert v.pos == -1
         with pytest.raises(ValidationError):
-            Variant(chrom="1", pos=pos, ref=ref, alt=alt, variant_type=VariantType.INSERTION)
+            Variant(chrom="1", pos=-2, ref=ref, alt=alt, variant_type=VariantType.COMPLEX)
 
 
-def test_maf_reader_reads_an_insertion_at_start_0_and_still_skips_other_start_0_rows(
-    tmp_path, caplog
-):
-    """Only an insertion can lie before the first base: a substitution or a deletion at Start 0
-    names a base that does not exist, and is skipped with a warning as before."""
-    maf = _maf(tmp_path, [_row(0, "-", INS), _row(0, REF[0], "T"), _row(0, REF[0], "-")])
+def test_a_vcf_pos_of_0_is_still_not_a_position():
+    """Guard: only a MAF row can start before the first base. A VCF record at POS 0 is an
+    error, as before (the readers do not turn it into a row)."""
+    with pytest.raises(ValueError):
+        CoordinateKernel.vcf_to_internal("1", 0, "A", "C")
+
+
+def test_maf_reader_reads_every_row_at_start_0_and_skips_a_negative_start(tmp_path, caplog):
+    """Start 0 is a position the reader keeps for preparation to judge (an insertion is
+    resolved, any other row fails visibly). A negative Start is no position: skipped with a
+    warning, as before."""
+    rows = [_row(0, "-", INS), _row(0, REF[0], "T"), _row(0, REF[0], "-"), _row(-3, REF[0], "T")]
     with caplog.at_level(logging.WARNING):
-        got = [(v.pos, v.ref, v.alt) for v in MafReader(maf)]
-    assert got == [(-1, "-", INS)]
-    assert any("Skipped MAF row" in m for m in caplog.messages)
+        got = [(v.pos, v.ref, v.alt) for v in MafReader(_maf(tmp_path, rows))]
+    assert got == [(-1, "-", INS), (-1, REF[0], "T"), (-1, REF[0], "-")]
+    assert sum("Skipped MAF row" in m for m in caplog.messages) == 1
 
 
 def _plain_fasta(tmp_path, seq):
@@ -412,6 +421,90 @@ def test_an_insertion_before_a_first_base_that_is_n_is_a_visible_fail_row(tmp_pa
         [_rs.Variant("1", -1, "-", INS, "INSERTION")], fa, 5, True, 1, True
     )
     assert (pv.gbcms_status, pv.gbcms_status_reason) == ("FAIL", "ALT_CONTAINS_N")
+
+
+_START_0_FAILS = [
+    pytest.param(lambda: _row(0, REF[0], "T" if REF[0] != "T" else "C"), id="SNV"),
+    pytest.param(lambda: _row(0, REF[0], "-"), id="deletion"),
+    pytest.param(lambda: _row(0, REF[0:2], REF[5]), id="delins"),
+    pytest.param(lambda: _row(0, REF[0], INS + REF[0]), id="insertion with sequence alleles"),
+]
+
+
+@pytest.mark.parametrize("make_row", _START_0_FAILS)
+def test_a_maf_row_at_start_0_that_is_not_an_insertion_is_a_visible_fail_row(tmp_path, make_row):
+    """Position 0 is no base, so only an insertion can start there. Any other row was
+    dropped with a warning (a two-row MAF gave one row); it is now kept as FAIL with
+    START_BEFORE_CONTIG, its input columns as written, not counted. The valid row beside
+    it counts as usual."""
+    row = make_row()
+    out = _maf_rows(_run(tmp_path, _maf(tmp_path, [row, _good_row()]), _start_0_reads()))
+    assert len(out) == 2
+    bad, good = out
+    assert (bad["gbcms_status"], bad["gbcms_status_reason"]) == ("FAIL", "START_BEFORE_CONTIG")
+    assert (bad["Start_Position"], bad["Reference_Allele"], bad["Tumor_Seq_Allele2"]) == (
+        "0",
+        row["Reference_Allele"],
+        row["Tumor_Seq_Allele2"],
+    )
+    assert (bad["ref_count"], bad["alt_count"], bad["total_count"]) == ("0", "0", "0")
+    assert (good["gbcms_status"], good["Start_Position"]) == ("PASS", str(P + 1))
+    assert good["ref_count"] == "6"
+
+
+def test_vcf_output_writes_a_start_0_fail_row_as_a_symbolic_record(tmp_path):
+    """VCF cannot place a row at position 0: the record is the declared symbolic
+    <NON_SEQUENCE> at POS 1 (REF the first base), GS=FAIL, GSR=START_BEFORE_CONTIG, and
+    the MAF row it came from in MAF_START/MAF_REF/MAF_ALT."""
+    row = _row(0, REF[0], "-")
+    recs = _vcf_records(
+        _run(tmp_path, _maf(tmp_path, [row, _good_row()]), _start_0_reads(), fmt="vcf")
+    )
+    assert len(recs) == 2
+    first = recs[0]
+    assert (first.pos, first.ref, first.alts) == (1, REF[0], ("<NON_SEQUENCE>",))
+    assert (first.info["GS"], first.info["GSR"]) == ("FAIL", "START_BEFORE_CONTIG")
+    assert (first.info["MAF_START"], first.info["MAF_REF"], first.info["MAF_ALT"]) == (
+        0,
+        REF[0],
+        "-",
+    )
+
+
+def test_convert_writes_a_start_0_row_as_a_symbolic_record_at_position_1(tmp_path):
+    fa, _ = _files(tmp_path, [])
+    out = tmp_path / "o.vcf"
+    maf = _maf(tmp_path, [_row(0, REF[0], "T" if REF[0] != "T" else "C"), _good_row()])
+    res = runner.invoke(app, ["convert", "-v", str(maf), "-f", str(fa), "-o", str(out)])
+    assert res.exit_code == 0, res.output
+    recs = _vcf_records(str(out))
+    assert [(r.pos, r.ref, r.alts[0]) for r in recs][0] == (1, REF[0], "<NON_SEQUENCE>")
+    assert len(recs) == 2
+
+
+@pytest.mark.parametrize("is_maf", [True, False], ids=["maf", "vcf-style"])
+def test_prepare_fails_a_row_before_the_first_base_that_is_not_an_insertion(tmp_path, is_maf):
+    """Whatever the input format, a variant at position -1 that is not a MAF dash insertion
+    is FAIL START_BEFORE_CONTIG (it must never reach a reference fetch at -1). A dash
+    allele exists only in a MAF."""
+    fa = _plain_fasta(tmp_path, REF[:60])
+    variants = [_rs.Variant("1", -1, "A", "C", "SNP"), _rs.Variant("1", -1, "AC", "G", "COMPLEX")]
+    if is_maf:
+        variants.append(_rs.Variant("1", -1, "A", "-", "DELETION"))
+    got = _rs.prepare_variants(variants, fa, 5, is_maf, 1, True)
+    assert [(p.gbcms_status, p.gbcms_status_reason) for p in got] == [
+        ("FAIL", "START_BEFORE_CONTIG")
+    ] * len(variants)
+    assert [p.original_pos for p in got] == [-1] * len(variants)
+
+
+def test_a_row_with_a_malformed_allele_keeps_its_own_reason_at_start_0(tmp_path):
+    """Guard: the allele checks run first, so a Start-0 row with an IUPAC ALT is still
+    NON_SEQUENCE_ALLELE, and ALT == REF is still ALT_EQUALS_REF."""
+    fa = _plain_fasta(tmp_path, REF[:60])
+    variants = [_rs.Variant("1", -1, "A", "R", "SNP"), _rs.Variant("1", -1, "-", "-", "INSERTION")]
+    got = _rs.prepare_variants(variants, fa, 5, True, 1, True)
+    assert [p.gbcms_status_reason for p in got] == ["NON_SEQUENCE_ALLELE", "ALT_EQUALS_REF"]
 
 
 # ── I2: End_Position optional ────────────────────────────────────────────────

@@ -10,7 +10,8 @@ Handles conversion between:
 Ensures consistent representation of variants:
 - SNPs: 0-based index of the base.
 - Insertions: 0-based index of the ANCHOR base (preceding the insertion; -1 for a MAF
-  insertion at Start 0, before the contig's first base).
+  insertion at Start 0, before the contig's first base). A MAF row of any kind at Start 0
+  is -1: preparation resolves an insertion and fails every other row visibly.
 - Deletions: 0-based index of the ANCHOR base (preceding the deletion).
 
 VCF <-> MAF conversion follows vcf2maf / maf2vcf (github.com/mskcc/vcf2maf):
@@ -59,6 +60,10 @@ class CoordinateKernel:
         Returns:
             Normalized Variant object
         """
+        if pos < 1:
+            # Only a MAF row can start before the first base (Start_Position 0, which
+            # preparation fails visibly): a VCF POS is a base of the contig.
+            raise ValueError(f"VCF POS must be >= 1 (got {pos}) at {chrom}")
         norm_chrom = CoordinateKernel.normalize_chromosome(chrom)
 
         # VCF POS is the first REF base: the anchor for an indel, the first
@@ -115,8 +120,8 @@ class CoordinateKernel:
                 vtype = VariantType.INSERTION
                 # MAF Start_Position is the anchor base (1-based).
                 # Convert to 0-based: internal_pos = Start_Position - 1. Start 0 puts the
-                # insertion before the contig's first base: its anchor is -1, which the
-                # model allows for this case only and preparation resolves to the base after.
+                # insertion before the contig's first base: its anchor is -1, which
+                # preparation resolves to the base after.
                 internal_pos = start_pos - 1
             else:  # Deletion (alt == '-')
                 vtype = VariantType.DELETION
