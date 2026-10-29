@@ -348,7 +348,14 @@ impl AnnotationIndex {
 
     // ─── Per-Transcript Counting ─────────────────────────────────────────────
 
-    /// Get transcript IDs whose exons overlap the given position.
+    /// Get transcript IDs whose exons overlap the given position, each once, in
+    /// ascending ID order.
+    ///
+    /// The order is a property of the IDs alone. The tree visits overlapping exons
+    /// in an order that depends on the SIMD backend (and on how ties between equal
+    /// intervals fall), and the per-transcript count columns are written in this
+    /// list's order, so an unsorted list wrote the same entries in a different
+    /// order on different machines.
     ///
     /// Returns an empty Vec if the chromosome is not annotated or the position
     /// falls in an intergenic/intronic region.
@@ -381,6 +388,7 @@ impl AnnotationIndex {
             }
         });
 
+        transcript_ids.sort_unstable();
         transcript_ids
     }
 
@@ -874,6 +882,92 @@ mod tests {
         let idx = build_test_index();
         let txs = idx.overlapping_transcripts("1", 50);
         assert!(txs.is_empty());
+    }
+
+    /// An index of exons alone (no introns), for tests of the overlap query.
+    fn index_of_exons(exons: Vec<ExonRecord>) -> AnnotationIndex {
+        let exon_trees = build_exon_trees(&exons);
+        let chrom_map = HashMap::from([("1".to_string(), 0u32)]);
+        AnnotationIndex::new(exon_trees, exons, HashMap::new(), HashMap::new(), chrom_map)
+    }
+
+    /// Exons of several transcripts that all cover base 150, listed so that neither
+    /// the IDs nor the starts nor the ends are in alphabetical order. "C" has two
+    /// exons that both cover base 150 (one entry per transcript), and "F" has the
+    /// very same interval as "A" (a tie the tree can break either way).
+    fn crowded_exons() -> Vec<ExonRecord> {
+        let ex = |t: &str, s: i32, e: i32| ExonRecord {
+            transcript_id: t.into(), chrom_id: 0, start: s, end: e, strand: '+',
+        };
+        vec![
+            ex("ENST_C", 120, 400),
+            ex("ENST_C", 140, 260),
+            ex("ENST_A", 150, 200),
+            ex("ENST_E", 90, 210),
+            ex("ENST_F", 150, 200),
+            ex("ENST_B", 100, 1000),
+            ex("ENST_D", 149, 151),
+        ]
+    }
+
+    #[test]
+    fn overlapping_transcripts_come_back_sorted_by_id() {
+        let idx = index_of_exons(crowded_exons());
+        assert_eq!(
+            idx.overlapping_transcripts("1", 150),
+            vec!["ENST_A", "ENST_B", "ENST_C", "ENST_D", "ENST_E", "ENST_F"],
+            "every transcript once, in ID order"
+        );
+        // Where fewer transcripts overlap, the shorter list is sorted too.
+        assert_eq!(idx.overlapping_transcripts("1", 205), vec!["ENST_B", "ENST_C", "ENST_E"]);
+        assert_eq!(idx.overlapping_transcripts("1", 300), vec!["ENST_B", "ENST_C"]);
+    }
+
+    #[test]
+    fn overlapping_transcripts_do_not_depend_on_the_order_the_exons_arrive_in() {
+        // The query visits exons in an order the tree decides (and a SIMD backend
+        // may change it); the list must be the same for every arrival order.
+        let want: Vec<(i64, Vec<String>)> = {
+            let idx = index_of_exons(crowded_exons());
+            [95, 150, 205, 300, 999].map(|p| (p, idx.overlapping_transcripts("1", p))).to_vec()
+        };
+        let exons = crowded_exons();
+        let n = exons.len();
+        // All 5040 orders of the seven exons, by Heap's algorithm over indices.
+        let mut order: Vec<usize> = (0..n).collect();
+        let mut c = vec![0usize; n];
+        let mut i = 0;
+        let mut checked = 0;
+        let mut check = |order: &[usize]| {
+            let idx = index_of_exons(order.iter().map(|&k| exons[k].clone()).collect());
+            for (p, w) in &want {
+                assert_eq!(&idx.overlapping_transcripts("1", *p), w, "pos {p}, exon order {order:?}");
+            }
+            checked += 1;
+        };
+        check(&order);
+        while i < n {
+            if c[i] < i {
+                if i % 2 == 0 { order.swap(0, i) } else { order.swap(c[i], i) }
+                check(&order);
+                c[i] += 1;
+                i = 0;
+            } else {
+                c[i] = 0;
+                i += 1;
+            }
+        }
+        assert_eq!(checked, 5040, "all arrival orders were tried");
+    }
+
+    #[test]
+    fn overlapping_transcripts_do_not_depend_on_which_position_is_asked_first() {
+        // Each query is independent of the ones before it (no state kept between calls).
+        let idx = index_of_exons(crowded_exons());
+        let forward: Vec<_> = [95, 150, 205, 300].iter().map(|&p| idx.overlapping_transcripts("1", p)).collect();
+        let mut backward: Vec<_> = [300, 205, 150, 95].iter().map(|&p| idx.overlapping_transcripts("1", p)).collect();
+        backward.reverse();
+        assert_eq!(forward, backward);
     }
 
     // ── is_read_compatible tests ──
