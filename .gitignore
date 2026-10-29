@@ -135,3 +135,6 @@ docs/assets/images/*_mermaid_*.svg
 # Ad-hoc analysis scripts
 scratch/
 mfsd_review_report.html
+
+# The operator's own HPC guard settings stay on their machine (see .claude/hooks/hpc-ssh-guard.py).
+.claude/hpc-guard.local.json

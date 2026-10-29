@@ -9,8 +9,8 @@
 ## Claude-only notes
 - Skills load from `.claude/skills/` (a symlink to `.agents/skills/`).
 - Hooks: `.claude/settings.json` wires the `.claude/hooks/` guards (`block-rm-rf.py`,
-  `block-push-main.py`, `block-env-edits.py`, `injection-guard.py`, `protect-cbioportal.py`)
-  plus time injection.
+  `block-push-main.py`, `block-env-edits.py`, `injection-guard.py`, `protect-cbioportal.py`,
+  `hpc-ssh-guard.py`, whose settings stay in the operator's local `~/.claude/hpc-guard.json`) plus time injection.
 - Memory auto-recall reads `.agents/memory/` (symlinked from the Claude project memory dir).
 - Delegation: set each subagent's `model` by the task — Fable for research surveys, Fable
   or Opus for deep reasoning (adversarial reviews, rule design, decisions), Sonnet for

@@ -64,6 +64,43 @@ of the conversation. The operator decided (2026-10-26, after asking what reaches
   - An audit on 2026-10-26, counts only, found no cBioPortal data row in this project's session
     transcripts.
 
+## HPC (the model's use of SSH)
+The operator opens the connection; the model only reuses it. The hook
+`.claude/hooks/hpc-ssh-guard.py` enforces these rules (tests: `tests/test_hpc_ssh_guard.py`).
+The hook is generic. The operator's own values (the host alias, the work, scratch and
+read-only folders, the local folder for copies, the short and long partitions, the job-name
+prefix) live only on their machine, in `~/.claude/hpc-guard.json`, and their login steps in
+`~/.claude/rules/hpc.md`. Never commit them. `.claude/hooks/hpc-guard.example.json` shows the
+format, and without a settings file the hook does nothing.
+- **Login is the operator's.** The operator gets a Kerberos ticket (`kinit`), then opens the
+  shared connection (`ssh -fN <alias>`). The model never runs `kinit` or `kdestroy`, never
+  handles a password, and never closes the connection (`ssh -O exit` and `kdestroy` are the
+  operator's off switches). When the ticket expires, the model asks the operator to renew it.
+- **One host, no forwarding.** Only the configured alias. Every `ssh` runs with `-a -x`, and
+  every `rsync` with `-e "ssh -a -x"`. No port forwarding, jump host, proxy command, other
+  config file, interactive shell, command substitution or redirect.
+- **Set folders.** Work and write only in the configured work and scratch folders; read also
+  in the read-only folders. Copies come back only to the configured local folder. Patient
+  data moves only between HPC and this machine; reports hold aggregates only.
+- **The login node is light.** Only job control (`sbatch`, `squeue`, `sacct`, `sinfo`,
+  `scancel`), copies and reads run there. All work runs in SLURM jobs from a script in the
+  work folder. A job of 3 hours or less runs on the short partition, a longer one on the long
+  partition, and `sbatch` always states `--time`. Job names carry the prefix, an array runs at
+  most 20 tasks at once (`%20`), and `scancel` works only by a prefixed name. No `--wrap`, no
+  installs from the internet, no `sudo`, and no changes to dotfiles, crontab or modules.
+- **Shared storage.** SLURM jobs may read the copies in the work folder in parallel. Clinical
+  BAMs elsewhere are read one file at a time, by a reviewed job script.
+- **Ask first.** Every copy (`rsync`, `scp`), every read of a file or folder on HPC, and every
+  `sbatch`, `scancel` and `mkdir` waits for the operator's approval (the hook asks). Status
+  queries (`squeue`, `sacct`, `sinfo`, `ssh -O check`) need none.
+- **Never delete there.** No `rm`, `find -delete` or `rsync --delete`. The operator clears
+  HPC files.
+- **cBioPortal stays off HPC commands too.** Any command naming a cBioPortal path is denied.
+- **One session drives it.** Only the main session runs HPC commands. Subagents write job
+  scripts locally for review, and never wrap an HPC command in a shell or interpreter.
+- **A ledger.** Every submission goes in a local ledger in the harness (hpc/LEDGER.md): date,
+  label, job IDs, partition, array size, inputs, outputs and state.
+
 ## Outward-facing actions
 - **Ask before public.** The default destination for any artifact is private. A
   public host, a deploy, a published file — each needs explicit, per-artifact

@@ -1,0 +1,13 @@
+{
+  "host": "my-hpc",
+  "hpc_names": ["my-hpc", "login01"],
+  "remote_roots": ["/work/<user>/project", "/scratch/<user>"],
+  "read_roots": ["/work/<user>"],
+  "local_roots": ["~/project-harness"],
+  "short_partition": "<short partition>",
+  "long_partition": "<long partition>",
+  "short_limit_minutes": 180,
+  "job_prefix": "myproj-",
+  "max_array_tasks": 20,
+  "deny_patterns": ["cbio"]
+}
