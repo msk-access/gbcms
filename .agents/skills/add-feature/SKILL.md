@@ -1,6 +1,6 @@
 ---
 name: add-feature
-description: "Procedure for adding a feature to gbcms following its Git Flow and Rust/Python architecture (branch from develop, plan the layer, implement, sync type stubs, add tests with the 4 counting invariants, update docs/CHANGELOG, QA, PR to develop). Use when starting new feature work."
+description: "Steps to add a feature: branch from develop, pick the layer (Rust or Python), implement, sync the type stub, test with the counting invariants, update docs and CHANGELOG, run QA, PR to develop. Use when starting new feature work."
 ---
 
 # add-feature
@@ -31,16 +31,12 @@ description: "Procedure for adding a feature to gbcms following its Git Flow and
 
 6. **Run QA** (see the qa-check skill).
 
-   **Real-data acceptance** for count-changing work: run every assay the change reaches
-   (IMPACT tumour with its matched normal; ACCESS duplex + simplex through `gbcms merge`;
-   WES/WGS aligned without realignment; RNA), with more than one truth source (GIAB is one
-   genome, one aligner, germline hets only: add normals as hom-REF controls and spike-ins
-   where no truth exists), and judge DNA and RNA separately where their reads differ,
-   one BAM at a time, and score against the reads — reads' own bases are the evidence (not the aligner's placement, not sign-out): gbcms genotypes, it does not call.
-   Build base and candidate in isolation (`git archive <sha>` + own venv, the commit each
-   build came from recorded beside it; see rust-python-ffi "Build & environment"); once
-   the PR merges, delete those builds and gzip raw `--trace` logs
-   (memory: harness-cleanup-after-merge).
+   **Real-data acceptance** for count-changing work follows
+   `.agents/rules/decision-protocol.md` (every data type, more than one truth source, DNA and RNA
+   judged separately, scored against the reads' own bases). Build base and candidate in isolation
+   (`git archive <sha>` and its own venv, the commit recorded beside each build; rust-python-ffi
+   "Build & environment"; layout in `docs/harness/measurement-harness.md`). After the PR merges, run
+   the retirement checklist there (delete the builds, gzip raw `--trace` logs).
 
 7. **PR to develop**:
    ```bash

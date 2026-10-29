@@ -1,97 +1,75 @@
 # gbcms — standing context (canonical, cross-tool)
 
-> Canonical agent rules for this repo. Read by Antigravity, Cursor, Codex, Copilot,
-> and (via `CLAUDE.md` import) Claude Code. Every line is read on every turn — keep it
-> tight. Depth lives in the linked reference docs and is read on demand, not here.
+> Canonical agent rules for this repo, read by Antigravity, Cursor, Codex, Copilot and (via the
+> `CLAUDE.md` import) Claude Code. Every line is read on every turn: keep it to 75 lines. Depth
+> lives in the linked docs, read on demand.
 
-**What this is:** GBCMS (Get Base Counts Multi-Sample) — a high-performance,
-orientation-aware genotype counting engine. Extracts allele counts and molecular
-metrics from BAM/CRAM at given genomic positions. Supports SNP, MNP, insertion,
-deletion, complex DelIns; DNA (cfDNA) and RNA modes; mFSD fragment-size analysis.
-
-**Architecture:** Hybrid. **Python** = CLI/orchestration/IO/config (Typer + Pydantic + Rich).
-**Rust** (`rust/`, PyO3 module `gbcms._rs`) = BAM traversal, read classification,
-fragment tracking, alignment (SW / PairHMM / WFA), mFSD stats, GTF annotation,
-native Parquet, Rayon per-bin parallelism. Full module map: `.agents/rules/architecture.md`.
+**What this is:** GBCMS (Get Base Counts Multi-Sample) — a high-performance, orientation-aware
+genotype counting engine. Extracts allele counts and molecular metrics from BAM/CRAM at given
+positions: SNP, MNP, insertion, deletion, complex DelIns; DNA (cfDNA) and RNA modes; mFSD.
+**Architecture:** hybrid. **Python** = CLI/orchestration/IO/config (Typer + Pydantic + Rich).
+**Rust** (`rust/`, PyO3 module `gbcms._rs`) = BAM traversal, read classification, fragment
+tracking, alignment (SW / PairHMM / WFA), mFSD stats, GTF annotation, Parquet, Rayon per-bin
+parallelism. Module map: `.agents/rules/architecture.md`.
 
 ## Load-bearing invariants (don't break these)
 
-1. **Binning invariance.** Bin geometry is performance only: `count_bam_binned` gives
-   identical counts (every field; BH q-values excepted when the set of rows changes)
-   under any bin window or cap, one variant per bin, or one variant per call, so every
-   bin's fetch must hold each member's full read window, anchor included, and its guard
-   window. Checked by `tests/test_binning_invariance.py` and the bin property test
-   (every counting test's `count_checked` adds the per-variant fetch window);
-   classification is checked against the read census (`tests/census.py`), never a second
-   engine. Contract: `.agents/rules/architecture.md` §"Binning invariance".
-2. **One quality contract across alignment backends.** SW, PairHMM, and the WFA
-   fast-path must apply the *same* base-quality gate. The fast path must not make a
-   definitive REF/ALT call on bases the fallback would reject.
-3. **Engine should be output-aware.** Prefer plumbing intent (`mfsd`, output format,
-   `gene_strand`) across the FFI boundary over computing-then-discarding or running
-   silent no-ops in Rust.
+1. **Binning invariance.** Bin geometry is performance only: `count_bam_binned` gives identical
+   counts (every field; BH q-values excepted when the set of rows changes) under any bin window or
+   cap, one variant per bin, or one variant per call. Every bin's fetch holds each member's full
+   read window, anchor included, and its guard window. Checks: `architecture.md` §"Binning invariance".
+2. **One quality contract across alignment backends.** SW, PairHMM and the WFA fast-path apply the
+   *same* base-quality gate. The fast path makes no definitive REF/ALT call on bases the fallback
+   would reject.
+3. **Engine should be output-aware.** Plumb intent (`mfsd`, output format, `gene_strand`) across the
+   FFI boundary; do not compute-then-discard or run silent no-ops in Rust.
 4. **0-based internal coords**, 1-based at the VCF/MAF boundary. Convert at the edge.
-5. **Type stub tracks the bindings.** `src/gbcms/_rs.pyi` is the single stub for the
-   `gbcms._rs` extension module; it must match the `#[pyo3(get)]` fields and
-   `#[pyo3(signature)]` params exactly. (There is no second stub — the old top-level
-   `src/gbcms_rs.pyi` mirrored a module that isn't imported and was removed.)
+5. **Type stub tracks the bindings.** `src/gbcms/_rs.pyi` is the single stub for `gbcms._rs`; it
+   matches the `#[pyo3(get)]` fields and `#[pyo3(signature)]` params exactly. There is no second stub.
 6. **mFSD/RNA columns are gated** — absent when off, never NA-filled.
-7. **Count the given allele — a genotyper, not a caller.** Input alleles are taken as
-   correct: never credit a read to a row's ALT unless its own bases carry that ALT
-   (alignments can be wrong; judge bases, not placement), and never infer what a
-   wrong input "should" be. Explain mismatches via `gbcms_status_reason` / `gbcms_diagnostic`.
-   Opt-in rescues (`--rescue-mnp`) are the only exception.
+7. **Count the given allele — a genotyper, not a caller.** Input alleles are taken as correct: never
+   credit a read to a row's ALT unless its own bases carry that ALT (alignments can be wrong; judge
+   bases, not placement), and never infer what a wrong input "should" be. Explain mismatches via
+   `gbcms_status_reason` / `gbcms_diagnostic`. Opt-in rescues (`--rescue-mnp`) are the only exception.
 
-## Counting test invariants (assert in every counting test)
+## Counting tests (assert in every counting test)
 ```python
-assert counts.dp  >= counts.rd  + counts.ad     # DP includes 'neither'
-assert counts.dpf >= counts.rdf + counts.adf    # DPF includes discarded fragments
-assert counts.rd == counts.rd_fwd + counts.rd_rev   # strand consistency
+assert counts.dp  >= counts.rd  + counts.ad      # DP includes 'neither'
+assert counts.dpf >= counts.rdf + counts.adf     # DPF includes discarded fragments
+assert counts.rd == counts.rd_fwd + counts.rd_rev    # strand consistency
 assert counts.ad == counts.ad_fwd + counts.ad_rev
 ```
-**Never edit an existing test's expectation to make it pass** without first telling the
-operator what it asserted, why it is wrong, and the evidence — then wait. A failing test
-is a decision point (new tests, and removing the strict-xfail marker a fix targets, are fine).
+**Never edit an existing test's expectation to make it pass** without first telling the operator
+what it asserted, why it is wrong, and the evidence (old against new) — then wait. A changed test can
+hide a regression or quietly re-decide a decision. A failing test is a decision point (new tests, and
+removing the strict-xfail marker a fix targets, are fine).
 
-## Before every commit (lint gate)
-```bash
-ruff check src/ tests/ && black --check src/ tests/ && mypy src/
-cd rust && cargo clippy --all-targets -- -D warnings && cargo test && cd ..
-```
-Fix order: ruff → black → mypy → clippy. Conventional commits + Git Flow
-(`feature/* → develop → main`, never push `main` directly). Details:
-`.agents/rules/git-conventions.md`, `.agents/rules/code-quality.md`.
+## Decisions, commits, learning
 
-## Learning loop (when I correct you)
-Do both, in the same turn:
-1. **Write it down** — durable note → `.agents/memory/` (index `MEMORY.md`); the
-   work-order → `.agents/learnings/LEARNINGS.md` with ONE root cause
-   (rule-body / rule-trigger / rule-permission / environment) and a promotion
-   target (exact file + change). External-only failures → `ERRORS.md`; vetoed
-   ideas → `REJECTED.md` (grep it before re-proposing a dead end).
-2. **Fix at the source** — name the exact `file:line` and make the edit now, so the
-   mistake can't recur from stale guidance.
-
-An **external review or proposal** is mapped to current behaviour, the open and closed
-tickets, `REJECTED.md` and prior probes, and its value measured on our data, before any
-ticket is filed. An issue closes only once its outcome is in the repo
-(`.agents/rules/git-conventions.md` §Issues).
-
-## Skills
-Project skills live in `.agents/skills/` (cross-tool / Antigravity-native; mirrored to
-`.claude/skills/` for Claude Code). Each is `<name>/SKILL.md` with `name` + `description`
-frontmatter. Reach for them by outcome.
+- **A count-affecting decision** follows `.agents/rules/decision-protocol.md` (read the register to
+  its end, effects map, fix the class, several tools, every data type, worked example, measure first;
+  an outside review is measured before any ticket).
+- **Before every commit** run the whole `qa-check` gate, docs-only changes included (CI's black; read
+  every exit code). Conventional commits + Git Flow (`feature/* → develop → main`, never push `main`):
+  `.agents/rules/git-conventions.md`, `.agents/rules/code-quality.md`.
+- **When I correct you,** do both in the same turn: (1) write it down — a durable note in
+  `.agents/memory/` (index `MEMORY.md`), and the work-order in `.agents/learnings/LEARNINGS.md` with
+  ONE root cause (rule-body / rule-trigger / rule-permission / environment) and a promotion target
+  (exact file + change); external-only failures go to `ERRORS.md`, vetoed ideas to `REJECTED.md` (grep
+  it before re-proposing); (2) fix at the source — name the `file:line` and make the edit now.
 
 ## Safety (enforced by hooks, not prose)
-Determinism floor: `.claude/hooks/` (block-rm-rf, block-push-main, injection-guard,
-block-env-edits, protect-cbioportal) + `.githooks/` (pre-commit lint, data-file guard and
-skill-frontmatter parse; pre-push gitleaks secret scan + main block). Intent:
-`.agents/rules/security.md`. Enable git hooks once per clone: `git config core.hooksPath
-.githooks`. Install gitleaks for the secret scan.
+
+Determinism floor: `.claude/hooks/` (block-rm-rf, block-push-main, injection-guard, block-env-edits,
+protect-cbioportal) + `.githooks/` (pre-commit: data-file and PHI guard, skill checks; pre-push:
+gitleaks, main block). Once per clone: `git config core.hooksPath .githooks`; install gitleaks.
+Intent, PHI and cBioPortal rules: `.agents/rules/security.md`.
 
 ## Pointers
-- Deep rules: `.agents/rules/{architecture,code-quality,git-conventions,security}.md`
-- Skills: `.agents/skills/` · Harness plan & philosophy: `docs/harness/00-plan.md`
-- Where we left off: `CONTINUITY.md` · Durable facts: `.agents/memory/MEMORY.md`
-- Open work: `CONTINUITY.md` "Next" (the 6.7.0 work packages), tracker #196 on GitHub, and
-  `PRODUCTION_READINESS.md`. Retired plans are in `.agents/archive/`.
+
+- Deep rules: `.agents/rules/{architecture,code-quality,decision-protocol,git-conventions,security}.md`;
+  skills: `.agents/skills/<name>/SKILL.md` (mirrored to `.claude/skills/`), by outcome.
+- Where we left off: `CONTINUITY.md`. Durable facts: `.agents/memory/MEMORY.md`. Measurement harness:
+  `docs/harness/measurement-harness.md`; harness plan and philosophy: `docs/harness/00-plan.md`.
+- Open work: `CONTINUITY.md` "Next" (the 6.7.0 work packages), tracker #196, `PRODUCTION_READINESS.md`.
+  Retired plans are in `.agents/archive/`.

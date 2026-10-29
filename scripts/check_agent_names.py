@@ -66,8 +66,15 @@ EXTERNAL = {
     "count_checked",
     "count_bam_checked",
     "find_read_pos",
-    # Git's own flags.
+    # Git's, gh's and pip's own names.
+    "HEAD",
     "--no-ff",
+    "--add-sub-issue",
+    "--body-file",
+    "--require-hashes",
+    "--no-deps",
+    # A gitignored directory that `git worktree add` creates.
+    ".claude/worktrees/",
     # Exists only on checkpoint-wheels/* branches, where the pre-commit hook admits it.
     "scripts/regression_panel/checkpoints.tsv",
 }
@@ -239,7 +246,8 @@ def check_span(span: str, source: Source, text: str, flag_text: str) -> str | No
     if (
         (head.endswith(SUFFIXES) or head.startswith(TOP_LEVEL))
         and re.fullmatch(r"[\w./*<>${}-]+", head)
-        and not head.startswith(("-", "."))
+        and not head.startswith("-")
+        and (not head.startswith(".") or head.startswith(TOP_LEVEL))
     ):
         if not path_exists(span, source):
             return f"path {head} does not exist"

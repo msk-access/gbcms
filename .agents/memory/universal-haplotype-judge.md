@@ -85,7 +85,7 @@ SV junctions (#322) are edges later; read-length independent; pluggable error mo
 reads. Coloured de Bruijn graphs are triage and discovery only (k-mers collapse repeat copies
 and count k-mers, not reads). Pangenome stacks (vg, PanGenie) are comparators, not the
 architecture: they remap reads, use population priors and report diploid genotypes
-([[lancet2-reference]]).
+([[references]]).
 
 **Decided (operator, 2026-10-25):** the graph is the judge's scorer (E1 failed pre-registered
 criterion 1 only through the undecided "fits nothing" rule, applied exactly, and through
@@ -140,4 +140,4 @@ can't beat it at <=16 haplotypes), k-mer triage in front, margin = one confident
 approved (S0 rules, S1 per-haplotype PairHMM, S2 quality-masked edit cost, S3 k-mer
 triage + S1), standalone Rust prototype in the harness; HG002 SV and GIAB TR arms approved. Phasing tools are oracles' sources, not the method:
 population priors may never credit reads. Related: [[genotyper-not-caller]],
-[[abra2-collapse-artifacts]], [[best-not-least-bad]], [[model-per-task]].
+[[msk-assay-facts]], [[working-agreements]]; the decision method is `.agents/rules/decision-protocol.md`.

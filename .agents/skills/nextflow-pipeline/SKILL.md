@@ -1,6 +1,6 @@
 ---
 name: nextflow-pipeline
-description: "Reference for the gbcms Nextflow wrapper — module layout (dna/rna/filter_maf/merge/normalize/pipeline_summary), profiles and SLURM/iris resource routing, the samplesheet schema, multi-BAM merge options, and the places where Nextflow defaults DIVERGE from the CLI defaults. Use when editing anything under nextflow/ or debugging a pipeline run (OOM, queue routing, SLURM retries, output-name collisions)."
+description: "The Nextflow wrapper: module layout, profiles and SLURM/iris routing, samplesheet schema, multi-BAM merge, and where Nextflow defaults differ from the CLI. Use when editing anything under nextflow/ or debugging a pipeline run (OOM, queue routing, retries, output-name collisions)."
 ---
 
 # Nextflow Pipeline

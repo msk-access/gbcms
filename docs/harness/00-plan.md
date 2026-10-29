@@ -3,7 +3,8 @@
 > **Historical (2026-06-26).** This is the plan the harness was first built from; it is
 > kept for its rationale and is not maintained. What exists now: `AGENTS.md` (standing
 > context), `.agents/rules/`, `.agents/skills/` (workflows were folded into skills; there is
-> no `.agents/workflows/`), `.agents/memory/`, `.claude/hooks/` and `.githooks/`.
+> no `.agents/workflows/`), `.agents/memory/`, `.claude/hooks/`, `.githooks/` and
+> `docs/harness/measurement-harness.md` (the layout of the local measurement harness).
 > `.agents/archive/CODE_REVIEW_IMPLEMENTATION_PLAN.md` is the retired code-review plan this
 > page mentions; open work is tracked in `CONTINUITY.md`, tracker #196 and
 > `PRODUCTION_READINESS.md`.

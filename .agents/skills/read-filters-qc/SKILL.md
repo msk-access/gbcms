@@ -1,6 +1,6 @@
 ---
 name: read-filters-qc
-description: "Reference for gbcms read-level (genomic) QC — BAM flag filters (duplicate/secondary/supplementary/qc-failed/improper-pair/indel), MAPQ and base-quality gating, heuristic BAQ near indels/splice junctions, and QC diagnostics (mq0_count, n_count, alt/ref distance-to-end). Use when changing filtering or quality gating. NOTE: this is genomic QC — for the dev lint/test sweep see the qa-check skill."
+description: "Genomic read QC: BAM flag filters, MAPQ and base-quality gating, heuristic BAQ near indels and splice junctions, QC diagnostics (mq0_count, n_count, distance to read end). Use when changing filtering or quality gating. The developer lint/test gate is qa-check."
 ---
 
 # Read Filters & Quality Gating (genomic QC)
