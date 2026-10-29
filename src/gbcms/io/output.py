@@ -152,8 +152,8 @@ def vcf_contig_lines(contigs: list[tuple[str, int | None]]) -> list[str]:
 NON_SEQUENCE_ALT = "<NON_SEQUENCE>"
 NON_SEQUENCE_HEADER = (
     '##ALT=<ID=NON_SEQUENCE,Description="The MAF row has no VCF allele (an allele that is not '
-    "a base sequence, or a deletion spanning its whole contig): the row is FAIL, the reason in "
-    'GSR, and is not counted">'
+    "a base sequence, a deletion spanning its whole contig, or a row at Start_Position 0 that "
+    'is not an insertion): the row is FAIL, the reason in GSR, and is not counted">'
 )
 #: The MAF row a VCF record of MAF input came from, so a result can be looked up
 #: by its input (as VCF input's MAF output carries vcf_pos, vcf_ref and vcf_alt).
@@ -195,22 +195,30 @@ def maf_vcf_record(variant: Variant, base: Any, length: int | None = None) -> tu
     """(POS, REF, ALT) for a MAF-input row: maf2vcf's record, or the symbolic
     ``<NON_SEQUENCE>`` record at Start (REF the reference base there), which keeps
     the VCF valid, for a row with no VCF allele: an allele that is not a base
-    sequence, or a deletion spanning its whole contig (no base before or after
-    it to anchor the record). ``base(pos)`` returns the reference base at a
-    1-based position; ``length`` is the contig's length, when known."""
+    sequence, a deletion spanning its whole contig (no base before or after
+    it to anchor the record), or a row at Start 0 that is not an insertion (no
+    such base). The symbolic record is at position 1 then. ``base(pos)`` returns
+    the reference base at a 1-based position; ``length`` is the contig's length,
+    when known."""
     pos = variant.pos + 1
-    if not (is_sequence_allele(variant.ref) and is_sequence_allele(variant.alt)):
-        return pos, base(pos), NON_SEQUENCE_ALT
+    # A record's POS is a base of the contig: an insertion at Start 0 (before the first
+    # base) is written at position 1, the base after it.
+    at = max(pos, 1)
+    before_the_first_base = pos < 1 and not (variant.ref == "-" and variant.alt != "-")
+    if before_the_first_base or not (
+        is_sequence_allele(variant.ref) and is_sequence_allele(variant.alt)
+    ):
+        return at, base(at), NON_SEQUENCE_ALT
 
-    def bounded(at: int) -> str:
-        if length is not None and at > length:
-            raise _NoBase(at)
-        return str(base(at))
+    def bounded(where: int) -> str:
+        if length is not None and where > length:
+            raise _NoBase(where)
+        return str(base(where))
 
     try:
         return CoordinateKernel.maf_to_vcf(pos, variant.ref, variant.alt, bounded)
     except _NoBase:
-        return pos, base(pos), NON_SEQUENCE_ALT
+        return at, base(at), NON_SEQUENCE_ALT
 
 
 def maf_origin_info(variant: Variant) -> list[str]:

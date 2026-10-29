@@ -89,14 +89,16 @@ Each run reports:
 | O5 #179 | No mapping-bias diagnostic | ALT vs REF MAPQ and clipping skew |
 | C24 #195 | Stale scores in the no-reference fallback (partial only) | Rows on that path (unprepared input only) |
 | C33 #214 | A REF molecule with one clear error just outside the window its ALT reading is anchored away from can count ALT (pre-existing) | Spurious ALT at the synthetic probes after RJ-16 |
-| C34 #216 | A GTF that reuses a transcript ID on another chromosome merges its introns (per-transcript counts, ASJD, exon-edge rules) | Transcript IDs reused across chromosomes or strands in the production GTF (Ensembl 111: 0) |
 
 **Resolved since this table was written.** C6 #143 (an exact-length insertion read with one
 sequencing error counted partial) is closed by #289: one substitution is an error on REF and
 ALT reads alike unless it recurs (RJ-26), covered by
 `test_one_inserted_base_read_wrong_is_an_error`. The identity band for truncated inserts
 was measured and not adopted (#278 D2: 13 agreeing panel ALT calls against 111); a truncated
-copy counts `partial_alt`. See `docs/reference/bam-evidence-caveats.md`.
+copy counts `partial_alt`. See `docs/reference/bam-evidence-caveats.md`. C34 #216 (a GTF that
+reused a transcript ID on another chromosome or strand merged its introns) is fixed: a
+transcript is an ID at one chromosome and strand, and a reused ID is warned about. The
+production GTF (Ensembl 111) has none, so no production row changes.
 
 ### Bounds measured so far
 

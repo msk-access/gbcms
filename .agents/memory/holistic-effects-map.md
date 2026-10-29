@@ -18,7 +18,7 @@ For each, say "changes" or "unchanged, because …".
 **Why:** the operator asked (2026-09-25) that decisions be made holistically,
 "thinking about all the places our decisions have effects". A rule changed in
 one path but not its twins, or in the counts but not a flag that reads them, is
-the recurring failure mode. See [[engine-output-aware]].
+the recurring failure mode.
 
 **How to apply:** trace the fields the change touches (e.g. `is_ref`/`is_alt`,
 `has_nearby_evidence`, `qual`) to every consumer (grep them), then verify the

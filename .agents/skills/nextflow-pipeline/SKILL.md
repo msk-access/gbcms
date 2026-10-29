@@ -13,23 +13,33 @@ nextflow/
 ├── nextflow.config               # params + profiles + resource scopes
 ├── assets/samplesheet.csv
 ├── workflows/{dna,rna}.nf
-└── modules/local/gbcms/
-    ├── dna/main.nf               # GBCMS_DNA
-    ├── rna/main.nf               # GBCMS_RNA
-    ├── filter_maf/main.nf        # FILTER_MAF (include suffix in output name!)
-    ├── merge/main.nf             # MERGE_COUNTS (multi-BAM)
-    ├── normalize/main.nf         # standalone normalization
-    └── pipeline_summary/main.nf  # PIPELINE_SUMMARY
+└── modules/local/
+    ├── utils/main.nf             # asBool() and other helpers
+    └── gbcms/
+        ├── dna/main.nf           # GBCMS_DNA
+        ├── rna/main.nf           # GBCMS_RNA
+        ├── filter_maf/main.nf    # FILTER_MAF (include suffix in output name!)
+        ├── merge/main.nf         # MERGE_COUNTS (multi-BAM)
+        ├── normalize/main.nf     # standalone normalization
+        └── pipeline_summary/main.nf  # PIPELINE_SUMMARY
 ```
 
-## Resource / HPC notes (hard-won — see recent commits)
+## Resource / HPC notes (`process {}` in nextflow.config)
 
-- Per-process resource blocks for `FILTER_MAF` and `PIPELINE_SUMMARY` exist to
-  prevent OOM. Default memory bumped to 16GB.
-- `iris` profile uses `process.queue` (not `params.partition`).
-- Dynamic queue routing by resource request; **retry on SLURM null exit codes**.
-- `FILTER_MAF` output names must include the `suffix` to avoid collision with
-  multi-BAM samples.
+- `GBCMS_DNA|GBCMS_RNA`: 4 CPUs, 16 GB and 2 h, each times the attempt; the first attempt
+  runs on `cmobic_short`, retries on `cmobic_cpu` (7-day limit). The process default is 6 GB.
+- Own blocks exist so large inputs do not OOM: `MERGE_COUNTS` (4 GB x attempt), `FILTER_MAF`
+  (8 GB x attempt, large multi-sample MAFs), `PIPELINE_SUMMARY` (2 GB).
+- Retry (up to 3) on exit status null (a SLURM kill), 137, 143, 104, 134, 139 and 255.
+- The `iris` profile sets `process.queue` (a bare `cpu` queue is rejected there), not
+  `params.partition`; per-process `queue` directives still route first.
+- `FILTER_MAF` output names must include the `suffix` (multi-BAM samples would collide).
+
+## Samplesheet (`--input`; `docs/nextflow/samplesheet.md`)
+
+Columns `sample,bam,bai,suffix,bam_type` (and an optional `tsb`); `bai`, `suffix` and `bam_type` may be empty. Output
+suffix: the row's `suffix`, else `-<bam_type>`, else `params.suffix`. Rows sharing a `sample`
+need a `suffix` or `bam_type`, or the workflow stops (their outputs would overwrite each other).
 
 ## Multi-BAM merge
 

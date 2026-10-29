@@ -55,7 +55,12 @@ class Variant(BaseModel):
     """Normalized representation of a genomic variant."""
 
     chrom: str
-    pos: int = Field(ge=0, description="0-based position of the variant")
+    pos: int = Field(
+        ge=-1,
+        description="0-based position of the variant. -1 is a MAF row at Start_Position 0, "
+        "before the contig's first base: preparation resolves an insertion there (it has no "
+        "anchor base) and fails any other row (START_BEFORE_CONTIG)",
+    )
     ref: str
     alt: str
     variant_type: VariantType

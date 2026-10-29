@@ -9,6 +9,11 @@ one side silently matching nothing.
 import re
 from typing import Any
 
+# The functions, as in io.output; the constants are imported by name where they are used.
+# (A docs test reads every upper-case string literal in the source as a QC flag the code
+# emits, so a constant's name listed here would have to be documented as one.)
+__all__ = ["format_rescue_audit", "rescue_outcome", "rescued_component"]
+
 # Diagnostic flag that makes an MNP a rescue candidate. Written by the
 # per-row diagnostics and read by the rescue pass's candidate gate.
 MNP_RESCUE_ELIGIBLE = "MNP_RESCUE_ELIGIBLE"

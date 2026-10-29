@@ -56,7 +56,7 @@ caveat in gbcms's output.
 | RNA: editing (A-to-I) inside a window | Flag only | Proposed | R3 #178 |
 | RNA: allele-specific expression and NMD | RNA VAF reported as is | Decided (interpretation) | — |
 | RNA: strandedness | Gating exists; observability open | Decided | R2 #114 |
-| RNA: a GTF transcript ID reused on another chromosome or strand | Exons and introns merge by ID | Proposed | C34 #216 |
+| RNA: a GTF transcript ID reused on another chromosome or strand | A transcript is an ID at one chromosome and strand (exons, introns, strand spans); a reused ID is warned about | Decided (done) | C34 #216 |
 | Variant not prepared against the reference (direct API use, failed reference fetch) | The alignment fallback's tail reads stale scores (`partial_alt` only) | Open (6.7.0) | C24 #195 |
 | Reads ending inside the event; low depth | Depth only until a read holds the shorter allele's window | Decided (done) | C39 #253 |
 | Purity, clonality, contamination, CH | Counts, not calls | Decided (interpretation) | — |
@@ -369,22 +369,23 @@ caveat in gbcms's output.
   sense. A library that is not stranded needs `--strandedness unstranded`; see
   [`gbcms rna`](../cli/rna.md#strandedness-filtering).
 - **A GTF transcript ID used at more than one place (C34 #216):** the GTF parser
-  groups exons by transcript ID alone, after stripping a numeric version suffix, so
-  an ID used on more than one chromosome or strand merges into one transcript. Exons
-  of different chromosomes are sorted together, which makes introns that do not exist
-  and misses real ones, and the transcript's introns sit on one chromosome only. That
-  feeds the intron boundaries (`RETENTION_DOMINANT`, the exon-edge BAQ rule, the RNA
-  clip edges of RJ-18), per-transcript counts and junction compatibility, and ASJD.
-  The strand spans are already keyed by transcript, chromosome and strand. It can
-  bite on GTFs that reuse an ID (UCSC/RefSeq: the same NM_ on chrX and chrY in the
-  PARs, alternate loci) and on versions that differ only by suffix (NM_x.1 and
-  NM_x.2); GENCODE's `_PAR_Y` IDs are not stripped and stay distinct. Measured on the
-  production GTF (Ensembl GRCh38.111, used for FORTE): 0 of 252,989 transcript IDs
-  occur on more than one chromosome or strand, so no production row is affected
-  today, and RJ-18's clip edges also take every junction the reads splice at, which
-  covers a missing annotated edge in most cases. Proposed: key transcripts by (ID,
-  chromosome, strand), report a per-transcript count under its ID with the locus where
-  an ID occurs twice, and warn once when the GTF reuses an ID.
+  grouped exons by transcript ID alone, after stripping a numeric version suffix, so an
+  ID used on more than one chromosome or strand merged into one transcript. Exons of
+  different chromosomes were sorted together, which made introns that do not exist and
+  missed real ones, and the transcript's introns sat on one chromosome only. That fed
+  the intron boundaries (`RETENTION_DOMINANT`, the exon-edge BAQ rule, the RNA clip
+  edges of RJ-18), per-transcript counts and junction compatibility, and ASJD. A
+  transcript is now an ID at one chromosome and strand, as the strand spans already
+  were: its exons, introns, boundaries and per-transcript counts are its own, and the
+  parser warns once when a GTF reuses an ID (UCSC/RefSeq: the same NM_ on chrX and chrY
+  in the PARs, alternate loci). A variant's per-transcript cell lists the transcripts
+  at its own place, so a reused ID appears once per chromosome, and twice (`+` first) only
+  where both strands of one chromosome overlap the variant. Copies at one chromosome and
+  strand still join: versions that differ only by suffix (NM_x.1 and NM_x.2) on the same
+  place share one transcript, so their exons are sorted together. GENCODE's `_PAR_Y` IDs
+  are not stripped and stay distinct. Measured on the production GTF (Ensembl GRCh38.111,
+  used for FORTE): 0 of 252,989 transcript IDs occur on more than one chromosome or
+  strand, so no production row changes.
 
 ## 5. Not the BAM, but easy to misread from counts
 
