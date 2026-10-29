@@ -158,7 +158,9 @@ For a row X and each admitted read:
     rules' exact-carrier route makes it depth; open for the operator. At a MAF insertion at
     Start 0 the REF reads tell nothing either (they fit the ALT placed past the insertion), so
     the row is (RD, AD) (0, 0) under the judge, against the rules' (6, 6) that develop's
-    #219 test asserts.
+    #219 test asserts. Decided by design (operator, 2026-10-29), as the two delins
+    germline-change tests: the test stays as it is, its expectation changing at the default
+    flip (#331).
   - *An indel the reads write beside X's site* (two reads and 5%, every placement clear of
     the site, the repeat X changes included) is a context, a separate event (RJ-8), however
     a read's aligner wrote it, where the reads need it for their calls (as a respelling
