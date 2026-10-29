@@ -1639,6 +1639,47 @@ impl Site {
         self.rows[0].pos
     }
 
+    /// The read's alignment to state `k`'s haplotype `hap` (the one its best path spells,
+    /// [`Site::hap_on_path`]) read off that path (`steps`, [`graph::kept_steps`]): each read
+    /// base's graph base mapped to its column in `hap` (a reference base by its coordinate past
+    /// the rows applied before it, an allele's by its place in the row's span on `hap`);
+    /// columns are `hap`'s own (the trim starts at 0). The read's call is examined on it: the
+    /// alignment its score came from, not a second one.
+    pub(crate) fn alignment_on_path(&self, k: usize, steps: &graph::PathSteps, hap: &Hap, read: &[u8]) -> (Alignment, usize) {
+        let g = &self.graphs[k].graph;
+        let column = |v: usize| -> usize {
+            let seg = g.segment_of(v);
+            let c = match seg.row {
+                None => hap.to_hap(g.coord[v], false),
+                Some(r) => {
+                    let (s, e) = self.spans[r];
+                    let hs = hap.segs.iter().find(|q| q.0 == s && q.1 == e).map_or(0, |q| q.2);
+                    hs + g.offset_in_segment(v) as i64
+                }
+            };
+            debug_assert_eq!(hap.base(c as usize), g.bases[v], "a path's base is its haplotype's");
+            c as usize
+        };
+        let placed: Vec<Placed> = steps
+            .steps
+            .iter()
+            .map(|s| match *s {
+                graph::Step::At(v) => Placed::At(column(v as usize)),
+                graph::Step::Inserted => Placed::Inserted,
+                graph::Step::LeftOver => Placed::LeftOver,
+            })
+            .collect();
+        let costs = (0..read.len())
+            .map(|i| match placed[i] {
+                Placed::At(c) => score::substitution_cost(read[i], hap.base(c)),
+                Placed::Inserted if i > 0 && placed[i - 1] == Placed::Inserted => -score::GAP_EXTEND,
+                Placed::Inserted => -(score::GAP_OPEN + score::GAP_EXTEND),
+                Placed::LeftOver => score::overhang_cost(read[i]),
+            })
+            .collect();
+        (Alignment { score: steps.score, placed, skipped_after: steps.skipped_after.clone(), costs }, 0)
+    }
+
     /// X's size, as the class bins measure it: the longer of its two alleles once the bases
     /// they share at either end are set aside (its telling bases on each allele).
     pub(crate) fn x_size(&self) -> usize {
@@ -4751,5 +4792,146 @@ mod graph_tests {
         }
         assert!(compared > 800, "{compared} reads compared");
     }
-}
 
+    /// An alignment's columns as haplotype columns (its trim's start added), its costs and skips.
+    fn laid(a: &(Alignment, usize)) -> (Vec<Placed>, Vec<i32>, Vec<u32>) {
+        let cols = a.0.placed.iter().map(|p| if let Placed::At(c) = *p { Placed::At(c + a.1) } else { *p }).collect();
+        (cols, a.0.costs.clone(), a.0.skipped_after.clone())
+    }
+
+    /// An alignment's score from its own costs and deletions.
+    fn summed(a: &Alignment) -> i32 {
+        let gaps: i32 = a.skipped_after.iter().filter(|&&k| k > 0).map(|&k| -(score::GAP_OPEN + score::GAP_EXTEND * k as i32)).sum();
+        a.costs.iter().sum::<i32>() + gaps
+    }
+
+    #[test]
+    fn a_reads_call_is_examined_on_the_alignment_its_score_came_from() {
+        // The call (X's telling bases, the anchor, the deciding quality) is read off the read's
+        // alignment to the haplotype a state's best path spells. That alignment is the path
+        // itself: its bases are the haplotype's, its costs sum to the state's score. Random
+        // sites of every kind of row, reads with errors, masks and indels of their own; and a
+        // 4-base deletion's site in an 18-base repeat beside a listed 14-base deletion, whose
+        // read the linear aligner aligns below its state's score (-20 against -17: its band
+        // misses the path the graph finds), so a second alignment would examine the call on
+        // other bases than its score's.
+        let mut st = 83u64;
+        let mut seen = 0usize;
+        for case in 0..48u64 {
+            let c = random_seq(700, 7300 + case);
+            let x = match case % 3 {
+                0 => Row::new(350, &c[350..351], &[*b"ACGT".iter().find(|&&b| b != c[350]).unwrap()]),
+                1 => Row::new(350, &c[350..351], &[&c[350..351], b"TGA"].concat()),
+                _ => Row::new(350, &c[350..356], &c[350..351]),
+            };
+            let mut rows: Vec<Row> = Vec::new();
+            for _ in 0..roll(&mut st, 3) {
+                let p = if roll(&mut st, 2) == 0 { 300 + roll(&mut st, 40) } else { 362 + roll(&mut st, 40) } as usize;
+                let r = random_row(&c, p, &mut st);
+                if !rows.contains(&r) && (r.end() < 345 || r.pos > 360) {
+                    rows.push(r);
+                }
+            }
+            let mut reads = Vec::new();
+            for k in 0..10 {
+                let mut on: Vec<&Row> = rows.iter().filter(|_| roll(&mut st, 2) == 0).take(1).collect();
+                if k % 2 == 0 && on.iter().all(|o| o.end() <= x.pos || x.end() <= o.pos) {
+                    on.push(&x);
+                }
+                let (mut h, mut o) = applied(&c, &on);
+                if roll(&mut st, 3) == 0 {
+                    let at = 335 + roll(&mut st, 30) as usize;
+                    h.insert(at, h[at]);
+                    o.insert(at, None);
+                }
+                let s = 250 + roll(&mut st, 90) as usize;
+                for _ in 0..roll(&mut st, 3) {
+                    let i = (s + roll(&mut st, 110) as usize).min(h.len() - 1);
+                    h[i] = b"ACGT"[roll(&mut st, 4) as usize];
+                }
+                let masked: Vec<usize> = (0..roll(&mut st, 3)).map(|_| roll(&mut st, 110) as usize).collect();
+                if let Some(r) = read_on(&h, &o, s, 100 + roll(&mut st, 40) as usize, k % 3 == 0, &masked) {
+                    reads.push(r);
+                }
+            }
+            let cand = Candidates { listed: rows.clone(), ..Candidates::default() };
+            let site = Site::build_with(ScorerKind::Graph, x.clone(), &cand, (0, c.clone()), &reads).unwrap();
+            for read in &reads {
+                for (k, (score, ex, _)) in super::super::decide::examined_alignments(&site, read).into_iter().enumerate() {
+                    assert_eq!((ex.0.score, summed(&ex.0)), (score, score), "case {case} state {k}: the examined alignment is the state's path");
+                    seen += 1;
+                }
+            }
+        }
+        assert!(seen > 1000, "{seen} alignments");
+        // the deletion beside a listed deletion, in a repeat
+        let mut c = random_seq(700, 31167);
+        let unit = random_seq(18, 167);
+        for i in 0..60 {
+            c[320 + i] = unit[i % 18];
+        }
+        let x = Row::new(350, &c[350..355], &c[350..351]);
+        let listed = Row::new(301, &c[301..316], &c[301..302]);
+        let seq = b"TNCANNCTNCGNNTANCANNCTNCGNNTANCCNNCANACNNCGNCTNNCCNCCNNACNACNNTCNTGNNGCNTANNTCNCTNNGCNTGNNCTNTTNNGGNAANNAGNCCNNCGNCCNNGANTCNNAGNACNNGTNG";
+        let quals: Vec<u8> = (0..seq.len()).map(|i| [30, 2, 22, 25, 2, 2, 21][i % 7]).collect();
+        let cigar = [Cigar::Match(17), Cigar::Del(4), Cigar::Match(1), Cigar::Ins(18), Cigar::Match(83), Cigar::SoftClip(17)];
+        let read = ReadView::new(seq, &quals, 334, &cigar, (0, seq.len()), 20).unwrap();
+        let cand = Candidates { listed: vec![listed], ..Candidates::default() };
+        let site = Site::build_with(ScorerKind::Graph, x.clone(), &cand, (0, c.clone()), std::slice::from_ref(&read)).unwrap();
+        let both = super::super::decide::examined_alignments(&site, &read);
+        let (score, ex, lin) = &both[0];
+        assert_eq!((*score, ex.0.score, lin.0.score), (-17, -17, -20), "REF's state: its score, the examined alignment's, the linear aligner's");
+    }
+
+    #[test]
+    fn on_tied_placements_in_a_run_the_traced_path_is_the_aligners_own_alignment() {
+        // A base more in a G run (or two, or a T more in the T run beside it) can be inserted at
+        // any of the run's bases at one cost. The graph's traceback and the linear aligner take
+        // the same one (both read back from the last base: an aligned base before a deletion
+        // before an insertion), on every state's haplotype: these calls are as they were.
+        let c = super::tests::contig(5, 344, b"GGGGGGTTTTTT");
+        let x = Row::new(350, b"T", b"C");
+        for (name, base, extra, at) in [("X, a G more", b'C', b"G".as_slice(), 344usize), ("X, two Gs more", b'C', b"GG", 344), ("REF, a G more", b'T', b"G", 344), ("X, a T more", b'C', b"T", 351)] {
+            let mut h = c.clone();
+            h[350] = base;
+            let seq: Vec<u8> = [&h[290..at], extra, &h[at..410]].concat();
+            let cigar = [Cigar::Match((at - 290) as u32), Cigar::Ins(extra.len() as u32), Cigar::Match((410 - at) as u32)];
+            let read = ReadView::new(&seq, &vec![30; seq.len()], 290, &cigar, (0, seq.len()), 20).unwrap();
+            let site = Site::build_with(ScorerKind::Graph, x.clone(), &Candidates::default(), (0, c.clone()), std::slice::from_ref(&read)).unwrap();
+            for (k, (_, ex, lin)) in super::super::decide::examined_alignments(&site, &read).into_iter().enumerate() {
+                assert_eq!(laid(&ex), laid(&lin), "{name}, state {k}");
+            }
+        }
+    }
+
+    #[test]
+    fn a_deletion_tied_across_repeat_units_is_called_on_the_paths_placement() {
+        // A period-17 repeat ends 13 bases before X (C>G); the read carries X and one unit
+        // deleted, its aligner writing the deletion at one unit's end (71M17D63M). Every
+        // unit's end gives the same score. The call's quality is the lowest of the read's
+        // confident bases where the winning alignment (X's) and the best losing one (REF's)
+        // differ: X, and the bases either side of each alignment's deletion. On the traced
+        // paths X's own quality, 25, is the lowest; on the linear aligner's placements (a
+        // second alignment, the deletion placed apart on the two haplotypes another way) a
+        // base of quality 21 beside a deletion was.
+        let mut c = random_seq(700, 31072);
+        let unit = random_seq(17, 72);
+        for i in 0..60 {
+            c[320 + i] = unit[i % 17];
+        }
+        let x = Row::new(350, &c[350..351], b"G");
+        assert_eq!(&c[350..351], b"C");
+        let seq = b"AAAGAAGTTGGACTTCGATGCACTCACTCCGGAGATCCCGTTTCCCCGCAGATCCCGTTTCCCGGCAGATCCCGTTTTAAAGCGACTACGGGTGGCCTCTGCTTTGACAAACCTGCACCGAGAACCAGCACCAC";
+        let quals: Vec<u8> = (0..seq.len()).map(|i| [25, 30, 21, 30, 30, 30, 25][i % 7]).collect();
+        let read = ReadView::new(seq, &quals, 287, &[Cigar::Match(71), Cigar::Del(17), Cigar::Match(63)], (0, seq.len()), 20).unwrap();
+        let at_x = read.refpos.iter().position(|&p| p == 350).unwrap();
+        let site = Site::build_with(ScorerKind::Graph, x.clone(), &Candidates::default(), (0, c.clone()), std::slice::from_ref(&read)).unwrap();
+        let v = judge(&site, &read, 20, true);
+        assert_eq!((v.call, v.qual, read.quals[at_x]), (super::super::decide::Call::Alt, 25, 25), "ALT at X's own quality");
+        let both = super::super::decide::examined_alignments(&site, &read);
+        let deleted_after = |a: &Alignment| a.skipped_after.iter().position(|&k| k > 0);
+        let path = (deleted_after(&both[0].1 .0), deleted_after(&both[1].1 .0));
+        let lin = (deleted_after(&both[0].2 .0), deleted_after(&both[1].2 .0));
+        assert!(path != lin, "the deletion's places on REF's and X's haplotypes: paths {path:?}, aligner {lin:?}");
+    }
+}
