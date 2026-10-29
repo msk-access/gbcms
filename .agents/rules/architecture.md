@@ -64,7 +64,12 @@ gbcms/
 │       │   ├── contig.rs        # Contig-name normalization across BAM/GTF/VCF (chrM vs MT)
 │       │   ├── filters.rs       # ReadFilter, FilterCounts
 │       │   └── baq.rs           # Heuristic BAQ (Li 2011)
-│       └── normalize/           # Left-alignment, decomp, fasta, repeat
+│       └── normalize/           # Variant preparation (PreparedVariant)
+│           ├── mod.rs, engine.rs, types.rs  # entry, preparation engine, PreparedVariant
+│           ├── left_align.rs    # Left-alignment
+│           ├── decomp.rs        # Homopolymer-twin detection (a delins miscollapsed in a run)
+│           ├── fasta.rs         # Reference windows
+│           └── repeat.rs        # Tandem-repeat detection and adaptive padding
 ├── nextflow/            # Nextflow pipeline wrapper
 ├── tests/               # pytest suite: contract tests, census.py, helpers.py (`ls tests`)
 ├── docs/                # MkDocs documentation
@@ -98,7 +103,7 @@ gbcms/
 7. **Windowed indel detection**: ±5bp scan expanding to `max(5, repeat_span + 2)`.
 8. **Dual alignment backends**: PairHMM (the CLI default, `--alignment-backend pairhmm`; `hmm` is an alias; WFA2 triage runs in front of it) or Smith-Waterman (`sw`, opt-in). They are the residual fallback behind the exact-carrier and junction rules (counting-engine skill).
 9. **Genomic binning**: ~10kb bins, one `bam.fetch()` per bin, max 200 variants/bin.
-10. **COITree for annotation**: Platform-portable metadata access via `Borrow` trait (nosimd vs NEON/AVX backends). The index is built per run from the GTF (plain or gzip/BGZF; ~2 s for a whole Ensembl GTF, ~6.5 s for GENCODE comprehensive; each line's feature and chromosome read before anything else is parsed); there is no disk cache (`--gtf-cache-dir` / `build-gtf-cache` are deprecated no-ops in 6.6.0, removed in 6.7.0).
+10. **COITree for annotation**: Platform-portable metadata access via `Borrow` trait (nosimd vs NEON/AVX backends). The index is built per run from the GTF (plain or gzip/BGZF; ~2 s for a whole Ensembl GTF, ~6.5 s for GENCODE comprehensive; each line's feature and chromosome read before anything else is parsed); there is no disk cache (the 6.6.0 build-gtf-cache command and its cache-dir option are gone).
 11. **Diagnostic flags**: `gbcms_diagnostic` and `gbcms_rescue` are strongly-typed Rust fields, not dynamic attributes.
 
 ## Binning invariance
@@ -140,7 +145,7 @@ check reads.
 `tests/test_read_census.py`): each read judged by its own bases across the event's
 tract, with the decided rules (REF needs one base past the first difference, ALT only
 that base). Open decisions are strict xfails there. A second engine sharing the
-classifier cannot see classification bugs, which is why the per-variant `count_bam`
+classifier cannot see classification bugs, which is why the per-variant counting
 oracle was retired (#170).
 
 ## Type Stub Synchronization
@@ -148,5 +153,4 @@ oracle was retired (#170).
 - `src/gbcms/_rs.pyi` is the **single** stub for the `gbcms._rs` extension module —
   edit it whenever the `#[pyo3(get)]` fields or `#[pyo3(signature)]` params change
 - It includes: `BaseCounts`, `PreparedVariant`, diagnostic fields, ASJD fields, nucleosomal fractions
-- (Historical: a top-level `src/gbcms_rs.pyi` used to mirror this; it stubbed a module
-  nothing imports and was removed. Don't reintroduce it.)
+- There is no second stub (AGENTS.md invariant 5)

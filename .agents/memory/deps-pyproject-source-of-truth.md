@@ -34,4 +34,3 @@ package where it is imported (runtime vs test), not where it happens to arrive.
   is installed with `--require-hashes --no-deps`, then `pip check` gates drift. It is
   refreshed at release (release guide step 4). The org's containers image does not
   use it ([[downstream-org-containers-modules]]).
-  See [[nextflow-cli-default-divergence]] for the related "keep deploy config in sync".

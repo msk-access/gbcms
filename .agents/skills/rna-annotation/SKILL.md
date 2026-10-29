@@ -16,11 +16,11 @@ When `--gtf` is provided in RNA mode, 17 additional columns are appended:
 
 ```
 GTF file → gtf::parse_gtf() → AnnotationIndex
-                                  ├── exon_trees: HashMap<u32, COITree>
-                                  ├── exons: Vec<ExonRecord>
-                                  ├── splice_sites: HashMap<u32, Vec<i32>>
-                                  ├── transcript_introns: HashMap<String, TranscriptIntrons>
-                                  └── chrom_map: HashMap<String, u32>
+                                  ├── exon_trees + exons: a COITree per chromosome, metadata = index into exons
+                                  ├── splice_sites, intron_boundaries, exon_starts, exon_ends: per chromosome
+                                  ├── transcript_introns: per transcript (compatibility, ASJD)
+                                  ├── transcript_trees + transcript_strands: transcript spans (strand at intronic positions)
+                                  └── chrom_map: chromosome name → id, without "chr"
 ```
 
 Built once in `count_bam_binned()`, shared via `Arc` across rayon workers.
@@ -50,9 +50,11 @@ Fisher test gate on the `asjd_n_ref_junc` and `asjd_n_alt_junc` counts.
 - Under enforcement an antisense read is classified, tallied in `antisense_depth`
   (first-class REF/ALT over the anchor, as the sense tally), then dropped before any
   count (`antisense_excluded` in the per-read trace). `STRAND_DISCORDANT` only fires
-  with `--no-strandedness` where the gene strand is resolved. `strand_at` uses exons
-  only, so intronic loci (splice sites) and opposite-strand overlaps have no strand:
-  enforcement is a no-op there (#185).
+  with `--no-strandedness` where the gene strand is resolved. `strand_at` takes the strand
+  from the overlapping exons, else (intronic positions, splice sites) from the transcripts
+  spanning the position; it returns no strand where the position is unannotated, only
+  unstranded features cover it, or genes of both strands cover it. Enforcement is a no-op
+  there; antisense reads are counted, and the engine warns once, naming up to ten of them.
 - Library strand protocol is selectable via `--strandedness` (`reverse` default /
   `forward` / `unstranded`); the read→transcript fold lives in
   `rna.rs::read_transcript_strand(record, Strandedness)`. `reverse` = dUTP/`-s 2`

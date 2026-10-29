@@ -7,8 +7,10 @@ description: "Reference for gbcms read-level (genomic) QC — BAM flag filters (
 
 ## Phase 0 universal filters (`shared/filters.rs`)
 
-`ReadFilter::passes()` checks, in order: duplicate → secondary → supplementary →
-qc-failed → improper-pair → indel(CIGAR I/D) → no bases (SEQ `*`, always on).
+`ReadFilter::passes()` checks, in order: unmapped (always on: a record placed at its mate's
+position is no observation, and at `--min-mapq 0` nothing else would screen it) → duplicate →
+secondary → supplementary → qc-failed → improper-pair → indel(CIGAR I/D) → no bases (SEQ `*`,
+always on).
 Rejections are tallied in `FilterCounts` for debug logging; no-bases records are
 also warned once per counting pass (not in DP, fragments or `mq0_count`).
 
@@ -33,9 +35,9 @@ RNA does NH:i:1 rescue of low-MAPQ unique reads; `mq0_count` tracks MAPQ==0 read
   `BAQ_PENALTY = 20` (clamped at 0). Allocation-free when the read has no indel/N.
 - For RNA, the RefSkip (N) penalty substitutes for GATK SplitNCigarReads overhang
   clipping.
-- Default: **DNA off, RNA on** (`--apply-baq` / `--no-baq`). The Nextflow modules
-  encode this asymmetry — DNA passes `--apply-baq` only if true; RNA passes
-  `--no-baq` only if false.
+- Default: **DNA off, RNA on** (`--apply-baq` / `--no-baq`). The Nextflow modules keep
+  separate params: DNA passes `--apply-baq` only if `apply_baq` is true; RNA passes
+  `--apply-baq` or `--no-baq` explicitly from `rna_apply_baq`.
 
 ## QC diagnostic outputs
 
