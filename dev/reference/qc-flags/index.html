@@ -300,6 +300,18 @@
   </span>
 </a>
 </li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="../../cli/summarize/">
+<span class="md-ellipsis">
+    
+  
+    Summarize Command
+  
+
+    
+  </span>
+</a>
+</li>
 </ul>
 </nav>
 </li>
@@ -498,6 +510,15 @@
 <span class="md-ellipsis">
       
         QC columns
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#merged-output">
+<span class="md-ellipsis">
+      
+        Merged output
       
     </span>
 </a>
@@ -918,6 +939,15 @@
 </a>
 </li>
 <li class="md-nav__item">
+<a class="md-nav__link" href="#merged-output">
+<span class="md-ellipsis">
+      
+        Merged output
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
 <a class="md-nav__link" href="#mfsd-report-classes">
 <span class="md-ellipsis">
       
@@ -1049,6 +1079,12 @@ that fired and the rows that need a look: <a href="#end-of-run-summary">End-of-r
 <td style="text-align: left;"><code>rna_editing_site</code>, <code>asjd_flag</code>, <code>mfsd_ks_valid</code>, <code>mfsd_alt_confidence</code>, <code>mfsd_ch_flag</code></td>
 <td style="text-align: left;">INFO <code>RED</code>, <code>ASJD</code>; <abbr title="Mutant Fragment Size Distribution - Insert-size analysis for REF vs ALT fragments">mFSD</abbr> INFO</td>
 <td style="text-align: left;">RNA; <code>--mfsd</code></td>
+</tr>
+<tr>
+<td style="text-align: left;"><a href="#merged-output">Merged output</a></td>
+<td style="text-align: left;">— (read from the <code>simplex_duplex_*</code> cells)</td>
+<td style="text-align: left;">—</td>
+<td style="text-align: left;"><code>gbcms merge</code> with combined columns</td>
 </tr>
 <tr>
 <td style="text-align: left;"><a href="#mfsd-report-classes"><abbr title="Mutant Fragment Size Distribution - Insert-size analysis for REF vs ALT fragments">mFSD</abbr> report classes</a></td>
@@ -1415,6 +1451,26 @@ only the ASJD-2 markers report.</p>
 </tr>
 </tbody>
 </table>
+<h2 id="merged-output">Merged output<a class="headerlink" href="#merged-output" title="Permanent link">¶</a></h2>
+<p><code>gbcms merge</code> writes a combined <code>simplex_duplex_*</code> cell as <code>NA</code> where it cannot add the
+two inputs' counts. The flag below is not a column: the
+<a href="#end-of-run-summary">end-of-run summary</a> derives it from a merged <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr>.</p>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">Flag</th>
+<th style="text-align: left;">Set when</th>
+<th style="text-align: left;">What to do</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;"><code>COMBINED_NA</code></td>
+<td style="text-align: left;">A combined count, total or <abbr title="Variant Allele Frequency - Fraction of reads supporting the variant allele">VAF</abbr> cell (<code>simplex_duplex_*</code>, the strand-bias statistics left out) is <code>NA</code> on the row: an input's count was missing or not a number, or the duplex and simplex <abbr title="Multi-Nucleotide Polymorphism - Multiple adjacent base substitutions">MNP</abbr> rescues adopted different alleles (the merge log names each)</td>
+<td style="text-align: left;">Do not use the combined counts or <abbr title="Variant Allele Frequency - Fraction of reads supporting the variant allele">VAF</abbr> there; read each input's own columns</td>
+</tr>
+</tbody>
+</table>
 <h2 id="mfsd-report-classes"><abbr title="Mutant Fragment Size Distribution - Insert-size analysis for REF vs ALT fragments">mFSD</abbr> report classes<a class="headerlink" href="#mfsd-report-classes" title="Permanent link">¶</a></h2>
 <p>The <code>--mfsd-report</code> HTML grades each variant's fragment-size evidence (see
 <a href="../mfsd-report/"><abbr title="Mutant Fragment Size Distribution - Insert-size analysis for REF vs ALT fragments">mFSD</abbr> Report</a>): the ALT fragments against the REF fragments at the
@@ -1528,8 +1584,10 @@ flags fired, on how many rows, which rows need a look, and what to do about each
 users read the counts and the <abbr title="Variant Allele Frequency - Fraction of reads supporting the variant allele">VAF</abbr> and never open the flag columns; the summary points to
 the few rows where that is not enough.</p>
 <p>It reads the output the run has written, <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> or <abbr title="Variant Call Format - Standard variant call file format">VCF</abbr>, after writing it. It changes no count,
-column or row, writes no file and does not change the exit code. If the output cannot be
-read, the run logs a warning and carries on.</p>
+column or row, writes no file and does not change the exit code. If a sample's output
+cannot be read, the run logs a warning and carries on; the sample is named in the block
+under "Not checked", with a sample that failed to count, and the closing line is a <code>WARNING</code>
+that says "k of n samples not checked", so an incomplete check never reads as a clean one.</p>
 <p>Each flag is in one of three tiers. The first two are the rows that <strong>need a look</strong>.</p>
 <table>
 <thead>
@@ -1566,6 +1624,8 @@ most rows to look at. A flag the reading build does not know, written by another
 listed apart and is not counted as needing a look, except on a <code>FAIL</code> row.</p>
 <p>The run's last line is a <code>WARNING</code> when any row needs a look and an <code>INFO</code> line when none
 does; the exit code is unchanged, so flagged rows never fail a pipeline.</p>
+<p><a href="../../cli/summarize/"><code>gbcms summarize</code></a> makes the same summary from outputs already written
+(older runs, many samples, a merged <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr>), as text, JSON, a cohort table or MultiQC content.</p>
 <p>The <abbr title="Mutant Fragment Size Distribution - Insert-size analysis for REF vs ALT fragments">mFSD</abbr> report classes are not in the output rows, so the summary leaves them out.</p>
 <p>An example, from 2,000 synthetic rows:</p>
 <!-- qc-summary-example -->
@@ -1722,6 +1782,10 @@ an informational flag). The definitions are above; the tests keep the two in ste
 <tr>
 <td style="text-align: left;"><code>rna_editing_site</code></td>
 <td style="text-align: left;">The locus overlaps a known A-to-I editing site: an A&gt;G or T&gt;C call there is likely editing, not a somatic mutation</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>COMBINED_NA</code></td>
+<td style="text-align: left;">A combined simplex_duplex count is NA (a count missing in one flavour, or mixed <abbr title="Multi-Nucleotide Polymorphism - Multiple adjacent base substitutions">MNP</abbr> rescue): the combined <abbr title="Variant Allele Frequency - Fraction of reads supporting the variant allele">VAF</abbr> is unusable, so read each flavour's own columns</td>
 </tr>
 </tbody>
 </table>

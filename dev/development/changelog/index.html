@@ -300,6 +300,18 @@
   </span>
 </a>
 </li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="../../cli/summarize/">
+<span class="md-ellipsis">
+    
+  
+    Summarize Command
+  
+
+    
+  </span>
+</a>
+</li>
 </ul>
 </nav>
 </li>
@@ -780,6 +792,46 @@
 <p>The format is based on <a href="https://keepachangelog.com/en/1.0.0/">Keep a Changelog</a>,
 and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semantic Versioning</a>.</p>
 <h2 id="unreleased">[Unreleased]<a class="headerlink" href="#unreleased" title="Permanent link">¶</a></h2>
+<h3 id="fixed-an-unchecked-sample-no-longer-reads-as-a-clean-one-227">Fixed — an unchecked sample no longer reads as a clean one (#227)<a class="headerlink" href="#fixed-an-unchecked-sample-no-longer-reads-as-a-clean-one-227" title="Permanent link">¶</a></h3>
+<ul>
+<li><strong>The QC summary names a sample whose output could not be read.</strong> When one sample's
+  output could not be read, the combined block left it out and the closing line said "No row
+  needs a look". Now the block counts "k of n samples" and lists the sample under "Not
+  checked" with the reason, a sample whose counting failed is named too, and the closing line
+  is a <code>WARNING</code> ("1 of 3 samples not checked: ..."). The exit code is unchanged.
+  <code>gbcms summarize</code> does the same for an input it refuses or cannot read: it summarizes the
+  others, names the input, and still exits 1. A MultiQC report carries the warning.</li>
+<li><strong><code>gbcms summarize</code> refuses a <abbr title="Variant Call Format - Standard variant call file format">VCF</abbr> that is not gbcms's.</strong> An ordinary <abbr title="Variant Call Format - Standard variant call file format">VCF</abbr>, a bare header
+  and an empty <code>.vcf</code> read as clean outputs (every record a PASS row with no flags). A <abbr title="Variant Call Format - Standard variant call file format">VCF</abbr>
+  now needs gbcms's own <code>GS</code> INFO field, declared in its header or on its first record; the
+  rest are named under "Not checked".</li>
+<li><strong>A MultiQC file left by an earlier run is removed when this run has nothing for it</strong>, the
+  summary table as well as the warning, so a report never reads old counts. A skipped input
+  that shares a name with a checked sample gets a row of its own in the warning instead of
+  replacing the checked sample's.</li>
+<li><strong>The MultiQC table is built in one pass over the cohort.</strong> It looked for the flags that
+  fired once for every sample, so its time grew with the square of the cohort; the output is
+  byte-identical.</li>
+</ul>
+<h3 id="added-gbcms-summarize-the-merge-na-flag-and-qc_summary-227">Added — <code>gbcms summarize</code>, the merge NA flag and <code>--qc_summary</code> (#227)<a class="headerlink" href="#added-gbcms-summarize-the-merge-na-flag-and-qc_summary-227" title="Permanent link">¶</a></h3>
+<ul>
+<li><strong><code>gbcms summarize &lt;outputs...&gt;</code> makes the QC summary of finished outputs.</strong> It reads
+  <code>.maf</code> or <code>.vcf</code> outputs (a run's, or a merge's) with the code the run's own summary uses,
+  and changes nothing in them. <code>--format text</code> (the default) is the block the run logs, for
+  one sample or many; <code>json</code> writes one <code>&lt;sample&gt;.qc_summary.json</code> per output (every flag,
+  zeros included, and every row that needs a look); <code>tsv</code> writes one cohort table; <code>multiqc</code>
+  writes MultiQC custom content (<code>gbcms_qc_summary_mqc.json</code>, and a
+  <code>gbcms_qc_warning_mqc.json</code> section only when a row needs a look). The exit code is 0
+  whether or not rows need a look. <code>gbcms dna</code> and <code>gbcms rna</code> gain no option.</li>
+<li><strong>A merged <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> is summarized too, with a flag for NA combined cells.</strong> The summary reads
+  each input's flags under its prefix, and <code>COMBINED_NA</code> ("check the call") marks a row whose
+  <code>simplex_duplex_*</code> count, total or <abbr title="Variant Allele Frequency - Fraction of reads supporting the variant allele">VAF</abbr> is <code>NA</code>: an input count was missing or not a number,
+  or the duplex and simplex rescues adopted different alleles. It is built from what
+  <code>gbcms merge</code> writes; no column is added.</li>
+<li><strong>Nextflow: <code>--qc_summary</code> (default <code>false</code>).</strong> After all samples finish, one task runs
+  <code>gbcms summarize --format multiqc</code> and <code>--format json</code> over every output, merged MAFs
+  included, and publishes them to <code>gbcms/qc_summary/</code>.</li>
+</ul>
 <h3 id="added-an-end-of-run-qc-summary-in-the-run-log-227">Added — an end-of-run QC summary in the run log (#227)<a class="headerlink" href="#added-an-end-of-run-qc-summary-in-the-run-log-227" title="Permanent link">¶</a></h3>
 <ul>
 <li><strong>The run log now ends with a QC summary.</strong> <code>gbcms dna</code> and <code>gbcms rna</code> log one block

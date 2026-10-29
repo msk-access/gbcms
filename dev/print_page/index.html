@@ -459,6 +459,8 @@
       
         
       
+        
+      
     
     
     
@@ -642,6 +644,34 @@
     
   
     Convert Command
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../cli/summarize/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Summarize Command
   
 
     
@@ -1894,6 +1924,17 @@
     <span class="md-ellipsis">
       
         Convert Command
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#cli-summarize" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Summarize Command
       
     </span>
   </a>
@@ -3207,7 +3248,7 @@ provides these dependencies.</p>
         })
         </script>
         </head><body><div><h1 id="cli-reference"><abbr title="Command Line Interface - Terminal-based program interface">CLI</abbr> Reference<a class="headerlink" href="#cli-cli-reference" title="Permanent link">¶</a></h1>
-<p>The <code>gbcms</code> command-line interface provides two primary commands for variant counting — one for DNA/<abbr title="Cell-free DNA - Circulating DNA fragments in blood plasma">cfDNA</abbr> and one for RNA-seq — plus merge and normalization utilities.</p>
+<p>The <code>gbcms</code> command-line interface provides two primary commands for variant counting — one for DNA/<abbr title="Cell-free DNA - Circulating DNA fragments in blood plasma">cfDNA</abbr> and one for RNA-seq — plus merge, normalization and QC-summary utilities.</p>
 <h2 id="cli-commands">Commands<a class="headerlink" href="#cli-commands" title="Permanent link">¶</a></h2>
 <table>
 <thead>
@@ -3237,6 +3278,10 @@ provides these dependencies.</p>
 <td style="text-align: left;"><a href="#cli-convert"><strong>convert</strong></a></td>
 <td style="text-align: left;"><abbr title="Variant Call Format - Standard variant call file format">VCF</abbr> ↔ <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> conversion as vcf2maf / maf2vcf write it (no counting)</td>
 </tr>
+<tr>
+<td style="text-align: left;"><a href="#cli-summarize"><strong>summarize</strong></a></td>
+<td style="text-align: left;">QC flag summary of finished outputs: text, JSON, a cohort table or MultiQC content</td>
+</tr>
 </tbody>
 </table>
 <h2 id="cli-quick-example">Quick Example<a class="headerlink" href="#cli-quick-example" title="Permanent link">¶</a></h2>
@@ -3261,6 +3306,7 @@ provides these dependencies.</p>
 <a id="__codelineno-1-3" name="__codelineno-1-3" href="#cli-__codelineno-1-3"></a>gbcms<span class="w"> </span>rna<span class="w"> </span>--help
 <a id="__codelineno-1-4" name="__codelineno-1-4" href="#cli-__codelineno-1-4"></a>gbcms<span class="w"> </span>normalize<span class="w"> </span>--help
 <a id="__codelineno-1-5" name="__codelineno-1-5" href="#cli-__codelineno-1-5"></a>gbcms<span class="w"> </span>convert<span class="w"> </span>--help
+<a id="__codelineno-1-6" name="__codelineno-1-6" href="#cli-__codelineno-1-6"></a>gbcms<span class="w"> </span>summarize<span class="w"> </span>--help
 </code></pre></div>
 <h2 id="cli-related">Related<a class="headerlink" href="#cli-related" title="Permanent link">¶</a></h2>
 <ul>
@@ -5003,6 +5049,7 @@ from the type label, so counts are pre-prefixed in the per-<abbr title="Binary A
 <li><a href="#reference-output-formats">Output Formats</a> — Column schema reference</li>
 <li><a href="#reference-architecture">Architecture</a> — System design</li>
 <li><a href="#cli-dna">gbcms dna</a> — Per-<abbr title="Binary Alignment Map - Compressed sequence alignment file format">BAM</abbr> DNA counting</li>
+<li><a href="#cli-summarize">gbcms summarize</a> — QC summary of a merged <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr>, with a flag for rows whose combined cells are <code>NA</code></li>
 </ul>
 <!-- Abbreviation definitions for gbcms documentation -->
 <!-- These provide hover tooltips for technical acronyms -->
@@ -5246,6 +5293,142 @@ and worked examples are in <a href="#reference-output-formats">Output Formats</a
 <li><a href="#cli-normalize">gbcms normalize</a> — REF validation and left-alignment, no counting</li>
 <li><a href="#reference-output-formats">Output Formats</a> — the <abbr title="Variant Call Format - Standard variant call file format">VCF</abbr> and <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> output columns</li>
 <li><a href="#reference-input-formats">Input Formats</a> — <abbr title="Variant Call Format - Standard variant call file format">VCF</abbr>/<abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> input conventions</li>
+</ul>
+<!-- Abbreviation definitions for gbcms documentation -->
+<!-- These provide hover tooltips for technical acronyms -->
+<p><span hidden="">abbreviations</span></p></div></body></html></section><section class="print-page" id="cli-summarize" heading-number="3.7"><html><head>
+        <script type="text/javascript">
+        document.addEventListener('DOMContentLoaded', function () {
+            remove_material_navigation();remove_mkdocs_theme_navigation();
+        })
+        </script>
+        </head><body><div><h1 id="gbcms-summarize">gbcms summarize<a class="headerlink" href="#cli-summarize-gbcms-summarize" title="Permanent link">¶</a></h1>
+<p>Summarize the QC flags of finished outputs: which flags fired, on how many rows, which rows need a look, and what to do about each.</p>
+<h2 id="cli-summarize-synopsis">Synopsis<a class="headerlink" href="#cli-summarize-synopsis" title="Permanent link">¶</a></h2>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#cli-summarize-__codelineno-0-1"></a>gbcms<span class="w"> </span>summarize<span class="w"> </span><span class="o">[</span>OPTIONS<span class="o">]</span><span class="w"> </span>&lt;OUTPUT&gt;...
+</code></pre></div>
+<h2 id="cli-summarize-description">Description<a class="headerlink" href="#cli-summarize-description" title="Permanent link">¶</a></h2>
+<p><code>gbcms dna</code> and <code>gbcms rna</code> end their log with a QC summary (<a href="#reference-qc-flags-end-of-run-summary">QC Flags → End-of-run summary</a>). <code>gbcms summarize</code> makes the same summary from outputs that are already written: an older run, many samples together, or a merged <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr>. The text format is the block the run logs; the other formats are the same summary as JSON, a cohort table, or MultiQC content.</p>
+<p>It reads each output once and changes nothing in it. The exit code is <code>0</code> whether or not rows need a look.</p>
+<p>An input that is refused (not a <code>.maf</code> or <code>.vcf</code>), cannot be read, is not a gbcms output, or shares a sample name with an earlier input is <strong>not checked</strong>: the others are summarized, the block names it under "Not checked" with the reason ("1 of 3 samples not checked"), the closing line is a <code>WARNING</code>, and the exit code is <code>1</code>. A MultiQC report carries the same warning. With the text format that is all on standard output; the other formats print <code>not checked: &lt;sample&gt;: &lt;reason&gt;</code> on standard error.</p>
+<p>Every flag, and what to do about it, is defined on the <a href="#reference-qc-flags">QC Flags</a> page.</p>
+<h2 id="cli-summarize-arguments">Arguments<a class="headerlink" href="#cli-summarize-arguments" title="Permanent link">¶</a></h2>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">Argument</th>
+<th style="text-align: left;">Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;"><code>OUTPUT...</code></td>
+<td style="text-align: left;">One or more finished outputs: <code>.maf</code> or <code>.vcf</code> from <code>gbcms dna</code>, <code>gbcms rna</code> or <code>gbcms merge</code>. Compressed files are not read.</td>
+</tr>
+</tbody>
+</table>
+<p>A sample's name is its file name without <code>.maf</code> or <code>.vcf</code> (a run writes <code>&lt;sample&gt;&lt;suffix&gt;.maf</code>). Two outputs may not share a name.</p>
+<h2 id="cli-summarize-options">Options<a class="headerlink" href="#cli-summarize-options" title="Permanent link">¶</a></h2>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">Option</th>
+<th style="text-align: left;">Default</th>
+<th style="text-align: left;">Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;"><code>--format</code></td>
+<td style="text-align: left;"><code>text</code></td>
+<td style="text-align: left;"><code>text</code>, <code>json</code>, <code>tsv</code> or <code>multiqc</code> (see below)</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>--output-dir</code>, <code>-o</code></td>
+<td style="text-align: left;">see below</td>
+<td style="text-align: left;">Where <code>json</code>, <code>tsv</code> and <code>multiqc</code> files are written; created if missing</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>--verbose</code>, <code>-V</code></td>
+<td style="text-align: left;"><code>false</code></td>
+<td style="text-align: left;">Enable debug logging</td>
+</tr>
+</tbody>
+</table>
+<h2 id="cli-summarize-formats">Formats<a class="headerlink" href="#cli-summarize-formats" title="Permanent link">¶</a></h2>
+<h3 id="cli-summarize-text">text<a class="headerlink" href="#cli-summarize-text" title="Permanent link">¶</a></h3>
+<p>The block the run logs, for one sample or the cohort block for several, then its closing line. It goes to standard output.</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#cli-summarize-__codelineno-1-1"></a>gbcms<span class="w"> </span>summarize<span class="w"> </span>results/*.maf
+</code></pre></div>
+<h3 id="cli-summarize-json">json<a class="headerlink" href="#cli-summarize-json" title="Permanent link">¶</a></h3>
+<p>One <code>&lt;sample&gt;.qc_summary.json</code> per output, beside the output or in <code>--output-dir</code>. Each file holds the sample's whole summary:</p>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">Field</th>
+<th style="text-align: left;">Content</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;"><code>schema</code></td>
+<td style="text-align: left;"><code>gbcms.qc_summary/1</code></td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>sample</code>, <code>format</code>, <code>merged</code></td>
+<td style="text-align: left;">The sample, <code>maf</code> or <code>vcf</code>, and whether it is a merged <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr></td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>written_by</code>, <code>summarized_by</code></td>
+<td style="text-align: left;">The build that wrote the output, and the build that summarized it</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>rows</code>, <code>need_look</code>, <code>need_look_share</code></td>
+<td style="text-align: left;">Rows, rows that need a look, and their share</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>rows_by_tier</code></td>
+<td style="text-align: left;">Rows with a flag of each tier (<code>fix_input</code>, <code>check_call</code>, <code>informational</code>)</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>flags</code></td>
+<td style="text-align: left;">Every flag, those that did not fire too (a zero is evidence): <code>name</code>, <code>family</code>, <code>tier</code>, <code>rows</code>, <code>share</code>, <code>action</code> and a <code>docs</code> link</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>unlisted_flags</code></td>
+<td style="text-align: left;">Flags this build does not know, with their rows</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>rows_to_look_at</code></td>
+<td style="text-align: left;">Every row that needs a look: <code>variant</code>, <code>gene</code> and its <code>flags</code> (input problems first)</td>
+</tr>
+</tbody>
+</table>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#cli-summarize-__codelineno-2-1"></a>gbcms<span class="w"> </span>summarize<span class="w"> </span>--format<span class="w"> </span>json<span class="w"> </span>results/*.maf
+</code></pre></div>
+<h3 id="cli-summarize-tsv">tsv<a class="headerlink" href="#cli-summarize-tsv" title="Permanent link">¶</a></h3>
+<p>One cohort table, a row per sample: the rows, the rows that need a look and their share, the rows by tier, then a column per flag (zeros included) and the flags this build does not know. It goes to standard output, or to <code>gbcms_qc_summary.tsv</code> in <code>--output-dir</code>.</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#cli-summarize-__codelineno-3-1"></a>gbcms<span class="w"> </span>summarize<span class="w"> </span>--format<span class="w"> </span>tsv<span class="w"> </span>results/*.maf<span class="w"> </span>&gt;<span class="w"> </span>cohort_qc.tsv
+</code></pre></div>
+<h3 id="cli-summarize-multiqc">multiqc<a class="headerlink" href="#cli-summarize-multiqc" title="Permanent link">¶</a></h3>
+<p><a href="https://docs.seqera.io/multiqc/custom_content">MultiQC custom content</a>, written to <code>--output-dir</code> (the current directory by default):</p>
+<ul>
+<li><code>gbcms_qc_summary_mqc.json</code>: a table with a row per sample. The columns are the rows, the rows that need a look, and the rows by tier, coloured by tier (a first-tier row red, a second-tier row amber, none green). A column per flag that fired is there too, hidden until switched on.</li>
+<li><code>gbcms_qc_warning_mqc.json</code>: a "WARNING: gbcms rows need a look" section listing the samples that have such rows. It is written only when some do; a file left by an earlier run is removed when none do now.</li>
+</ul>
+<p>MultiQC puts a custom-content section that its config's <code>custom_content: order</code> does not name at the top of the report. To pin the warning first, list <code>gbcms_qc_warning</code> before the other ids.</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#cli-summarize-__codelineno-4-1"></a>gbcms<span class="w"> </span>summarize<span class="w"> </span>--format<span class="w"> </span>multiqc<span class="w"> </span>--output-dir<span class="w"> </span>qc/<span class="w"> </span>results/*.maf
+<a id="__codelineno-4-2" name="__codelineno-4-2" href="#cli-summarize-__codelineno-4-2"></a>multiqc<span class="w"> </span>qc/<span class="w"> </span>-o<span class="w"> </span>report/
+</code></pre></div>
+<h2 id="cli-summarize-merged-outputs">Merged outputs<a class="headerlink" href="#cli-summarize-merged-outputs" title="Permanent link">¶</a></h2>
+<p>A merged <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> carries each input's flags under that input's prefix (<code>duplex_</code>, <code>simplex_</code>), and the summary reads them all: a row's flags are the union of its inputs'. It also derives <a href="#reference-qc-flags-merged-output"><code>COMBINED_NA</code></a> from the combined <code>simplex_duplex_*</code> cells, a flag that exists only in the summary.</p>
+<h2 id="cli-summarize-nextflow">Nextflow<a class="headerlink" href="#cli-summarize-nextflow" title="Permanent link">¶</a></h2>
+<p>The pipeline runs this command over every output with <code>--qc_summary</code> (<a href="#nextflow-parameters-qc-summary-options">parameters</a>).</p>
+<h2 id="cli-summarize-related">Related<a class="headerlink" href="#cli-summarize-related" title="Permanent link">¶</a></h2>
+<ul>
+<li><a href="#reference-qc-flags">QC Flags</a> — every flag, and the end-of-run summary</li>
+<li><a href="#cli-merge">gbcms merge</a> — merged MAFs</li>
+<li><a href="#cli-dna">gbcms dna</a> / <a href="#cli-rna">gbcms rna</a> — the runs that log the summary</li>
 </ul>
 <!-- Abbreviation definitions for gbcms documentation -->
 <!-- These provide hover tooltips for technical acronyms -->
@@ -5921,6 +6104,24 @@ what the old cache file was (96–125 MB) for about 0.4 s more decoding.</p>
 </tr>
 </tbody>
 </table>
+<h2 id="nextflow-parameters-qc-summary-options">QC Summary Options<a class="headerlink" href="#nextflow-parameters-qc-summary-options" title="Permanent link">¶</a></h2>
+<p>Each <code>gbcms dna</code> / <code>gbcms rna</code> task already ends its log with a <a href="#reference-qc-flags-end-of-run-summary">QC summary</a>. This parameter adds one for the whole run.</p>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">Parameter</th>
+<th style="text-align: left;">Default</th>
+<th style="text-align: left;">Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;"><code>--qc_summary</code></td>
+<td style="text-align: left;"><code>false</code></td>
+<td style="text-align: left;">After all samples finish, run <a href="#cli-summarize"><code>gbcms summarize</code></a> over every output (merged MAFs included) and publish to <code>${params.outdir}/gbcms/qc_summary/</code>: MultiQC custom content (<code>gbcms_qc_summary_mqc.json</code>, and <code>gbcms_qc_warning_mqc.json</code> only when a row needs a look) and one <code>&lt;name&gt;.qc_summary.json</code> per output. Nothing else changes.</td>
+</tr>
+</tbody>
+</table>
 <h2 id="nextflow-parameters-resource-limits">Resource Limits<a class="headerlink" href="#nextflow-parameters-resource-limits" title="Permanent link">¶</a></h2>
 <table>
 <thead>
@@ -6542,53 +6743,54 @@ the odds ratio for the size of the imbalance.</p>
 <a id="__codelineno-2-5" name="__codelineno-2-5" href="#reference-architecture-__codelineno-2-5"></a>├── normalize.py     # Standalone normalization workflow
 <a id="__codelineno-2-6" name="__codelineno-2-6" href="#reference-architecture-__codelineno-2-6"></a>├── convert.py       # Standalone VCF &lt;-&gt; MAF conversion (vcf2maf / maf2vcf)
 <a id="__codelineno-2-7" name="__codelineno-2-7" href="#reference-architecture-__codelineno-2-7"></a>├── qc_summary.py    # End-of-run QC summary (log block read from the written output)
-<a id="__codelineno-2-8" name="__codelineno-2-8" href="#reference-architecture-__codelineno-2-8"></a>├── core/
-<a id="__codelineno-2-9" name="__codelineno-2-9" href="#reference-architecture-__codelineno-2-9"></a>│   └── kernel.py    # Coordinates + VCF &lt;-&gt; MAF representation, type labels
-<a id="__codelineno-2-10" name="__codelineno-2-10" href="#reference-architecture-__codelineno-2-10"></a>├── io/
-<a id="__codelineno-2-11" name="__codelineno-2-11" href="#reference-architecture-__codelineno-2-11"></a>│   ├── input.py     # VcfReader, MafReader (streaming)
-<a id="__codelineno-2-12" name="__codelineno-2-12" href="#reference-architecture-__codelineno-2-12"></a>│   ├── output.py    # VcfWriter, MafWriter (mode-aware: DNA/RNA columns)
-<a id="__codelineno-2-13" name="__codelineno-2-13" href="#reference-architecture-__codelineno-2-13"></a>│   ├── reference.py # Reference bases for MAF -&gt; VCF anchors
-<a id="__codelineno-2-14" name="__codelineno-2-14" href="#reference-architecture-__codelineno-2-14"></a>│   └── batch.py     # Polars batch I/O (read/scan/write MAF, read Parquet)
-<a id="__codelineno-2-15" name="__codelineno-2-15" href="#reference-architecture-__codelineno-2-15"></a>├── models/
-<a id="__codelineno-2-16" name="__codelineno-2-16" href="#reference-architecture-__codelineno-2-16"></a>│   └── core.py      # Pydantic configs (GbcmsDnaConfig, GbcmsRnaConfig, MergeConfig)
-<a id="__codelineno-2-17" name="__codelineno-2-17" href="#reference-architecture-__codelineno-2-17"></a>└── utils/
-<a id="__codelineno-2-18" name="__codelineno-2-18" href="#reference-architecture-__codelineno-2-18"></a>    └── logging.py   # Structured logging
-<a id="__codelineno-2-19" name="__codelineno-2-19" href="#reference-architecture-__codelineno-2-19"></a>
-<a id="__codelineno-2-20" name="__codelineno-2-20" href="#reference-architecture-__codelineno-2-20"></a>rust/src/
-<a id="__codelineno-2-21" name="__codelineno-2-21" href="#reference-architecture-__codelineno-2-21"></a>├── lib.rs                    # PyO3 module exports
-<a id="__codelineno-2-22" name="__codelineno-2-22" href="#reference-architecture-__codelineno-2-22"></a>├── annotation/               # v5.0.0: GTF annotation index (COITree, splice masks)
-<a id="__codelineno-2-23" name="__codelineno-2-23" href="#reference-architecture-__codelineno-2-23"></a>│   ├── mod.rs                # AnnotationIndex struct, COITree queries
-<a id="__codelineno-2-24" name="__codelineno-2-24" href="#reference-architecture-__codelineno-2-24"></a>│   ├── gtf.rs                # GTF loader (plain or gzip/BGZF, variant-guided streaming)
-<a id="__codelineno-2-25" name="__codelineno-2-25" href="#reference-architecture-__codelineno-2-25"></a>│   └── gtf_line.rs           # One GTF line's exon fields (noodles-gtf's grammar)
-<a id="__codelineno-2-26" name="__codelineno-2-26" href="#reference-architecture-__codelineno-2-26"></a>├── counting/
-<a id="__codelineno-2-27" name="__codelineno-2-27" href="#reference-architecture-__codelineno-2-27"></a>│   ├── mod.rs                # Submodule re-exports
-<a id="__codelineno-2-28" name="__codelineno-2-28" href="#reference-architecture-__codelineno-2-28"></a>│   ├── engine.rs             # Main loop, genomic binning, BAQ, UMI
-<a id="__codelineno-2-29" name="__codelineno-2-29" href="#reference-architecture-__codelineno-2-29"></a>│   ├── variant_checks.rs     # check_snp/mnp/ins/del/complex + Phase 3 dispatch
-<a id="__codelineno-2-30" name="__codelineno-2-30" href="#reference-architecture-__codelineno-2-30"></a>│   ├── alignment.rs          # Smith-Waterman implementation
-<a id="__codelineno-2-31" name="__codelineno-2-31" href="#reference-architecture-__codelineno-2-31"></a>│   ├── pairhmm.rs            # PairHMM alignment backend (marginalized)
-<a id="__codelineno-2-32" name="__codelineno-2-32" href="#reference-architecture-__codelineno-2-32"></a>│   ├── pangenome.rs          # Haplotype matrix construction
-<a id="__codelineno-2-33" name="__codelineno-2-33" href="#reference-architecture-__codelineno-2-33"></a>│   ├── wfa_router.rs         # WFA2 fast-path alignment
-<a id="__codelineno-2-34" name="__codelineno-2-34" href="#reference-architecture-__codelineno-2-34"></a>│   ├── rna.rs                # RNA validation, splicing, editing site lookup
-<a id="__codelineno-2-35" name="__codelineno-2-35" href="#reference-architecture-__codelineno-2-35"></a>│   ├── fragment.rs           # Re-export of shared::fragment (backward compat)
-<a id="__codelineno-2-36" name="__codelineno-2-36" href="#reference-architecture-__codelineno-2-36"></a>│   ├── mfsd.rs               # Mutant Fragment Size Distribution analysis
-<a id="__codelineno-2-37" name="__codelineno-2-37" href="#reference-architecture-__codelineno-2-37"></a>│   ├── parquet_writer.rs     # write_fsd_parquet() — native Parquet via ZSTD
-<a id="__codelineno-2-38" name="__codelineno-2-38" href="#reference-architecture-__codelineno-2-38"></a>│   └── utils.rs              # Helpers, reconstruction, soft-clip
-<a id="__codelineno-2-39" name="__codelineno-2-39" href="#reference-architecture-__codelineno-2-39"></a>├── normalize/
-<a id="__codelineno-2-40" name="__codelineno-2-40" href="#reference-architecture-__codelineno-2-40"></a>│   ├── mod.rs                # Submodule re-exports
-<a id="__codelineno-2-41" name="__codelineno-2-41" href="#reference-architecture-__codelineno-2-41"></a>│   ├── engine.rs             # Normalization pipeline
-<a id="__codelineno-2-42" name="__codelineno-2-42" href="#reference-architecture-__codelineno-2-42"></a>│   ├── left_align.rs         # bcftools-style left-alignment
-<a id="__codelineno-2-43" name="__codelineno-2-43" href="#reference-architecture-__codelineno-2-43"></a>│   ├── decomp.rs             # Homopolymer decomposition
-<a id="__codelineno-2-44" name="__codelineno-2-44" href="#reference-architecture-__codelineno-2-44"></a>│   ├── fasta.rs              # Reference sequence fetcher
-<a id="__codelineno-2-45" name="__codelineno-2-45" href="#reference-architecture-__codelineno-2-45"></a>│   ├── repeat.rs             # Tandem repeat detection
-<a id="__codelineno-2-46" name="__codelineno-2-46" href="#reference-architecture-__codelineno-2-46"></a>│   └── types.rs              # NormResult enum
-<a id="__codelineno-2-47" name="__codelineno-2-47" href="#reference-architecture-__codelineno-2-47"></a>├── shared/
-<a id="__codelineno-2-48" name="__codelineno-2-48" href="#reference-architecture-__codelineno-2-48"></a>│   ├── mod.rs                # Submodule re-exports
-<a id="__codelineno-2-49" name="__codelineno-2-49" href="#reference-architecture-__codelineno-2-49"></a>│   ├── fragment.rs           # FragmentEvidence, quality consensus, UMI grouping
-<a id="__codelineno-2-50" name="__codelineno-2-50" href="#reference-architecture-__codelineno-2-50"></a>│   ├── stats.rs              # Fisher's exact test (strand bias), BH correction
-<a id="__codelineno-2-51" name="__codelineno-2-51" href="#reference-architecture-__codelineno-2-51"></a>│   ├── filters.rs            # ReadFilter struct, FilterCounts (BAM flag checks)
-<a id="__codelineno-2-52" name="__codelineno-2-52" href="#reference-architecture-__codelineno-2-52"></a>│   ├── baq.rs                # BAQ heuristic (Li 2011)
-<a id="__codelineno-2-53" name="__codelineno-2-53" href="#reference-architecture-__codelineno-2-53"></a>│   └── bam_utils.rs          # median_qual, find_read_pos
-<a id="__codelineno-2-54" name="__codelineno-2-54" href="#reference-architecture-__codelineno-2-54"></a>└── types.rs                  # Variant, BaseCounts, PyO3 bindings
+<a id="__codelineno-2-8" name="__codelineno-2-8" href="#reference-architecture-__codelineno-2-8"></a>├── qc_export.py     # `gbcms summarize`: the QC summary as text, JSON, a cohort TSV or MultiQC content
+<a id="__codelineno-2-9" name="__codelineno-2-9" href="#reference-architecture-__codelineno-2-9"></a>├── core/
+<a id="__codelineno-2-10" name="__codelineno-2-10" href="#reference-architecture-__codelineno-2-10"></a>│   └── kernel.py    # Coordinates + VCF &lt;-&gt; MAF representation, type labels
+<a id="__codelineno-2-11" name="__codelineno-2-11" href="#reference-architecture-__codelineno-2-11"></a>├── io/
+<a id="__codelineno-2-12" name="__codelineno-2-12" href="#reference-architecture-__codelineno-2-12"></a>│   ├── input.py     # VcfReader, MafReader (streaming)
+<a id="__codelineno-2-13" name="__codelineno-2-13" href="#reference-architecture-__codelineno-2-13"></a>│   ├── output.py    # VcfWriter, MafWriter (mode-aware: DNA/RNA columns)
+<a id="__codelineno-2-14" name="__codelineno-2-14" href="#reference-architecture-__codelineno-2-14"></a>│   ├── reference.py # Reference bases for MAF -&gt; VCF anchors
+<a id="__codelineno-2-15" name="__codelineno-2-15" href="#reference-architecture-__codelineno-2-15"></a>│   └── batch.py     # Polars batch I/O (read/scan/write MAF, read Parquet)
+<a id="__codelineno-2-16" name="__codelineno-2-16" href="#reference-architecture-__codelineno-2-16"></a>├── models/
+<a id="__codelineno-2-17" name="__codelineno-2-17" href="#reference-architecture-__codelineno-2-17"></a>│   └── core.py      # Pydantic configs (GbcmsDnaConfig, GbcmsRnaConfig, MergeConfig)
+<a id="__codelineno-2-18" name="__codelineno-2-18" href="#reference-architecture-__codelineno-2-18"></a>└── utils/
+<a id="__codelineno-2-19" name="__codelineno-2-19" href="#reference-architecture-__codelineno-2-19"></a>    └── logging.py   # Structured logging
+<a id="__codelineno-2-20" name="__codelineno-2-20" href="#reference-architecture-__codelineno-2-20"></a>
+<a id="__codelineno-2-21" name="__codelineno-2-21" href="#reference-architecture-__codelineno-2-21"></a>rust/src/
+<a id="__codelineno-2-22" name="__codelineno-2-22" href="#reference-architecture-__codelineno-2-22"></a>├── lib.rs                    # PyO3 module exports
+<a id="__codelineno-2-23" name="__codelineno-2-23" href="#reference-architecture-__codelineno-2-23"></a>├── annotation/               # v5.0.0: GTF annotation index (COITree, splice masks)
+<a id="__codelineno-2-24" name="__codelineno-2-24" href="#reference-architecture-__codelineno-2-24"></a>│   ├── mod.rs                # AnnotationIndex struct, COITree queries
+<a id="__codelineno-2-25" name="__codelineno-2-25" href="#reference-architecture-__codelineno-2-25"></a>│   ├── gtf.rs                # GTF loader (plain or gzip/BGZF, variant-guided streaming)
+<a id="__codelineno-2-26" name="__codelineno-2-26" href="#reference-architecture-__codelineno-2-26"></a>│   └── gtf_line.rs           # One GTF line's exon fields (noodles-gtf's grammar)
+<a id="__codelineno-2-27" name="__codelineno-2-27" href="#reference-architecture-__codelineno-2-27"></a>├── counting/
+<a id="__codelineno-2-28" name="__codelineno-2-28" href="#reference-architecture-__codelineno-2-28"></a>│   ├── mod.rs                # Submodule re-exports
+<a id="__codelineno-2-29" name="__codelineno-2-29" href="#reference-architecture-__codelineno-2-29"></a>│   ├── engine.rs             # Main loop, genomic binning, BAQ, UMI
+<a id="__codelineno-2-30" name="__codelineno-2-30" href="#reference-architecture-__codelineno-2-30"></a>│   ├── variant_checks.rs     # check_snp/mnp/ins/del/complex + Phase 3 dispatch
+<a id="__codelineno-2-31" name="__codelineno-2-31" href="#reference-architecture-__codelineno-2-31"></a>│   ├── alignment.rs          # Smith-Waterman implementation
+<a id="__codelineno-2-32" name="__codelineno-2-32" href="#reference-architecture-__codelineno-2-32"></a>│   ├── pairhmm.rs            # PairHMM alignment backend (marginalized)
+<a id="__codelineno-2-33" name="__codelineno-2-33" href="#reference-architecture-__codelineno-2-33"></a>│   ├── pangenome.rs          # Haplotype matrix construction
+<a id="__codelineno-2-34" name="__codelineno-2-34" href="#reference-architecture-__codelineno-2-34"></a>│   ├── wfa_router.rs         # WFA2 fast-path alignment
+<a id="__codelineno-2-35" name="__codelineno-2-35" href="#reference-architecture-__codelineno-2-35"></a>│   ├── rna.rs                # RNA validation, splicing, editing site lookup
+<a id="__codelineno-2-36" name="__codelineno-2-36" href="#reference-architecture-__codelineno-2-36"></a>│   ├── fragment.rs           # Re-export of shared::fragment (backward compat)
+<a id="__codelineno-2-37" name="__codelineno-2-37" href="#reference-architecture-__codelineno-2-37"></a>│   ├── mfsd.rs               # Mutant Fragment Size Distribution analysis
+<a id="__codelineno-2-38" name="__codelineno-2-38" href="#reference-architecture-__codelineno-2-38"></a>│   ├── parquet_writer.rs     # write_fsd_parquet() — native Parquet via ZSTD
+<a id="__codelineno-2-39" name="__codelineno-2-39" href="#reference-architecture-__codelineno-2-39"></a>│   └── utils.rs              # Helpers, reconstruction, soft-clip
+<a id="__codelineno-2-40" name="__codelineno-2-40" href="#reference-architecture-__codelineno-2-40"></a>├── normalize/
+<a id="__codelineno-2-41" name="__codelineno-2-41" href="#reference-architecture-__codelineno-2-41"></a>│   ├── mod.rs                # Submodule re-exports
+<a id="__codelineno-2-42" name="__codelineno-2-42" href="#reference-architecture-__codelineno-2-42"></a>│   ├── engine.rs             # Normalization pipeline
+<a id="__codelineno-2-43" name="__codelineno-2-43" href="#reference-architecture-__codelineno-2-43"></a>│   ├── left_align.rs         # bcftools-style left-alignment
+<a id="__codelineno-2-44" name="__codelineno-2-44" href="#reference-architecture-__codelineno-2-44"></a>│   ├── decomp.rs             # Homopolymer decomposition
+<a id="__codelineno-2-45" name="__codelineno-2-45" href="#reference-architecture-__codelineno-2-45"></a>│   ├── fasta.rs              # Reference sequence fetcher
+<a id="__codelineno-2-46" name="__codelineno-2-46" href="#reference-architecture-__codelineno-2-46"></a>│   ├── repeat.rs             # Tandem repeat detection
+<a id="__codelineno-2-47" name="__codelineno-2-47" href="#reference-architecture-__codelineno-2-47"></a>│   └── types.rs              # NormResult enum
+<a id="__codelineno-2-48" name="__codelineno-2-48" href="#reference-architecture-__codelineno-2-48"></a>├── shared/
+<a id="__codelineno-2-49" name="__codelineno-2-49" href="#reference-architecture-__codelineno-2-49"></a>│   ├── mod.rs                # Submodule re-exports
+<a id="__codelineno-2-50" name="__codelineno-2-50" href="#reference-architecture-__codelineno-2-50"></a>│   ├── fragment.rs           # FragmentEvidence, quality consensus, UMI grouping
+<a id="__codelineno-2-51" name="__codelineno-2-51" href="#reference-architecture-__codelineno-2-51"></a>│   ├── stats.rs              # Fisher's exact test (strand bias), BH correction
+<a id="__codelineno-2-52" name="__codelineno-2-52" href="#reference-architecture-__codelineno-2-52"></a>│   ├── filters.rs            # ReadFilter struct, FilterCounts (BAM flag checks)
+<a id="__codelineno-2-53" name="__codelineno-2-53" href="#reference-architecture-__codelineno-2-53"></a>│   ├── baq.rs                # BAQ heuristic (Li 2011)
+<a id="__codelineno-2-54" name="__codelineno-2-54" href="#reference-architecture-__codelineno-2-54"></a>│   └── bam_utils.rs          # median_qual, find_read_pos
+<a id="__codelineno-2-55" name="__codelineno-2-55" href="#reference-architecture-__codelineno-2-55"></a>└── types.rs                  # Variant, BaseCounts, PyO3 bindings
 </code></pre></div>
 <hr>
 <h2 id="reference-architecture-configuration">Configuration<a class="headerlink" href="#reference-architecture-configuration" title="Permanent link">¶</a></h2>
@@ -9279,6 +9481,12 @@ that fired and the rows that need a look: <a href="#reference-qc-flags-end-of-ru
 <td style="text-align: left;">RNA; <code>--mfsd</code></td>
 </tr>
 <tr>
+<td style="text-align: left;"><a href="#reference-qc-flags-merged-output">Merged output</a></td>
+<td style="text-align: left;">— (read from the <code>simplex_duplex_*</code> cells)</td>
+<td style="text-align: left;">—</td>
+<td style="text-align: left;"><code>gbcms merge</code> with combined columns</td>
+</tr>
+<tr>
 <td style="text-align: left;"><a href="#reference-qc-flags-mfsd-report-classes"><abbr title="Mutant Fragment Size Distribution - Insert-size analysis for REF vs ALT fragments">mFSD</abbr> report classes</a></td>
 <td style="text-align: left;">— (HTML report)</td>
 <td style="text-align: left;">—</td>
@@ -9643,6 +9851,26 @@ only the ASJD-2 markers report.</p>
 </tr>
 </tbody>
 </table>
+<h2 id="reference-qc-flags-merged-output">Merged output<a class="headerlink" href="#reference-qc-flags-merged-output" title="Permanent link">¶</a></h2>
+<p><code>gbcms merge</code> writes a combined <code>simplex_duplex_*</code> cell as <code>NA</code> where it cannot add the
+two inputs' counts. The flag below is not a column: the
+<a href="#reference-qc-flags-end-of-run-summary">end-of-run summary</a> derives it from a merged <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr>.</p>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">Flag</th>
+<th style="text-align: left;">Set when</th>
+<th style="text-align: left;">What to do</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;"><code>COMBINED_NA</code></td>
+<td style="text-align: left;">A combined count, total or <abbr title="Variant Allele Frequency - Fraction of reads supporting the variant allele">VAF</abbr> cell (<code>simplex_duplex_*</code>, the strand-bias statistics left out) is <code>NA</code> on the row: an input's count was missing or not a number, or the duplex and simplex <abbr title="Multi-Nucleotide Polymorphism - Multiple adjacent base substitutions">MNP</abbr> rescues adopted different alleles (the merge log names each)</td>
+<td style="text-align: left;">Do not use the combined counts or <abbr title="Variant Allele Frequency - Fraction of reads supporting the variant allele">VAF</abbr> there; read each input's own columns</td>
+</tr>
+</tbody>
+</table>
 <h2 id="reference-qc-flags-mfsd-report-classes"><abbr title="Mutant Fragment Size Distribution - Insert-size analysis for REF vs ALT fragments">mFSD</abbr> report classes<a class="headerlink" href="#reference-qc-flags-mfsd-report-classes" title="Permanent link">¶</a></h2>
 <p>The <code>--mfsd-report</code> HTML grades each variant's fragment-size evidence (see
 <a href="#reference-mfsd-report"><abbr title="Mutant Fragment Size Distribution - Insert-size analysis for REF vs ALT fragments">mFSD</abbr> Report</a>): the ALT fragments against the REF fragments at the
@@ -9757,8 +9985,10 @@ flags fired, on how many rows, which rows need a look, and what to do about each
 users read the counts and the <abbr title="Variant Allele Frequency - Fraction of reads supporting the variant allele">VAF</abbr> and never open the flag columns; the summary points to
 the few rows where that is not enough.</p>
 <p>It reads the output the run has written, <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> or <abbr title="Variant Call Format - Standard variant call file format">VCF</abbr>, after writing it. It changes no count,
-column or row, writes no file and does not change the exit code. If the output cannot be
-read, the run logs a warning and carries on.</p>
+column or row, writes no file and does not change the exit code. If a sample's output
+cannot be read, the run logs a warning and carries on; the sample is named in the block
+under "Not checked", with a sample that failed to count, and the closing line is a <code>WARNING</code>
+that says "k of n samples not checked", so an incomplete check never reads as a clean one.</p>
 <p>Each flag is in one of three tiers. The first two are the rows that <strong>need a look</strong>.</p>
 <table>
 <thead>
@@ -9795,6 +10025,8 @@ most rows to look at. A flag the reading build does not know, written by another
 listed apart and is not counted as needing a look, except on a <code>FAIL</code> row.</p>
 <p>The run's last line is a <code>WARNING</code> when any row needs a look and an <code>INFO</code> line when none
 does; the exit code is unchanged, so flagged rows never fail a pipeline.</p>
+<p><a href="#cli-summarize"><code>gbcms summarize</code></a> makes the same summary from outputs already written
+(older runs, many samples, a merged <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr>), as text, JSON, a cohort table or MultiQC content.</p>
 <p>The <abbr title="Mutant Fragment Size Distribution - Insert-size analysis for REF vs ALT fragments">mFSD</abbr> report classes are not in the output rows, so the summary leaves them out.</p>
 <p>An example, from 2,000 synthetic rows:</p>
 <!-- qc-summary-example -->
@@ -9951,6 +10183,10 @@ an informational flag). The definitions are above; the tests keep the two in ste
 <tr>
 <td style="text-align: left;"><code>rna_editing_site</code></td>
 <td style="text-align: left;">The locus overlaps a known A-to-I editing site: an A&gt;G or T&gt;C call there is likely editing, not a somatic mutation</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>COMBINED_NA</code></td>
+<td style="text-align: left;">A combined simplex_duplex count is NA (a count missing in one flavour, or mixed <abbr title="Multi-Nucleotide Polymorphism - Multiple adjacent base substitutions">MNP</abbr> rescue): the combined <abbr title="Variant Allele Frequency - Fraction of reads supporting the variant allele">VAF</abbr> is unusable, so read each flavour's own columns</td>
 </tr>
 </tbody>
 </table>
@@ -19812,6 +20048,46 @@ count-affecting merge since the previous release, run on the changed rows only.<
 <p>The format is based on <a href="https://keepachangelog.com/en/1.0.0/">Keep a Changelog</a>,
 and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semantic Versioning</a>.</p>
 <h2 id="development-changelog-unreleased">[Unreleased]<a class="headerlink" href="#development-changelog-unreleased" title="Permanent link">¶</a></h2>
+<h3 id="development-changelog-fixed-an-unchecked-sample-no-longer-reads-as-a-clean-one-227">Fixed — an unchecked sample no longer reads as a clean one (#227)<a class="headerlink" href="#development-changelog-fixed-an-unchecked-sample-no-longer-reads-as-a-clean-one-227" title="Permanent link">¶</a></h3>
+<ul>
+<li><strong>The QC summary names a sample whose output could not be read.</strong> When one sample's
+  output could not be read, the combined block left it out and the closing line said "No row
+  needs a look". Now the block counts "k of n samples" and lists the sample under "Not
+  checked" with the reason, a sample whose counting failed is named too, and the closing line
+  is a <code>WARNING</code> ("1 of 3 samples not checked: ..."). The exit code is unchanged.
+  <code>gbcms summarize</code> does the same for an input it refuses or cannot read: it summarizes the
+  others, names the input, and still exits 1. A MultiQC report carries the warning.</li>
+<li><strong><code>gbcms summarize</code> refuses a <abbr title="Variant Call Format - Standard variant call file format">VCF</abbr> that is not gbcms's.</strong> An ordinary <abbr title="Variant Call Format - Standard variant call file format">VCF</abbr>, a bare header
+  and an empty <code>.vcf</code> read as clean outputs (every record a PASS row with no flags). A <abbr title="Variant Call Format - Standard variant call file format">VCF</abbr>
+  now needs gbcms's own <code>GS</code> INFO field, declared in its header or on its first record; the
+  rest are named under "Not checked".</li>
+<li><strong>A MultiQC file left by an earlier run is removed when this run has nothing for it</strong>, the
+  summary table as well as the warning, so a report never reads old counts. A skipped input
+  that shares a name with a checked sample gets a row of its own in the warning instead of
+  replacing the checked sample's.</li>
+<li><strong>The MultiQC table is built in one pass over the cohort.</strong> It looked for the flags that
+  fired once for every sample, so its time grew with the square of the cohort; the output is
+  byte-identical.</li>
+</ul>
+<h3 id="development-changelog-added-gbcms-summarize-the-merge-na-flag-and-qc_summary-227">Added — <code>gbcms summarize</code>, the merge NA flag and <code>--qc_summary</code> (#227)<a class="headerlink" href="#development-changelog-added-gbcms-summarize-the-merge-na-flag-and-qc_summary-227" title="Permanent link">¶</a></h3>
+<ul>
+<li><strong><code>gbcms summarize &lt;outputs...&gt;</code> makes the QC summary of finished outputs.</strong> It reads
+  <code>.maf</code> or <code>.vcf</code> outputs (a run's, or a merge's) with the code the run's own summary uses,
+  and changes nothing in them. <code>--format text</code> (the default) is the block the run logs, for
+  one sample or many; <code>json</code> writes one <code>&lt;sample&gt;.qc_summary.json</code> per output (every flag,
+  zeros included, and every row that needs a look); <code>tsv</code> writes one cohort table; <code>multiqc</code>
+  writes MultiQC custom content (<code>gbcms_qc_summary_mqc.json</code>, and a
+  <code>gbcms_qc_warning_mqc.json</code> section only when a row needs a look). The exit code is 0
+  whether or not rows need a look. <code>gbcms dna</code> and <code>gbcms rna</code> gain no option.</li>
+<li><strong>A merged <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> is summarized too, with a flag for NA combined cells.</strong> The summary reads
+  each input's flags under its prefix, and <code>COMBINED_NA</code> ("check the call") marks a row whose
+  <code>simplex_duplex_*</code> count, total or <abbr title="Variant Allele Frequency - Fraction of reads supporting the variant allele">VAF</abbr> is <code>NA</code>: an input count was missing or not a number,
+  or the duplex and simplex rescues adopted different alleles. It is built from what
+  <code>gbcms merge</code> writes; no column is added.</li>
+<li><strong>Nextflow: <code>--qc_summary</code> (default <code>false</code>).</strong> After all samples finish, one task runs
+  <code>gbcms summarize --format multiqc</code> and <code>--format json</code> over every output, merged MAFs
+  included, and publishes them to <code>gbcms/qc_summary/</code>.</li>
+</ul>
 <h3 id="development-changelog-added-an-end-of-run-qc-summary-in-the-run-log-227">Added — an end-of-run QC summary in the run log (#227)<a class="headerlink" href="#development-changelog-added-an-end-of-run-qc-summary-in-the-run-log-227" title="Permanent link">¶</a></h3>
 <ul>
 <li><strong>The run log now ends with a QC summary.</strong> <code>gbcms dna</code> and <code>gbcms rna</code> log one block
@@ -24396,6 +24672,11 @@ genuinely has nothing to count.</p>
 
                 .print-site-enumerate-headings #cli-convert h2:before { content: '3.6.' counter(counter-cli-convert-2) ' ' }
                 .print-site-enumerate-headings #cli-convert h2 {  counter-increment: counter-cli-convert-2 }
+            
+.print-site-enumerate-headings #cli-summarize > h1:before { content: '3.7 ' }
+
+                .print-site-enumerate-headings #cli-summarize h2:before { content: '3.7.' counter(counter-cli-summarize-2) ' ' }
+                .print-site-enumerate-headings #cli-summarize h2 {  counter-increment: counter-cli-summarize-2 }
             
 .print-site-enumerate-headings #section-4 > h1:before { content: '4 ' }
 .print-site-enumerate-headings #nextflow > h1:before { content: '4.1 ' }
