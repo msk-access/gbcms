@@ -11,7 +11,7 @@ use rust_htslib::bam::record::{Aux, Cigar, Record};
 
 
 use super::graph::{self, ShortReads, Workspace};
-use super::haplotypes::{neither_trace, other_option, AlnTags, Class, Hap, NeitherRule, OwnGapRule, ReadView, RefBaseRule, Scorer, ScorerKind, Site};
+use super::haplotypes::{neither_trace, other_option, AlnTags, Class, Hap, NeitherRule, OwnGapRule, ReadView, RefBaseRule, Scorer, Site};
 use super::score::{Alignment, Placed, DELTA, WILD};
 use crate::counting::carrier::{readable_range, ReadRules};
 use crate::counting::utils::{soft_clips, ClassifyPhase, ClassifyResult};
@@ -56,8 +56,7 @@ pub(crate) struct Verdict {
     /// and its fit to the local reference neighbourhood where that was computed.
     pub(crate) fits: FitsTrace,
     /// The read's best score over every candidate sequence is below [`FITS_NOTHING`]: it
-    /// fits none of them (an upper bound under the enumerated scorer), whether or not the
-    /// fit rule made it depth only. Diagnostic (UNEXPLAINED_READS).
+    /// fits none of them, whether or not the fit rule made it depth only. Diagnostic (UNEXPLAINED_READS).
     pub(crate) fits_none: bool,
     /// Measurement only, TEMPORARY: where a substitution's telling bases lie in the read's
     /// soft clip (asked for the anchor), the clip's bases around them ([`ClipBases`]).
@@ -197,9 +196,8 @@ fn clip_bases(read: &ReadView, hap: &Hap, wa: &Alignment, off: usize, idx: &[usi
 
 /// The fit rule: which test, if any, makes a read that fits none of the site's candidate
 /// sequences depth only on the graph scorer (decided 2026-10-25: `xs`). The other options
-/// stay behind `GBCMS_JUDGE_FITS` for measurement, TEMPORARY. The enumerated scorer keeps
-/// applying [`FITS_NOTHING`] to upper bounds on every haplotype's score. Whatever the rule,
-/// such a read is named in the row's `UNEXPLAINED_READS` diagnostic.
+/// stay behind `GBCMS_JUDGE_FITS` for measurement, TEMPORARY. Whatever the rule, such a
+/// read is named in the row's `UNEXPLAINED_READS` diagnostic.
 /// - `xs` (the default): the aligner places the read elsewhere at least as well (XS at
 ///   least AS; MAPQ 0 where it wrote no XS) and its best score is below [`FITS_NOTHING`]:
 ///   a read the aligner doubts and no candidate sequence explains. A read that fits none
@@ -349,10 +347,7 @@ pub(crate) fn judge(site: &Site, read: &ReadView, min_baseq: u8, ask_anchor: boo
 /// read. The call is the read's own: the aligner's tags, its qualities and whether its
 /// anchor is asked for are weighed afresh.
 pub(crate) fn judge_kept(site: &Site, read: &ReadView, min_baseq: u8, ask_anchor: bool, kept: Option<std::rc::Rc<Scored>>) -> (Verdict, Option<std::rc::Rc<Scored>>) {
-    match site.scorer {
-        ScorerKind::Enumerated => (judge_enumerated(site, read, min_baseq, ask_anchor), None),
-        ScorerKind::Graph => judge_graph(site, read, min_baseq, ask_anchor, kept),
-    }
+    judge_graph(site, read, min_baseq, ask_anchor, kept)
 }
 
 /// A read's programmes over a site's state graphs, fixed by its bases (masked) and
@@ -366,51 +361,6 @@ pub(crate) struct Scored {
     rows: Vec<Vec<usize>>,
     haps: std::cell::RefCell<Vec<(usize, std::rc::Rc<Hap>)>>,
     aligns: std::cell::RefCell<Vec<(usize, Aligned)>>,
-}
-
-/// [`judge`] against the enumerated haplotypes.
-fn judge_enumerated(site: &Site, read: &ReadView, min_baseq: u8, ask_anchor: bool) -> Verdict {
-    let mut scorer = Scorer::new(read);
-    // Per class, the best score and the first haplotype reaching it. A haplotype whose
-    // banded score cannot stand is scored in full only where an upper bound on its score
-    // could still raise its class's best (or reach it first), so a read fitting none of
-    // the haplotypes well (a dense cluster) does not run the full programme on each.
-    let mut best: [Option<(i32, usize)>; 3] = [None; 3];
-    let mut pending = Vec::new();
-    let mut top = i32::MIN;
-    for (h, hap) in site.haps.iter().enumerate() {
-        match scorer.score_or_bound(site, hap, Some(i32::MAX)) {
-            Ok(s) => {
-                top = top.max(s);
-                raise(&mut best, hap.class as usize, s, h)
-            }
-            Err(bound) => {
-                top = top.max(bound);
-                pending.push(h)
-            }
-        }
-    }
-    // A read that fits none of the haplotypes within FITS_NOTHING (an upper bound on its
-    // best score below it: a paralog's read, or one from a cluster of changes the site's
-    // haplotypes do not hold) is depth only: a margin between two misfits is no evidence.
-    if top < FITS_NOTHING {
-        trace!("haplotype judge: the read fits no haplotype (best at most {top}) → depth only");
-        return Verdict { call: Call::Depth, qual: 0, best: [None; 3], holds_anchor: false, placed: None, confirmed: false, spells: 0, clip: None, fits: FitsTrace::default(), fits_none: true, neither: NeitherTrace::default(), owngap: OwnGapTrace::default() };
-    }
-    for h in pending {
-        let hap = &site.haps[h];
-        let class = hap.class as usize;
-        // a bound at most the class's best cannot raise it, nor reach it first past it
-        let beaten = best[class].map(|(b, bh)| if h < bh { b - 1 } else { b });
-        let s = match scorer.score_or_bound(site, hap, beaten) {
-            Ok(s) => s,
-            Err(_) => continue,
-        };
-        raise(&mut best, class, s, h);
-    }
-    let aligns = std::cell::RefCell::new(Vec::new());
-    let ex = Examined::new(site, &scorer, |h| std::rc::Rc::new(site.haps[h].clone()), &aligns);
-    conclude(site, read, &ex, best, min_baseq, ask_anchor)
 }
 
 /// Per class, the best score and the first candidate (haplotype or state) reaching it.
@@ -1105,10 +1055,10 @@ pub(crate) fn classify(record: &Record, variant: &Variant, quals: &[u8], min_bas
             if tracing {
                 trace!(
                     "haplotype judge {}:{} {}>{} read={}: {:?} (best alt={:?} ref={:?} other={:?}) qual={} \
-                     holds the anchor={} over {} haplotypes",
+                     holds the anchor={} over {} state graphs",
                     variant.chrom, variant.pos + 1, variant.ref_allele, variant.alt_allele,
                     String::from_utf8_lossy(record.qname()), call, verdict.best[0], verdict.best[1],
-                    verdict.best[2], out.qual, overlaps_anchor || verdict.holds_anchor, site.haps.len(),
+                    verdict.best[2], out.qual, overlaps_anchor || verdict.holds_anchor, site.graphs.len(),
                 );
             }
             // Measurement only, the "fits nothing" decision package: per judged read, its best

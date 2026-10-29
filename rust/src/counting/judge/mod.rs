@@ -9,9 +9,8 @@
 //! (haplotypes, `ReadJudge::Haplotype`) stay until the module is restructured.
 //!
 //! - [`graph`]: the scorer, a read against each state's sequence graph holding every
-//!   context at once (the default).
-//! - [`score`]: a read against one haplotype (the enumerated scorer behind
-//!   `GBCMS_JUDGE_SCORER=enumerated`, and the alignments a call is examined on).
+//!   context at once.
+//! - [`score`]: a read against one haplotype (the alignments a call is examined on).
 //! - [`haplotypes`]: the window, the site's states and the contexts, built once per row.
 //! - [`decide`]: a read's call, mapped onto `ClassifyResult`.
 
@@ -267,17 +266,11 @@ pub(crate) fn site_for(v: &Variant, guard: Option<&Guard>, reference: &CachedFas
     let candidates = Candidates { listed, discovered, background, masked, found, edges };
     let site = Site::build(target, &candidates, (lo, window), reads);
     match &site {
-        Some(s) if s.scorer == haplotypes::ScorerKind::Graph => debug!(
+        Some(s) => debug!(
             "haplotype judge {}:{} {}>{}: {} state graphs ({} bases) from {} reads; site {}-{}",
             v.chrom, v.pos + 1, v.ref_allele, v.alt_allele, s.graphs.len(),
             s.graphs.iter().map(|g| g.graph.len()).sum::<usize>(),
             reads.len(), s.site_span().0 + 1, s.site_span().1,
-        ),
-        Some(s) => debug!(
-            "haplotype judge {}:{} {}>{}: {} haplotypes over {} contexts{} from {} reads; site {}-{}",
-            v.chrom, v.pos + 1, v.ref_allele, v.alt_allele, s.haps.len(), s.n_contexts,
-            if s.cap_exceeded { " (the base contexts alone pass the cap)" } else { "" }, reads.len(),
-            s.site_span().0 + 1, s.site_span().1,
         ),
         None => warn!(
             "sequence judge: the reference does not hold the REF of {}:{} {}>{}; its reads are depth only",
@@ -333,7 +326,7 @@ fn indel_row(p: i64, n: i64, base: &dyn Fn(i64) -> Option<u8>, reads: &[ReadView
 mod tests {
     use super::decide::{judge, Call};
     use super::haplotypes::tests::{contig, random_seq, row, site};
-    use super::haplotypes::{ReadView, ScorerKind};
+    use super::haplotypes::ReadView;
     use super::*;
     use rust_htslib::bam::record::Cigar;
 
@@ -685,11 +678,11 @@ mod tests {
     }
 
     #[test]
-    fn an_allele_the_reads_spell_with_a_listed_neighbour_is_that_neighbours() {
+    fn the_reads_spelling_of_a_listed_neighbour_with_the_row_is_theirs() {
         use Call::*;
         // The guard's other alleles at the insertion, spelled over its window: the
         // insertion with the SNV beside it (the cis carriers), and REF with the SNV (the
-        // SNV's carriers). Each is a listed row's haplotype, never another allele.
+        // SNV's carriers). Each is a listed row's haplotype, never another allele: no state.
         let (c, ins, snv) = case_246();
         let (lo, hi) = (296usize, 304usize);
         let window = |h: &[u8], extra: usize| Row::new(lo as i64, &c[lo..hi], &h[lo..hi + extra]);
@@ -700,10 +693,9 @@ mod tests {
             ..Candidates::default()
         };
         let reads = [read(&both, 220, 151, 220, "151M"), read(&h_snv, 221, 151, 221, "151M"), read(&c, 222, 151, 222, "151M")];
-        let s = Site::build_with(ScorerKind::Enumerated, ins.clone(), &candidates, (0, c.clone()), &reads).unwrap();
+        let s = Site::build(ins.clone(), &candidates, (0, c.clone()), &reads).unwrap();
         let got: Vec<Call> = reads.iter().map(|r| judge(&s, r, MIN_BQ, false).call).collect();
         assert_eq!(got, vec![Alt, Ref, Ref]);
-        assert_eq!(s.haps.len(), 4, "REF, X, and each with the SNV: the spelled alleles are theirs");
     }
 
     #[test]
@@ -756,18 +748,6 @@ mod tests {
             read(&c, 250, 100, 250, "100M"),
         ];
         assert_eq!(calls(&c, std::slice::from_ref(&mnp), &mnp, &reads), vec![Alt, Depth, Depth, Ref]);
-    }
-
-    #[test]
-    fn many_rows_in_reach_never_take_more_than_the_cap() {
-        let c = random_seq(900, 21);
-        let other = |b: u8| if b == b'A' { "C" } else { "A" };
-        let rows: Vec<Row> = (300..600).step_by(3).map(|p| Row::new(p, &c[p as usize..p as usize + 1], other(c[p as usize]).as_bytes())).collect();
-        let x = rows[50].clone();
-        let reads: Vec<ReadView> = (0..30).map(|i| read(&c, 380 + i, 150, 380 + i as i64, "150M")).collect();
-        let candidates = Candidates { listed: rows.into_iter().filter(|r| *r != x).collect(), ..Candidates::default() };
-        let s = Site::build_with(ScorerKind::Enumerated, x, &candidates, (0, c.clone()), &reads).unwrap();
-        assert!(s.haps.len() <= haplotypes::MAX_HAPS, "{} haplotypes", s.haps.len());
     }
 
     #[test]
@@ -949,7 +929,6 @@ mod tests {
     /// Calls on `x`'s site with the guard's background kept by `bg`.
     fn calls_backed(contig: &[u8], x: &Row, candidates: &Candidates, reads: &[ReadView], bg: haplotypes::BackgroundRule) -> Vec<Call> {
         let s = Site::build_backed(
-            ScorerKind::Graph,
             x.clone(),
             candidates,
             (0, contig.to_vec()),
