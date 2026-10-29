@@ -31,7 +31,7 @@
             body[data-md-color-scheme="slate"] .gslide-title { color: var(--md-default-fg-color); }
             body[data-md-color-scheme="slate"] .gslide-desc { color: var(--md-default-fg-color); }
         </style><meta name="panzoom-theme" content="material">
-<meta name="panzoom-data" content='{"selectors": [".mermaid", ".d2"], "initial_zoom_level": 1.0}'> </head>
+<meta name="panzoom-data" content='{"selectors": [".d2", ".mermaid"], "initial_zoom_level": 1.0}'> </head>
 <body data-md-color-accent="custom" data-md-color-primary="custom" data-md-color-scheme="default" dir="ltr">
 <input autocomplete="off" class="md-toggle" data-md-toggle="drawer" id="__drawer" type="checkbox">
 <input autocomplete="off" class="md-toggle" data-md-toggle="search" id="__search" type="checkbox">
@@ -420,6 +420,15 @@
 <span class="md-ellipsis">
       
         Alignment Backend
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#qc-summary-in-the-run-log">
+<span class="md-ellipsis">
+      
+        QC Summary in the Run Log
       
     </span>
 </a>
@@ -1123,6 +1132,15 @@
 </a>
 </li>
 <li class="md-nav__item">
+<a class="md-nav__link" href="#qc-summary-in-the-run-log">
+<span class="md-ellipsis">
+      
+        QC Summary in the Run Log
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
 <a class="md-nav__link" href="#rna-specific-output-columns">
 <span class="md-ellipsis">
       
@@ -1759,6 +1777,12 @@ asserting splicing over the span outnumber confirmed ALT are flagged
 <p><strong>Note on left-alignment shift (Fix 4):</strong> This fix was motivated by <abbr title="Burrows-Wheeler Aligner - Standard short-read DNA aligner (mem/aln)">BWA</abbr>'s indel left-alignment behaviour, where the variant anchor can sit several bases left of where the <abbr title="Compact Idiosyncratic Gapped Alignment Report - BAM alignment operation string">CIGAR</abbr> <code>D</code> op appears in reads. <abbr title="Spliced Transcripts Alignment to a Reference - RNA-seq aligner">STAR</abbr> does not left-align indels in the same way, so this scenario is less common in RNA BAMs — but it still applies when <abbr title="Spliced Transcripts Alignment to a Reference - RNA-seq aligner">STAR</abbr> places a <abbr title="Compact Idiosyncratic Gapped Alignment Report - BAM alignment operation string">CIGAR</abbr> <code>D</code> slightly offset from the annotated position, or when the input <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> was derived from a <abbr title="Burrows-Wheeler Aligner - Standard short-read DNA aligner (mem/aln)">BWA</abbr>-aligned DNA call set being counted against an RNA <abbr title="Binary Alignment Map - Compressed sequence alignment file format">BAM</abbr>.</p>
 </div>
 <hr>
+<h2 id="qc-summary-in-the-run-log">QC Summary in the Run Log<a class="headerlink" href="#qc-summary-in-the-run-log" title="Permanent link">¶</a></h2>
+<p>The run log ends with a <strong>QC summary</strong>: which QC flags fired, on how many rows, which
+rows need a look and what to do about each, then a <code>WARNING</code> when any row needs a look or an
+<code>INFO</code> line when none does. It reads the output after writing it and changes nothing. See
+<a href="../../reference/qc-flags/#end-of-run-summary">QC Flags → End-of-run summary</a>.</p>
+<hr>
 <h2 id="rna-specific-output-columns">RNA-Specific Output Columns<a class="headerlink" href="#rna-specific-output-columns" title="Permanent link">¶</a></h2>
 <details class="info">
 <summary>RNA-Specific Output Columns (click to expand)</summary>
@@ -2052,7 +2076,7 @@ asserting splicing over the span outnumber confirmed ALT are flagged
 <span class="md-icon" title="Last update">
 <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M21 13.1c-.1 0-.3.1-.4.2l-1 1 2.1 2.1 1-1c.2-.2.2-.6 0-.8l-1.3-1.3c-.1-.1-.2-.2-.4-.2m-1.9 1.8-6.1 6V23h2.1l6.1-6.1zM12.5 7v5.2l4 2.4-1 1L11 13V7zM11 21.9c-5.1-.5-9-4.8-9-9.9C2 6.5 6.5 2 12 2c5.3 0 9.6 4.1 10 9.3-.3-.1-.6-.2-1-.2s-.7.1-1 .2C19.6 7.2 16.2 4 12 4c-4.4 0-8 3.6-8 8 0 4.1 3.1 7.5 7.1 7.9l-.1.2z"></path></svg>
 </span>
-<span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-timeago" title="October 26, 2026 15:33:47 UTC"><span class="timeago" datetime="2026-10-26T15:33:47+00:00" locale="en"></span></span><span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-iso_date" title="October 26, 2026 15:33:47 UTC">2026-10-26</span>
+<span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-timeago" title="October 28, 2026 23:02:46 UTC"><span class="timeago" datetime="2026-10-28T23:02:46+00:00" locale="en"></span></span><span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-iso_date" title="October 28, 2026 23:02:46 UTC">2026-10-28</span>
 </span>
 <span class="md-source-file__fact">
 <span class="md-icon" title="Created">

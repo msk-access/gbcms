@@ -3816,6 +3816,10 @@ given allele, <code>COEXISTING_ALLELE</code> when it is present beside a more fr
 <li><strong>Normalization columns</strong> (with <code>--show-normalization</code>)</li>
 <li><strong>Companion files</strong>: <code>.fsd.parquet</code> (with <code>--mfsd-parquet</code>) and <code>.observations.parquet</code> (with <code>--observations-parquet</code>)</li>
 </ul>
+<p>The run log ends with a <strong>QC summary</strong>: which QC flags fired, on how many rows, which
+rows need a look and what to do about each, then a <code>WARNING</code> when any row needs a look or an
+<code>INFO</code> line when none does. It reads the output after writing it and changes nothing. See
+<a href="#reference-qc-flags-end-of-run-summary">QC Flags → End-of-run summary</a>.</p>
 <h2 id="cli-dna-related">Related<a class="headerlink" href="#cli-dna-related" title="Permanent link">¶</a></h2>
 <ul>
 <li><a href="#getting-started-quickstart">Quick Start</a> — Common patterns</li>
@@ -4380,6 +4384,12 @@ asserting splicing over the span outnumber confirmed ALT are flagged
 <p>See <a href="#reference-complex-indels">Complex Indels</a> for case studies and read-level examples.</p>
 <p><strong>Note on left-alignment shift (Fix 4):</strong> This fix was motivated by <abbr title="Burrows-Wheeler Aligner - Standard short-read DNA aligner (mem/aln)">BWA</abbr>'s indel left-alignment behaviour, where the variant anchor can sit several bases left of where the <abbr title="Compact Idiosyncratic Gapped Alignment Report - BAM alignment operation string">CIGAR</abbr> <code>D</code> op appears in reads. <abbr title="Spliced Transcripts Alignment to a Reference - RNA-seq aligner">STAR</abbr> does not left-align indels in the same way, so this scenario is less common in RNA BAMs — but it still applies when <abbr title="Spliced Transcripts Alignment to a Reference - RNA-seq aligner">STAR</abbr> places a <abbr title="Compact Idiosyncratic Gapped Alignment Report - BAM alignment operation string">CIGAR</abbr> <code>D</code> slightly offset from the annotated position, or when the input <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> was derived from a <abbr title="Burrows-Wheeler Aligner - Standard short-read DNA aligner (mem/aln)">BWA</abbr>-aligned DNA call set being counted against an RNA <abbr title="Binary Alignment Map - Compressed sequence alignment file format">BAM</abbr>.</p>
 </div>
+<hr>
+<h2 id="cli-rna-qc-summary-in-the-run-log">QC Summary in the Run Log<a class="headerlink" href="#cli-rna-qc-summary-in-the-run-log" title="Permanent link">¶</a></h2>
+<p>The run log ends with a <strong>QC summary</strong>: which QC flags fired, on how many rows, which
+rows need a look and what to do about each, then a <code>WARNING</code> when any row needs a look or an
+<code>INFO</code> line when none does. It reads the output after writing it and changes nothing. See
+<a href="#reference-qc-flags-end-of-run-summary">QC Flags → End-of-run summary</a>.</p>
 <hr>
 <h2 id="cli-rna-rna-specific-output-columns">RNA-Specific Output Columns<a class="headerlink" href="#cli-rna-rna-specific-output-columns" title="Permanent link">¶</a></h2>
 <details class="info">
@@ -6530,53 +6540,54 @@ the odds ratio for the size of the imbalance.</p>
 <a id="__codelineno-2-4" name="__codelineno-2-4" href="#reference-architecture-__codelineno-2-4"></a>├── merge.py         # Multi-BAM MAF merge engine (Polars lazy joins)
 <a id="__codelineno-2-5" name="__codelineno-2-5" href="#reference-architecture-__codelineno-2-5"></a>├── normalize.py     # Standalone normalization workflow
 <a id="__codelineno-2-6" name="__codelineno-2-6" href="#reference-architecture-__codelineno-2-6"></a>├── convert.py       # Standalone VCF &lt;-&gt; MAF conversion (vcf2maf / maf2vcf)
-<a id="__codelineno-2-7" name="__codelineno-2-7" href="#reference-architecture-__codelineno-2-7"></a>├── core/
-<a id="__codelineno-2-8" name="__codelineno-2-8" href="#reference-architecture-__codelineno-2-8"></a>│   └── kernel.py    # Coordinates + VCF &lt;-&gt; MAF representation, type labels
-<a id="__codelineno-2-9" name="__codelineno-2-9" href="#reference-architecture-__codelineno-2-9"></a>├── io/
-<a id="__codelineno-2-10" name="__codelineno-2-10" href="#reference-architecture-__codelineno-2-10"></a>│   ├── input.py     # VcfReader, MafReader (streaming)
-<a id="__codelineno-2-11" name="__codelineno-2-11" href="#reference-architecture-__codelineno-2-11"></a>│   ├── output.py    # VcfWriter, MafWriter (mode-aware: DNA/RNA columns)
-<a id="__codelineno-2-12" name="__codelineno-2-12" href="#reference-architecture-__codelineno-2-12"></a>│   ├── reference.py # Reference bases for MAF -&gt; VCF anchors
-<a id="__codelineno-2-13" name="__codelineno-2-13" href="#reference-architecture-__codelineno-2-13"></a>│   └── batch.py     # Polars batch I/O (read/scan/write MAF, read Parquet)
-<a id="__codelineno-2-14" name="__codelineno-2-14" href="#reference-architecture-__codelineno-2-14"></a>├── models/
-<a id="__codelineno-2-15" name="__codelineno-2-15" href="#reference-architecture-__codelineno-2-15"></a>│   └── core.py      # Pydantic configs (GbcmsDnaConfig, GbcmsRnaConfig, MergeConfig)
-<a id="__codelineno-2-16" name="__codelineno-2-16" href="#reference-architecture-__codelineno-2-16"></a>└── utils/
-<a id="__codelineno-2-17" name="__codelineno-2-17" href="#reference-architecture-__codelineno-2-17"></a>    └── logging.py   # Structured logging
-<a id="__codelineno-2-18" name="__codelineno-2-18" href="#reference-architecture-__codelineno-2-18"></a>
-<a id="__codelineno-2-19" name="__codelineno-2-19" href="#reference-architecture-__codelineno-2-19"></a>rust/src/
-<a id="__codelineno-2-20" name="__codelineno-2-20" href="#reference-architecture-__codelineno-2-20"></a>├── lib.rs                    # PyO3 module exports
-<a id="__codelineno-2-21" name="__codelineno-2-21" href="#reference-architecture-__codelineno-2-21"></a>├── annotation/               # v5.0.0: GTF annotation index (COITree, splice masks)
-<a id="__codelineno-2-22" name="__codelineno-2-22" href="#reference-architecture-__codelineno-2-22"></a>│   ├── mod.rs                # AnnotationIndex struct, COITree queries
-<a id="__codelineno-2-23" name="__codelineno-2-23" href="#reference-architecture-__codelineno-2-23"></a>│   ├── gtf.rs                # GTF loader (plain or gzip/BGZF, variant-guided streaming)
-<a id="__codelineno-2-24" name="__codelineno-2-24" href="#reference-architecture-__codelineno-2-24"></a>│   └── gtf_line.rs           # One GTF line's exon fields (noodles-gtf's grammar)
-<a id="__codelineno-2-25" name="__codelineno-2-25" href="#reference-architecture-__codelineno-2-25"></a>├── counting/
-<a id="__codelineno-2-26" name="__codelineno-2-26" href="#reference-architecture-__codelineno-2-26"></a>│   ├── mod.rs                # Submodule re-exports
-<a id="__codelineno-2-27" name="__codelineno-2-27" href="#reference-architecture-__codelineno-2-27"></a>│   ├── engine.rs             # Main loop, genomic binning, BAQ, UMI
-<a id="__codelineno-2-28" name="__codelineno-2-28" href="#reference-architecture-__codelineno-2-28"></a>│   ├── variant_checks.rs     # check_snp/mnp/ins/del/complex + Phase 3 dispatch
-<a id="__codelineno-2-29" name="__codelineno-2-29" href="#reference-architecture-__codelineno-2-29"></a>│   ├── alignment.rs          # Smith-Waterman implementation
-<a id="__codelineno-2-30" name="__codelineno-2-30" href="#reference-architecture-__codelineno-2-30"></a>│   ├── pairhmm.rs            # PairHMM alignment backend (marginalized)
-<a id="__codelineno-2-31" name="__codelineno-2-31" href="#reference-architecture-__codelineno-2-31"></a>│   ├── pangenome.rs          # Haplotype matrix construction
-<a id="__codelineno-2-32" name="__codelineno-2-32" href="#reference-architecture-__codelineno-2-32"></a>│   ├── wfa_router.rs         # WFA2 fast-path alignment
-<a id="__codelineno-2-33" name="__codelineno-2-33" href="#reference-architecture-__codelineno-2-33"></a>│   ├── rna.rs                # RNA validation, splicing, editing site lookup
-<a id="__codelineno-2-34" name="__codelineno-2-34" href="#reference-architecture-__codelineno-2-34"></a>│   ├── fragment.rs           # Re-export of shared::fragment (backward compat)
-<a id="__codelineno-2-35" name="__codelineno-2-35" href="#reference-architecture-__codelineno-2-35"></a>│   ├── mfsd.rs               # Mutant Fragment Size Distribution analysis
-<a id="__codelineno-2-36" name="__codelineno-2-36" href="#reference-architecture-__codelineno-2-36"></a>│   ├── parquet_writer.rs     # write_fsd_parquet() — native Parquet via ZSTD
-<a id="__codelineno-2-37" name="__codelineno-2-37" href="#reference-architecture-__codelineno-2-37"></a>│   └── utils.rs              # Helpers, reconstruction, soft-clip
-<a id="__codelineno-2-38" name="__codelineno-2-38" href="#reference-architecture-__codelineno-2-38"></a>├── normalize/
-<a id="__codelineno-2-39" name="__codelineno-2-39" href="#reference-architecture-__codelineno-2-39"></a>│   ├── mod.rs                # Submodule re-exports
-<a id="__codelineno-2-40" name="__codelineno-2-40" href="#reference-architecture-__codelineno-2-40"></a>│   ├── engine.rs             # Normalization pipeline
-<a id="__codelineno-2-41" name="__codelineno-2-41" href="#reference-architecture-__codelineno-2-41"></a>│   ├── left_align.rs         # bcftools-style left-alignment
-<a id="__codelineno-2-42" name="__codelineno-2-42" href="#reference-architecture-__codelineno-2-42"></a>│   ├── decomp.rs             # Homopolymer decomposition
-<a id="__codelineno-2-43" name="__codelineno-2-43" href="#reference-architecture-__codelineno-2-43"></a>│   ├── fasta.rs              # Reference sequence fetcher
-<a id="__codelineno-2-44" name="__codelineno-2-44" href="#reference-architecture-__codelineno-2-44"></a>│   ├── repeat.rs             # Tandem repeat detection
-<a id="__codelineno-2-45" name="__codelineno-2-45" href="#reference-architecture-__codelineno-2-45"></a>│   └── types.rs              # NormResult enum
-<a id="__codelineno-2-46" name="__codelineno-2-46" href="#reference-architecture-__codelineno-2-46"></a>├── shared/
-<a id="__codelineno-2-47" name="__codelineno-2-47" href="#reference-architecture-__codelineno-2-47"></a>│   ├── mod.rs                # Submodule re-exports
-<a id="__codelineno-2-48" name="__codelineno-2-48" href="#reference-architecture-__codelineno-2-48"></a>│   ├── fragment.rs           # FragmentEvidence, quality consensus, UMI grouping
-<a id="__codelineno-2-49" name="__codelineno-2-49" href="#reference-architecture-__codelineno-2-49"></a>│   ├── stats.rs              # Fisher's exact test (strand bias), BH correction
-<a id="__codelineno-2-50" name="__codelineno-2-50" href="#reference-architecture-__codelineno-2-50"></a>│   ├── filters.rs            # ReadFilter struct, FilterCounts (BAM flag checks)
-<a id="__codelineno-2-51" name="__codelineno-2-51" href="#reference-architecture-__codelineno-2-51"></a>│   ├── baq.rs                # BAQ heuristic (Li 2011)
-<a id="__codelineno-2-52" name="__codelineno-2-52" href="#reference-architecture-__codelineno-2-52"></a>│   └── bam_utils.rs          # median_qual, find_read_pos
-<a id="__codelineno-2-53" name="__codelineno-2-53" href="#reference-architecture-__codelineno-2-53"></a>└── types.rs                  # Variant, BaseCounts, PyO3 bindings
+<a id="__codelineno-2-7" name="__codelineno-2-7" href="#reference-architecture-__codelineno-2-7"></a>├── qc_summary.py    # End-of-run QC summary (log block read from the written output)
+<a id="__codelineno-2-8" name="__codelineno-2-8" href="#reference-architecture-__codelineno-2-8"></a>├── core/
+<a id="__codelineno-2-9" name="__codelineno-2-9" href="#reference-architecture-__codelineno-2-9"></a>│   └── kernel.py    # Coordinates + VCF &lt;-&gt; MAF representation, type labels
+<a id="__codelineno-2-10" name="__codelineno-2-10" href="#reference-architecture-__codelineno-2-10"></a>├── io/
+<a id="__codelineno-2-11" name="__codelineno-2-11" href="#reference-architecture-__codelineno-2-11"></a>│   ├── input.py     # VcfReader, MafReader (streaming)
+<a id="__codelineno-2-12" name="__codelineno-2-12" href="#reference-architecture-__codelineno-2-12"></a>│   ├── output.py    # VcfWriter, MafWriter (mode-aware: DNA/RNA columns)
+<a id="__codelineno-2-13" name="__codelineno-2-13" href="#reference-architecture-__codelineno-2-13"></a>│   ├── reference.py # Reference bases for MAF -&gt; VCF anchors
+<a id="__codelineno-2-14" name="__codelineno-2-14" href="#reference-architecture-__codelineno-2-14"></a>│   └── batch.py     # Polars batch I/O (read/scan/write MAF, read Parquet)
+<a id="__codelineno-2-15" name="__codelineno-2-15" href="#reference-architecture-__codelineno-2-15"></a>├── models/
+<a id="__codelineno-2-16" name="__codelineno-2-16" href="#reference-architecture-__codelineno-2-16"></a>│   └── core.py      # Pydantic configs (GbcmsDnaConfig, GbcmsRnaConfig, MergeConfig)
+<a id="__codelineno-2-17" name="__codelineno-2-17" href="#reference-architecture-__codelineno-2-17"></a>└── utils/
+<a id="__codelineno-2-18" name="__codelineno-2-18" href="#reference-architecture-__codelineno-2-18"></a>    └── logging.py   # Structured logging
+<a id="__codelineno-2-19" name="__codelineno-2-19" href="#reference-architecture-__codelineno-2-19"></a>
+<a id="__codelineno-2-20" name="__codelineno-2-20" href="#reference-architecture-__codelineno-2-20"></a>rust/src/
+<a id="__codelineno-2-21" name="__codelineno-2-21" href="#reference-architecture-__codelineno-2-21"></a>├── lib.rs                    # PyO3 module exports
+<a id="__codelineno-2-22" name="__codelineno-2-22" href="#reference-architecture-__codelineno-2-22"></a>├── annotation/               # v5.0.0: GTF annotation index (COITree, splice masks)
+<a id="__codelineno-2-23" name="__codelineno-2-23" href="#reference-architecture-__codelineno-2-23"></a>│   ├── mod.rs                # AnnotationIndex struct, COITree queries
+<a id="__codelineno-2-24" name="__codelineno-2-24" href="#reference-architecture-__codelineno-2-24"></a>│   ├── gtf.rs                # GTF loader (plain or gzip/BGZF, variant-guided streaming)
+<a id="__codelineno-2-25" name="__codelineno-2-25" href="#reference-architecture-__codelineno-2-25"></a>│   └── gtf_line.rs           # One GTF line's exon fields (noodles-gtf's grammar)
+<a id="__codelineno-2-26" name="__codelineno-2-26" href="#reference-architecture-__codelineno-2-26"></a>├── counting/
+<a id="__codelineno-2-27" name="__codelineno-2-27" href="#reference-architecture-__codelineno-2-27"></a>│   ├── mod.rs                # Submodule re-exports
+<a id="__codelineno-2-28" name="__codelineno-2-28" href="#reference-architecture-__codelineno-2-28"></a>│   ├── engine.rs             # Main loop, genomic binning, BAQ, UMI
+<a id="__codelineno-2-29" name="__codelineno-2-29" href="#reference-architecture-__codelineno-2-29"></a>│   ├── variant_checks.rs     # check_snp/mnp/ins/del/complex + Phase 3 dispatch
+<a id="__codelineno-2-30" name="__codelineno-2-30" href="#reference-architecture-__codelineno-2-30"></a>│   ├── alignment.rs          # Smith-Waterman implementation
+<a id="__codelineno-2-31" name="__codelineno-2-31" href="#reference-architecture-__codelineno-2-31"></a>│   ├── pairhmm.rs            # PairHMM alignment backend (marginalized)
+<a id="__codelineno-2-32" name="__codelineno-2-32" href="#reference-architecture-__codelineno-2-32"></a>│   ├── pangenome.rs          # Haplotype matrix construction
+<a id="__codelineno-2-33" name="__codelineno-2-33" href="#reference-architecture-__codelineno-2-33"></a>│   ├── wfa_router.rs         # WFA2 fast-path alignment
+<a id="__codelineno-2-34" name="__codelineno-2-34" href="#reference-architecture-__codelineno-2-34"></a>│   ├── rna.rs                # RNA validation, splicing, editing site lookup
+<a id="__codelineno-2-35" name="__codelineno-2-35" href="#reference-architecture-__codelineno-2-35"></a>│   ├── fragment.rs           # Re-export of shared::fragment (backward compat)
+<a id="__codelineno-2-36" name="__codelineno-2-36" href="#reference-architecture-__codelineno-2-36"></a>│   ├── mfsd.rs               # Mutant Fragment Size Distribution analysis
+<a id="__codelineno-2-37" name="__codelineno-2-37" href="#reference-architecture-__codelineno-2-37"></a>│   ├── parquet_writer.rs     # write_fsd_parquet() — native Parquet via ZSTD
+<a id="__codelineno-2-38" name="__codelineno-2-38" href="#reference-architecture-__codelineno-2-38"></a>│   └── utils.rs              # Helpers, reconstruction, soft-clip
+<a id="__codelineno-2-39" name="__codelineno-2-39" href="#reference-architecture-__codelineno-2-39"></a>├── normalize/
+<a id="__codelineno-2-40" name="__codelineno-2-40" href="#reference-architecture-__codelineno-2-40"></a>│   ├── mod.rs                # Submodule re-exports
+<a id="__codelineno-2-41" name="__codelineno-2-41" href="#reference-architecture-__codelineno-2-41"></a>│   ├── engine.rs             # Normalization pipeline
+<a id="__codelineno-2-42" name="__codelineno-2-42" href="#reference-architecture-__codelineno-2-42"></a>│   ├── left_align.rs         # bcftools-style left-alignment
+<a id="__codelineno-2-43" name="__codelineno-2-43" href="#reference-architecture-__codelineno-2-43"></a>│   ├── decomp.rs             # Homopolymer decomposition
+<a id="__codelineno-2-44" name="__codelineno-2-44" href="#reference-architecture-__codelineno-2-44"></a>│   ├── fasta.rs              # Reference sequence fetcher
+<a id="__codelineno-2-45" name="__codelineno-2-45" href="#reference-architecture-__codelineno-2-45"></a>│   ├── repeat.rs             # Tandem repeat detection
+<a id="__codelineno-2-46" name="__codelineno-2-46" href="#reference-architecture-__codelineno-2-46"></a>│   └── types.rs              # NormResult enum
+<a id="__codelineno-2-47" name="__codelineno-2-47" href="#reference-architecture-__codelineno-2-47"></a>├── shared/
+<a id="__codelineno-2-48" name="__codelineno-2-48" href="#reference-architecture-__codelineno-2-48"></a>│   ├── mod.rs                # Submodule re-exports
+<a id="__codelineno-2-49" name="__codelineno-2-49" href="#reference-architecture-__codelineno-2-49"></a>│   ├── fragment.rs           # FragmentEvidence, quality consensus, UMI grouping
+<a id="__codelineno-2-50" name="__codelineno-2-50" href="#reference-architecture-__codelineno-2-50"></a>│   ├── stats.rs              # Fisher's exact test (strand bias), BH correction
+<a id="__codelineno-2-51" name="__codelineno-2-51" href="#reference-architecture-__codelineno-2-51"></a>│   ├── filters.rs            # ReadFilter struct, FilterCounts (BAM flag checks)
+<a id="__codelineno-2-52" name="__codelineno-2-52" href="#reference-architecture-__codelineno-2-52"></a>│   ├── baq.rs                # BAQ heuristic (Li 2011)
+<a id="__codelineno-2-53" name="__codelineno-2-53" href="#reference-architecture-__codelineno-2-53"></a>│   └── bam_utils.rs          # median_qual, find_read_pos
+<a id="__codelineno-2-54" name="__codelineno-2-54" href="#reference-architecture-__codelineno-2-54"></a>└── types.rs                  # Variant, BaseCounts, PyO3 bindings
 </code></pre></div>
 <hr>
 <h2 id="reference-architecture-configuration">Configuration<a class="headerlink" href="#reference-architecture-configuration" title="Permanent link">¶</a></h2>
@@ -9215,11 +9226,13 @@ or <code>0.0</code> (incorrect p-value due to floating-point underflow).</p>
         </head><body><div><h1 id="qc-flags">QC Flags<a class="headerlink" href="#reference-qc-flags-qc-flags" title="Permanent link">¶</a></h1>
 <p>Every flag, reason and class gbcms writes is defined here, once. Other pages
 include these tables (snippet sections of this file) or link to them, so a
-definition is written in one place. Two tests keep it that way: one fails when a
-flag the code emits is missing from this page, the other when a flag is defined
-anywhere else in the docs.</p>
+definition is written in one place. Three tests keep it that way: one fails when a
+flag the code emits is missing from this page, one when a flag is defined anywhere
+else in the docs, and one when the end-of-run summary's table (below) and this
+page's definitions differ.</p>
 <p><strong>Where flags appear.</strong> <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> columns are listed first, then the <abbr title="Variant Call Format - Standard variant call file format">VCF</abbr> field. In <abbr title="Variant Call Format - Standard variant call file format">VCF</abbr>,
-<code>;</code> inside a value is written <code>|</code>.</p>
+<code>;</code> inside a value is written <code>|</code>. The run log ends with a summary of the flags
+that fired and the rows that need a look: <a href="#reference-qc-flags-end-of-run-summary">End-of-run summary</a>.</p>
 <table>
 <thead>
 <tr>
@@ -9724,6 +9737,288 @@ report.</p>
 <td style="text-align: left;">INFO <code>NORM_POS</code>, <code>NORM_REF</code>, <code>NORM_ALT</code></td>
 <td style="text-align: left;"><code>--show-normalization</code></td>
 <td style="text-align: left;">The left-aligned record gbcms counted</td>
+</tr>
+</tbody>
+</table>
+<h2 id="reference-qc-flags-end-of-run-summary">End-of-run summary<a class="headerlink" href="#reference-qc-flags-end-of-run-summary" title="Permanent link">¶</a></h2>
+<p>At the end of every <code>gbcms dna</code> and <code>gbcms rna</code> run the log carries a QC summary: which
+flags fired, on how many rows, which rows need a look, and what to do about each. Most
+users read the counts and the <abbr title="Variant Allele Frequency - Fraction of reads supporting the variant allele">VAF</abbr> and never open the flag columns; the summary points to
+the few rows where that is not enough.</p>
+<p>It reads the output the run has written, <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> or <abbr title="Variant Call Format - Standard variant call file format">VCF</abbr>, after writing it. It changes no count,
+column or row, writes no file and does not change the exit code. If the output cannot be
+read, the run logs a warning and carries on.</p>
+<p>Each flag is in one of three tiers. The first two are the rows that <strong>need a look</strong>.</p>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">Tier</th>
+<th style="text-align: left;">The row</th>
+<th style="text-align: left;">What to do</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;">Fix the input</td>
+<td style="text-align: left;">Rejected (<code>FAIL</code>), or its input is wrong</td>
+<td style="text-align: left;">Correct the input row and run again</td>
+</tr>
+<tr>
+<td style="text-align: left;">Check the call</td>
+<td style="text-align: left;">Counted, but its count or <abbr title="Variant Allele Frequency - Fraction of reads supporting the variant allele">VAF</abbr> may not mean what it looks like</td>
+<td style="text-align: left;">Look at the row before you use the number</td>
+</tr>
+<tr>
+<td style="text-align: left;">Informational</td>
+<td style="text-align: left;">A caveat or a description</td>
+<td style="text-align: left;">Nothing; read it when a number looks odd</td>
+</tr>
+</tbody>
+</table>
+<p>For each tier the block gives the number of rows (a row with flags in two tiers is in both)
+and each flag that fired, most rows first. The first two tiers show a zero as <code>none</code>, so a
+clean run reads as one. It then names the first rows that need a look (input problems first)
+and the output fields to filter on for the rest. With several samples in one run the block
+combines them: each flag with the number of samples it fired in, and the samples with the
+most rows to look at. A flag the reading build does not know, written by another build, is
+listed apart and is not counted as needing a look, except on a <code>FAIL</code> row.</p>
+<p>The run's last line is a <code>WARNING</code> when any row needs a look and an <code>INFO</code> line when none
+does; the exit code is unchanged, so flagged rows never fail a pipeline.</p>
+<p>The <abbr title="Mutant Fragment Size Distribution - Insert-size analysis for REF vs ALT fragments">mFSD</abbr> report classes are not in the output rows, so the summary leaves them out.</p>
+<p>An example, from 2,000 synthetic rows:</p>
+<!-- qc-summary-example -->
+<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#reference-qc-flags-__codelineno-0-1"></a>QC summary for sample S: 40 of 2,000 rows need a look (2.0%)
+<a id="__codelineno-0-2" name="__codelineno-0-2" href="#reference-qc-flags-__codelineno-0-2"></a>  Rows with only informational flags: 107; with no flag: 1,853
+<a id="__codelineno-0-3" name="__codelineno-0-3" href="#reference-qc-flags-__codelineno-0-3"></a>  Fix the input: 2 rows
+<a id="__codelineno-0-4" name="__codelineno-0-4" href="#reference-qc-flags-__codelineno-0-4"></a>    REF_MISMATCH: 2 rows
+<a id="__codelineno-0-5" name="__codelineno-0-5" href="#reference-qc-flags-__codelineno-0-5"></a>      The REF does not match the reference: check the build and coordinates;
+<a id="__codelineno-0-6" name="__codelineno-0-6" href="#reference-qc-flags-__codelineno-0-6"></a>      REF_AT_OFFSET says where it does match
+<a id="__codelineno-0-7" name="__codelineno-0-7" href="#reference-qc-flags-__codelineno-0-7"></a>    REF_AT_OFFSET: 1 row
+<a id="__codelineno-0-8" name="__codelineno-0-8" href="#reference-qc-flags-__codelineno-0-8"></a>      The REF matches the reference a few bases away: correct the input's coordinates
+<a id="__codelineno-0-9" name="__codelineno-0-9" href="#reference-qc-flags-__codelineno-0-9"></a>      (the row is not moved or counted)
+<a id="__codelineno-0-10" name="__codelineno-0-10" href="#reference-qc-flags-__codelineno-0-10"></a>  Check the call: 38 rows
+<a id="__codelineno-0-11" name="__codelineno-0-11" href="#reference-qc-flags-__codelineno-0-11"></a>    PARTIAL_DOMINANT: 30 rows
+<a id="__codelineno-0-12" name="__codelineno-0-12" href="#reference-qc-flags-__codelineno-0-12"></a>      More reads partly match the ALT than carry it, often a coexisting allele the
+<a id="__codelineno-0-13" name="__codelineno-0-13" href="#reference-qc-flags-__codelineno-0-13"></a>      annotation misses: inspect the locus (--trace shows per-read lengths)
+<a id="__codelineno-0-14" name="__codelineno-0-14" href="#reference-qc-flags-__codelineno-0-14"></a>    OBSERVED_ALLELE: 7 rows
+<a id="__codelineno-0-15" name="__codelineno-0-15" href="#reference-qc-flags-__codelineno-0-15"></a>      No read carries the given allele but others carry another one: the input is likely
+<a id="__codelineno-0-16" name="__codelineno-0-16" href="#reference-qc-flags-__codelineno-0-16"></a>      mis-described; the counts stay the given allele's
+<a id="__codelineno-0-17" name="__codelineno-0-17" href="#reference-qc-flags-__codelineno-0-17"></a>    CLIP_CANDIDATES: 1 row
+<a id="__codelineno-0-18" name="__codelineno-0-18" href="#reference-qc-flags-__codelineno-0-18"></a>      An insertion with no ALT reads, but soft-clipped reads may hold its carriers:
+<a id="__codelineno-0-19" name="__codelineno-0-19" href="#reference-qc-flags-__codelineno-0-19"></a>      inspect in IGV
+<a id="__codelineno-0-20" name="__codelineno-0-20" href="#reference-qc-flags-__codelineno-0-20"></a>  Informational: 113 rows
+<a id="__codelineno-0-21" name="__codelineno-0-21" href="#reference-qc-flags-__codelineno-0-21"></a>    ZERO_ALT: 55 rows (no read carries the ALT)
+<a id="__codelineno-0-22" name="__codelineno-0-22" href="#reference-qc-flags-__codelineno-0-22"></a>    MULTI_ALLELIC: 40 rows (another row has a different ALT here)
+<a id="__codelineno-0-23" name="__codelineno-0-23" href="#reference-qc-flags-__codelineno-0-23"></a>    COEXISTING_ALLELE: 18 rows (another allele is more frequent: a VAF caveat)
+<a id="__codelineno-0-24" name="__codelineno-0-24" href="#reference-qc-flags-__codelineno-0-24"></a>  Rows to look at (first 5 of 40, input problems first):
+<a id="__codelineno-0-25" name="__codelineno-0-25" href="#reference-qc-flags-__codelineno-0-25"></a>    chr1:1000 A&gt;T (GENE1): REF_MISMATCH, REF_AT_OFFSET(2)
+<a id="__codelineno-0-26" name="__codelineno-0-26" href="#reference-qc-flags-__codelineno-0-26"></a>    chr1:1001 A&gt;T (GENE2): REF_MISMATCH
+<a id="__codelineno-0-27" name="__codelineno-0-27" href="#reference-qc-flags-__codelineno-0-27"></a>    chr1:1002 A&gt;T (GENE3): PARTIAL_DOMINANT
+<a id="__codelineno-0-28" name="__codelineno-0-28" href="#reference-qc-flags-__codelineno-0-28"></a>    chr1:1003 A&gt;T (GENE4): PARTIAL_DOMINANT
+<a id="__codelineno-0-29" name="__codelineno-0-29" href="#reference-qc-flags-__codelineno-0-29"></a>    chr1:1004 A&gt;T (GENE5): PARTIAL_DOMINANT
+<a id="__codelineno-0-30" name="__codelineno-0-30" href="#reference-qc-flags-__codelineno-0-30"></a>  Find them in the output (MAF columns): gbcms_diagnostic, gbcms_status, gbcms_status_reason
+<a id="__codelineno-0-31" name="__codelineno-0-31" href="#reference-qc-flags-__codelineno-0-31"></a>  What each flag means and what to do: https://msk-access.github.io/gbcms/reference/qc-flags/
+</code></pre></div>
+<p>The tables list every flag by tier with the line the summary prints for it (a short gloss for
+an informational flag). The definitions are above; the tests keep the two in step.</p>
+<h3 id="reference-qc-flags-fix-the-input">Fix the input<a class="headerlink" href="#reference-qc-flags-fix-the-input" title="Permanent link">¶</a></h3>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">Flag</th>
+<th style="text-align: left;">The summary says</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;"><code>REF_MISMATCH</code></td>
+<td style="text-align: left;">The REF does not match the reference: check the build and coordinates; REF_AT_OFFSET says where it does match</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>REF_AT_OFFSET</code></td>
+<td style="text-align: left;">The REF matches the reference a few bases away: correct the input's coordinates (the row is not moved or counted)</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>FETCH_FAILED</code></td>
+<td style="text-align: left;">The reference region could not be read: check contig naming and the <abbr title="FASTA format - Reference genome sequence file">FASTA</abbr></td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>EMPTY_ALLELE</code></td>
+<td style="text-align: left;">REF or ALT is empty: fix the input row</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>NON_SEQUENCE_ALLELE</code></td>
+<td style="text-align: left;">An allele is not a base sequence: fix the input row</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>ALT_EQUALS_REF</code></td>
+<td style="text-align: left;">ALT equals REF, so there is no change to count: fix the input row</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>ALT_CONTAINS_N</code></td>
+<td style="text-align: left;">The ALT contains an N base: fix the input row</td>
+</tr>
+</tbody>
+</table>
+<h3 id="reference-qc-flags-check-the-call">Check the call<a class="headerlink" href="#reference-qc-flags-check-the-call" title="Permanent link">¶</a></h3>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">Flag</th>
+<th style="text-align: left;">The summary says</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;"><code>WARN_REF_CORRECTED</code></td>
+<td style="text-align: left;">The input's REF was corrected to the reference: check the REF; the counts are for the corrected REF</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>WARN_HOMOPOLYMER_DECOMP</code></td>
+<td style="text-align: left;">The row reports a corrected allele's counts, not the given one: check which you want</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>OBSERVED_ALLELE</code></td>
+<td style="text-align: left;">No read carries the given allele but others carry another one: the input is likely mis-described; the counts stay the given allele's</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>PARTIAL_DOMINANT</code></td>
+<td style="text-align: left;">More reads partly match the ALT than carry it, often a coexisting allele the annotation misses: inspect the locus (--trace shows per-read lengths)</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>CLIP_CANDIDATES</code></td>
+<td style="text-align: left;">An insertion with no ALT reads, but soft-clipped reads may hold its carriers: inspect in IGV</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>POSSIBLE_MINORITY_HAPLOTYPE</code></td>
+<td style="text-align: left;">A change on a minority of nearby reads may be counted as ALT: weigh a low alt_count with that in mind (the counts are unchanged)</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>SW_FALLBACK</code></td>
+<td style="text-align: left;">Some reads were scored by a fallback aligner or left uncounted: the row's counts came partly from another scorer</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>SPLICE_SKIP_DOMINANT</code></td>
+<td style="text-align: left;">More reads splice over the deleted span than confirm ALT: an alt_count of 0 may hide carriers written as junction reads</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>NON_DISCRIMINATING_LOCUS</code></td>
+<td style="text-align: left;">A nearby germline combination makes REF and ALT the same sequence: a zero REF and ALT here is not an absence</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>RESCUED_COMPONENT</code></td>
+<td style="text-align: left;">With --rescue-mnp the row reports a component SNV's counts, not the <abbr title="Multi-Nucleotide Polymorphism - Multiple adjacent base substitutions">MNP</abbr>'s: read gbcms_rescue</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>rescued</code></td>
+<td style="text-align: left;">The best component SNV beat the <abbr title="Multi-Nucleotide Polymorphism - Multiple adjacent base substitutions">MNP</abbr>, so its counts are written: read gbcms_rescue</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>ref_validation_failed</code></td>
+<td style="text-align: left;">No component SNV survived preparation (an anomaly): the <abbr title="Multi-Nucleotide Polymorphism - Multiple adjacent base substitutions">MNP</abbr>'s own counts stand; read the logged warning</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>NON_CANONICAL_MOTIF</code></td>
+<td style="text-align: left;">The ALT junction's splice motif is not canonical: likely a mapping artifact</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>STRAND_DISCORDANT</code></td>
+<td style="text-align: left;">The ALT junction has mixed transcript-strand support: likely an alignment artifact</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>RETENTION_DOMINANT</code></td>
+<td style="text-align: left;">Most reads splice over the locus, so the counted reads are the intron-retaining minority: read vaf as the <abbr title="Variant Allele Frequency - Fraction of reads supporting the variant allele">VAF</abbr> within them, not as allelic balance</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>NOVEL_JUNC_AT_SPLICE_LOSS</code></td>
+<td style="text-align: left;">Carriers of a splice-destroying variant may splice around the locus while alt_count is low: read asjd_diagnostic for the junction</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>rna_editing_site</code></td>
+<td style="text-align: left;">The locus overlaps a known A-to-I editing site: an A&gt;G or T&gt;C call there is likely editing, not a somatic mutation</td>
+</tr>
+</tbody>
+</table>
+<h3 id="reference-qc-flags-informational">Informational<a class="headerlink" href="#reference-qc-flags-informational" title="Permanent link">¶</a></h3>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">Flag</th>
+<th style="text-align: left;">The summary says</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;"><code>MULTI_ALLELIC</code></td>
+<td style="text-align: left;">another row has a different ALT here</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>TRACT_CLUSTER</code></td>
+<td style="text-align: left;">shares a repeat window with another indel</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>ZERO_ALT</code></td>
+<td style="text-align: left;">no read carries the ALT</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>COEXISTING_ALLELE</code></td>
+<td style="text-align: left;">another allele is more frequent: a <abbr title="Variant Allele Frequency - Fraction of reads supporting the variant allele">VAF</abbr> caveat</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>MNP_DISC_RATIO</code></td>
+<td style="text-align: left;">the <abbr title="Multi-Nucleotide Polymorphism - Multiple adjacent base substitutions">MNP</abbr>'s shape; nothing to do</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>MNP_RESCUE_ELIGIBLE</code></td>
+<td style="text-align: left;">a rescue candidate (--rescue-mnp)</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>HIGH_N_FRACTION</code></td>
+<td style="text-align: left;">over 5% of depth is N: counts are thinner</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>LOW_ALT_JUNC</code></td>
+<td style="text-align: left;">fewer than 5 ALT junction fragments</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>LOW_REF_JUNC</code></td>
+<td style="text-align: left;">fewer than 10 REF junction fragments</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>NOVEL_ALT_JUNC</code></td>
+<td style="text-align: left;">the ALT uses an unannotated junction</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>MULTI_JUNCTION</code></td>
+<td style="text-align: left;">ALT fragments use over two junctions</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>asjd_flag</code></td>
+<td style="text-align: left;">ALT and REF junction usage differ</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>skipped_grouped</code></td>
+<td style="text-align: left;">in a co-annotated group; rescue left it</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>haplotype_confirmed</code></td>
+<td style="text-align: left;">a read shows the whole <abbr title="Multi-Nucleotide Polymorphism - Multiple adjacent base substitutions">MNP</abbr> haplotype</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>no_improvement</code></td>
+<td style="text-align: left;">no component beat the <abbr title="Multi-Nucleotide Polymorphism - Multiple adjacent base substitutions">MNP</abbr>; its counts stand</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>mfsd_ks_valid</code></td>
+<td style="text-align: left;">the KS test did not run</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>mfsd_alt_confidence</code></td>
+<td style="text-align: left;">few or no ALT fragments in the size window</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>mfsd_ch_flag</code></td>
+<td style="text-align: left;">in a clonal-hematopoiesis gene: a prior</td>
 </tr>
 </tbody>
 </table>
@@ -11450,6 +11745,13 @@ its <code>;</code>). Whitespace runs may separate a key from its value. A row wi
 end, a coordinate past 2,147,483,647, a missing or empty <code>transcript_id</code> (after the
 version is stripped), or bytes that are not UTF-8 text is not loaded. Rejected rows
 are counted in one warning that names the first one's line number and reason.</p>
+<p>A <strong>transcript is an ID on one chromosome and strand</strong>. An ID that the GTF uses on
+another chromosome or strand (the same RefSeq <code>NM_</code> on chrX and chrY in the PARs,
+alternate loci) is another transcript: its exons, introns and per-transcript counts
+are its own, and are not sorted in with the first one's. The parser warns once, naming
+how many IDs are reused and the first, when it finds any among the loaded
+chromosomes. Exons of one ID at the same chromosome and strand are one transcript,
+including versions that differ only by suffix (<code>NM_x.1</code> and <code>NM_x.2</code>).</p>
 <div class="admonition tip">
 <p class="admonition-title">Chromosome Normalization</p>
 <p>Chromosomes are normalized by stripping the <code>chr</code> prefix for internal matching
@@ -17018,8 +17320,8 @@ caveat in gbcms's output.</p>
 </tr>
 <tr>
 <td style="text-align: left;">RNA: a GTF transcript ID reused on another chromosome or strand</td>
-<td style="text-align: left;">Exons and introns merge by ID</td>
-<td style="text-align: left;">Proposed</td>
+<td style="text-align: left;">A transcript is an ID at one chromosome and strand (exons, introns, strand spans); a reused ID is warned about</td>
+<td style="text-align: left;">Decided (done)</td>
 <td style="text-align: left;">C34 #216</td>
 </tr>
 <tr>
@@ -17382,22 +17684,23 @@ caveat in gbcms's output.</p>
   sense. A library that is not stranded needs <code>--strandedness unstranded</code>; see
   <a href="#cli-rna-strandedness-filtering"><code>gbcms rna</code></a>.
 - <strong>A GTF transcript ID used at more than one place (C34 #216):</strong> the GTF parser
-  groups exons by transcript ID alone, after stripping a numeric version suffix, so
-  an ID used on more than one chromosome or strand merges into one transcript. Exons
-  of different chromosomes are sorted together, which makes introns that do not exist
-  and misses real ones, and the transcript's introns sit on one chromosome only. That
-  feeds the intron boundaries (<code>RETENTION_DOMINANT</code>, the exon-edge <abbr title="Base Alignment Quality - Heuristic quality downgrade near indels and splice junctions">BAQ</abbr> rule, the RNA
-  clip edges of RJ-18), per-transcript counts and junction compatibility, and ASJD.
-  The strand spans are already keyed by transcript, chromosome and strand. It can
-  bite on GTFs that reuse an ID (UCSC/RefSeq: the same NM_ on chrX and chrY in the
-  PARs, alternate loci) and on versions that differ only by suffix (NM_x.1 and
-  NM_x.2); GENCODE's <code>_PAR_Y</code> IDs are not stripped and stay distinct. Measured on the
-  production GTF (Ensembl GRCh38.111, used for FORTE): 0 of 252,989 transcript IDs
-  occur on more than one chromosome or strand, so no production row is affected
-  today, and RJ-18's clip edges also take every junction the reads splice at, which
-  covers a missing annotated edge in most cases. Proposed: key transcripts by (ID,
-  chromosome, strand), report a per-transcript count under its ID with the locus where
-  an ID occurs twice, and warn once when the GTF reuses an ID.</p>
+  grouped exons by transcript ID alone, after stripping a numeric version suffix, so an
+  ID used on more than one chromosome or strand merged into one transcript. Exons of
+  different chromosomes were sorted together, which made introns that do not exist and
+  missed real ones, and the transcript's introns sat on one chromosome only. That fed
+  the intron boundaries (<code>RETENTION_DOMINANT</code>, the exon-edge <abbr title="Base Alignment Quality - Heuristic quality downgrade near indels and splice junctions">BAQ</abbr> rule, the RNA clip
+  edges of RJ-18), per-transcript counts and junction compatibility, and ASJD. A
+  transcript is now an ID at one chromosome and strand, as the strand spans already
+  were: its exons, introns, boundaries and per-transcript counts are its own, and the
+  parser warns once when a GTF reuses an ID (UCSC/RefSeq: the same NM_ on chrX and chrY
+  in the PARs, alternate loci). A variant's per-transcript cell lists the transcripts
+  at its own place, so a reused ID appears once per chromosome, and twice (<code>+</code> first) only
+  where both strands of one chromosome overlap the variant. Copies at one chromosome and
+  strand still join: versions that differ only by suffix (NM_x.1 and NM_x.2) on the same
+  place share one transcript, so their exons are sorted together. GENCODE's <code>_PAR_Y</code> IDs
+  are not stripped and stay distinct. Measured on the production GTF (Ensembl GRCh38.111,
+  used for FORTE): 0 of 252,989 transcript IDs occur on more than one chromosome or
+  strand, so no production row changes.</p>
 <h2 id="reference-bam-evidence-caveats-5-not-the-bam-but-easy-to-misread-from-counts">5. Not the <abbr title="Binary Alignment Map - Compressed sequence alignment file format">BAM</abbr>, but easy to misread from counts<a class="headerlink" href="#reference-bam-evidence-caveats-5-not-the-bam-but-easy-to-misread-from-counts" title="Permanent link">¶</a></h2>
 <ul>
 <li><strong>Reads ending inside the event, and low depth:</strong> a read that ends before
@@ -19475,6 +19778,24 @@ count-affecting merge since the previous release, run on the changed rows only.<
 <p>The format is based on <a href="https://keepachangelog.com/en/1.0.0/">Keep a Changelog</a>,
 and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semantic Versioning</a>.</p>
 <h2 id="development-changelog-unreleased">[Unreleased]<a class="headerlink" href="#development-changelog-unreleased" title="Permanent link">¶</a></h2>
+<h3 id="development-changelog-added-an-end-of-run-qc-summary-in-the-run-log-227">Added — an end-of-run QC summary in the run log (#227)<a class="headerlink" href="#development-changelog-added-an-end-of-run-qc-summary-in-the-run-log-227" title="Permanent link">¶</a></h3>
+<ul>
+<li><strong>The run log now ends with a QC summary.</strong> <code>gbcms dna</code> and <code>gbcms rna</code> log one block
+  after the last sample: which QC flags fired and on how many rows, which rows need a look
+  (a flag is "fix the input", "check the call" or informational; the first two need a look),
+  what to do about each, the first rows to look at, the output fields to filter on, and the
+  address of the QC Flags page. With several samples in one run the block combines them.
+  The run's last line is a <code>WARNING</code> when any row needs a look and an <code>INFO</code> line when none
+  does; the exit code is unchanged.</li>
+<li><strong>It reads the written output and changes nothing.</strong> The block comes from the <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> or <abbr title="Variant Call Format - Standard variant call file format">VCF</abbr>
+  the run wrote, read back after writing: no count, column, row or file differs (a test pins
+  the output files byte-identical with and without it), and there is no new flag or output
+  file. A failure to read the output is a warning, never a failed run.</li>
+<li><strong>One table for the code and the docs.</strong> <code>QC_FLAGS</code> in <code>gbcms.qc_summary</code> holds each
+  flag's tier and one-line action; the QC Flags page repeats it under "End-of-run summary".
+  Tests fail when a flag the page defines has no entry, when an entry names no flag on the
+  page, and when the page's tiers, actions or example block differ from the code's.</li>
+</ul>
 <h3 id="development-changelog-changed-a-read-rule-change-starts-from-its-mechanism-304">Changed — a read-rule change starts from its mechanism (#304)<a class="headerlink" href="#development-changelog-changed-a-read-rule-change-starts-from-its-mechanism-304" title="Permanent link">¶</a></h3>
 <ul>
 <li><strong>Fix the class, not the row.</strong> The procedure for changing how reads are judged
@@ -19485,6 +19806,22 @@ and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semant
   than its mechanism says why. The fix is judged on data the bug was not found in.</li>
 <li><strong>Each decided read rule states its mechanism.</strong> The register has a Mechanism column,
   filled for RJ-1 to RJ-27, and new entries state theirs. Counts are unchanged.</li>
+</ul>
+<h3 id="development-changelog-fixed-a-gtf-transcript-id-that-another-chromosome-or-strand-reuses-is-another-transcript-216">Fixed — a GTF transcript ID that another chromosome or strand reuses is another transcript (#216)<a class="headerlink" href="#development-changelog-fixed-a-gtf-transcript-id-that-another-chromosome-or-strand-reuses-is-another-transcript-216" title="Permanent link">¶</a></h3>
+<ul>
+<li><strong>The GTF parser keyed transcripts by ID alone.</strong> An ID used on more than one chromosome
+  or strand (the same RefSeq <code>NM_</code> on chrX and chrY, alternate loci) merged into one
+  transcript: its exons from both places were sorted together, so the consecutive pairs
+  made introns that exist nowhere and missed the real ones, and the whole transcript sat on
+  the first chromosome seen. A spliced read over a real intron then matched none of them
+  and was left out of the transcript's counts; the same introns fed the intron boundaries
+  (<code>RETENTION_DOMINANT</code>, the exon-edge <abbr title="Base Alignment Quality - Heuristic quality downgrade near indels and splice junctions">BAQ</abbr> rule, RNA clip edges) and ASJD's known-junction
+  check. A transcript is now an ID at one chromosome and strand, as the strand spans
+  already were (#185): its exons, introns, boundaries and <code>transcript_read_counts</code> /
+  <code>transcript_fragment_counts</code> entries are its own. The parser warns once when a GTF
+  reuses an ID. Exons of one ID at the same chromosome and strand still join (versions that
+  differ only by suffix share a transcript). Counts are unchanged for a GTF that reuses
+  no ID: Ensembl GRCh38.111 (FORTE's) has none among its 252,989 transcript IDs.</li>
 </ul>
 <h3 id="development-changelog-fixed-the-docs-state-the-unreadable-insert-rule-as-decided-304">Fixed — the docs state the unreadable-insert rule as decided (#304)<a class="headerlink" href="#development-changelog-fixed-the-docs-state-the-unreadable-insert-rule-as-decided-304" title="Permanent link">¶</a></h3>
 <ul>
@@ -23549,6 +23886,10 @@ not a <abbr title="Binary Alignment Map - Compressed sequence alignment file for
 </details>
 <hr>
 <h2 id="resources-troubleshooting-allele-count-issues">Allele Count Issues<a class="headerlink" href="#resources-troubleshooting-allele-count-issues" title="Permanent link">¶</a></h2>
+<p>Start with the <strong>QC summary</strong> at the end of the run log: it counts the rows by what
+they need (fix the input, check the call, or nothing), names the first rows to look at and
+says what to do about each flag
+(<a href="#reference-qc-flags-end-of-run-summary">End-of-run summary</a>).</p>
 <details class="question">
 <summary><code>alt_count = 0</code> for a variant I can see reads for in IGV</summary>
 <p>Check in this order:</p>

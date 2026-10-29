@@ -31,7 +31,7 @@
             body[data-md-color-scheme="slate"] .gslide-title { color: var(--md-default-fg-color); }
             body[data-md-color-scheme="slate"] .gslide-desc { color: var(--md-default-fg-color); }
         </style><meta name="panzoom-theme" content="material">
-<meta name="panzoom-data" content='{"selectors": [".mermaid", ".d2"], "initial_zoom_level": 1.0}'> </head>
+<meta name="panzoom-data" content='{"selectors": [".d2", ".mermaid"], "initial_zoom_level": 1.0}'> </head>
 <body data-md-color-accent="custom" data-md-color-primary="custom" data-md-color-scheme="default" dir="ltr">
 <input autocomplete="off" class="md-toggle" data-md-toggle="drawer" id="__drawer" type="checkbox">
 <input autocomplete="off" class="md-toggle" data-md-toggle="search" id="__search" type="checkbox">
@@ -520,6 +520,46 @@
     </span>
 </a>
 </li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#end-of-run-summary">
+<span class="md-ellipsis">
+      
+        End-of-run summary
+      
+    </span>
+</a>
+<nav aria-label="End-of-run summary" class="md-nav">
+<ul class="md-nav__list">
+<li class="md-nav__item">
+<a class="md-nav__link" href="#fix-the-input">
+<span class="md-ellipsis">
+      
+        Fix the input
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#check-the-call">
+<span class="md-ellipsis">
+      
+        Check the call
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#informational">
+<span class="md-ellipsis">
+      
+        Informational
+      
+    </span>
+</a>
+</li>
+</ul>
+</nav>
+</li>
 </ul>
 </nav>
 </li>
@@ -895,6 +935,46 @@
     </span>
 </a>
 </li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#end-of-run-summary">
+<span class="md-ellipsis">
+      
+        End-of-run summary
+      
+    </span>
+</a>
+<nav aria-label="End-of-run summary" class="md-nav">
+<ul class="md-nav__list">
+<li class="md-nav__item">
+<a class="md-nav__link" href="#fix-the-input">
+<span class="md-ellipsis">
+      
+        Fix the input
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#check-the-call">
+<span class="md-ellipsis">
+      
+        Check the call
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#informational">
+<span class="md-ellipsis">
+      
+        Informational
+      
+    </span>
+</a>
+</li>
+</ul>
+</nav>
+</li>
 </ul>
 </nav>
 </div>
@@ -923,11 +1003,13 @@
 <div><h1 id="qc-flags">QC Flags<a class="headerlink" href="#qc-flags" title="Permanent link">¶</a></h1>
 <p>Every flag, reason and class gbcms writes is defined here, once. Other pages
 include these tables (snippet sections of this file) or link to them, so a
-definition is written in one place. Two tests keep it that way: one fails when a
-flag the code emits is missing from this page, the other when a flag is defined
-anywhere else in the docs.</p>
+definition is written in one place. Three tests keep it that way: one fails when a
+flag the code emits is missing from this page, one when a flag is defined anywhere
+else in the docs, and one when the end-of-run summary's table (below) and this
+page's definitions differ.</p>
 <p><strong>Where flags appear.</strong> <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> columns are listed first, then the <abbr title="Variant Call Format - Standard variant call file format">VCF</abbr> field. In <abbr title="Variant Call Format - Standard variant call file format">VCF</abbr>,
-<code>;</code> inside a value is written <code>|</code>.</p>
+<code>;</code> inside a value is written <code>|</code>. The run log ends with a summary of the flags
+that fired and the rows that need a look: <a href="#end-of-run-summary">End-of-run summary</a>.</p>
 <table>
 <thead>
 <tr>
@@ -1434,6 +1516,288 @@ report.</p>
 </tr>
 </tbody>
 </table>
+<h2 id="end-of-run-summary">End-of-run summary<a class="headerlink" href="#end-of-run-summary" title="Permanent link">¶</a></h2>
+<p>At the end of every <code>gbcms dna</code> and <code>gbcms rna</code> run the log carries a QC summary: which
+flags fired, on how many rows, which rows need a look, and what to do about each. Most
+users read the counts and the <abbr title="Variant Allele Frequency - Fraction of reads supporting the variant allele">VAF</abbr> and never open the flag columns; the summary points to
+the few rows where that is not enough.</p>
+<p>It reads the output the run has written, <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> or <abbr title="Variant Call Format - Standard variant call file format">VCF</abbr>, after writing it. It changes no count,
+column or row, writes no file and does not change the exit code. If the output cannot be
+read, the run logs a warning and carries on.</p>
+<p>Each flag is in one of three tiers. The first two are the rows that <strong>need a look</strong>.</p>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">Tier</th>
+<th style="text-align: left;">The row</th>
+<th style="text-align: left;">What to do</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;">Fix the input</td>
+<td style="text-align: left;">Rejected (<code>FAIL</code>), or its input is wrong</td>
+<td style="text-align: left;">Correct the input row and run again</td>
+</tr>
+<tr>
+<td style="text-align: left;">Check the call</td>
+<td style="text-align: left;">Counted, but its count or <abbr title="Variant Allele Frequency - Fraction of reads supporting the variant allele">VAF</abbr> may not mean what it looks like</td>
+<td style="text-align: left;">Look at the row before you use the number</td>
+</tr>
+<tr>
+<td style="text-align: left;">Informational</td>
+<td style="text-align: left;">A caveat or a description</td>
+<td style="text-align: left;">Nothing; read it when a number looks odd</td>
+</tr>
+</tbody>
+</table>
+<p>For each tier the block gives the number of rows (a row with flags in two tiers is in both)
+and each flag that fired, most rows first. The first two tiers show a zero as <code>none</code>, so a
+clean run reads as one. It then names the first rows that need a look (input problems first)
+and the output fields to filter on for the rest. With several samples in one run the block
+combines them: each flag with the number of samples it fired in, and the samples with the
+most rows to look at. A flag the reading build does not know, written by another build, is
+listed apart and is not counted as needing a look, except on a <code>FAIL</code> row.</p>
+<p>The run's last line is a <code>WARNING</code> when any row needs a look and an <code>INFO</code> line when none
+does; the exit code is unchanged, so flagged rows never fail a pipeline.</p>
+<p>The <abbr title="Mutant Fragment Size Distribution - Insert-size analysis for REF vs ALT fragments">mFSD</abbr> report classes are not in the output rows, so the summary leaves them out.</p>
+<p>An example, from 2,000 synthetic rows:</p>
+<!-- qc-summary-example -->
+<div class="highlight"><pre><span></span><code><a href="#__codelineno-0-1" id="__codelineno-0-1" name="__codelineno-0-1"></a>QC summary for sample S: 40 of 2,000 rows need a look (2.0%)
+<a href="#__codelineno-0-2" id="__codelineno-0-2" name="__codelineno-0-2"></a>  Rows with only informational flags: 107; with no flag: 1,853
+<a href="#__codelineno-0-3" id="__codelineno-0-3" name="__codelineno-0-3"></a>  Fix the input: 2 rows
+<a href="#__codelineno-0-4" id="__codelineno-0-4" name="__codelineno-0-4"></a>    REF_MISMATCH: 2 rows
+<a href="#__codelineno-0-5" id="__codelineno-0-5" name="__codelineno-0-5"></a>      The REF does not match the reference: check the build and coordinates;
+<a href="#__codelineno-0-6" id="__codelineno-0-6" name="__codelineno-0-6"></a>      REF_AT_OFFSET says where it does match
+<a href="#__codelineno-0-7" id="__codelineno-0-7" name="__codelineno-0-7"></a>    REF_AT_OFFSET: 1 row
+<a href="#__codelineno-0-8" id="__codelineno-0-8" name="__codelineno-0-8"></a>      The REF matches the reference a few bases away: correct the input's coordinates
+<a href="#__codelineno-0-9" id="__codelineno-0-9" name="__codelineno-0-9"></a>      (the row is not moved or counted)
+<a href="#__codelineno-0-10" id="__codelineno-0-10" name="__codelineno-0-10"></a>  Check the call: 38 rows
+<a href="#__codelineno-0-11" id="__codelineno-0-11" name="__codelineno-0-11"></a>    PARTIAL_DOMINANT: 30 rows
+<a href="#__codelineno-0-12" id="__codelineno-0-12" name="__codelineno-0-12"></a>      More reads partly match the ALT than carry it, often a coexisting allele the
+<a href="#__codelineno-0-13" id="__codelineno-0-13" name="__codelineno-0-13"></a>      annotation misses: inspect the locus (--trace shows per-read lengths)
+<a href="#__codelineno-0-14" id="__codelineno-0-14" name="__codelineno-0-14"></a>    OBSERVED_ALLELE: 7 rows
+<a href="#__codelineno-0-15" id="__codelineno-0-15" name="__codelineno-0-15"></a>      No read carries the given allele but others carry another one: the input is likely
+<a href="#__codelineno-0-16" id="__codelineno-0-16" name="__codelineno-0-16"></a>      mis-described; the counts stay the given allele's
+<a href="#__codelineno-0-17" id="__codelineno-0-17" name="__codelineno-0-17"></a>    CLIP_CANDIDATES: 1 row
+<a href="#__codelineno-0-18" id="__codelineno-0-18" name="__codelineno-0-18"></a>      An insertion with no ALT reads, but soft-clipped reads may hold its carriers:
+<a href="#__codelineno-0-19" id="__codelineno-0-19" name="__codelineno-0-19"></a>      inspect in IGV
+<a href="#__codelineno-0-20" id="__codelineno-0-20" name="__codelineno-0-20"></a>  Informational: 113 rows
+<a href="#__codelineno-0-21" id="__codelineno-0-21" name="__codelineno-0-21"></a>    ZERO_ALT: 55 rows (no read carries the ALT)
+<a href="#__codelineno-0-22" id="__codelineno-0-22" name="__codelineno-0-22"></a>    MULTI_ALLELIC: 40 rows (another row has a different ALT here)
+<a href="#__codelineno-0-23" id="__codelineno-0-23" name="__codelineno-0-23"></a>    COEXISTING_ALLELE: 18 rows (another allele is more frequent: a VAF caveat)
+<a href="#__codelineno-0-24" id="__codelineno-0-24" name="__codelineno-0-24"></a>  Rows to look at (first 5 of 40, input problems first):
+<a href="#__codelineno-0-25" id="__codelineno-0-25" name="__codelineno-0-25"></a>    chr1:1000 A&gt;T (GENE1): REF_MISMATCH, REF_AT_OFFSET(2)
+<a href="#__codelineno-0-26" id="__codelineno-0-26" name="__codelineno-0-26"></a>    chr1:1001 A&gt;T (GENE2): REF_MISMATCH
+<a href="#__codelineno-0-27" id="__codelineno-0-27" name="__codelineno-0-27"></a>    chr1:1002 A&gt;T (GENE3): PARTIAL_DOMINANT
+<a href="#__codelineno-0-28" id="__codelineno-0-28" name="__codelineno-0-28"></a>    chr1:1003 A&gt;T (GENE4): PARTIAL_DOMINANT
+<a href="#__codelineno-0-29" id="__codelineno-0-29" name="__codelineno-0-29"></a>    chr1:1004 A&gt;T (GENE5): PARTIAL_DOMINANT
+<a href="#__codelineno-0-30" id="__codelineno-0-30" name="__codelineno-0-30"></a>  Find them in the output (MAF columns): gbcms_diagnostic, gbcms_status, gbcms_status_reason
+<a href="#__codelineno-0-31" id="__codelineno-0-31" name="__codelineno-0-31"></a>  What each flag means and what to do: https://msk-access.github.io/gbcms/reference/qc-flags/
+</code></pre></div>
+<p>The tables list every flag by tier with the line the summary prints for it (a short gloss for
+an informational flag). The definitions are above; the tests keep the two in step.</p>
+<h3 id="fix-the-input">Fix the input<a class="headerlink" href="#fix-the-input" title="Permanent link">¶</a></h3>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">Flag</th>
+<th style="text-align: left;">The summary says</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;"><code>REF_MISMATCH</code></td>
+<td style="text-align: left;">The REF does not match the reference: check the build and coordinates; REF_AT_OFFSET says where it does match</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>REF_AT_OFFSET</code></td>
+<td style="text-align: left;">The REF matches the reference a few bases away: correct the input's coordinates (the row is not moved or counted)</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>FETCH_FAILED</code></td>
+<td style="text-align: left;">The reference region could not be read: check contig naming and the <abbr title="FASTA format - Reference genome sequence file">FASTA</abbr></td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>EMPTY_ALLELE</code></td>
+<td style="text-align: left;">REF or ALT is empty: fix the input row</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>NON_SEQUENCE_ALLELE</code></td>
+<td style="text-align: left;">An allele is not a base sequence: fix the input row</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>ALT_EQUALS_REF</code></td>
+<td style="text-align: left;">ALT equals REF, so there is no change to count: fix the input row</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>ALT_CONTAINS_N</code></td>
+<td style="text-align: left;">The ALT contains an N base: fix the input row</td>
+</tr>
+</tbody>
+</table>
+<h3 id="check-the-call">Check the call<a class="headerlink" href="#check-the-call" title="Permanent link">¶</a></h3>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">Flag</th>
+<th style="text-align: left;">The summary says</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;"><code>WARN_REF_CORRECTED</code></td>
+<td style="text-align: left;">The input's REF was corrected to the reference: check the REF; the counts are for the corrected REF</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>WARN_HOMOPOLYMER_DECOMP</code></td>
+<td style="text-align: left;">The row reports a corrected allele's counts, not the given one: check which you want</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>OBSERVED_ALLELE</code></td>
+<td style="text-align: left;">No read carries the given allele but others carry another one: the input is likely mis-described; the counts stay the given allele's</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>PARTIAL_DOMINANT</code></td>
+<td style="text-align: left;">More reads partly match the ALT than carry it, often a coexisting allele the annotation misses: inspect the locus (--trace shows per-read lengths)</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>CLIP_CANDIDATES</code></td>
+<td style="text-align: left;">An insertion with no ALT reads, but soft-clipped reads may hold its carriers: inspect in IGV</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>POSSIBLE_MINORITY_HAPLOTYPE</code></td>
+<td style="text-align: left;">A change on a minority of nearby reads may be counted as ALT: weigh a low alt_count with that in mind (the counts are unchanged)</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>SW_FALLBACK</code></td>
+<td style="text-align: left;">Some reads were scored by a fallback aligner or left uncounted: the row's counts came partly from another scorer</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>SPLICE_SKIP_DOMINANT</code></td>
+<td style="text-align: left;">More reads splice over the deleted span than confirm ALT: an alt_count of 0 may hide carriers written as junction reads</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>NON_DISCRIMINATING_LOCUS</code></td>
+<td style="text-align: left;">A nearby germline combination makes REF and ALT the same sequence: a zero REF and ALT here is not an absence</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>RESCUED_COMPONENT</code></td>
+<td style="text-align: left;">With --rescue-mnp the row reports a component SNV's counts, not the <abbr title="Multi-Nucleotide Polymorphism - Multiple adjacent base substitutions">MNP</abbr>'s: read gbcms_rescue</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>rescued</code></td>
+<td style="text-align: left;">The best component SNV beat the <abbr title="Multi-Nucleotide Polymorphism - Multiple adjacent base substitutions">MNP</abbr>, so its counts are written: read gbcms_rescue</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>ref_validation_failed</code></td>
+<td style="text-align: left;">No component SNV survived preparation (an anomaly): the <abbr title="Multi-Nucleotide Polymorphism - Multiple adjacent base substitutions">MNP</abbr>'s own counts stand; read the logged warning</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>NON_CANONICAL_MOTIF</code></td>
+<td style="text-align: left;">The ALT junction's splice motif is not canonical: likely a mapping artifact</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>STRAND_DISCORDANT</code></td>
+<td style="text-align: left;">The ALT junction has mixed transcript-strand support: likely an alignment artifact</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>RETENTION_DOMINANT</code></td>
+<td style="text-align: left;">Most reads splice over the locus, so the counted reads are the intron-retaining minority: read vaf as the <abbr title="Variant Allele Frequency - Fraction of reads supporting the variant allele">VAF</abbr> within them, not as allelic balance</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>NOVEL_JUNC_AT_SPLICE_LOSS</code></td>
+<td style="text-align: left;">Carriers of a splice-destroying variant may splice around the locus while alt_count is low: read asjd_diagnostic for the junction</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>rna_editing_site</code></td>
+<td style="text-align: left;">The locus overlaps a known A-to-I editing site: an A&gt;G or T&gt;C call there is likely editing, not a somatic mutation</td>
+</tr>
+</tbody>
+</table>
+<h3 id="informational">Informational<a class="headerlink" href="#informational" title="Permanent link">¶</a></h3>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">Flag</th>
+<th style="text-align: left;">The summary says</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;"><code>MULTI_ALLELIC</code></td>
+<td style="text-align: left;">another row has a different ALT here</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>TRACT_CLUSTER</code></td>
+<td style="text-align: left;">shares a repeat window with another indel</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>ZERO_ALT</code></td>
+<td style="text-align: left;">no read carries the ALT</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>COEXISTING_ALLELE</code></td>
+<td style="text-align: left;">another allele is more frequent: a <abbr title="Variant Allele Frequency - Fraction of reads supporting the variant allele">VAF</abbr> caveat</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>MNP_DISC_RATIO</code></td>
+<td style="text-align: left;">the <abbr title="Multi-Nucleotide Polymorphism - Multiple adjacent base substitutions">MNP</abbr>'s shape; nothing to do</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>MNP_RESCUE_ELIGIBLE</code></td>
+<td style="text-align: left;">a rescue candidate (--rescue-mnp)</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>HIGH_N_FRACTION</code></td>
+<td style="text-align: left;">over 5% of depth is N: counts are thinner</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>LOW_ALT_JUNC</code></td>
+<td style="text-align: left;">fewer than 5 ALT junction fragments</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>LOW_REF_JUNC</code></td>
+<td style="text-align: left;">fewer than 10 REF junction fragments</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>NOVEL_ALT_JUNC</code></td>
+<td style="text-align: left;">the ALT uses an unannotated junction</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>MULTI_JUNCTION</code></td>
+<td style="text-align: left;">ALT fragments use over two junctions</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>asjd_flag</code></td>
+<td style="text-align: left;">ALT and REF junction usage differ</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>skipped_grouped</code></td>
+<td style="text-align: left;">in a co-annotated group; rescue left it</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>haplotype_confirmed</code></td>
+<td style="text-align: left;">a read shows the whole <abbr title="Multi-Nucleotide Polymorphism - Multiple adjacent base substitutions">MNP</abbr> haplotype</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>no_improvement</code></td>
+<td style="text-align: left;">no component beat the <abbr title="Multi-Nucleotide Polymorphism - Multiple adjacent base substitutions">MNP</abbr>; its counts stand</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>mfsd_ks_valid</code></td>
+<td style="text-align: left;">the KS test did not run</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>mfsd_alt_confidence</code></td>
+<td style="text-align: left;">few or no ALT fragments in the size window</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>mfsd_ch_flag</code></td>
+<td style="text-align: left;">in a clonal-hematopoiesis gene: a prior</td>
+</tr>
+</tbody>
+</table>
 <!-- Abbreviation definitions for gbcms documentation -->
 <!-- These provide hover tooltips for technical acronyms -->
 <p><span hidden="">abbreviations</span></p></div>
@@ -1442,7 +1806,7 @@ report.</p>
 <span class="md-icon" title="Last update">
 <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M21 13.1c-.1 0-.3.1-.4.2l-1 1 2.1 2.1 1-1c.2-.2.2-.6 0-.8l-1.3-1.3c-.1-.1-.2-.2-.4-.2m-1.9 1.8-6.1 6V23h2.1l6.1-6.1zM12.5 7v5.2l4 2.4-1 1L11 13V7zM11 21.9c-5.1-.5-9-4.8-9-9.9C2 6.5 6.5 2 12 2c5.3 0 9.6 4.1 10 9.3-.3-.1-.6-.2-1-.2s-.7.1-1 .2C19.6 7.2 16.2 4 12 4c-4.4 0-8 3.6-8 8 0 4.1 3.1 7.5 7.1 7.9l-.1.2z"></path></svg>
 </span>
-<span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-timeago" title="October 27, 2026 19:20:53 UTC"><span class="timeago" datetime="2026-10-27T19:20:53+00:00" locale="en"></span></span><span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-iso_date" title="October 27, 2026 19:20:53 UTC">2026-10-27</span>
+<span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-timeago" title="October 28, 2026 23:02:46 UTC"><span class="timeago" datetime="2026-10-28T23:02:46+00:00" locale="en"></span></span><span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-iso_date" title="October 28, 2026 23:02:46 UTC">2026-10-28</span>
 </span>
 <span class="md-source-file__fact">
 <span class="md-icon" title="Created">

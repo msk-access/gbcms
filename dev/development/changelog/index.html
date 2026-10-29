@@ -31,7 +31,7 @@
             body[data-md-color-scheme="slate"] .gslide-title { color: var(--md-default-fg-color); }
             body[data-md-color-scheme="slate"] .gslide-desc { color: var(--md-default-fg-color); }
         </style><meta name="panzoom-theme" content="material">
-<meta name="panzoom-data" content='{"selectors": [".mermaid", ".d2"], "initial_zoom_level": 1.0}'> </head>
+<meta name="panzoom-data" content='{"selectors": [".d2", ".mermaid"], "initial_zoom_level": 1.0}'> </head>
 <body data-md-color-accent="custom" data-md-color-primary="custom" data-md-color-scheme="default" dir="ltr">
 <input autocomplete="off" class="md-toggle" data-md-toggle="drawer" id="__drawer" type="checkbox">
 <input autocomplete="off" class="md-toggle" data-md-toggle="search" id="__search" type="checkbox">
@@ -780,6 +780,24 @@
 <p>The format is based on <a href="https://keepachangelog.com/en/1.0.0/">Keep a Changelog</a>,
 and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semantic Versioning</a>.</p>
 <h2 id="unreleased">[Unreleased]<a class="headerlink" href="#unreleased" title="Permanent link">¶</a></h2>
+<h3 id="added-an-end-of-run-qc-summary-in-the-run-log-227">Added — an end-of-run QC summary in the run log (#227)<a class="headerlink" href="#added-an-end-of-run-qc-summary-in-the-run-log-227" title="Permanent link">¶</a></h3>
+<ul>
+<li><strong>The run log now ends with a QC summary.</strong> <code>gbcms dna</code> and <code>gbcms rna</code> log one block
+  after the last sample: which QC flags fired and on how many rows, which rows need a look
+  (a flag is "fix the input", "check the call" or informational; the first two need a look),
+  what to do about each, the first rows to look at, the output fields to filter on, and the
+  address of the QC Flags page. With several samples in one run the block combines them.
+  The run's last line is a <code>WARNING</code> when any row needs a look and an <code>INFO</code> line when none
+  does; the exit code is unchanged.</li>
+<li><strong>It reads the written output and changes nothing.</strong> The block comes from the <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> or <abbr title="Variant Call Format - Standard variant call file format">VCF</abbr>
+  the run wrote, read back after writing: no count, column, row or file differs (a test pins
+  the output files byte-identical with and without it), and there is no new flag or output
+  file. A failure to read the output is a warning, never a failed run.</li>
+<li><strong>One table for the code and the docs.</strong> <code>QC_FLAGS</code> in <code>gbcms.qc_summary</code> holds each
+  flag's tier and one-line action; the QC Flags page repeats it under "End-of-run summary".
+  Tests fail when a flag the page defines has no entry, when an entry names no flag on the
+  page, and when the page's tiers, actions or example block differ from the code's.</li>
+</ul>
 <h3 id="changed-a-read-rule-change-starts-from-its-mechanism-304">Changed — a read-rule change starts from its mechanism (#304)<a class="headerlink" href="#changed-a-read-rule-change-starts-from-its-mechanism-304" title="Permanent link">¶</a></h3>
 <ul>
 <li><strong>Fix the class, not the row.</strong> The procedure for changing how reads are judged
@@ -790,6 +808,22 @@ and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semant
   than its mechanism says why. The fix is judged on data the bug was not found in.</li>
 <li><strong>Each decided read rule states its mechanism.</strong> The register has a Mechanism column,
   filled for RJ-1 to RJ-27, and new entries state theirs. Counts are unchanged.</li>
+</ul>
+<h3 id="fixed-a-gtf-transcript-id-that-another-chromosome-or-strand-reuses-is-another-transcript-216">Fixed — a GTF transcript ID that another chromosome or strand reuses is another transcript (#216)<a class="headerlink" href="#fixed-a-gtf-transcript-id-that-another-chromosome-or-strand-reuses-is-another-transcript-216" title="Permanent link">¶</a></h3>
+<ul>
+<li><strong>The GTF parser keyed transcripts by ID alone.</strong> An ID used on more than one chromosome
+  or strand (the same RefSeq <code>NM_</code> on chrX and chrY, alternate loci) merged into one
+  transcript: its exons from both places were sorted together, so the consecutive pairs
+  made introns that exist nowhere and missed the real ones, and the whole transcript sat on
+  the first chromosome seen. A spliced read over a real intron then matched none of them
+  and was left out of the transcript's counts; the same introns fed the intron boundaries
+  (<code>RETENTION_DOMINANT</code>, the exon-edge <abbr title="Base Alignment Quality - Heuristic quality downgrade near indels and splice junctions">BAQ</abbr> rule, RNA clip edges) and ASJD's known-junction
+  check. A transcript is now an ID at one chromosome and strand, as the strand spans
+  already were (#185): its exons, introns, boundaries and <code>transcript_read_counts</code> /
+  <code>transcript_fragment_counts</code> entries are its own. The parser warns once when a GTF
+  reuses an ID. Exons of one ID at the same chromosome and strand still join (versions that
+  differ only by suffix share a transcript). Counts are unchanged for a GTF that reuses
+  no ID: Ensembl GRCh38.111 (FORTE's) has none among its 252,989 transcript IDs.</li>
 </ul>
 <h3 id="fixed-the-docs-state-the-unreadable-insert-rule-as-decided-304">Fixed — the docs state the unreadable-insert rule as decided (#304)<a class="headerlink" href="#fixed-the-docs-state-the-unreadable-insert-rule-as-decided-304" title="Permanent link">¶</a></h3>
 <ul>
