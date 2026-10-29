@@ -216,6 +216,7 @@ src/gbcms/
 ├── merge.py         # Multi-BAM MAF merge engine (Polars lazy joins)
 ├── normalize.py     # Standalone normalization workflow
 ├── convert.py       # Standalone VCF <-> MAF conversion (vcf2maf / maf2vcf)
+├── qc_summary.py    # End-of-run QC summary (log block read from the written output)
 ├── core/
 │   └── kernel.py    # Coordinates + VCF <-> MAF representation, type labels
 ├── io/

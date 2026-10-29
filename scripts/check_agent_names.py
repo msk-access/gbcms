@@ -9,20 +9,23 @@ it. This checks every backticked name:
   exist in the tree; a bare file name matches a tracked file by its name, a partial path
   by its tail;
 * a command-line flag (`--umi-tag`, `--no-baq`) must appear in `src/` or the Nextflow
-  files;
+  files, as a complete name (`--mfsd-report-min` is not found in `--mfsd-report-min-alt`);
 * an identifier (`check_allele_with_qual`, `window::allele_kind`, `BIN_WINDOW`, a CamelCase
   type, a `snake_case` field) must appear as a whole word in `src/` or `rust/src/`
   (the Nextflow and read-filters skills also search `nextflow/`);
 * `NAME = value` for an upper-case constant must also carry that value in the source;
-* the module map in `architecture.md` must list every Rust and Python module file, and
-  only files that exist.
+* the module map in `architecture.md` must list every Rust and Python module file by its
+  full path (`counting/engine.rs` and `normalize/engine.rs` are two files), and only files
+  that exist.
 
 Plain words (`reverse`, `sw`), shell commands and phrases are not identifiers and are not
 checked. `EXTERNAL` lists names that belong to another tool, each with its reason.
 Fenced code blocks are skipped, except the module map.
 
-Usage: python3 scripts/check_agent_names.py [FILE ...]   (default: every skill and rule)
-Exits 1 and prints one line per unresolved name.
+Usage: python3 scripts/check_agent_names.py [--staged] [FILE ...]   (default: every skill and rule)
+With --staged (the pre-commit hook) the files, the code they are compared with and the
+module map are read from the git index, not the working tree, so the check judges what the
+commit will hold. Exits 1 and prints one line per unresolved name.
 """
 
 from __future__ import annotations
@@ -102,41 +105,93 @@ FENCE = re.compile(r"```.*?```", re.S)
 SPAN = re.compile(r"`([^`\n]+)`")
 
 
-def tracked() -> list[str]:
-    """Every file git tracks, plus untracked files that are not ignored.
+CODE_SUFFIXES = (".rs", ".py", ".pyi", ".nf", ".config", ".toml")
 
-    Without git (a source archive) the tree is walked instead, skipping build output.
+
+class Source:
+    """Where file names and contents come from: the working tree, or the git index.
+
+    The index is what a commit will hold, so the pre-commit hook (`--staged`) reads it: a
+    function added only in the working tree must not satisfy a skill that is committed
+    without it, nor a skill fixed only in the working tree pass for the staged one.
     """
-    try:
-        out = subprocess.run(
-            ["git", "ls-files", "--cached", "--others", "--exclude-standard"],
-            cwd=ROOT,
-            capture_output=True,
-            text=True,
-            check=True,
+
+    def __init__(self, staged: bool = False) -> None:
+        self.staged = staged
+        self._blobs: dict[str, str] = {}
+        self._names = self._list()
+
+    def _list(self) -> list[str]:
+        if self.staged:  # git is required: the index is what is read
+            return self._git(["ls-files", "--cached"]).decode().splitlines()
+        try:  # tracked files plus untracked files that are not ignored
+            out = self._git(["ls-files", "--cached", "--others", "--exclude-standard"])
+            return out.decode().splitlines()
+        except (OSError, subprocess.CalledProcessError):
+            # Without git (a source archive) the tree is walked, skipping build output.
+            skip = {".git", "target", ".venv", "venv", "__pycache__", "node_modules"}
+            return [
+                str(p.relative_to(ROOT))
+                for p in ROOT.rglob("*")
+                if p.is_file() and not skip.intersection(p.relative_to(ROOT).parts)
+            ]
+
+    @staticmethod
+    def _git(args: list[str], stdin: bytes | None = None) -> bytes:
+        return subprocess.run(
+            ["git", *args], cwd=ROOT, input=stdin, capture_output=True, check=True
         ).stdout
-        return out.splitlines()
-    except (OSError, subprocess.CalledProcessError):
-        skip = {".git", "target", ".venv", "venv", "__pycache__", "node_modules"}
-        return [
-            str(p.relative_to(ROOT))
-            for p in ROOT.rglob("*")
-            if p.is_file() and not skip.intersection(p.relative_to(ROOT).parts)
+
+    @property
+    def names(self) -> list[str]:
+        return self._names
+
+    def exists(self, rel: str) -> bool:
+        """Whether a path is a file here (in the index when staged)."""
+        return rel in set(self._names) if self.staged else (ROOT / rel).exists()
+
+    def preload(self, files: list[str]) -> None:
+        """Read the index blobs of `files` in one `git cat-file --batch` call."""
+        if not self.staged:
+            return
+        todo = [f for f in files if f not in self._blobs]
+        if not todo:
+            return
+        wanted = set(todo)
+        listing = self._git(["ls-files", "-s", "-z"]).split(b"\0")
+        oids = {}
+        for entry in listing:
+            meta, _, name = entry.partition(b"\t")
+            if name.decode(errors="replace") in wanted:
+                oids[name.decode(errors="replace")] = meta.split()[1].decode()
+        raw = self._git(["cat-file", "--batch"], "".join(f"{o}\n" for o in oids.values()).encode())
+        pos = 0
+        for name in oids:
+            end = raw.index(b"\n", pos)
+            size = int(raw[pos:end].split()[2])
+            self._blobs[name] = raw[end + 1 : end + 1 + size].decode(errors="replace")
+            pos = end + 1 + size + 1
+
+    def read(self, rel: str) -> str:
+        """The text of a file here; empty when it is not."""
+        if self.staged:
+            self.preload([rel])
+            return self._blobs.get(rel, "")
+        try:
+            return (ROOT / rel).read_text(errors="replace")
+        except OSError:
+            return ""
+
+    def read_tree(self, roots: list[str]) -> str:
+        """The text of every .rs, .py, .pyi, .nf, .config and .toml file under the roots."""
+        chosen = [
+            n
+            for n in self._names
+            if n.endswith(CODE_SUFFIXES)
+            and any(n == r or n.startswith(r.rstrip("/") + "/") for r in roots)
         ]
-
-
-def read_tree(roots: list[str], files: list[str]) -> str:
-    """The text of every .rs, .py, .pyi, .nf, .config and .toml file under the roots."""
-    chunks = []
-    for name in files:
-        if not name.endswith((".rs", ".py", ".pyi", ".nf", ".config", ".toml")):
-            continue
-        if any(name == r or name.startswith(r.rstrip("/") + "/") for r in roots):
-            try:
-                chunks.append((ROOT / name).read_text(errors="replace"))
-            except OSError:
-                continue
-    return "\n".join(chunks)
+        self.preload(chosen)
+        return "\n".join(self.read(n) for n in chosen)
 
 
 def is_identifier_like(word: str) -> bool:
@@ -150,8 +205,9 @@ def is_identifier_like(word: str) -> bool:
     return word.isupper() and len(word) >= 4
 
 
-def path_exists(span: str, names: list[str]) -> bool:
+def path_exists(span: str, source: Source) -> bool:
     """Whether a path-like span names a tracked file or directory."""
+    names = source.names
     path = span.split("::")[0]
     if "*" in path or "<" in path or "$" in path or "{" in path:
         pattern = re.escape(path).replace(r"\*", ".*")
@@ -160,10 +216,15 @@ def path_exists(span: str, names: list[str]) -> bool:
         return any(re.search(pattern, n) for n in names)
     if path.endswith("/"):
         return any(n.startswith(path) or ("/" + path) in n for n in names)
-    return any(n == path or n.endswith("/" + path) for n in names) or (ROOT / path).exists()
+    return any(n == path or n.endswith("/" + path) for n in names) or source.exists(path)
 
 
-def check_span(span: str, skill: str, names: list[str], text: str, flag_text: str) -> str | None:
+def has_flag(flag: str, text: str) -> bool:
+    """Whether `text` holds the complete flag, not a longer flag that starts with it."""
+    return re.search(rf"(?<![\w-]){re.escape(flag)}(?![\w-])", text) is not None
+
+
+def check_span(span: str, source: Source, text: str, flag_text: str) -> str | None:
     """Return why the span's name does not resolve, or None when it does or is not a name."""
     span = span.strip()
     if span.startswith("--"):
@@ -172,7 +233,11 @@ def check_span(span: str, skill: str, names: list[str], text: str, flag_text: st
             return None
         if "<" in span or " false" in span:
             return None
-        return None if flag.group(0) in flag_text else f"flag {flag.group(0)} is not in the code"
+        return (
+            None
+            if has_flag(flag.group(0), flag_text)
+            else f"flag {flag.group(0)} is not in the code"
+        )
     # A file or directory: a known top-level directory, a file suffix, or a bare file name.
     head = span.split("::")[0].split(" ")[0]
     # Build products (the compiled extension) are not tracked; shared-library names are not paths.
@@ -184,11 +249,11 @@ def check_span(span: str, skill: str, names: list[str], text: str, flag_text: st
         and not head.startswith("-")
         and (not head.startswith(".") or head.startswith(TOP_LEVEL))
     ):
-        if not path_exists(span, names):
+        if not path_exists(span, source):
             return f"path {head} does not exist"
         if "::" in span and head.endswith(".py"):
             tail = span.split("::", 1)[1].split("::")[0].split("[")[0]
-            if not re.search(rf"\b{re.escape(tail)}\b", (ROOT / head).read_text()):
+            if not re.search(rf"\b{re.escape(tail)}\b", source.read(head)):
                 return f"{tail} is not in {head}"
         return None
     const = CONST_VALUE.match(span)
@@ -219,53 +284,96 @@ def check_span(span: str, skill: str, names: list[str], text: str, flag_text: st
     return f"{', '.join(missing)} not found in the code" if missing else None
 
 
-def module_map_problems(path: Path, names: list[str]) -> list[str]:
-    """Compare the module-map tree in architecture.md with the Rust and Python files."""
-    text = path.read_text()
+def map_paths(block: str) -> set[str]:
+    """The full path of every file in the module-map tree, rebuilt from its indentation.
+
+    Each level is four columns (`│   ` or four spaces) before `├── ` or `└── `; a name ending
+    in `/` opens a directory (it may span segments, as `src/gbcms/`), and a line may list
+    several files (`mod.rs, engine.rs`). Text after `#` is a comment.
+    """
+    stack: list[str] = []
+    found: set[str] = set()
+    for line in block.splitlines():
+        entry = re.match(r"((?:│   |    )*)[├└]── (.*)$", line)
+        if entry is None:
+            continue
+        depth = len(entry.group(1)) // 4
+        body = entry.group(2).split("#")[0].strip()
+        del stack[depth:]
+        if body.endswith("/"):
+            stack.append(body)
+            continue
+        for token in re.split(r",\s*", body):
+            if re.fullmatch(r"[\w.]+\.(?:rs|py|pyi)", token):
+                found.add("".join(stack) + token)
+    return found
+
+
+def module_map_problems(text: str, names: list[str]) -> list[str]:
+    """Compare the module-map tree in architecture.md with the Rust and Python files.
+
+    Full paths are compared: `counting/engine.rs` and `normalize/engine.rs` are two files,
+    and neither may stand in for the other.
+    """
     block = re.search(r"## Project Layout\s+```.*?\n(.*?)```", text, re.S)
     if block is None:
-        return [f"{path.name}: no module map under '## Project Layout'"]
-    listed = set()
-    for line in block.group(1).splitlines():
-        if not re.match(r"[│ ├└─]*[\w.]+(?:\.rs|\.py|\.pyi)\b", line):
-            continue  # a directory line, or a comment line
-        listed.update(re.findall(r"[\w]+\.(?:rs|py|pyi)\b", line.split("#")[0]))
-    listed -= MAP_IGNORED
+        return ["no module map under '## Project Layout'"]
+
+    def ignored(path: str) -> bool:
+        return path.rsplit("/", 1)[-1] in MAP_IGNORED
+
+    listed = {f for f in map_paths(block.group(1)) if not ignored(f)}
     actual = {
-        n.rsplit("/", 1)[-1]
+        n
         for n in names
         if (n.startswith("rust/src/") and n.endswith(".rs"))
         or (n.startswith("src/gbcms/") and n.endswith((".py", ".pyi")))
-    } - MAP_IGNORED
+    }
+    actual = {f for f in actual if not ignored(f)}
     problems = [f"module map lists {f}, which is not a file" for f in sorted(listed - actual)]
     problems += [f"module map omits {f}" for f in sorted(actual - listed)]
     return problems
 
 
+def read_doc(path: Path, source: Source) -> str:
+    """A skill or rule's text: from the index when staged (a path outside the repo is read as is)."""
+    if source.staged and path.is_relative_to(ROOT):
+        return source.read(path.relative_to(ROOT).as_posix())
+    return path.read_text()
+
+
 def main(argv: list[str]) -> int:
-    names = tracked()
-    paths = (
-        [Path(a).resolve() for a in argv]
-        if argv
-        else sorted(ROOT.glob(".agents/skills/*/SKILL.md"))
-        + sorted(ROOT.glob(".agents/rules/*.md"))
-    )
-    code = read_tree(["src", "rust/src"], names)
-    flag_text = code + "\n" + read_tree(["nextflow"], names)
+    staged = "--staged" in argv
+    files = [a for a in argv if a != "--staged"]
+    source = Source(staged)
+    if files:
+        paths = [Path(a).resolve() for a in files]
+    elif staged:
+        paths = [
+            ROOT / n
+            for n in source.names
+            if re.fullmatch(r"\.agents/(skills/[^/]+/SKILL\.md|rules/[^/]+\.md)", n)
+        ]
+    else:
+        paths = sorted(ROOT.glob(".agents/skills/*/SKILL.md")) + sorted(
+            ROOT.glob(".agents/rules/*.md")
+        )
+    code = source.read_tree(["src", "rust/src"])
+    flag_text = code + "\n" + source.read_tree(["nextflow"])
     problems: list[str] = []
     for path in paths:
         label = f"{path.parent.name}/{path.name}" if path.name == "SKILL.md" else path.name
         extra = EXTRA_ROOTS.get(path.parent.name, [])
-        text = code + "\n" + read_tree(extra, names) if extra else code
-        body = path.read_text()
+        text = code + "\n" + source.read_tree(extra) if extra else code
+        body = read_doc(path, source)
         if body.startswith("---\n"):
             body = body.split("\n---\n", 1)[-1]
         for span in dict.fromkeys(SPAN.findall(FENCE.sub("", body))):
-            why = check_span(span, path.parent.name, names, text, flag_text)
+            why = check_span(span, source, text, flag_text)
             if why:
                 problems.append(f"{label}: `{span}`: {why}")
         if path.name == "architecture.md":
-            problems += [f"{label}: {p}" for p in module_map_problems(path, names)]
+            problems += [f"{label}: {p}" for p in module_map_problems(body, source.names)]
     for line in problems:
         print(line)
     return 1 if problems else 0
