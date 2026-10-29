@@ -250,6 +250,11 @@ thread_local! {
     static VALUES: std::cell::RefCell<Values> = std::cell::RefCell::new(Values::default());
 }
 
+/// Frees this thread's kept [`align`] values (they grow again as reads need them).
+pub(crate) fn free_values() {
+    VALUES.with(|v| *v.borrow_mut() = Values::default());
+}
+
 /// The bytes this thread's kept [`align`] values hold (their capacities), for the row
 /// caches' budget.
 pub(crate) fn values_bytes() -> usize {

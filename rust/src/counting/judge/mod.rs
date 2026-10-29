@@ -91,7 +91,8 @@ pub(crate) type ReadKey = (Vec<u8>, u16, i64, Vec<u8>);
 /// the caches of the rows the thread is counting get the rest: once work space and caches
 /// reach it, a row adds no more entries and its later reads are judged afresh (the same
 /// calls, the time a cache saves forgone). A read needing more work space than this alone
-/// gets it, and its row caches nothing more.
+/// gets it, and its row caches nothing more; at the row's end work space past a quarter of
+/// the budget is freed ([`release_work`]).
 const THREAD_BUDGET: usize = 256 << 20;
 
 /// The budget in force: [`THREAD_BUDGET`], or (measurement only) `GBCMS_JUDGE_BUDGET_MB`'s,
@@ -123,6 +124,18 @@ thread_local! {
 /// The bytes the judge's work space holds on this thread.
 fn work_bytes() -> usize {
     graph::pool_bytes() + score::values_bytes()
+}
+
+/// At a row's end, the work space a thread keeps for the next row: tables grown past a
+/// quarter of the budget (a long structural row's reads) are freed, so one row's largest
+/// read does not hold the budget for every row after it.
+fn release_work() {
+    if let Some(budget) = thread_budget() {
+        if work_bytes() > budget / 4 {
+            graph::free_pool();
+            score::free_values();
+        }
+    }
 }
 
 /// A row's haplotypes, built on first use from its reads (the main counts, the
@@ -161,6 +174,7 @@ fn cache_trace() -> bool {
 impl Drop for Haplotypes<'_> {
     fn drop(&mut self) {
         CACHED.with(|c| c.set(c.get().saturating_sub(self.bytes.get())));
+        release_work();
         if cache_trace() {
             let [jl, jh, sl, sh] = self.lookups.get();
             let (pos, r, a) = &self.key;

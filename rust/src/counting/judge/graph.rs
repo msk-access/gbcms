@@ -443,6 +443,11 @@ pub(crate) fn pool_bytes() -> usize {
     POOL.with(|p| p.borrow().iter().map(Workspace::heap_bytes).sum())
 }
 
+/// Frees this thread's pooled workspaces (they grow again as reads need them).
+pub(crate) fn free_pool() {
+    POOL.with(|p| p.borrow_mut().clear());
+}
+
 impl Workspace {
     /// The bytes it holds on the heap (its capacities).
     fn heap_bytes(&self) -> usize {
