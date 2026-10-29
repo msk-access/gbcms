@@ -47,6 +47,17 @@ def env(tmp_path_factory):
     return {**os.environ, "HOME": str(home), "HPC_GUARD_CONFIG": str(config)}
 
 
+@pytest.fixture()
+def guard(env, monkeypatch):
+    """The hook as a module, loaded with the made-up settings, never the operator's."""
+    monkeypatch.setenv("HOME", env["HOME"])
+    monkeypatch.setenv("HPC_GUARD_CONFIG", env["HPC_GUARD_CONFIG"])
+    spec = importlib.util.spec_from_file_location("hpc_ssh_guard", HOOK)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
 def run(hook, command, env):
     return subprocess.run(
         [sys.executable, "-I", str(hook)],
@@ -81,6 +92,12 @@ PASS = [
     # Local tools that only mention the host in their text.
     f"grep -n {HOST} tests/test_hpc_ssh_guard.py",
     f"sed -n '/{HOST}/p' docs/harness/measurement-harness.md",
+    f"ssh -a -x -o BatchMode=yes -o ConnectTimeout=10 {HOST} squeue",
+    f"ssh -T -n -a -x {HOST} 'sinfo -s'",
+    # Copies and commands that do not reach the HPC are not the guard's business.
+    "rsync --version 2>&1",
+    "rsync -a /tmp/a/ /tmp/b/",
+    "git commit -m 'docs: describe the ssh guard'",
 ]
 
 ASK = [
@@ -98,6 +115,18 @@ ASK = [
     f"{SSH} 'ls {TEST}'",  # reads may reach the read-only root
     f"{SSH} 'du -sh {TEST}/kit'",
     f"{RSYNC} {HOST}:{TEST}/kit/README.md {LOCAL}/",  # so may a copy from it
+    # Everyday reads: a pattern, a count or a format is not a file name.
+    f"{SSH} 'squeue -u tester | grep RUNNING'",
+    f"{SSH} 'head -n 5 {WORK}/a.txt'",
+    f"{SSH} 'cut -d, -f1 {WORK}/a.csv | sort -u | uniq -c'",
+    f"{SSH} \"find {WORK} -name '*.out' -type f -newer {WORK}/start\"",
+    f"{SSH} 'ls {WORK}/runs/*/done'",
+    f"{SSH} 'cd {WORK} && grep -c ALT runs/a.maf'",
+    f"{SSH} 'cd {WORK} && ls'",
+    sbatch(f"--job-name={PREFIX}o --partition={SHORT} --time=30 --output={WORK}/logs/%x-%j.out"),
+    sbatch(f"--job-name={PREFIX}a --partition={SHORT} --time=30", f"{WORK}/a.sbatch {TEST}/x.bam"),
+    f"rsync -avz -e 'ssh -a -x -o BatchMode=yes' --exclude='*.tmp' {LOCAL}/kit/ {HOST}:{WORK}/kit/",
+    f"scp -p -o BatchMode=yes {LOCAL}/a.txt {HOST}:{TMP}/a.txt",
 ]
 
 DENY = [
@@ -151,6 +180,63 @@ DENY = [
     f"env X=1 ssh {HOST} squeue",
     f"xargs -I{{}} ssh -a -x {HOST} {{}} < cmds.txt",
     f"{SSH} 'squeue' > {LOCAL}/out.txt",
+    # A second command the remote shell runs: a newline, a quoted separator, a substitution.
+    f"{SSH} 'hostname\nrm {WORK}/obsolete.txt'",
+    f"{SSH} squeue\nssh {HOST} 'rm x'",
+    f"{SSH} squeue '' ';' 'rm {WORK}/x'",
+    f'echo "$(ssh {HOST} rm x)"',
+    f"echo `ssh {HOST} rm x`",
+    f"{SSH} 'cd {WORK} || cat .bashrc'",
+    f"{SSH} 'ls {WORK} & cat .bashrc'",
+    # A script or path in the place of a listed command.
+    f"{SSH} {WORK}/hostname",
+    f"{SSH} './squeue'",
+    # Paths the folder check must see: relative, the home folder, '..', braces, variables.
+    f"{SSH} 'cd {WORK} && mkdir -p ../../outside'",
+    f"{SSH} 'cat $HOME/.bashrc'",
+    f"{SSH} 'cat .bashrc'",
+    f"{SSH} 'date -f .bashrc'",
+    f"{SSH} 'ls'",
+    f"{SSH} 'cd {WORK}/missing; cat .bashrc'",
+    f"{SSH} 'cd {WORK} | cat .bashrc'",
+    f"{SSH} 'ls {{/etc,{WORK}}}'",
+    f"{SSH} 'cat {WORK}/../../../etc/passwd'",
+    f"{SSH} 'cat ~/.ssh/id_rsa'",
+    f"{SSH} 'grep -f/etc/passwd x {WORK}/a'",
+    # Read commands that write or run a program.
+    f"{SSH} 'sort --compress-program=sh {WORK}/x'",
+    f"{SSH} 'sort -o {WORK}/y {WORK}/x'",
+    f"{SSH} 'sort --out={WORK}/y {WORK}/x'",
+    f"{SSH} 'uniq {WORK}/a {TEST}/b'",
+    f"{SSH} 'find {WORK} -fls {TEST}/x'",
+    f"{SSH} 'file -C -m {WORK}/magic'",
+    # ssh options off the list, wherever they stand.
+    f"ssh -a -x -o Hostname=other.example {HOST} hostname",
+    f"ssh -a -x -K {HOST} squeue",
+    f"ssh -a -x -o GSSAPIDelegateCredentials=yes {HOST} squeue",
+    f"ssh -a -x -l other {HOST} squeue",
+    f"ssh -a -x {HOST} -A squeue",
+    f"X=1 ssh -a -x {HOST} squeue",
+    # Copies: the same ssh list, the rsync and scp lists, plain remote paths.
+    f"rsync -a -e 'ssh -a -x -A -J jump' {LOCAL}/x {HOST}:{WORK}/",
+    f"rsync -a -e 'ssh -a -x {HOST} rm' {LOCAL}/x {HOST}:{WORK}/",
+    f"scp -o ProxyCommand=nc {LOCAL}/a {HOST}:{TMP}/a",
+    f"scp -A {LOCAL}/a {HOST}:{TMP}/a",
+    f"{RSYNC} --rsync-path='sh {WORK}/run.sh' {LOCAL}/x {HOST}:{WORK}/",
+    f"/usr/bin/rsync --delete {LOCAL}/in/ {HOST}:{WORK}/out/",
+    f"{RSYNC} -M--log-file=/etc/x {LOCAL}/x {HOST}:{WORK}/",
+    f"{RSYNC} --temp-dir=/etc {LOCAL}/x {HOST}:{WORK}/",
+    f"{RSYNC} '{HOST}:{WORK}/x /etc/passwd' {LOCAL}/",
+    f"{RSYNC} '{HOST}:{WORK}/x;id' {LOCAL}/",
+    # Other ways to reach the HPC.
+    f"git clone {HOST}:{WORK}/repo {LOCAL}/r",
+    f"sed '1e ssh {HOST} rm x' {LOCAL}/notes.txt",
+    'bash -c "ssh 10.0.0.5 rm x"',
+    # sbatch options read as SLURM reads them.
+    sbatch(f"--job-name={PREFIX}x --partition={SHORT} --time=60 --output {WORK}/x.sh", "a.sbatch"),
+    sbatch(f"--job-name={PREFIX}x --partition={SHORT} --time=60 --wr=hostname"),
+    sbatch(f"--job-name={PREFIX}x --partition={SHORT} --time=60 --output=/etc/x"),
+    sbatch(f"--job-name={PREFIX}x --partition={SHORT} --time=60 --output={TEST}/x"),
 ]
 
 
@@ -183,11 +269,8 @@ def test_everything_outside_the_rules_is_denied(command, env):
         ("", None),
     ],
 )
-def test_slurm_time_values_read_as_minutes(value, minutes):
-    spec = importlib.util.spec_from_file_location("hpc_ssh_guard", HOOK)
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    assert module.slurm_minutes(value) == minutes
+def test_slurm_time_values_read_as_minutes(value, minutes, guard):
+    assert guard.slurm_minutes(value) == minutes
 
 
 def test_without_settings_the_hook_guards_nothing(tmp_path):
@@ -212,3 +295,45 @@ def test_an_unreadable_settings_file_denies_every_ssh(tmp_path):
 def test_the_example_settings_file_parses():
     example = HOOK.parent / "hpc-guard.example.json"
     assert set(json.loads(example.read_text())) == set(CONFIG)
+
+
+def test_the_example_settings_file_guards(tmp_path):
+    example = HOOK.parent / "hpc-guard.example.json"
+    env = {**os.environ, "HOME": str(tmp_path), "HPC_GUARD_CONFIG": str(example)}
+    host = json.loads(example.read_text())["host"]
+    assert decision(f"ssh -a -x {host} squeue", env) == "pass"
+    assert decision(f"ssh {host} squeue", env) == "deny"
+
+
+def without(key):
+    return {k: v for k, v in CONFIG.items() if k != key}
+
+
+@pytest.mark.parametrize(
+    "settings",
+    [
+        *(without(k) for k in ("host", "job_prefix", "remote_roots", "local_roots")),
+        *(without(k) for k in ("short_partition", "long_partition")),
+        {**CONFIG, "remote_root": [WORK]},  # a misspelt key
+        {**CONFIG, "remote_roots": ["work/tester"]},  # a relative folder
+        {**CONFIG, "remote_roots": ["/"]},
+        {**CONFIG, "local_roots": []},
+        {**CONFIG, "deny_patterns": ["("]},
+        {**CONFIG, "max_array_tasks": "20"},
+        {},
+        [],
+    ],
+)
+def test_incomplete_settings_deny_every_ssh(settings, tmp_path):
+    """A settings file that is present but incomplete guards nothing, so it denies."""
+    config = tmp_path / "guard.json"
+    config.write_text(json.dumps(settings))
+    env = {**os.environ, "HOME": str(tmp_path), "HPC_GUARD_CONFIG": str(config)}
+    assert decision(f"ssh -a -x {HOST} squeue", env) == "deny"
+    assert decision("ssh -a -x otherhost rm -rf /", env) == "deny"
+    assert decision("ls -la", env) == "pass"
+
+
+def test_a_missing_named_settings_file_denies_every_ssh(tmp_path):
+    env = {**os.environ, "HOME": str(tmp_path), "HPC_GUARD_CONFIG": str(tmp_path / "none.json")}
+    assert decision(f"ssh -a -x {HOST} squeue", env) == "deny"
