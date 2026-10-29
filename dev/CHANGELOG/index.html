@@ -29,7 +29,7 @@
             body[data-md-color-scheme="slate"] .gslide-title { color: var(--md-default-fg-color); }
             body[data-md-color-scheme="slate"] .gslide-desc { color: var(--md-default-fg-color); }
         </style><meta name="panzoom-theme" content="material">
-<meta name="panzoom-data" content='{"selectors": [".mermaid", ".d2"], "initial_zoom_level": 1.0}'> </head>
+<meta name="panzoom-data" content='{"selectors": [".d2", ".mermaid"], "initial_zoom_level": 1.0}'> </head>
 <body data-md-color-accent="custom" data-md-color-primary="custom" data-md-color-scheme="default" dir="ltr">
 <input autocomplete="off" class="md-toggle" data-md-toggle="drawer" id="__drawer" type="checkbox">
 <input autocomplete="off" class="md-toggle" data-md-toggle="search" id="__search" type="checkbox">
@@ -807,6 +807,15 @@
 <span class="md-ellipsis">
       
         Fixed — --min-baseq help and docs say what it does (#304)
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#changed-two-code-quality-rules-the-code-did-not-meet">
+<span class="md-ellipsis">
+      
+        Changed — two code-quality rules the code did not meet
       
     </span>
 </a>
@@ -3022,6 +3031,22 @@ and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semant
   other bases. An <abbr title="Multi-Nucleotide Polymorphism - Multiple adjacent base substitutions">MNP</abbr>'s differing positions are judged one by one (masked ones skipped),
   not by the block's lowest quality. The help text, the DNA, RNA, quickstart and
   Nextflow parameter tables, and Read Filters now say so. Counts are unchanged.</li>
+</ul>
+<h3 id="changed-two-code-quality-rules-the-code-did-not-meet">Changed — two code-quality rules the code did not meet<a class="headerlink" href="#changed-two-code-quality-rules-the-code-did-not-meet" title="Permanent link">¶</a></h3>
+<ul>
+<li><strong><code>__all__</code> in every module.</strong> <code>report/mfsd_report.py</code> and <code>rescue_audit.py</code> had none, so
+  a star import or a doc tool took every name, helpers and imports included. Each now
+  lists its public API (<code>TOOLTIPS</code> and <code>generate_mfsd_report</code>; the rescue audit's two
+  functions, as <code>io.output</code> lists its functions and leaves its constants to be imported by
+  name), and a test holds every module of the package to the rule.</li>
+<li><strong>No <code>unwrap()</code> in production Rust.</strong> The four lines that had one are changed. The KS
+  test of fragment sizes (<code>mfsd.rs</code>) sorted with <code>partial_cmp(..).unwrap()</code>, which panics
+  on a NaN size; a NaN now makes the test invalid (D = NaN, p = 1.0, as with too few
+  fragments) and is warned about, and the sort is a total order. No size is ever NaN
+  today (they are integers read from alignments). The other two could not panic (a branch
+  that had just matched <code>Some</code>; a loop guarded by the allele lengths) and are written
+  without the unwrap (<code>variant_checks.rs</code>, <code>left_align.rs</code>). Counts and outputs are
+  unchanged.</li>
 </ul>
 <h3 id="fixed-companion-file-names-vcfbgz-in-normalize-the-amplicon-rule-nextflow-rna-defaults-309">Fixed — companion file names, <code>.vcf.bgz</code> in normalize, the amplicon rule, Nextflow RNA defaults (#309)<a class="headerlink" href="#fixed-companion-file-names-vcfbgz-in-normalize-the-amplicon-rule-nextflow-rna-defaults-309" title="Permanent link">¶</a></h3>
 <ul>

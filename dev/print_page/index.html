@@ -9866,6 +9866,10 @@ an informational flag). The definitions are above; the tests keep the two in ste
 <td style="text-align: left;">ALT equals REF, so there is no change to count: fix the input row</td>
 </tr>
 <tr>
+<td style="text-align: left;"><code>START_BEFORE_CONTIG</code></td>
+<td style="text-align: left;">The row starts before the contig's first base (Start_Position 0): fix the input row; <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> positions are 1-based</td>
+</tr>
+<tr>
 <td style="text-align: left;"><code>ALT_CONTAINS_N</code></td>
 <td style="text-align: left;">The ALT contains an N base: fix the input row</td>
 </tr>
@@ -19891,6 +19895,22 @@ and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semant
   other bases. An <abbr title="Multi-Nucleotide Polymorphism - Multiple adjacent base substitutions">MNP</abbr>'s differing positions are judged one by one (masked ones skipped),
   not by the block's lowest quality. The help text, the DNA, RNA, quickstart and
   Nextflow parameter tables, and Read Filters now say so. Counts are unchanged.</li>
+</ul>
+<h3 id="development-changelog-changed-two-code-quality-rules-the-code-did-not-meet">Changed — two code-quality rules the code did not meet<a class="headerlink" href="#development-changelog-changed-two-code-quality-rules-the-code-did-not-meet" title="Permanent link">¶</a></h3>
+<ul>
+<li><strong><code>__all__</code> in every module.</strong> <code>report/mfsd_report.py</code> and <code>rescue_audit.py</code> had none, so
+  a star import or a doc tool took every name, helpers and imports included. Each now
+  lists its public API (<code>TOOLTIPS</code> and <code>generate_mfsd_report</code>; the rescue audit's two
+  functions, as <code>io.output</code> lists its functions and leaves its constants to be imported by
+  name), and a test holds every module of the package to the rule.</li>
+<li><strong>No <code>unwrap()</code> in production Rust.</strong> The four lines that had one are changed. The KS
+  test of fragment sizes (<code>mfsd.rs</code>) sorted with <code>partial_cmp(..).unwrap()</code>, which panics
+  on a NaN size; a NaN now makes the test invalid (D = NaN, p = 1.0, as with too few
+  fragments) and is warned about, and the sort is a total order. No size is ever NaN
+  today (they are integers read from alignments). The other two could not panic (a branch
+  that had just matched <code>Some</code>; a loop guarded by the allele lengths) and are written
+  without the unwrap (<code>variant_checks.rs</code>, <code>left_align.rs</code>). Counts and outputs are
+  unchanged.</li>
 </ul>
 <h3 id="development-changelog-fixed-companion-file-names-vcfbgz-in-normalize-the-amplicon-rule-nextflow-rna-defaults-309">Fixed — companion file names, <code>.vcf.bgz</code> in normalize, the amplicon rule, Nextflow RNA defaults (#309)<a class="headerlink" href="#development-changelog-fixed-companion-file-names-vcfbgz-in-normalize-the-amplicon-rule-nextflow-rna-defaults-309" title="Permanent link">¶</a></h3>
 <ul>
