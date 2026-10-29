@@ -20,7 +20,7 @@ file contents. Describe a file by its pattern, never by a patient file name.
 | `plan670/` | The 6.7.0 plan's harness: nearly all current work (below). |
 | `regression_panel/` | The D5 panel kit (`kit_660/`: `RUNBOOK.md`, `tier_660/` run list, scripts) and its run, compare and attribution scripts; the repo's `scripts/regression_panel/` is the committed part. |
 | `cbio/` | Protected cBioPortal work; the one console script is `cbio_summary.py` (schema and counts). |
-| `obs_ab.py`, `REMOVED_BUILDS.md` | Shared constants (`FA`, the b37 FASTA path) and the log of deleted builds. |
+| `obs_ab.py`, `REMOVED_BUILDS.md` | Shared constants (`FA`, the b37 FASTA path) and the log of retired builds (each one's record is kept in `plan670/patches/<tree>/`). |
 | `c<NN>/`, `g<N>/`, `t<NN>/`, `h<N>/`, `s<N>/`, `r<N>/`, `d<N>/`, `rc650/`, `spikein/`, `tempo/` | Older work, named for the plan item (`c37`), group (`g3`, RNA), ticket (`t110`) or release candidate it served. |
 
 ## Arms in `plan670/`
@@ -35,14 +35,14 @@ An arm is one input set a build is run on. Each arm directory holds one `out_<la
 | `gate_local/` | The full local gate: run scripts per build, and `attrib/` (every changed cell attributed to the merge where it changed). | b37 |
 | `across/` | Other data types: matched normals (hom-REF controls for somatic rows, hets for germline ones), ACCESS duplex and simplex, IMPACT cohort runs. | b37 |
 | `germ/` | Germline rows genotyped in their normal slices. | b37 |
-| `wes/` | WES (BWA, no realigner) at the panel's long-event loci: the control for any "where did the aligner put the gap" question. | b37 |
+| `wes/` | WES (the TEMPO set; BWA only, no realigner) at the panel's long-event loci, with its BAM slices in `slices/`: the control for any "where did the aligner put the gap" question. | b37 |
 | `giab/` | HG002 truth arm (public), by event class: `pri*` (priority sites), `c246` (adjacent pairs), `tr` (tandem repeats), `sv`. | GRCh38 |
-| `c43syn/`, `c43_rna/` | Synthetic sets (both pair orientations, read errors, low and normal depth) and the RNA (FORTE) slices. | synthetic; RNA GRCh38 |
+| `c43syn/`, `c43_rna/` | Synthetic sets (they must mirror a real library: both pair orientations, read errors, low and normal depth) and the RNA (FORTE) slices. | synthetic; RNA GRCh38 |
 | `tools/` | Ten other tools on the same slices (below). | per arm |
 | `r2/` | The read-judge bake-off: HG002 truth builders, `evaluate.py`, `plain_trace.py`, and the `hapjudge` prototype. | GRCh38 |
-| `perf/`, `rjspec/`, `survey/` | Speed measurements, read-judgment spec work, tool-survey notes. | |
+| `perf/`, `rjspec/`, `survey/` | Speed measurements; the read-judgment spec cases (synthetic, PHI-free) run through other tools, with `reading.md` and `compare.md`; the tool and literature surveys S1 to S5 (markdown). | |
 | `m<issue>/` | Measurements for one issue, named by its number (`m294` holds #294's oracles). | |
-| `sp_tools/` | A mirror of the session scratch scripts (scripts only), `lane_slot.sh`, and the patient oracle (`xdata/`). | |
+| `sp_tools/` | A mirror of the session scratch scripts (scripts only; paths inside still point at the old scratchpad, and outputs were not copied): `c<NN>/freeze.sh` (the build scripts), `retire_builds.sh`, `lane_slot.sh`, the patient oracles (`xdata/`, `oraclev2/`, `oraclev3/`), the truth scripts (`truthv2/`, `v2d/`) and small probes (`bq/`, `mnv/`, `phi/`). | |
 | `parked_<issue>/`, `set_aside_<date>/` | A parked prototype (patch and README), and outputs set aside. | |
 
 A measurement run against the wrong FASTA fails REF checks or silently skips rows.
@@ -61,11 +61,11 @@ C53), or a release or commit (`v660`, `dev<hash prefix>`). Everything is keyed b
 
 | Pattern | Meaning |
 |:--|:--|
-| `src_<label>/` | A frozen build, made by `build_frozen.sh <label> <commit>`: a detached worktree of the commit, a release wheel in `dist/`, `build.log`, and its own `.venv/`. About 1 GB each. |
-| `src_<label>/BUILT_FROM` | The commit it was built from. A prototype with local edits records its base commit and a `<label>.patch`. |
+| `src_<label>/` | A frozen build, made by the package's freeze script (`sp_tools/c<NN>/freeze.sh <label> <commit> "<note>"`): a `git archive` extraction of the commit in `src/`, a release wheel in `dist/`, `build.log` and its own `.venv/`. It is not a registered git worktree, so a build needs no `git worktree remove`. About 200 MB each (the cargo target is kept in the scratchpad, not in the tree). Older builds (`plan670/build_frozen.sh`, which built from a temporary worktree) have no `src/`: only the wheel, the venv and the record. |
+| `src_<label>/BUILT_FROM` | The commit it was built from (the first word is the SHA) and a note. A prototype with local edits records its base commit and keeps a `<label>.patch` in the tree. |
 | `out_<label>/` | The outputs of running that build: per run, a directory with the MAF, and `<run_id>.trace.gz` (the `read call` lines only). A label ending `nt` is an untraced run. |
 | `accept_<label>.sh` | One ticket's acceptance runner. `accept_c39.sh` is the template (panel, germline, HG002, the oracles, the summaries); `accept_one.sh <label>` runs a single build. |
-| `run*.py <label> <gbcms> [parallel]`, `*_summary.py <labels>`, `oracle*.py <label>`, `... --diff <A> <B>` | The runner, summary and comparison scripts. The runners skip an output directory that exists: clear a stopped run's partial outputs before restarting. |
+| `run*.py <label> <gbcms> [parallel]`, `*_summary.py <labels>`, `oracle*.py <label>`, `... --diff <A> <B>` | The runner, summary and comparison scripts. A runner skips a run whose done marker exists (`<run_id>.trace.gz`, or a `DONE` file beside the MAF) and reruns one without it; move a finished run's outputs away to redo it. |
 
 Build and test each candidate in isolation (`git archive <sha>` and its own venv: the
 rust-python-ffi skill), and record the commit beside the build. Never measure with the shared
@@ -84,7 +84,7 @@ not share the rule under test.
 | Oracle | Use |
 |:--|:--|
 | Bases-only oracle (`oracle.py`, `oracle_c40.py`) | Judges each read by its own bases against REF and ALT, whatever the aligner did. Alignment scores are rescored over the whole read from the CIGAR (`r2/bwa_rescore.py`, shared with the patient oracle): BWA's local `AS` leaves a read-end mismatch uncharged. |
-| Patient oracle v2 (`sp_tools/xdata/xoracle_v2.py`) | Per-haplotype indices and an exact DP; a label needs both. Must take the run's `--min-baseq`, never the default. |
+| Patient oracle (v3: `sp_tools/oraclev3/xoracle_v3.py truth <arm> [--min-baseq N]`; it imports v2, `sp_tools/xdata/xoracle_v2.py`) | Per-haplotype indices and an exact DP; a label needs both. Must take the run's `--min-baseq`, never the default. |
 | Cluster-aware oracle (`m294/oracle_sibling.py`) | For any change that can move a read between co-annotated rows: scores against REF, the row's ALT and every sibling's ALT (rows of the same sample within 30 bp). A REF-versus-ALT check (`oracle_changed.py`, right for isolated rows) calls a removed sibling molecule "lost": on #300 it reported 157 panel and 204 gate reads lost, and the sibling-aware check found 556 removals were the sibling's molecules or ties, and only 17 gained calls wrong. `oracle_sibling.py` imports `oracle_changed.py`, which runs its own check at import, so a run takes twice as long. A read whose sibling allele contains this row's change is this row's ALT (a sibling MNV that contains the row's SNV). |
 | HG002 truth (`r2/truth_v2.py --tag v2d`, `truth_v2d_bases.py`) | See the scoring rules below. |
 | pysam oracle | Cross-check counts with `bam.fetch()` and `read.get_reference_positions(full_length=True)`, not `pileup()`, which under-counted depth by about 10% on a duplex BAM even with `max_depth` raised. Match the run's filters (MAPQ, BQ, flags `0x4 0x100 0x200 0x400 0x800`; improper pair and indel are not filtered). `RD` and `AD` match exactly; `DP = RD + AD + neither`, so DP is higher (571 SNPs on a ctDNA duplex BAM: ALT 571 of 571 exact, REF within 1%, DP within 1% for 90%, the rest being neither reads). |
@@ -140,8 +140,9 @@ non-zero count of parsed calls before trusting a diff of two traces.
 
 ## Other tools
 
-`tools/` (PHI for panel, WES and normals) runs GATK (HaplotypeCaller, Mutect2), bcftools,
-freebayes, VarDict, Paragraph, GraphTyper, Delly, SVTyper and others in amd64 containers and
+`tools/` (PHI for panel, WES and normals) runs ten tools in amd64 containers (`images.txt`: GATK with
+HaplotypeCaller and Mutect2, bcftools, freebayes, VarDict, Octopus, bam-readcount, Paragraph,
+GraphTyper, Delly, SVTyper) and
 compares them with gbcms and with an independent per-read check (`readtruth.py`: BWA-MEM of every
 read to the REF and ALT local haplotypes). Entry points: `make_sites.py`, `run_tools.py`,
 `compare.py`, `summarize_tools.py`, `per_read.py`, `build_report.py`.
@@ -201,11 +202,13 @@ Run it once the ticket's PR is merged and its issue is closed. Acceptance builds
 per ticket and are needed only until the merge; everything in a build is rebuildable from the
 commit in its `BUILT_FROM`.
 
-1. **Builds.** Delete the ticket's `src_<label>/` trees (guard on `<tree>/rust/Cargo.toml`). If a
-   tree has local source edits (a measurement prototype), first save `diff -u` of the edited files
-   as `<harness>/<tree>.patch` and check that it re-applies to `git archive <sha>`. Add each deleted
-   tree to `~/test/gbcms/harness/REMOVED_BUILDS.md`. The repo hook blocks `rm -rf`, so delete with
-   `rm -r <explicit path>`; a session that must not use `rm` can use `trash`, which frees disk only
+1. **Builds.** Run `sp_tools/retire_builds.sh [--trash] <tree> ...` (for example `src_c63g`). For
+   each tree it keeps the record (every file except `.venv`, `dist`, `target` and `src`) in
+   `plan670/patches/<tree>/`. Where the tree holds its source (`src/`), it saves that source's edits
+   against the `BUILT_FROM` commit as `edits.patch` and checks that the patch re-applies; a tree
+   whose patch fails is not trashed. Only with `--trash` does it log the tree in `REMOVED_BUILDS.md`
+   and move it to the Trash; without `--trash` it keeps the record and checks the patch. Builds are
+   not registered worktrees, so no `git worktree remove` applies to them. The disk is freed only
    once the operator empties the Trash.
 2. **Traces.** `gzip` raw `--trace` logs (about 400x smaller). Keep outputs, scripts and logs: they
    are the acceptance evidence.

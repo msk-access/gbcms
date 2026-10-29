@@ -7,11 +7,12 @@ metadata:
 
 ## ABRA2 realignment (IMPACT and ACCESS)
 
-IMPACT and ACCESS BAMs are ABRA2-realigned (94% of reverse-complement junction-ALT reads carry its
-`YO` tag, the original BWA alignment). ABRA2 moves a read onto an assembled contig only with strictly
+IMPACT and ACCESS BAMs are ABRA2-realigned (94% of the junction-ALT reads in the RC set carry its
+`YO` tag, the original BWA alignment; the RC set is the 6.5.0 release-candidate DNA runs, 28 of them,
+kept locally under `rc650/`). ABRA2 moves a read onto an assembled contig only with strictly
 fewer mismatches, and a singleton haplotype gets no contig, so a read it writes at the variant's
 junction with a flank substitution is the given ALT plus a single-molecule error (C37 #245: 28 of 28
-reverse-complement reads, spectrum-checked). The WES loci (`harness/c20/wes`, BWA plus
+RC reads, spectrum-checked). The WES loci (`harness/c20/wes`, BWA plus
 MarkDuplicates) are the no-realigner control: use them for any "where did the aligner put the gap"
 question (operator, 2026-10-07).
 
@@ -21,7 +22,7 @@ evidence. IMPACT's SV calls (the cBioPortal SV table) start at about 500 bp, so 
 have no second caller (operator, 2026-10-23). Judge such events by bases, read by read, against the
 `YO` placement. C37 almost changed the strict path on the premise that a realigner forced reads onto
 the known indel; the data showed ABRA2's placement was the better-informed one.
-**Before a placement-dependent rule change,** measure RC (ABRA2), WES (BWA) and FORTE (STAR)
+**Before a placement-dependent rule change,** measure the RC set (ABRA2), WES (BWA) and FORTE (STAR)
 separately and check recurrence with a local haplotype spectrum (`harness/c37/spectrum.py`).
 
 **ACCESS runs ABRA2 twice:** once on the standard (uncollapsed) BAM and once after UMI collapsing
