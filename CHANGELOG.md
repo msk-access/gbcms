@@ -7,6 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added — an end-of-run QC summary in the run log (#227)
+
+- **The run log now ends with a QC summary.** `gbcms dna` and `gbcms rna` log one block
+  after the last sample: which QC flags fired and on how many rows, which rows need a look
+  (a flag is "fix the input", "check the call" or informational; the first two need a look),
+  what to do about each, the first rows to look at, the output fields to filter on, and the
+  address of the QC Flags page. With several samples in one run the block combines them.
+  The run's last line is a `WARNING` when any row needs a look and an `INFO` line when none
+  does; the exit code is unchanged.
+- **It reads the written output and changes nothing.** The block comes from the MAF or VCF
+  the run wrote, read back after writing: no count, column, row or file differs (a test pins
+  the output files byte-identical with and without it), and there is no new flag or output
+  file. A failure to read the output is a warning, never a failed run.
+- **One table for the code and the docs.** `QC_FLAGS` in `gbcms.qc_summary` holds each
+  flag's tier and one-line action; the QC Flags page repeats it under "End-of-run summary".
+  Tests fail when a flag the page defines has no entry, when an entry names no flag on the
+  page, and when the page's tiers, actions or example block differ from the code's.
+
 ### Changed — a read-rule change starts from its mechanism (#304)
 
 - **Fix the class, not the row.** The procedure for changing how reads are judged

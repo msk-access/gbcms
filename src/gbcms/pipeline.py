@@ -32,6 +32,7 @@ from .io.atomic import atomic_path, commit_partial, discard_partial, partial_pat
 from .io.input import MafReader, VariantReader, VcfReader, variant_format
 from .io.output import MafWriter, VcfWriter, build_identity, declared_contigs
 from .models.core import GbcmsBaseConfig, OutputFormat, Variant, VariantType
+from .qc_summary import QcSummary, log_qc_summary, summarize_output
 from .rescue_audit import (
     MNP_RESCUE_ELIGIBLE,
     OUTCOME_HAPLOTYPE_CONFIRMED,
@@ -476,6 +477,8 @@ class Pipeline:
         self._reference_contigs: list[tuple[str, int]] = []
         self._declared_contigs: list[tuple[str, int | None]] = []
         self._logged_naming: set[tuple[str, str]] = set()
+        # One QC tally per written sample, for the end-of-run summary.
+        self._qc_summaries: list[QcSummary] = []
 
     def _log_naming_difference(
         self, variants: list[Variant], other_names: list[str], other: str
@@ -718,6 +721,8 @@ class Pipeline:
             len(self._failed_samples),
             self._stats["total_time"],
         )
+        # Last in the log: which flags fired, which rows need a look, what to do.
+        log_qc_summary(self._qc_summaries)
 
         # Include failed_samples in returned stats for callers
         return {**self._stats, "failed_samples": self._failed_samples}
@@ -858,6 +863,7 @@ class Pipeline:
             if _obs_path:
                 commit_partial(_obs_final)
                 logger.info("Wrote per-molecule observations → %s", _obs_final)
+            self._tally_qc(sample_name)
             self._stats["samples_processed"] += 1
 
             sample_time = time.perf_counter() - sample_start
@@ -870,6 +876,23 @@ class Pipeline:
             # dictionary key (KeyError) or even empty.
             logger.exception("Error processing sample %s", sample_name)
             self._failed_samples.append({"name": sample_name, "error": f"{type(e).__name__}: {e}"})
+
+    def _tally_qc(self, sample_name: str) -> None:
+        """Tally the QC flags of the sample's written output for the end-of-run
+        summary. It reads the output and writes nothing, so counts, columns and rows
+        are as written; a failure to read it is logged and never fails the run."""
+        ext = "vcf" if self.config.output.format == OutputFormat.VCF else "maf"
+        try:
+            self._qc_summaries.append(
+                summarize_output(self._output_file(sample_name, ext), sample_name, ext)
+            )
+        except Exception as exc:
+            logger.warning(
+                "QC summary skipped for sample %s (%s: %s); the output is unaffected",
+                sample_name,
+                type(exc).__name__,
+                exc,
+            )
 
     def _engine_kwargs(self) -> dict[str, Any]:
         """Counting-engine settings shared by every ``count_bam_binned`` call for a sample.
