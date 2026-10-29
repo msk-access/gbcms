@@ -92,8 +92,11 @@ pub(crate) type ReadKey = (Vec<u8>, u16, i64, Vec<u8>);
 /// reach it, a row adds no more entries and its later reads are judged afresh (the same
 /// calls, the time a cache saves forgone). A read needing more work space than this alone
 /// gets it, and its row caches nothing more; at the row's end work space past a quarter of
-/// the budget is freed ([`release_work`]).
-const THREAD_BUDGET: usize = 256 << 20;
+/// the budget is freed ([`release_work`]). 128 MB is the knee measured on Linux (HPC, whole
+/// nodes, 2026-10-29): the smallest budget whose CPU time is within 2% of no limit on every
+/// data type (IMPACT, ACCESS, WES and HG002; the patient types do not reach 32 MB), with
+/// HG002's structural arms' peak memory some 40% below no limit's.
+const THREAD_BUDGET: usize = 128 << 20;
 
 /// The budget in force: [`THREAD_BUDGET`], or (measurement only) `GBCMS_JUDGE_BUDGET_MB`'s,
 /// `none` for no limit. Read once.
