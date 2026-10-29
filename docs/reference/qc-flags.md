@@ -42,6 +42,7 @@ same string is in the VCF `GSR` INFO. How each is decided:
 | `EMPTY_ALLELE` | FAIL | REF or ALT is empty (a malformed indel; a MAF dash allele is `-`) | Fix the input row |
 | `NON_SEQUENCE_ALLELE` | FAIL | An allele is not a base sequence (an IUPAC code, a stray character; `-` outside MAF input); kept in MAF output, written as `<NON_SEQUENCE>` in VCF output | Fix the input row |
 | `ALT_EQUALS_REF` | FAIL | ALT equals REF (any case; `-` for both in a MAF): no change to count | Fix the input row |
+| `START_BEFORE_CONTIG` | FAIL | A MAF row at `Start_Position` 0 that is not a dash insertion (a substitution, a deletion, a delins, or an insertion written with sequence alleles). Position 0 is no base, so nothing can be counted. A dash insertion there is counted (resolved to the base after it); see [Input Formats](input-formats.md#maf-indel-normalization). Kept in MAF output, written as `<NON_SEQUENCE>` at position 1 in VCF output | Fix the input row (MAF positions are 1-based) |
 | `ALT_CONTAINS_N` | FAIL | The ALT contains an `N` base | Fix the input row |
 <!-- --8<-- [end:status] -->
 
@@ -192,7 +193,7 @@ In VCF, the mFSD summary is in INFO: `MFSD_REF_COUNT`, `MFSD_ALT_COUNT`,
 
 | Field | Set when | Meaning |
 |:------|:---------|:--------|
-| ALT `<NON_SEQUENCE>` | MAF input, a row with no VCF allele: an allele that is not a base sequence (or empty), or a deletion spanning its whole contig | The row is FAIL (reason in `GSR`); REF is the reference base at POS |
+| ALT `<NON_SEQUENCE>` | MAF input, a row with no VCF allele: an allele that is not a base sequence (or empty), a deletion spanning its whole contig, or a row at `Start_Position` 0 that is not an insertion | The row is FAIL (reason in `GSR`); REF is the reference base at POS |
 | INFO `MAF_START`, `MAF_REF`, `MAF_ALT` | MAF input | The MAF row the record came from, as written: look a result up by its input |
 | INFO `NORM_POS`, `NORM_REF`, `NORM_ALT` | `--show-normalization` | The left-aligned record gbcms counted |
 
