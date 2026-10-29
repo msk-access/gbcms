@@ -96,7 +96,7 @@ pub(crate) enum Class {
 /// `--min-baseq` or where not A, C, G or T) with their qualities, each base's reference
 /// position (a soft clip's extrapolated, an inserted base's at its anchor), and its
 /// aligned span.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct ReadView {
     pub(crate) seq: Vec<u8>,
     pub(crate) quals: Vec<u8>,
@@ -120,7 +120,7 @@ pub(crate) struct ReadView {
 /// What a read's aligner wrote about its placement: MAPQ, the AS and XS tags (the best
 /// alignment's score and the best score elsewhere, BWA-MEM's scale) and NM. None where
 /// the record carries no such tag.
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash)]
 pub(crate) struct AlnTags {
     pub(crate) mapq: u8,
     pub(crate) best: Option<i64>,
@@ -136,6 +136,18 @@ impl AlnTags {
             (Some(a), Some(x)) => x >= a,
             _ => self.mapq == 0,
         }
+    }
+}
+
+/// Some of a view's fields (views equal in all are equal in these), for the judge's maps of
+/// views alike (`judge::Haplotypes`), which compare views whole.
+impl std::hash::Hash for ReadView {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        self.seq.hash(state);
+        self.quals.hash(state);
+        self.ref_start.hash(state);
+        self.ref_end.hash(state);
+        self.tags.hash(state);
     }
 }
 
@@ -300,6 +312,12 @@ impl ReadView {
 
     pub(crate) fn len(&self) -> usize {
         self.seq.len()
+    }
+
+    /// The view without its qualities, its aligner's tags and its name: its bases (masked)
+    /// and placement alone, which a read's programmes and alignments are fixed by.
+    pub(crate) fn placed_alone(&self) -> ReadView {
+        ReadView { quals: Vec::new(), tags: AlnTags::default(), name: Vec::new(), ..self.clone() }
     }
 
     /// The genome position its own alignment places base `i` at; None for a base it leaves
@@ -634,6 +652,11 @@ pub(crate) struct StateGraph {
     /// The state's row (X is 0), None for REF's bases.
     pub(crate) row: Option<usize>,
     pub(crate) graph: Graph,
+    /// An earlier state whose graph is laid out alike, and the first base where their bases
+    /// differ ([`Graph::layout_until`]): a substitution's site states differ at its bases
+    /// alone, so a read's programme takes the columns before them from that state's
+    /// ([`graph::decided_states`]). None for a state laid out as no earlier one.
+    pub(crate) share: Option<(usize, usize)>,
 }
 
 /// The rows a site is built from, besides X: the input's other rows within reach (a
@@ -2752,6 +2775,7 @@ impl Site {
             site.graphs = site.state_graphs(&rest);
             site.drop_spelled_states(&rest);
             site.drop_graph_spellings(&found_states, reads, rule);
+            site.link_layouts();
             if site.triage_mode != TriageMode::Off {
                 site.triage = super::triage::Index::build(&site, l);
             }
@@ -3565,7 +3589,7 @@ impl Site {
             .into_iter()
             .map(|(class, row)| {
                 let optional: Vec<usize> = rest.iter().copied().filter(|&c| row.is_none_or(|s| !self.conflict(s, c))).collect();
-                StateGraph { class, row, graph: self.graph_of(row, &optional) }
+                StateGraph { class, row, graph: self.graph_of(row, &optional), share: None }
             })
             .collect()
     }
@@ -3839,6 +3863,15 @@ impl Site {
         let first = read.refpos.iter().copied().min().unwrap_or(read.ref_start).min(read.ref_start);
         let end = read.refpos.iter().copied().max().unwrap_or(read.ref_end).max(read.ref_end);
         GraphRead { seq: &read.seq, rp, span: (first - self.start, end - self.start) }
+    }
+
+    /// Per state graph, the first earlier one laid out alike that shares from none itself,
+    /// and where their bases first differ ([`StateGraph::share`]).
+    fn link_layouts(&mut self) {
+        for k in 0..self.graphs.len() {
+            let share = (0..k).filter(|&s| self.graphs[s].share.is_none()).find_map(|s| self.graphs[s].graph.layout_until(&self.graphs[k].graph).map(|p| (s, p)));
+            self.graphs[k].share = share;
+        }
     }
 
     /// An other state whose allele spells X's haplotype (or REF's) with rows of the reads'

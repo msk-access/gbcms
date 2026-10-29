@@ -98,7 +98,67 @@ pub(crate) struct Haplotypes<'a> {
     #[allow(clippy::type_complexity)]
     build: Box<dyn Fn(&ReadRules) -> Option<Site> + 'a>,
     verdicts: RefCell<HashMap<ReadKey, ClassifyResult>>,
+    /// Each read view this row's site judged (its name cleared), whether it was asked for
+    /// the anchor, and `--min-baseq`, with its verdict: the judge is a function of these
+    /// alone, so a read alike to one judged gets its verdict (deep duplex reads are often
+    /// alike: one start, one end, binned qualities).
+    judged: RefCell<HashMap<JudgedKey, decide::Verdict, std::hash::BuildHasherDefault<ViewHasher>>>,
+    /// Each read's bases (masked) and placement this row's site scored (a view without its
+    /// qualities, tags and name), with what its programmes gave: a read alike there has
+    /// the same scores, paths and alignments, its call its own.
+    scored: RefCell<HashMap<ReadView, std::rc::Rc<decide::Scored>, std::hash::BuildHasherDefault<ViewHasher>>>,
 }
+
+/// The judged views' hasher: keys are compared whole on a hit, so the hash need only
+/// spread them; a multiply-rotate over each word, cheaper than the default's per read.
+#[derive(Default)]
+pub(crate) struct ViewHasher(u64);
+
+impl ViewHasher {
+    #[inline]
+    fn add(&mut self, w: u64) {
+        self.0 = (self.0.rotate_left(5) ^ w).wrapping_mul(0x517c_c1b7_2722_0a95);
+    }
+}
+
+impl std::hash::Hasher for ViewHasher {
+    fn finish(&self) -> u64 {
+        self.0
+    }
+    fn write(&mut self, bytes: &[u8]) {
+        let mut chunks = bytes.chunks_exact(8);
+        for c in &mut chunks {
+            self.add(u64::from_le_bytes([c[0], c[1], c[2], c[3], c[4], c[5], c[6], c[7]]));
+        }
+        let rest = chunks.remainder();
+        if !rest.is_empty() {
+            let mut w = [0u8; 8];
+            w[..rest.len()].copy_from_slice(rest);
+            self.add(u64::from_le_bytes(w) ^ (rest.len() as u64) << 56);
+        }
+    }
+    fn write_u8(&mut self, i: u8) {
+        self.add(u64::from(i));
+    }
+    fn write_u32(&mut self, i: u32) {
+        self.add(u64::from(i));
+    }
+    fn write_u64(&mut self, i: u64) {
+        self.add(i);
+    }
+    fn write_usize(&mut self, i: usize) {
+        self.add(i as u64);
+    }
+    fn write_i64(&mut self, i: i64) {
+        self.add(i as u64);
+    }
+    fn write_isize(&mut self, i: isize) {
+        self.add(i as u64);
+    }
+}
+
+/// A judged read view, whether its anchor was asked for, and `--min-baseq`.
+pub(crate) type JudgedKey = (ReadView, bool, u8);
 
 impl<'a> Haplotypes<'a> {
     pub(crate) fn new(v: &Variant, build: impl Fn(&ReadRules) -> Option<Site> + 'a) -> Self {
@@ -107,7 +167,27 @@ impl<'a> Haplotypes<'a> {
             site: OnceCell::new(),
             build: Box::new(build),
             verdicts: RefCell::new(HashMap::new()),
+            judged: RefCell::new(HashMap::default()),
+            scored: RefCell::new(HashMap::default()),
         }
+    }
+
+    /// The verdict a read alike to `view`'s got at this row ([`Haplotypes::judged`]'s key).
+    pub(crate) fn judged(&self, view: &JudgedKey) -> Option<decide::Verdict> {
+        self.judged.borrow().get(view).copied()
+    }
+
+    pub(crate) fn keep_judged(&self, view: JudgedKey, verdict: decide::Verdict) {
+        self.judged.borrow_mut().insert(view, verdict);
+    }
+
+    /// What the programmes gave a read alike to `placed` (bases and placement) at this row.
+    pub(crate) fn scored(&self, placed: &ReadView) -> Option<std::rc::Rc<decide::Scored>> {
+        self.scored.borrow().get(placed).cloned()
+    }
+
+    pub(crate) fn keep_scored(&self, placed: ReadView, scored: std::rc::Rc<decide::Scored>) {
+        self.scored.borrow_mut().insert(placed, scored);
     }
 
     /// The call a read already got at this row.
@@ -344,6 +424,165 @@ mod tests {
         ];
         assert_eq!(calls(&c, &rows, &ins, &reads), vec![Alt, Alt, Alt, Ref, Ref, Ref, Ref], "insertion row");
         assert_eq!(calls(&c, &rows, &snv, &reads), vec![Ref, Ref, Ref, Alt, Alt, Ref, Ref], "SNV row");
+    }
+
+    #[test]
+    fn a_reads_name_never_changes_its_verdict() {
+        // Reads alike but for their names (duplex reads of one start and end) share one
+        // verdict per row (Haplotypes::judged): the judge reads no name.
+        let (c, ins, snv) = case_246();
+        let rows = vec![ins.clone(), snv.clone()];
+        let (h_ins, h_snv) = (haplotype(&c, &[&ins]), haplotype(&c, &[&snv]));
+        let mut quals = vec![Q; 151];
+        quals[80] = 2;
+        let reads = [
+            read(&h_ins, 220, 151, 220, "151M"),
+            read(&h_ins, 225, 151, 225, "75M6I70M"),
+            read(&h_snv, 221, 151, 221, "151M"),
+            read(&c, 232, 151, 232, "151M"),
+            read_q(&h_snv[231..382], quals, 231, "151M"),
+            read(&h_ins, 290, 60, 290, "10S50M"),
+        ];
+        for target in [&ins, &snv] {
+            let s = site(&c, target, &rows, 151);
+            for (k, r) in reads.iter().enumerate() {
+                for ask in [false, true] {
+                    let (a, b) = (judge(&s, &r.clone().named(b"one"), MIN_BQ, ask), judge(&s, &r.clone().named(b"two"), MIN_BQ, ask));
+                    assert_eq!(format!("{a:?}"), format!("{b:?}"), "read {k}, anchor asked {ask}");
+                }
+            }
+        }
+    }
+
+    /// Each read judged afresh, against the same read named otherwise and the same bases and
+    /// placement with other qualities (none below the floor) judged on the first's kept
+    /// scoring: the fast paths' verdicts are the slow path's.
+    fn agrees_with_afresh(s: &Site, reads: &[ReadView], what: &str) {
+        for (k, r) in reads.iter().enumerate() {
+            for ask in [false, true] {
+                let afresh = judge(s, r, MIN_BQ, ask);
+                let renamed = judge(s, &r.clone().named(b"another"), MIN_BQ, ask);
+                assert_eq!(format!("{afresh:?}"), format!("{renamed:?}"), "{what}: read {k}, anchor asked {ask}, renamed");
+                let (_, kept) = super::decide::judge_kept(s, r, MIN_BQ, ask, None);
+                let kept = kept.expect("the graph scorer keeps its scoring");
+                let mut other = r.clone();
+                for (i, q) in other.quals.iter_mut().enumerate() {
+                    *q = if i % 3 == 0 { 25 } else { 41 };
+                }
+                assert_eq!(other.placed_alone(), r.placed_alone(), "{what}: read {k} alike");
+                let (on_kept, _) = super::decide::judge_kept(s, &other, MIN_BQ, ask, Some(kept));
+                let other_afresh = judge(s, &other, MIN_BQ, ask);
+                assert_eq!(format!("{other_afresh:?}"), format!("{on_kept:?}"), "{what}: read {k}, anchor asked {ask}, kept scoring");
+            }
+        }
+    }
+
+    #[test]
+    fn the_fast_paths_agree_with_judging_afresh_on_the_fix_rounds_sites() {
+        use Call::*;
+        let len = 120;
+        // A change at a base an MNP keeps, on both haplotypes (a separate event): CAG>TAC
+        // keeping its A, a germline A>T there on half the REF reads and half the carriers.
+        let c = contig(21, 300, b"CAG");
+        let x = Row::new(300, b"CAG", b"TAC");
+        let h = haplotype(&c, &[&x]);
+        let germ = |hap: &[u8], s: usize, on: bool| {
+            let mut b = hap[s..s + len].to_vec();
+            if on {
+                b[301 - s] = b'T';
+            }
+            read_q(&b, vec![Q; len], s as i64, "120M")
+        };
+        let mut reads: Vec<ReadView> = (0..20).map(|i| germ(&c, 230 + i, i % 2 == 1)).collect();
+        reads.extend((0..10).map(|i| germ(&h, 235 + i, i % 2 == 1)));
+        let s = Site::build(x.clone(), &Candidates { listed: vec![Row::new(301, b"A", b"T")], ..Candidates::default() }, (0, c.clone()), &reads).unwrap();
+        let got: Vec<Call> = reads.iter().map(|r| judge(&s, r, MIN_BQ, false).call).collect();
+        assert!(got[..20].iter().all(|&g| g == Ref) && got[20..].iter().all(|&g| g == Alt), "kept-base change: {got:?}");
+        agrees_with_afresh(&s, &reads, "kept-base change");
+
+        // An indel the reads write beside the site, a context where they need it: an SNV at
+        // 300 and a G inserted after 339 on ten REF reads.
+        let c = random_seq(600, 22);
+        let alt = if c[300] == b'A' { b'C' } else { b'A' };
+        let x = Row::new(300, &c[300..301], &[alt]);
+        let ins = Row::new(339, &c[339..340], &[c[339], b'G']);
+        let (h, hi) = (haplotype(&c, &[&x]), haplotype(&c, &[&ins]));
+        let mut reads: Vec<ReadView> = (0..10).map(|i| read(&c, 240 + i, len, 240 + i as i64, "120M")).collect();
+        reads.extend((0..10).map(|i| {
+            let s = 250 + i;
+            read(&hi, s, len, s as i64, &format!("{}M1I{}M", 340 - s, len - (340 - s) - 1))
+        }));
+        reads.extend((0..10).map(|i| read(&h, 245 + i, len, 245 + i as i64, "120M")));
+        let found = vec![(ins.clone(), (10..20).collect())];
+        let s = Site::build(x.clone(), &Candidates { found, ..Candidates::default() }, (0, c.clone()), &reads).unwrap();
+        let got: Vec<Call> = reads.iter().map(|r| judge(&s, r, MIN_BQ, false).call).collect();
+        assert!(got[..20].iter().all(|&g| g == Ref) && got[20..].iter().all(|&g| g == Alt), "beside-site indel: {got:?}");
+        agrees_with_afresh(&s, &reads, "beside-site indel");
+
+        // The REF-base option at a delins (CGC>T): two carriers showing REF's C where the ALT
+        // has its T are another allele under `partial`.
+        let mut c = random_seq(600, 23);
+        c[299] = b'A';
+        c[300..303].copy_from_slice(b"CGC");
+        c[303] = b'A';
+        let x = Row::new(300, b"CGC", b"T");
+        let h = haplotype(&c, &[&x]);
+        let carrier = |s: usize, odd: Option<u8>| {
+            let mut b = h[s..s + len].to_vec();
+            if let Some(o) = odd {
+                b[300 - s] = o;
+            }
+            read_q(&b, vec![Q; len], s as i64, &format!("{}M1I3D{}M", 300 - s, len - (300 - s) - 1))
+        };
+        let mut reads: Vec<ReadView> = (0..20).map(|i| read(&c, 240 + i, len, 240 + i as i64, "120M")).collect();
+        reads.extend((0..10).map(|i| carrier(245 + i, None)));
+        reads.extend((0..2).map(|i| carrier(250 + i, Some(b'C'))));
+        let mut s = Site::build(x.clone(), &Candidates::default(), (0, c.clone()), &reads).unwrap();
+        s.ref_base = haplotypes::RefBaseRule::Partial;
+        let got: Vec<Call> = reads.iter().map(|r| judge(&s, r, MIN_BQ, false).call).collect();
+        assert!(got[30..].iter().all(|&g| g == Other), "REF-base option: {got:?}");
+        agrees_with_afresh(&s, &reads, "REF-base option");
+    }
+
+    #[test]
+    fn a_read_alike_in_bases_and_placement_is_called_on_the_kept_scoring_as_afresh() {
+        // Reads alike in their bases (masked) and placement share their programmes' scores,
+        // paths and alignments (decide::Scored); qualities above the floor, the aligner's
+        // tags and the anchor asked are each read's own, and its call is as if judged afresh.
+        let (c, ins, snv) = case_246();
+        let rows = vec![ins.clone(), snv.clone()];
+        let (h_ins, h_snv) = (haplotype(&c, &[&ins]), haplotype(&c, &[&snv]));
+        let reads = [
+            read(&h_ins, 220, 151, 220, "151M"),
+            read(&h_ins, 225, 151, 225, "75M6I70M"),
+            read(&h_snv, 221, 151, 221, "151M"),
+            read(&c, 232, 151, 232, "151M"),
+            read(&h_ins, 290, 60, 290, "10S50M"),
+        ];
+        let tags = [
+            haplotypes::AlnTags { mapq: 60, best: Some(151), elsewhere: Some(40), nm: Some(0) },
+            haplotypes::AlnTags { mapq: 0, best: Some(140), elsewhere: Some(140), nm: Some(2) },
+        ];
+        for target in [&ins, &snv] {
+            let s = site(&c, target, &rows, 151);
+            for (k, r) in reads.iter().enumerate() {
+                for ask in [false, true] {
+                    let (_, kept) = decide::judge_kept(&s, r, MIN_BQ, ask, None);
+                    let kept = kept.expect("the graph scorer keeps its scoring");
+                    for (t, &tag) in tags.iter().enumerate() {
+                        // the same bases and placement, other qualities (none below the floor)
+                        let mut other = r.clone().tagged(tag);
+                        for (i, q) in other.quals.iter_mut().enumerate() {
+                            *q = if i % 3 == 0 { 25 } else { 41 };
+                        }
+                        assert_eq!(other.placed_alone(), r.placed_alone(), "read {k}: alike");
+                        let afresh = judge(&s, &other, MIN_BQ, ask);
+                        let (on_kept, _) = decide::judge_kept(&s, &other, MIN_BQ, ask, Some(kept.clone()));
+                        assert_eq!(format!("{afresh:?}"), format!("{on_kept:?}"), "read {k}, tags {t}, anchor asked {ask}");
+                    }
+                }
+            }
+        }
     }
 
     #[test]

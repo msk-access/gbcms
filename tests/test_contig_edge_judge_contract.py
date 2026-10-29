@@ -106,3 +106,26 @@ def test_an_insertion_in_a_run_starting_the_contig_is_depth_only_and_warned(tmp_
     assert (c.rd, c.ad, c.dp) == (0, 0, 10)
     warns = [r.getMessage() for r in caplog.records if "a contig edge" in r.getMessage()]
     assert len(warns) == 2 and "5 ALT read(s)" in warns[0], warns
+
+
+def test_alike_carriers_at_a_contig_end_are_each_depth_only_and_warned(tmp_path, caplog):
+    """Reads alike in bases, qualities and placement (one start: duplex copies) share one
+    judged verdict per row; the edge is weighed on each of them, so every carrier is depth
+    only and warned, as when each is judged afresh."""
+    contig = _flank(393) + "GAAAAAA"
+    a = 393
+    s = a - 60
+    seq = contig[s : a + 1] + "A" + contig[a + 1 :]
+    reads = [make_read(f"c{i}", seq, s, ((0, a + 1 - s), (1, 1), (0, 6))) for i in range(5)]
+    reads += [make_read(f"r{i}", contig[s:], s, ((0, len(contig) - s),)) for i in range(5)]
+    fa, bam = write_contig(tmp_path, contig, reads, "edge")
+    (pv,) = _rs.prepare_variants([_rs.Variant("1", a, "G", "GA", "INDEL")], fa, 5, False, 1, True)
+    with caplog.at_level(logging.WARNING, logger=ENGINE_LOGGER):
+        _rs.reset_log_caching()
+        (c,) = count_bam_checked(
+            bam, [pv.variant], [None], *ARGS, read_judge="sequence", reference_fasta=fa
+        )
+    assert c.dp >= c.rd + c.ad and c.rd == c.rd_fwd + c.rd_rev and c.ad == c.ad_fwd + c.ad_rev
+    assert (c.rd, c.ad, c.dp) == (0, 0, 10)
+    warns = [r.getMessage() for r in caplog.records if "a contig edge" in r.getMessage()]
+    assert len(warns) == 2 and "5 ALT read(s)" in warns[0], warns
