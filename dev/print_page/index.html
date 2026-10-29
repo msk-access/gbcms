@@ -3789,63 +3789,111 @@ given allele, <code>COEXISTING_ALLELE</code> when it is present beside a more fr
 <p><code>pairhmm</code> (default) uses <abbr title="Wavefront Alignment - Edit-distance alignment algorithm used as Phase 3 fast-path triage (wfa2lib-rs); resolves ~70-80% of reads before PairHMM escalation">WFA</abbr> edit-distance triage first, then escalates to <abbr title="Pair Hidden Markov Model - Probabilistic alignment using base quality scores">PairHMM</abbr> only for ambiguous reads. This is faster than running <abbr title="Pair Hidden Markov Model - Probabilistic alignment using base quality scores">PairHMM</abbr> on every read and more accurate in low-quality or repeat-dense regions.</p>
 <p><code>sw</code> runs Smith-Waterman on every Phase 3 read (no <abbr title="Wavefront Alignment - Edit-distance alignment algorithm used as Phase 3 fast-path triage (wfa2lib-rs); resolves ~70-80% of reads before PairHMM escalation">WFA</abbr> pre-filter). Use only if you need exact reproducibility with versions &lt;3.0.0.</p>
 </div>
+<h2 id="cli-dna-read-judgment">Read Judgment<a class="headerlink" href="#cli-dna-read-judgment" title="Permanent link">¶</a></h2>
+<p>How each read is judged against a row. The default is the size-specific rules, unchanged.
+The sequence judge is opt-in while it is measured toward becoming the default
+(<a href="https://github.com/msk-access/gbcms/issues/304">#304</a>; the default flip is
+<a href="https://github.com/msk-access/gbcms/issues/331">#331</a>).</p>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">Option</th>
+<th style="text-align: left;">Default</th>
+<th style="text-align: left;">Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;"><code>--read-judge</code></td>
+<td style="text-align: left;"><code>rules</code></td>
+<td style="text-align: left;"><code>rules</code>: the size-specific read rules of the <a href="#reference-read-judgment">Read Judgment</a> register. <code>sequence</code>: the sequence judge. Each read is scored whole against the row's candidate sequences (REF, the ALT and the other alleles at its site, each with every context of the other listed rows nearby and the recurring background), and counts REF or ALT only where its own bases favour one by at least one confident base; another allele winning by as much is partial evidence, and anything closer is depth only. <code>haplotype</code>, its former name, is taken as <code>sequence</code> with a warning. Invalid values are rejected at parse time.</td>
+</tr>
+</tbody>
+</table>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#cli-dna-__codelineno-4-1"></a>gbcms<span class="w"> </span>dna<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-4-2" name="__codelineno-4-2" href="#cli-dna-__codelineno-4-2"></a><span class="w">    </span>--variants<span class="w"> </span>mutations.maf<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-4-3" name="__codelineno-4-3" href="#cli-dna-__codelineno-4-3"></a><span class="w">    </span>--bam<span class="w"> </span>tumor:tumor.bam<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-4-4" name="__codelineno-4-4" href="#cli-dna-__codelineno-4-4"></a><span class="w">    </span>--fasta<span class="w"> </span>reference.fa<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-4-5" name="__codelineno-4-5" href="#cli-dna-__codelineno-4-5"></a><span class="w">    </span>--format<span class="w"> </span>maf<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-4-6" name="__codelineno-4-6" href="#cli-dna-__codelineno-4-6"></a><span class="w">    </span>--read-judge<span class="w"> </span>sequence<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-4-7" name="__codelineno-4-7" href="#cli-dna-__codelineno-4-7"></a><span class="w">    </span>--output-dir<span class="w"> </span>results/
+</code></pre></div>
+<p>Under <code>--read-judge sequence</code>:</p>
+<ul>
+<li><strong>Contexts explain, never credit.</strong> The other listed rows and the recurring background
+  only explain a read's other differences: the judge does no linkage and no phasing, so a
+  variant linked to the row elsewhere on the molecule never credits a read.</li>
+<li><strong>Two diagnostics</strong> can appear in <code>gbcms_diagnostic</code>: <code>MNV_SHARED(chrom:pos:REF&gt;ALT:n/m)</code>
+  at an SNV whose change a co-listed MNV holds (the MNV's carriers count at both rows,
+  RJ-28), and <code>UNEXPLAINED_READS(n/m)</code>, the row's depth reads that fit none of its candidate
+  sequences (RJ-29). See <a href="#reference-qc-flags">QC Flags</a>. No column is added.</li>
+<li><strong>The Phase 3 options do not apply</strong> to the row's counts (<code>--alignment-backend</code> and the
+  <abbr title="Pair Hidden Markov Model - Probabilistic alignment using base quality scores">PairHMM</abbr> probabilities above): the judge has its own scorer.</li>
+<li><strong>Spliced reads are not judged yet.</strong> A read whose <abbr title="Compact Idiosyncratic Gapped Alignment Report - BAM alignment operation string">CIGAR</abbr> splices (an <code>N</code> op) is depth
+  only, and <code>gbcms rna</code> refuses <code>--read-judge sequence</code>.</li>
+<li><strong>It is slower</strong> than the rules.</li>
+<li><strong><code>GBCMS_JUDGE_*</code> environment variables</strong> are measurement switches for the judge's
+  development, not options: leave them unset.</li>
+</ul>
+<p>The design, the rule and every measurement round are in
+<a href="#proposals-sequence-judge">the sequence judge proposal</a>.</p>
 <h2 id="cli-dna-examples">Examples<a class="headerlink" href="#cli-dna-examples" title="Permanent link">¶</a></h2>
 <div class="tabbed-set tabbed-alternate" data-tabs="1:5"><input checked="" id="cli-dna-__tabbed_1_1" name="cli-dna-__tabbed_1" type="radio"><input id="cli-dna-__tabbed_1_2" name="cli-dna-__tabbed_1" type="radio"><input id="cli-dna-__tabbed_1_3" name="cli-dna-__tabbed_1" type="radio"><input id="cli-dna-__tabbed_1_4" name="cli-dna-__tabbed_1" type="radio"><input id="cli-dna-__tabbed_1_5" name="cli-dna-__tabbed_1" type="radio"><div class="tabbed-labels"><label for="cli-dna-__tabbed_1_1">Single <abbr title="Binary Alignment Map - Compressed sequence alignment file format">BAM</abbr></label><label for="cli-dna-__tabbed_1_2">Multiple BAMs</label><label for="cli-dna-__tabbed_1_3">With Filtering</label><label for="cli-dna-__tabbed_1_4">With Normalization</label><label for="cli-dna-__tabbed_1_5">With <abbr title="Unique Molecular Identifier - Molecular barcode for deduplication">UMI</abbr> Tags</label></div>
 <div class="tabbed-content">
 <div class="tabbed-block">
-<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#cli-dna-__codelineno-4-1"></a>gbcms<span class="w"> </span>dna<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-4-2" name="__codelineno-4-2" href="#cli-dna-__codelineno-4-2"></a><span class="w">    </span>--variants<span class="w"> </span>mutations.vcf<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-4-3" name="__codelineno-4-3" href="#cli-dna-__codelineno-4-3"></a><span class="w">    </span>--bam<span class="w"> </span>sample:sample.bam<span class="w"> </span><span class="se">\ </span><span class="c1"># (1)!</span>
-<a id="__codelineno-4-4" name="__codelineno-4-4" href="#cli-dna-__codelineno-4-4"></a><span class="w">    </span>--fasta<span class="w"> </span>reference.fa<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-4-5" name="__codelineno-4-5" href="#cli-dna-__codelineno-4-5"></a><span class="w">    </span>--output-dir<span class="w"> </span>results/
+<div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#cli-dna-__codelineno-5-1"></a>gbcms<span class="w"> </span>dna<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-5-2" name="__codelineno-5-2" href="#cli-dna-__codelineno-5-2"></a><span class="w">    </span>--variants<span class="w"> </span>mutations.vcf<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-5-3" name="__codelineno-5-3" href="#cli-dna-__codelineno-5-3"></a><span class="w">    </span>--bam<span class="w"> </span>sample:sample.bam<span class="w"> </span><span class="se">\ </span><span class="c1"># (1)!</span>
+<a id="__codelineno-5-4" name="__codelineno-5-4" href="#cli-dna-__codelineno-5-4"></a><span class="w">    </span>--fasta<span class="w"> </span>reference.fa<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-5-5" name="__codelineno-5-5" href="#cli-dna-__codelineno-5-5"></a><span class="w">    </span>--output-dir<span class="w"> </span>results/
 </code></pre></div>
 <ol>
 <li>The <code>sample:</code> prefix sets the output filename. Without it, the <abbr title="Binary Alignment Map - Compressed sequence alignment file format">BAM</abbr> filename stem is used.</li>
 </ol>
 </div>
 <div class="tabbed-block">
-<div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#cli-dna-__codelineno-5-1"></a>gbcms<span class="w"> </span>dna<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-5-2" name="__codelineno-5-2" href="#cli-dna-__codelineno-5-2"></a><span class="w">    </span>--variants<span class="w"> </span>mutations.maf<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-5-3" name="__codelineno-5-3" href="#cli-dna-__codelineno-5-3"></a><span class="w">    </span>--bam<span class="w"> </span>tumor:tumor.bam<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-5-4" name="__codelineno-5-4" href="#cli-dna-__codelineno-5-4"></a><span class="w">    </span>--bam<span class="w"> </span>normal:normal.bam<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-5-5" name="__codelineno-5-5" href="#cli-dna-__codelineno-5-5"></a><span class="w">    </span>--fasta<span class="w"> </span>reference.fa<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-5-6" name="__codelineno-5-6" href="#cli-dna-__codelineno-5-6"></a><span class="w">    </span>--format<span class="w"> </span>maf<span class="w"> </span><span class="se">\ </span><span class="c1"># (1)!</span>
-<a id="__codelineno-5-7" name="__codelineno-5-7" href="#cli-dna-__codelineno-5-7"></a><span class="w">    </span>--output-dir<span class="w"> </span>results/
+<div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#cli-dna-__codelineno-6-1"></a>gbcms<span class="w"> </span>dna<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-6-2" name="__codelineno-6-2" href="#cli-dna-__codelineno-6-2"></a><span class="w">    </span>--variants<span class="w"> </span>mutations.maf<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-6-3" name="__codelineno-6-3" href="#cli-dna-__codelineno-6-3"></a><span class="w">    </span>--bam<span class="w"> </span>tumor:tumor.bam<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-6-4" name="__codelineno-6-4" href="#cli-dna-__codelineno-6-4"></a><span class="w">    </span>--bam<span class="w"> </span>normal:normal.bam<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-6-5" name="__codelineno-6-5" href="#cli-dna-__codelineno-6-5"></a><span class="w">    </span>--fasta<span class="w"> </span>reference.fa<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-6-6" name="__codelineno-6-6" href="#cli-dna-__codelineno-6-6"></a><span class="w">    </span>--format<span class="w"> </span>maf<span class="w"> </span><span class="se">\ </span><span class="c1"># (1)!</span>
+<a id="__codelineno-6-7" name="__codelineno-6-7" href="#cli-dna-__codelineno-6-7"></a><span class="w">    </span>--output-dir<span class="w"> </span>results/
 </code></pre></div>
 <ol>
 <li><abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> output preserves all input <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> columns and appends gbcms count columns.</li>
 </ol>
 </div>
 <div class="tabbed-block">
-<div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#cli-dna-__codelineno-6-1"></a>gbcms<span class="w"> </span>dna<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-6-2" name="__codelineno-6-2" href="#cli-dna-__codelineno-6-2"></a><span class="w">    </span>--variants<span class="w"> </span>mutations.vcf<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-6-3" name="__codelineno-6-3" href="#cli-dna-__codelineno-6-3"></a><span class="w">    </span>--bam<span class="w"> </span>sample:sample.bam<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-6-4" name="__codelineno-6-4" href="#cli-dna-__codelineno-6-4"></a><span class="w">    </span>--fasta<span class="w"> </span>reference.fa<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-6-5" name="__codelineno-6-5" href="#cli-dna-__codelineno-6-5"></a><span class="w">    </span>--filter-duplicates<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-6-6" name="__codelineno-6-6" href="#cli-dna-__codelineno-6-6"></a><span class="w">    </span>--min-mapq<span class="w"> </span><span class="m">30</span><span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-6-7" name="__codelineno-6-7" href="#cli-dna-__codelineno-6-7"></a><span class="w">    </span>--output-dir<span class="w"> </span>results/
+<div class="highlight"><pre><span></span><code><a id="__codelineno-7-1" name="__codelineno-7-1" href="#cli-dna-__codelineno-7-1"></a>gbcms<span class="w"> </span>dna<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-7-2" name="__codelineno-7-2" href="#cli-dna-__codelineno-7-2"></a><span class="w">    </span>--variants<span class="w"> </span>mutations.vcf<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-7-3" name="__codelineno-7-3" href="#cli-dna-__codelineno-7-3"></a><span class="w">    </span>--bam<span class="w"> </span>sample:sample.bam<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-7-4" name="__codelineno-7-4" href="#cli-dna-__codelineno-7-4"></a><span class="w">    </span>--fasta<span class="w"> </span>reference.fa<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-7-5" name="__codelineno-7-5" href="#cli-dna-__codelineno-7-5"></a><span class="w">    </span>--filter-duplicates<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-7-6" name="__codelineno-7-6" href="#cli-dna-__codelineno-7-6"></a><span class="w">    </span>--min-mapq<span class="w"> </span><span class="m">30</span><span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-7-7" name="__codelineno-7-7" href="#cli-dna-__codelineno-7-7"></a><span class="w">    </span>--output-dir<span class="w"> </span>results/
 </code></pre></div>
 </div>
 <div class="tabbed-block">
-<div class="highlight"><pre><span></span><code><a id="__codelineno-7-1" name="__codelineno-7-1" href="#cli-dna-__codelineno-7-1"></a>gbcms<span class="w"> </span>dna<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-7-2" name="__codelineno-7-2" href="#cli-dna-__codelineno-7-2"></a><span class="w">    </span>--variants<span class="w"> </span>mutations.maf<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-7-3" name="__codelineno-7-3" href="#cli-dna-__codelineno-7-3"></a><span class="w">    </span>--bam<span class="w"> </span>sample:sample.bam<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-7-4" name="__codelineno-7-4" href="#cli-dna-__codelineno-7-4"></a><span class="w">    </span>--fasta<span class="w"> </span>reference.fa<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-7-5" name="__codelineno-7-5" href="#cli-dna-__codelineno-7-5"></a><span class="w">    </span>--format<span class="w"> </span>maf<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-7-6" name="__codelineno-7-6" href="#cli-dna-__codelineno-7-6"></a><span class="w">    </span>--show-normalization<span class="w"> </span><span class="se">\ </span><span class="c1"># (1)!</span>
-<a id="__codelineno-7-7" name="__codelineno-7-7" href="#cli-dna-__codelineno-7-7"></a><span class="w">    </span>--output-dir<span class="w"> </span>results/
+<div class="highlight"><pre><span></span><code><a id="__codelineno-8-1" name="__codelineno-8-1" href="#cli-dna-__codelineno-8-1"></a>gbcms<span class="w"> </span>dna<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-8-2" name="__codelineno-8-2" href="#cli-dna-__codelineno-8-2"></a><span class="w">    </span>--variants<span class="w"> </span>mutations.maf<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-8-3" name="__codelineno-8-3" href="#cli-dna-__codelineno-8-3"></a><span class="w">    </span>--bam<span class="w"> </span>sample:sample.bam<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-8-4" name="__codelineno-8-4" href="#cli-dna-__codelineno-8-4"></a><span class="w">    </span>--fasta<span class="w"> </span>reference.fa<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-8-5" name="__codelineno-8-5" href="#cli-dna-__codelineno-8-5"></a><span class="w">    </span>--format<span class="w"> </span>maf<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-8-6" name="__codelineno-8-6" href="#cli-dna-__codelineno-8-6"></a><span class="w">    </span>--show-normalization<span class="w"> </span><span class="se">\ </span><span class="c1"># (1)!</span>
+<a id="__codelineno-8-7" name="__codelineno-8-7" href="#cli-dna-__codelineno-8-7"></a><span class="w">    </span>--output-dir<span class="w"> </span>results/
 </code></pre></div>
 <ol>
 <li><abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> output appends <code>norm_Start_Position</code>, <code>norm_End_Position</code>, <code>norm_Reference_Allele</code> and <code>norm_Tumor_Seq_Allele2</code> (after any <code>--column-prefix</code>) showing the left-aligned variant; <abbr title="Variant Call Format - Standard variant call file format">VCF</abbr> output carries <code>NORM_POS</code>, <code>NORM_REF</code> and <code>NORM_ALT</code> INFO fields.</li>
 </ol>
 </div>
 <div class="tabbed-block">
-<div class="highlight"><pre><span></span><code><a id="__codelineno-8-1" name="__codelineno-8-1" href="#cli-dna-__codelineno-8-1"></a>gbcms<span class="w"> </span>dna<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-8-2" name="__codelineno-8-2" href="#cli-dna-__codelineno-8-2"></a><span class="w">    </span>--variants<span class="w"> </span>mutations.vcf<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-8-3" name="__codelineno-8-3" href="#cli-dna-__codelineno-8-3"></a><span class="w">    </span>--bam<span class="w"> </span>sample:umi_deduped.bam<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-8-4" name="__codelineno-8-4" href="#cli-dna-__codelineno-8-4"></a><span class="w">    </span>--fasta<span class="w"> </span>reference.fa<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-8-5" name="__codelineno-8-5" href="#cli-dna-__codelineno-8-5"></a><span class="w">    </span>--umi-tag<span class="w"> </span>RX<span class="w"> </span><span class="se">\ </span><span class="c1"># (1)!</span>
-<a id="__codelineno-8-6" name="__codelineno-8-6" href="#cli-dna-__codelineno-8-6"></a><span class="w">    </span>--output-dir<span class="w"> </span>results/
+<div class="highlight"><pre><span></span><code><a id="__codelineno-9-1" name="__codelineno-9-1" href="#cli-dna-__codelineno-9-1"></a>gbcms<span class="w"> </span>dna<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-9-2" name="__codelineno-9-2" href="#cli-dna-__codelineno-9-2"></a><span class="w">    </span>--variants<span class="w"> </span>mutations.vcf<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-9-3" name="__codelineno-9-3" href="#cli-dna-__codelineno-9-3"></a><span class="w">    </span>--bam<span class="w"> </span>sample:umi_deduped.bam<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-9-4" name="__codelineno-9-4" href="#cli-dna-__codelineno-9-4"></a><span class="w">    </span>--fasta<span class="w"> </span>reference.fa<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-9-5" name="__codelineno-9-5" href="#cli-dna-__codelineno-9-5"></a><span class="w">    </span>--umi-tag<span class="w"> </span>RX<span class="w"> </span><span class="se">\ </span><span class="c1"># (1)!</span>
+<a id="__codelineno-9-6" name="__codelineno-9-6" href="#cli-dna-__codelineno-9-6"></a><span class="w">    </span>--output-dir<span class="w"> </span>results/
 </code></pre></div>
 <ol>
 <li>The <code>RX</code> tag is the standard SAM tag for <abbr title="Unique Molecular Identifier - Molecular barcode for deduplication">UMI</abbr> barcodes (fgbio, gencore).</li>
@@ -4430,6 +4478,23 @@ asserting splicing over the span outnumber confirmed ALT are flagged
 <p>See <a href="#reference-complex-indels">Complex Indels</a> for case studies and read-level examples.</p>
 <p><strong>Note on left-alignment shift (Fix 4):</strong> This fix was motivated by <abbr title="Burrows-Wheeler Aligner - Standard short-read DNA aligner (mem/aln)">BWA</abbr>'s indel left-alignment behaviour, where the variant anchor can sit several bases left of where the <abbr title="Compact Idiosyncratic Gapped Alignment Report - BAM alignment operation string">CIGAR</abbr> <code>D</code> op appears in reads. <abbr title="Spliced Transcripts Alignment to a Reference - RNA-seq aligner">STAR</abbr> does not left-align indels in the same way, so this scenario is less common in RNA BAMs — but it still applies when <abbr title="Spliced Transcripts Alignment to a Reference - RNA-seq aligner">STAR</abbr> places a <abbr title="Compact Idiosyncratic Gapped Alignment Report - BAM alignment operation string">CIGAR</abbr> <code>D</code> slightly offset from the annotated position, or when the input <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> was derived from a <abbr title="Burrows-Wheeler Aligner - Standard short-read DNA aligner (mem/aln)">BWA</abbr>-aligned DNA call set being counted against an RNA <abbr title="Binary Alignment Map - Compressed sequence alignment file format">BAM</abbr>.</p>
 </div>
+<h3 id="cli-rna-read-judgment">Read judgment<a class="headerlink" href="#cli-rna-read-judgment" title="Permanent link">¶</a></h3>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">Option</th>
+<th style="text-align: left;">Default</th>
+<th style="text-align: left;">Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;"><code>--read-judge</code></td>
+<td style="text-align: left;"><code>rules</code></td>
+<td style="text-align: left;">Only <code>rules</code>, the size-specific read rules, in RNA mode. The sequence judge (<code>sequence</code>, opt-in for DNA, see <a href="#cli-dna-read-judgment">the DNA command</a>) does not judge spliced reads yet, so <code>gbcms rna --read-judge sequence</code> exits with an error; RNA under the judge is <a href="https://github.com/msk-access/gbcms/issues/333">#333</a>.</td>
+</tr>
+</tbody>
+</table>
 <hr>
 <h2 id="cli-rna-qc-summary-in-the-run-log">QC Summary in the Run Log<a class="headerlink" href="#cli-rna-qc-summary-in-the-run-log" title="Permanent link">¶</a></h2>
 <p>The run log ends with a <strong>QC summary</strong>: which QC flags fired, on how many rows, which
@@ -6028,6 +6093,11 @@ what the old cache file was (96–125 MB) for about 0.4 s more decoding.</p>
 <td style="text-align: left;"><code>--alignment_backend</code></td>
 <td style="text-align: left;"><code>pairhmm</code></td>
 <td style="text-align: left;">Phase 3 alignment backend: <code>pairhmm</code> (WFA2 + <abbr title="Pair Hidden Markov Model - Probabilistic alignment using base quality scores">PairHMM</abbr>, default) or <code>sw</code> (Smith-Waterman). See <a href="#cli-dna-alignment-backend"><abbr title="Command Line Interface - Terminal-based program interface">CLI</abbr> Reference</a>.</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>--read_judge</code></td>
+<td style="text-align: left;"><code>rules</code></td>
+<td style="text-align: left;"><strong>DNA</strong> read judgment, passed as <code>--read-judge</code>: <code>rules</code> (the size-specific rules, the default) or <code>sequence</code> (the sequence judge, opt-in; <code>haplotype</code> is its former name). The RNA module does not pass it: the sequence judge refuses RNA mode. See <a href="#cli-dna-read-judgment"><abbr title="Command Line Interface - Terminal-based program interface">CLI</abbr> Reference</a>.</td>
 </tr>
 <tr>
 <td style="text-align: left;"><code>--llr_threshold</code></td>
@@ -9661,6 +9731,18 @@ their base name in the run log. Examples: <code>ZERO_ALT</code>,
 <td style="text-align: left;">A minority haplotype carrying it (a germline <abbr title="Single Nucleotide Polymorphism - Single base substitution">SNP</abbr> after a tumour's loss, a subclone) would count ALT where its reads read as the ALT; weigh low <code>alt_count</code> here with that in mind. The counts are unchanged</td>
 </tr>
 <tr>
+<td style="text-align: left;"><code>MNV_SHARED(chrom:pos:REF&gt;ALT:n/m)</code></td>
+<td style="text-align: left;"><code>--read-judge sequence</code></td>
+<td style="text-align: left;">At a substitution (an SNV) with a co-listed MNV that holds its change (the same length over its bases, reading its ALT where it changes them): <code>n</code> of the row's <code>m</code> ALT reads spell that MNV whole (the MNV's 1-based POS). The judge counts the MNV's carriers as the SNV's ALT reads (RJ-28), so the two rows share them. One flag per such MNV</td>
+<td style="text-align: left;">The SNV's <code>alt_count</code> includes the MNV's carriers: one molecule can sit in both rows' counts and <abbr title="Mutant Fragment Size Distribution - Insert-size analysis for REF vs ALT fragments">mFSD</abbr> size distributions (two KS tests on one event in the BH family). The counts are unchanged</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>UNEXPLAINED_READS(n/m)</code></td>
+<td style="text-align: left;"><code>--read-judge sequence</code></td>
+<td style="text-align: left;"><code>n</code> of the row's <code>m</code> depth reads fit none of its candidate sequences (REF, the ALT, the other alleles at its site, each with every context the judge weighs) within ten confident mismatches. The fit rule makes such a read depth only where its aligner places it elsewhere at least as well (XS ≥ AS, or <abbr title="Mapping Quality - Confidence score for read alignment">MAPQ</abbr> 0 with no XS); a read the aligner places here alone is judged by its bases at the row, as any other</td>
+<td style="text-align: left;">Weigh the row's counts with that in mind where <code>n</code> is a large share of <code>m</code>: foreign reads the aligner places uniquely (a paralog's, reads at a homozygous deletion in a repeat) can count. The counts are unchanged</td>
+</tr>
+<tr>
 <td style="text-align: left;"><code>SW_FALLBACK(n)</code></td>
 <td style="text-align: left;"><abbr title="Pair Hidden Markov Model - Probabilistic alignment using base quality scores">PairHMM</abbr> backend</td>
 <td style="text-align: left;"><code>n</code> depth reads could not be evaluated by the haplotype matrix (the reference context is missing or does not contain them): scored by the Smith-Waterman fallback where it can run, else left NEITHER (one WARN per variant names why)</td>
@@ -10139,6 +10221,14 @@ an informational flag). The definitions are above; the tests keep the two in ste
 <tr>
 <td style="text-align: left;"><code>POSSIBLE_MINORITY_HAPLOTYPE</code></td>
 <td style="text-align: left;">A change on a minority of nearby reads may be counted as ALT: weigh a low alt_count with that in mind (the counts are unchanged)</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>MNV_SHARED</code></td>
+<td style="text-align: left;">Under the sequence judge the SNV's ALT reads include a co-listed MNV's carriers, so one molecule counts in both rows: read the two rows together (the counts are unchanged)</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>UNEXPLAINED_READS</code></td>
+<td style="text-align: left;">Under the sequence judge some depth reads fit none of the row's candidate sequences: where they are a large share, foreign reads may count (the counts are unchanged)</td>
 </tr>
 <tr>
 <td style="text-align: left;"><code>SW_FALLBACK</code></td>
@@ -14254,6 +14344,13 @@ it shows in review instead of slipping in with an unrelated fix.</p>
   variant) counts toward depth only.</li>
 <li><strong>One oracle.</strong> For pure indels, the read census (<code>tests/census.py</code>) judges each
   read by its bases alone; the engine's pure-indel counts are checked against it.</li>
+<li><strong>The sequence judge resolves sequence, not haplotypes</strong> (<code>--read-judge sequence</code>,
+  #304; operator 2026-10-25). It asks which local sequence a read's own bases spell at
+  the row: REF, the row's ALT, or another allele at its site (the row's <em>candidate
+  sequences</em>). Contexts (other listed rows, the guard's recurring background, alleles the
+  reads spell away from the site) only explain the read's other differences, so they
+  never pass for the row's allele. No linkage, no phasing: a variant linked to the row
+  elsewhere never credits a read.</li>
 </ul>
 <h2 id="reference-read-judgment-decision-register">Decision register<a class="headerlink" href="#reference-read-judgment-decision-register" title="Permanent link">¶</a></h2>
 <h3 id="reference-read-judgment-decided">Decided<a class="headerlink" href="#reference-read-judgment-decided" title="Permanent link">¶</a></h3>
@@ -14428,6 +14525,18 @@ it shows in review instead of slipping in with an unrelated fix.</p>
 <td style="text-align: left;">A pure indel in a repeat is defined by its length over the tract, so a read must hold the tract and read past it, and its own indel is placed where its bases fit, not where the aligner wrote it.</td>
 <td style="text-align: left;">A pure insertion or deletion prepared against the reference is judged by its reads' bases (the exact-carrier rule), the <abbr title="Compact Idiosyncratic Gapped Alignment Report - BAM alignment operation string">CIGAR</abbr> checks only where the rule cannot judge it. Its windows are its tract, where REF and ALT differ over every placement (the anchor no part of it), grown through the repeat its change lengthens or shortens (on the allele holding its bases: the ALT for an insertion, REF for a deletion; other lengths of that repeat are other alleles a read must span it to tell apart), with one base each side; a repeat on the other allele only is beside the change (operator, 2026-10-16). A read holds the shorter allele's window and reads on through the longer one's, so one ending inside the tract is depth only (RJ-1) and one ending a base past it decides; a read whose first base is its anchoring flank but unread or not the reference's is placed from its other flank (RJ-3). The read's own indel inside the windows, or the nearest within 64 bases, is placed by its bases, from the windows' first base to its end, next splice or next indel, where they fit the reference with it best (the fewest mismatches over the same reach, one at most): inside the discrimination window (its tract with a base each side) a change of the ALT's length spelling the ALT (one error aside) is the ALT, the windows anchored where its bases put them, never REF; any other is another allele (partial evidence); placed only outside, it is a separate event, applied to both windows (RJ-7, RJ-8, RJ-21, RJ-22). An insert with no readable base sits where written (RJ-20); inside the window, of the ALT's length, it is the ALT. A read whose readings fit both alleles, or miss both alike, is read on past the windows to its next indel; one placed from its reading flank that fits the ALT though its bases place no length change (it writes none, or one they place nowhere) is read on too, and stays ALT only where its further bases fit the ALT better than REF. Where masks leave no base telling the alleles apart and both windows read on to one that does, a read short of it is held as far as before and counts where its own bases fit one allele alone and exactly (a clean REF read showing the reference's base where the masks take either). A fit resting on fewer bases than tell the alleles from those beside them is confirmed past the windows, where another allele's bases, shifted by its other length, show (one base past the tract may be another allele's extra base, the flank's twin): for the ALT where the read's own bases place no change or another one, a pure indel's REF where the read writes none, and either allele's fit on a tolerated mismatch, the read's bases from its first mismatch (or the window's end) must not fit the allele shifted by up to 8 bases better, by two confident bases, than as they stand where two or more mismatch: a shifted read is another allele, while a phased change beside the event (a DNP on every carrier) mismatches at its own bases under any shift and keeps the call. A deletion whose every base between the flanks is masked is ALT where its confident flanks lie the ALT's length apart (RJ-15). A change the REF molecules carry inside a deletion's deleted bases, single or several, is background on REF (RJ-23); the given allele's own bases are never masked. A spliced read is judged on its spliced reference (RJ-19), spliced inside the windows or past them within their reading on, so it reads on along its mRNA (with <abbr title="Base Alignment Quality - Heuristic quality downgrade near indels and splice junctions">BAQ</abbr> masking the bases at its junction, the next exon's bases decide), and read from the left where the exon edge cutting the flank is its own junction; an exon end where the event starts leaves the left flank whole (RJ-23); an unspliced read starting at an exon start that cuts the left flank, or within the five bases of overhang an aligner writes into the intron as mismatches, reads the windows up to that edge, as a spliced read does (on its mRNA the bases before it are the previous exon's, so a run crossing the junction is read from inside), while a pre-mRNA read through the intron reads its bases as they are. Soft-clipped bases are read (RJ-13). A read whose insert is a shorter slice of the ALT's, the reference after it, shows another length: another allele, not a truncated ALT (the <abbr title="Compact Idiosyncratic Gapped Alignment Report - BAM alignment operation string">CIGAR</abbr> path's identity band stays only where the rule cannot judge; operator, 2026-10-16). Mates that disagree resolve by quality, as for every bases-judged call (none is structural). A call whose held bases are all below <code>--min-baseq</code> takes the quality of the bases it read. Amended 2026-10-20 (#294, operator; for every event the rule judges, complex ones too): where the guard's masks hide every base telling the alleles apart, prep fetches on until the windows, every base the guard could mask masked, read on to one from either flank, so the rule judges the variant instead of the <abbr title="Compact Idiosyncratic Gapped Alignment Report - BAM alignment operation string">CIGAR</abbr> checks; a read short of that base is held as above. A change the REF fragments show as their most common change there (background, or on more than 1% of them) that gives the reads the ALT's own base, shifted onto them where the aligner wrote no length change (the base an ALT read placed from the event's far flank shows past the shorter allele's tract; a germline <abbr title="Single Nucleotide Polymorphism - Single base substitution">SNP</abbr> may give the same base), is told by the fragments placed apart from the event: those reading it whose bases, where the reference and that shifted ALT differ past it (aligned with it, no length change between), show the reference's more often than the shifted ALT's, overlapping 300 bases each side of the variant's REF span (or its read window, where wider). Where three or more of them carry it, and 3% of them (above the errors at one base: random ones, and most systematic ones), a haplotype holds it, read as the ALT over a short read: masked as background, at whatever share of the REF fragments; unless the carriers' pair orientations (read 1 forward and read 2 reverse, or the reverse), against the balance of all the reads placed apart, are too one-sided for a haplotype's (a binomial chance under 0.1%, where each orientation holds a fifth of the reads placed apart): a haplotype's molecules are read in both orientations, an oxoG or FFPE artifact sits in one (operator, 2026-10-21; a library read in one orientation, as an amplicon's, weighs none; eight carriers all one way are a haplotype's chance, twelve are not). Where the change is left unmasked though two or more of them carry it, over 1%, <code>gbcms_diagnostic</code> names it, POSSIBLE_MINORITY_HAPLOTYPE (the counts stand; one carrier is an error's). Otherwise, where 15 or more read it, a background change there is the ALT's own base on reads placed through the event: not masked, and spelling no other allele. With fewer, it is masked where it is background. An error both readings share decides nothing: a read whose bases place no length change and whose two readings miss exactly the same confident bases is read on with those bases unread, never counted for the allele that tolerates the error for the length the aligner wrote. Read on past the windows, where the alleles differ at most bases (the other shifted by its length), one confident error past them the other allele's reading does not share is forgiven where that reading misses three or more, the read writes that allele's length (as within the windows), and the error is a one-off: recurring as RJ-25 counts a tolerated substitution (on two fragments and 5% of those fitting that allele) it is another allele's base, never forgiven (operator, 2026-10-21). Within the windows only a shared error is tolerated (2026-10-15): there one base may be all that tells another allele of the same length. A read the aligner placed a unit or a copy off is read whole: one whose alignment is not clean (another event inside the discrimination window, or one no placement fits, RJ-7; or, placing no length change, two or more confident changes from the reference within 300 bases of the variant's REF span) and not spliced is placed ungapped on each allele, every readable base of it, over 300 bases past either end of where the change can be placed (at least the prepared reference; prep holds it apart from the reference the windows read), the guard's masks taking their bases as in the windows. An allele fits where its windows read exactly and at most one confident base past them mismatches; the read is that allele where it fits so and both the other allele (its event's bases open, weighed wherever the read holds as many of its bases as the shorter allele's windows, from either flank) and every other allele at the locus (RJ-25, each taking the masks where its base is one they take) miss by more. A read fitting the shorter allele's whole windows exactly and the longer allele only from inside its event is depth only (RJ-23); otherwise, and where its own bases place its indel outside the windows (RJ-8) or the ALT's change inside them, or the windows judge its change as written, the read keeps its call. A call decided past the windows (where the masks made both windows read on, or a read was read on past readings that tell nothing) rests on bases read where the aligner wrote the read, and in a repeat the other allele may hold them a copy over: it stands only where the other allele, the whole read placed ungapped anywhere on it over the same reach as the reference spells it, misses more confident bases than the called allele does (no mask is laid there: a base the guard masks beside the event may be the other allele's own shifted onto the reads written through it, as where a run meets another, and would let that allele fit them; HG002's 16-bp TC insertion at chr11:5794390, operator, 2026-10-22); where the other allele fits it with at most one miss and no more than the called one, the read is depth only (operator, 2026-10-22: HG002's 89-bp duplication on chr21, whose reads written through the copy fit REF where written and the insertion exactly a copy over, 2 of them counted REF). Every bin's fetch holds the reads the guard reads (its guard window). This replaces the decision of 2026-10-17 (#294) that a mask leaving no telling base is not applied: that counted a germline <abbr title="Single Nucleotide Polymorphism - Single base substitution">SNP</abbr>'s haplotype as the insertion (REJ-20261020-001). Named limits: the windows anchor on the exact repeat's edge (#290), so in an imperfect repeat (units differing at single bases) a read lying inside it, or read from a flank the repeat runs on past, is placed by the aligner, not by its bases, where the windows decide it (decided past them, it is placed anywhere as above): a carrier written a unit off fits REF as written, a germline <abbr title="Single Nucleotide Polymorphism - Single base substitution">SNP</abbr>'s read can read as one more unit, and a read whose bases, read whole, reach no unique sequence on either side keeps its aligned call; where 15 or more fragments placed apart read it, a haplotype carrying the change that shows on fewer than three of them, or under 3%, is taken for errors, and its reads, reading as the ALT over a short read, count ALT (with 30 to 45 of them, an <abbr title="Single Nucleotide Polymorphism - Single base substitution">SNP</abbr> haplotype on 5% to 10% of the molecules in about a third of runs and on 15% in a tenth; at depth, any under 3% of the molecules, its reads adding to <abbr title="Alternate Depth - Reads supporting the alternate allele">AD</abbr> in proportion); these rows are named, POSSIBLE_MINORITY_HAPLOTYPE; a systematic error giving that base on 3% of the reads placed apart in both orientations, or in one orientation on fewer carriers than tell it from a haplotype (about ten), masks it, and the ALT's reads short of the next telling base are depth only; an ALT molecule carrying a compensating indel just past the windows, written as mismatches and with the windows' telling base unread, reads as REF with one error there and counts REF. Amends RJ-1, RJ-3, RJ-7, RJ-8, RJ-15, RJ-20, RJ-21, RJ-22 and RJ-23; builds RJ-13 for pure indels.</td>
 <td style="text-align: left;">#278, operator 2026-10-15 (D1, D5, D6, D7, D8; groups B and C), 2026-10-16 (growth, D2); #294, operator 2026-10-20</td>
+</tr>
+<tr>
+<td style="text-align: left;">RJ-28</td>
+<td style="text-align: left;">A read's bases at a substitution's site show its change whatever else its molecule carries beside it, so a read carrying a longer allele that holds the change carries the change too; crediting it to one listed row alone would make a row's count depend on which rows were listed, not on the read's bases.</td>
+<td style="text-align: left;">Under the sequence judge (<code>--read-judge sequence</code>), a read whose bases carry a substitution row's change at its site is that row's ALT, whatever else is listed: a candidate sequence holding the row's change there (an MNV listed beside its component SNV, or an allele the reads spell over a window) is the row's ALT, so a read carrying the MNV counts at both rows. At the MNV's row a read carrying only one of its components is another allele (partial evidence, RJ-25). The SNV's row names, per such MNV, how many of its ALT reads spell the MNV whole: <code>MNV_SHARED(chrom:pos:REF&gt;ALT:n/m)</code> in <code>gbcms_diagnostic</code>, the overlap shown without changing <abbr title="Alternate Depth - Reads supporting the alternate allele">AD</abbr> or adding a column.</td>
+<td style="text-align: left;">#304, operator 2026-10-25 (phase D: O5, with the O3 diagnostic)</td>
+</tr>
+<tr>
+<td style="text-align: left;">RJ-29</td>
+<td style="text-align: left;">A read can fit none of the candidate sequences because it carries structure the given rows do not describe (a long clip, a large indel), not because it comes from elsewhere, so a misfit alone does not make it foreign; only the aligner's own doubt about its placement marks a read that may belong to another locus.</td>
+<td style="text-align: left;">Under the sequence judge, a read whose best score over every one of the row's candidate sequences (REF, the ALT, the other alleles at its site, each with every context) falls below ten confident mismatches fits none of them. It is depth only where its aligner also doubts its placement (XS at least AS; <abbr title="Mapping Quality - Confidence score for read alignment">MAPQ</abbr> 0 where no XS is written); a read the aligner places here alone is judged by its bases at the row, as any other. The row names how many of its depth reads fit no candidate sequence: <code>UNEXPLAINED_READS(n/m)</code> in <code>gbcms_diagnostic</code>, so a row that may count foreign reads (a paralog's, reads placed at a homozygous deletion in a repeat) is visible without a new column.</td>
+<td style="text-align: left;">#304, operator 2026-10-25 (phase B: the fit rule, xs, with its diagnostic)</td>
 </tr>
 </tbody>
 </table>
@@ -14717,6 +14826,35 @@ Against the merged build: HG002 10+ bp insertions in band 334 -&gt; 343 (mean
 |<abbr title="Variant Allele Frequency - Fraction of reads supporting the variant allele">VAF</abbr> - 0.5| 0.157 -&gt; 0.153), short insertions 552 -&gt; 555, deletions unchanged. On the
 gate panel, 7 insertion rows change and no oracle-ALT read is lost; WES, normals and
 ACCESS, and FORTE are unchanged.</p>
+<p>Evidence behind RJ-29 (2026-10-25), #304 phase B, HG002 truth and aggregate patient
+arms. The reads an absolute budget sends to depth are mostly structural, not noisy: 30-99%
+carry a soft clip of 20 or more bases (1-12% of kept reads do), on the panel 65% a <abbr title="Compact Idiosyncratic Gapped Alignment Report - BAM alignment operation string">CIGAR</abbr>
+indel of 10 or more, only 0-6% are paralog-like (XS at least AS), and their qualities
+predict about 0.06 errors per read at every misfit level. Oracle agreement, panel / gate
+subset: the budget applied exactly .9262 / .9624, no budget .9323 / .9637, a budget scaled
+by read length .9313 / .9636, xs .9323 / .9637 (xs equals no budget on every patient arm
+within 0.01 points, and drops chr20's paralog-like REF reads). The exact budget loses 1,114
+true ALT and 713 true REF calls on the panel to avoid 18 wrong ALT and 261 wrong REF. The
+residual risk is foreign reads the aligner places uniquely at homozygous deletions in
+repeats (HG002 chr17 3.6 kb: <abbr title="Variant Allele Frequency - Fraction of reads supporting the variant allele">VAF</abbr> 0.59 under xs, 0.97 under the exact budget);
+UNEXPLAINED_READS flags such rows. Tools with an absolute test (GATK, Paragraph,
+Graphtyper) score against haplotypes assembled from the reads, which explain each read's
+structure; the given rows here do not.</p>
+<p>Evidence behind RJ-28 (2026-10-25), #304 phase D, on the 6.6.0 gate set (aggregates).
+45 component-SNV rows sat beside 42 MNV rows; in 31 of the 45 the MNV accounts for at least
+90% of the SNV's ALT reads. Within sign-out: develop 37 of 45 (37 of 38 informative), the
+judge counting the MNV's carriers as another allele 6 of 45; SNV median <abbr title="Variant Allele Frequency - Fraction of reads supporting the variant allele">VAF</abbr> 0.148 against
+0.000; the multi-allelic-same-start stratum 0.839 against 0.613. On a synthetic DNP the
+exclusive reading credited the same reads 20, 6 or 20 times depending only on which rows
+were listed: it zeroed the SNV only when the MNV was listed alone, not when it was unlisted
+and not when both components were listed. Tools that count per base give the SNV's row the
+read: GetBaseCounts 1.2.5 (the sign-out and FORTE's fill-out), bam-readcount, mpileup,
+LoFreq, Strelka2, DeepVariant, and GATK HaplotypeCaller with given alleles. Exclusive tools
+(VarDict, FreeBayes, Mutect2, Lancet2) get there by emitting one record, which a genotyper
+of given rows cannot do; gnomAD keeps component SNV counts and lists MNVs separately. A
+molecule carrying the MNV enters both rows' <abbr title="Mutant Fragment Size Distribution - Insert-size analysis for REF vs ALT fragments">mFSD</abbr> size distributions (two KS tests on one
+event in the BH family); MNV_SHARED marks those rows. FORTE lists no MNV rows, and no truth
+set lists an MNV with its components.</p>
 <p>Evidence behind the #278 decision of 2026-10-15
 (<a href="https://github.com/msk-access/gbcms/issues/278#issuecomment-6195173189">comment</a>), a prototype on every
 <abbr title="Multi-Nucleotide Polymorphism - Multiple adjacent base substitutions">MNP</abbr>, delins and pure-indel row of the 6.6.0 gate panel (sliced locally); these are the prototype's
@@ -20048,6 +20186,44 @@ count-affecting merge since the previous release, run on the changed rows only.<
 <p>The format is based on <a href="https://keepachangelog.com/en/1.0.0/">Keep a Changelog</a>,
 and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semantic Versioning</a>.</p>
 <h2 id="development-changelog-unreleased">[Unreleased]<a class="headerlink" href="#development-changelog-unreleased" title="Permanent link">¶</a></h2>
+<h3 id="development-changelog-added-the-sequence-judge-opt-in-read-judge-sequence-304">Added — the sequence judge, opt-in (<code>--read-judge sequence</code>, #304)<a class="headerlink" href="#development-changelog-added-the-sequence-judge-opt-in-read-judge-sequence-304" title="Permanent link">¶</a></h3>
+<ul>
+<li><strong>A second read judgment for small-variant rows, behind a flag.</strong> With
+  <code>--read-judge sequence</code>, each admitted read is scored whole, every readable base,
+  against the row's candidate sequences: REF, the row's ALT and the other alleles at its
+  site (listed rows over its span, and alleles the reads themselves write recurringly and
+  tell apart), each with every context of the other listed rows within a read's reach and
+  of the recurring background the carrier guard finds. Costs are affine (a confident
+  mismatch 4, a gap 6 plus its length); a base below <code>--min-baseq</code>, or <code>N</code>, costs nothing.
+  A read counts ALT or REF only where its best candidate with that allele beats every
+  other by one confident base; another allele winning by as much is partial evidence;
+  anything closer is depth only. Contexts only explain a read's other differences: the
+  judge does no linkage and no phasing, so a variant linked to the row elsewhere on the
+  molecule never credits a read. Design and every measurement round:
+  <code>docs/proposals/sequence-judge.md</code>; its rules RJ-28 and RJ-29 are in
+  <code>docs/reference/read-judgment.md</code>.</li>
+<li><strong>Opt-in: the default is unchanged.</strong> Without the flag (<code>--read-judge rules</code>) the
+  size-specific rules count the reads, with output unchanged. The Nextflow <code>read_judge</code>
+  parameter (DNA only) defaults to <code>rules</code>. <code>haplotype</code>, the judge's name during
+  development, is taken as <code>sequence</code> with a warning. Making the judge the default is
+  6.8.0's work (#331).</li>
+<li><strong>Two diagnostics, under the judge only</strong> (no new column; they change no count):
+  <code>MNV_SHARED(chrom:pos:REF&gt;ALT:n/m)</code> at an SNV whose change a co-listed MNV holds (RJ-28:
+  the MNV's carriers count at both rows, so one molecule can sit in both rows' counts and
+  <abbr title="Mutant Fragment Size Distribution - Insert-size analysis for REF vs ALT fragments">mFSD</abbr> distributions), and <code>UNEXPLAINED_READS(n/m)</code>, the row's depth reads that fit none of
+  its candidate sequences within ten confident mismatches (RJ-29: such a read is depth
+  only where its aligner also doubts its placement, XS at least AS).</li>
+<li><strong>Named limits.</strong></li>
+<li><strong>Spliced reads are refused.</strong> <code>gbcms rna --read-judge sequence</code> exits with an error,
+    and the engine refuses RNA mode under the judge; in a DNA run, a read whose <abbr title="Compact Idiosyncratic Gapped Alignment Report - BAM alignment operation string">CIGAR</abbr>
+    splices (an <code>N</code> op) is depth only. RNA under the judge is #333.</li>
+<li><strong>The Phase 3 options do not apply</strong> to a row's counts under the judge
+    (<code>--alignment-backend</code> and the <abbr title="Pair Hidden Markov Model - Probabilistic alignment using base quality scores">PairHMM</abbr> probabilities): it has its own scorer, and it
+    reads each row's candidate sequences from the reference <abbr title="FASTA format - Reference genome sequence file">FASTA</abbr>.</li>
+<li><strong>It is slower than the rules;</strong> the speed work is #335.</li>
+<li><strong><code>GBCMS_JUDGE_*</code> environment variables are measurement switches,</strong> not options:
+    they serve the measurement rounds and are removed as their questions are decided.</li>
+</ul>
 <h3 id="development-changelog-fixed-an-unchecked-sample-no-longer-reads-as-a-clean-one-227">Fixed — an unchecked sample no longer reads as a clean one (#227)<a class="headerlink" href="#development-changelog-fixed-an-unchecked-sample-no-longer-reads-as-a-clean-one-227" title="Permanent link">¶</a></h3>
 <ul>
 <li><strong>The QC summary names a sample whose output could not be read.</strong> When one sample's

@@ -423,6 +423,19 @@
       
     </span>
 </a>
+<nav aria-label="Alignment Backend" class="md-nav">
+<ul class="md-nav__list">
+<li class="md-nav__item">
+<a class="md-nav__link" href="#read-judgment">
+<span class="md-ellipsis">
+      
+        Read judgment
+      
+    </span>
+</a>
+</li>
+</ul>
+</nav>
 </li>
 <li class="md-nav__item">
 <a class="md-nav__link" href="#qc-summary-in-the-run-log">
@@ -1142,6 +1155,19 @@
       
     </span>
 </a>
+<nav aria-label="Alignment Backend" class="md-nav">
+<ul class="md-nav__list">
+<li class="md-nav__item">
+<a class="md-nav__link" href="#read-judgment">
+<span class="md-ellipsis">
+      
+        Read judgment
+      
+    </span>
+</a>
+</li>
+</ul>
+</nav>
 </li>
 <li class="md-nav__item">
 <a class="md-nav__link" href="#qc-summary-in-the-run-log">
@@ -1788,6 +1814,23 @@ asserting splicing over the span outnumber confirmed ALT are flagged
 <p>See <a href="../../reference/complex-indels/">Complex Indels</a> for case studies and read-level examples.</p>
 <p><strong>Note on left-alignment shift (Fix 4):</strong> This fix was motivated by <abbr title="Burrows-Wheeler Aligner - Standard short-read DNA aligner (mem/aln)">BWA</abbr>'s indel left-alignment behaviour, where the variant anchor can sit several bases left of where the <abbr title="Compact Idiosyncratic Gapped Alignment Report - BAM alignment operation string">CIGAR</abbr> <code>D</code> op appears in reads. <abbr title="Spliced Transcripts Alignment to a Reference - RNA-seq aligner">STAR</abbr> does not left-align indels in the same way, so this scenario is less common in RNA BAMs — but it still applies when <abbr title="Spliced Transcripts Alignment to a Reference - RNA-seq aligner">STAR</abbr> places a <abbr title="Compact Idiosyncratic Gapped Alignment Report - BAM alignment operation string">CIGAR</abbr> <code>D</code> slightly offset from the annotated position, or when the input <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> was derived from a <abbr title="Burrows-Wheeler Aligner - Standard short-read DNA aligner (mem/aln)">BWA</abbr>-aligned DNA call set being counted against an RNA <abbr title="Binary Alignment Map - Compressed sequence alignment file format">BAM</abbr>.</p>
 </div>
+<h3 id="read-judgment">Read judgment<a class="headerlink" href="#read-judgment" title="Permanent link">¶</a></h3>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">Option</th>
+<th style="text-align: left;">Default</th>
+<th style="text-align: left;">Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;"><code>--read-judge</code></td>
+<td style="text-align: left;"><code>rules</code></td>
+<td style="text-align: left;">Only <code>rules</code>, the size-specific read rules, in RNA mode. The sequence judge (<code>sequence</code>, opt-in for DNA, see <a href="../dna/#read-judgment">the DNA command</a>) does not judge spliced reads yet, so <code>gbcms rna --read-judge sequence</code> exits with an error; RNA under the judge is <a href="https://github.com/msk-access/gbcms/issues/333">#333</a>.</td>
+</tr>
+</tbody>
+</table>
 <hr>
 <h2 id="qc-summary-in-the-run-log">QC Summary in the Run Log<a class="headerlink" href="#qc-summary-in-the-run-log" title="Permanent link">¶</a></h2>
 <p>The run log ends with a <strong>QC summary</strong>: which QC flags fired, on how many rows, which

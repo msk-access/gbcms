@@ -2587,6 +2587,11 @@ what the old cache file was (96–125 MB) for about 0.4 s more decoding.</p>
 <td style="text-align: left;">Phase 3 alignment backend: <code>pairhmm</code> (WFA2 + <abbr title="Pair Hidden Markov Model - Probabilistic alignment using base quality scores">PairHMM</abbr>, default) or <code>sw</code> (Smith-Waterman). See <a href="../../cli/dna/#alignment-backend"><abbr title="Command Line Interface - Terminal-based program interface">CLI</abbr> Reference</a>.</td>
 </tr>
 <tr>
+<td style="text-align: left;"><code>--read_judge</code></td>
+<td style="text-align: left;"><code>rules</code></td>
+<td style="text-align: left;"><strong>DNA</strong> read judgment, passed as <code>--read-judge</code>: <code>rules</code> (the size-specific rules, the default) or <code>sequence</code> (the sequence judge, opt-in; <code>haplotype</code> is its former name). The RNA module does not pass it: the sequence judge refuses RNA mode. See <a href="../../cli/dna/#read-judgment"><abbr title="Command Line Interface - Terminal-based program interface">CLI</abbr> Reference</a>.</td>
+</tr>
+<tr>
 <td style="text-align: left;"><code>--llr_threshold</code></td>
 <td style="text-align: left;"><code>2.3</code></td>
 <td style="text-align: left;"><abbr title="Pair Hidden Markov Model - Probabilistic alignment using base quality scores">PairHMM</abbr> log-likelihood ratio threshold for confident calls</td>

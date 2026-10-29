@@ -1261,6 +1261,18 @@ their base name in the run log. Examples: <code>ZERO_ALT</code>,
 <td style="text-align: left;">A minority haplotype carrying it (a germline <abbr title="Single Nucleotide Polymorphism - Single base substitution">SNP</abbr> after a tumour's loss, a subclone) would count ALT where its reads read as the ALT; weigh low <code>alt_count</code> here with that in mind. The counts are unchanged</td>
 </tr>
 <tr>
+<td style="text-align: left;"><code>MNV_SHARED(chrom:pos:REF&gt;ALT:n/m)</code></td>
+<td style="text-align: left;"><code>--read-judge sequence</code></td>
+<td style="text-align: left;">At a substitution (an SNV) with a co-listed MNV that holds its change (the same length over its bases, reading its ALT where it changes them): <code>n</code> of the row's <code>m</code> ALT reads spell that MNV whole (the MNV's 1-based POS). The judge counts the MNV's carriers as the SNV's ALT reads (RJ-28), so the two rows share them. One flag per such MNV</td>
+<td style="text-align: left;">The SNV's <code>alt_count</code> includes the MNV's carriers: one molecule can sit in both rows' counts and <abbr title="Mutant Fragment Size Distribution - Insert-size analysis for REF vs ALT fragments">mFSD</abbr> size distributions (two KS tests on one event in the BH family). The counts are unchanged</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>UNEXPLAINED_READS(n/m)</code></td>
+<td style="text-align: left;"><code>--read-judge sequence</code></td>
+<td style="text-align: left;"><code>n</code> of the row's <code>m</code> depth reads fit none of its candidate sequences (REF, the ALT, the other alleles at its site, each with every context the judge weighs) within ten confident mismatches. The fit rule makes such a read depth only where its aligner places it elsewhere at least as well (XS ≥ AS, or <abbr title="Mapping Quality - Confidence score for read alignment">MAPQ</abbr> 0 with no XS); a read the aligner places here alone is judged by its bases at the row, as any other</td>
+<td style="text-align: left;">Weigh the row's counts with that in mind where <code>n</code> is a large share of <code>m</code>: foreign reads the aligner places uniquely (a paralog's, reads at a homozygous deletion in a repeat) can count. The counts are unchanged</td>
+</tr>
+<tr>
 <td style="text-align: left;"><code>SW_FALLBACK(n)</code></td>
 <td style="text-align: left;"><abbr title="Pair Hidden Markov Model - Probabilistic alignment using base quality scores">PairHMM</abbr> backend</td>
 <td style="text-align: left;"><code>n</code> depth reads could not be evaluated by the haplotype matrix (the reference context is missing or does not contain them): scored by the Smith-Waterman fallback where it can run, else left NEITHER (one WARN per variant names why)</td>
@@ -1738,6 +1750,14 @@ an informational flag). The definitions are above; the tests keep the two in ste
 <tr>
 <td style="text-align: left;"><code>POSSIBLE_MINORITY_HAPLOTYPE</code></td>
 <td style="text-align: left;">A change on a minority of nearby reads may be counted as ALT: weigh a low alt_count with that in mind (the counts are unchanged)</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>MNV_SHARED</code></td>
+<td style="text-align: left;">Under the sequence judge the SNV's ALT reads include a co-listed MNV's carriers, so one molecule counts in both rows: read the two rows together (the counts are unchanged)</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>UNEXPLAINED_READS</code></td>
+<td style="text-align: left;">Under the sequence judge some depth reads fit none of the row's candidate sequences: where they are a large share, foreign reads may count (the counts are unchanged)</td>
 </tr>
 <tr>
 <td style="text-align: left;"><code>SW_FALLBACK</code></td>

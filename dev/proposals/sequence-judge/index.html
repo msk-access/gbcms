@@ -1,0 +1,2478 @@
+<!DOCTYPE html><html lang="en" class="no-js"><head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="High-performance variant counting from BAM files">
+      
+      
+        <meta name="author" content="MSK-ACCESS">
+      
+      
+        <link rel="canonical" href="https://msk-access.github.io/gbcms/dev/proposals/sequence-judge/">
+      
+      
+      
+      
+        
+      
+      
+      <link rel="icon" href="../../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.8.0">
+    
+    
+      
+        <title>Proposal: the sequence judge (package 2, #304) - gbcms</title>
+      
+    
+    
+      <link rel="stylesheet" href="../../assets/stylesheets/main.57a0d79d.min.css">
+      
+        
+        <link rel="stylesheet" href="../../assets/stylesheets/palette.fb2fffe2.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="">
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&amp;display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+      <link rel="stylesheet" href="../../css/print-site.css">
+    
+      <link rel="stylesheet" href="../../css/print-site-material.css">
+    
+      <link rel="stylesheet" href="../../css/timeago.css">
+    
+      <link rel="stylesheet" href="../../stylesheets/extra.css">
+    
+      <link rel="stylesheet" href="../../assets/stylesheets/panzoom.css">
+    
+    <script>__md_scope=new URL("../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  <link href="../../assets/stylesheets/glightbox.min.css" rel="stylesheet"><script src="../../assets/javascripts/glightbox.min.js"></script><style id="glightbox-style">
+            html.glightbox-open { overflow: initial; height: 100%; }
+            .gslide-title { margin-top: 0px; user-select: text; }
+            .gslide-desc { color: #666; user-select: text; }
+            .gslide-image img { background: white; }
+            .gscrollbar-fixer { padding-right: 15px; }
+            .gdesc-inner { font-size: 0.75rem; }
+            body[data-md-color-scheme="slate"] .gdesc-inner { background: var(--md-default-bg-color); }
+            body[data-md-color-scheme="slate"] .gslide-title { color: var(--md-default-fg-color); }
+            body[data-md-color-scheme="slate"] .gslide-desc { color: var(--md-default-fg-color); }
+        </style><meta name="panzoom-theme" content="material">
+<meta name="panzoom-data" content='{"selectors": [".d2", ".mermaid"], "initial_zoom_level": 1.0}'> </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="default" data-md-color-primary="custom" data-md-color-accent="custom">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#proposal-the-sequence-judge-package-2-304" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+      <div data-md-color-scheme="default" data-md-component="outdated" hidden="">
+        
+      </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href="../.." title="gbcms" class="md-header__button md-logo" aria-label="gbcms" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"></path></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"></path></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            gbcms
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Proposal: the sequence judge (package 2, #304)
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: light)" data-md-color-scheme="default" data-md-color-primary="custom" data-md-color-accent="custom" aria-label="Switch to dark mode" type="radio" name="__palette" id="__palette_0">
+    
+      <label class="md-header__button md-icon" title="Switch to dark mode" for="__palette_1" hidden="">
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a4 4 0 0 0-4 4 4 4 0 0 0 4 4 4 4 0 0 0 4-4 4 4 0 0 0-4-4m0 10a6 6 0 0 1-6-6 6 6 0 0 1 6-6 6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"></path></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: dark)" data-md-color-scheme="slate" data-md-color-primary="custom" data-md-color-accent="custom" aria-label="Switch to light mode" type="radio" name="__palette" id="__palette_1">
+    
+      <label class="md-header__button md-icon" title="Switch to light mode" for="__palette_0" hidden="">
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 18c-.89 0-1.74-.2-2.5-.55C11.56 16.5 13 14.42 13 12s-1.44-4.5-3.5-5.45C10.26 6.2 11.11 6 12 6a6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"></path></svg>
+      </label>
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"></path></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required="">
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"></path></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"></path></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"></path></svg>
+        </button>
+      </nav>
+      
+        <div class="md-search__suggest" data-md-component="search-suggest"></div>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix="">
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/msk-access/gbcms" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"></path></svg>
+  </div>
+  <div class="md-source__repository">
+    msk-access/gbcms
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation">
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+
+<nav class="md-nav md-nav--primary" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href="../.." title="gbcms" class="md-nav__button md-logo" aria-label="gbcms" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"></path></svg>
+
+    </a>
+    gbcms
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/msk-access/gbcms" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"></path></svg>
+  </div>
+  <div class="md-source__repository">
+    msk-access/gbcms
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix="">
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../.." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+          
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_2">
+        
+          
+          <div class="md-nav__link md-nav__container">
+            <a href="../../getting-started/" class="md-nav__link ">
+              
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Getting Started
+  
+
+    
+  </span>
+  
+  
+
+            </a>
+            
+              
+              <label class="md-nav__link " for="__nav_2" id="__nav_2_label" tabindex="">
+                <span class="md-nav__icon md-icon"></span>
+              </label>
+            
+          </div>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_2_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_2">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Getting Started
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix="">
+            
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../getting-started/installation/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Installation
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../getting-started/quickstart/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Quick Start
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+          
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_3">
+        
+          
+          <div class="md-nav__link md-nav__container">
+            <a href="../../cli/" class="md-nav__link ">
+              
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    CLI Reference
+  
+
+    
+  </span>
+  
+  
+
+            </a>
+            
+              
+              <label class="md-nav__link " for="__nav_3" id="__nav_3_label" tabindex="">
+                <span class="md-nav__icon md-icon"></span>
+              </label>
+            
+          </div>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    CLI Reference
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix="">
+            
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../cli/dna/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    DNA Command
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../cli/rna/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    RNA Command
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../cli/merge/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Merge Command
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../cli/normalize/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Normalize Command
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../cli/convert/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Convert Command
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../cli/summarize/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Summarize Command
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+          
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_4">
+        
+          
+          <div class="md-nav__link md-nav__container">
+            <a href="../../nextflow/" class="md-nav__link ">
+              
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Nextflow Pipeline
+  
+
+    
+  </span>
+  
+  
+
+            </a>
+            
+              
+              <label class="md-nav__link " for="__nav_4" id="__nav_4_label" tabindex="">
+                <span class="md-nav__icon md-icon"></span>
+              </label>
+            
+          </div>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_4_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_4">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Nextflow Pipeline
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix="">
+            
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../nextflow/samplesheet/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Samplesheet
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../nextflow/parameters/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Parameters
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../nextflow/examples/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Examples
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_5">
+        
+          
+          <label class="md-nav__link" for="__nav_5" id="__nav_5_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    How It Works
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_5_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_5">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    How It Works
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix="">
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../reference/architecture/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Architecture
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../reference/input-formats/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Input Formats
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../reference/output-formats/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Output Formats
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../reference/qc-flags/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    QC Flags
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../reference/variant-normalization/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Variant Normalization
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../reference/read-filters/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Read Filters
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../reference/rna-splice-handling/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    RNA Splice Handling
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../reference/rna-annotation/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    RNA Annotation
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../reference/allele-classification/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Allele Classification
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../reference/read-judgment/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Read Judgment
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../reference/counting-metrics/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Counting &amp; Metrics
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../reference/mfsd-report/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    mFSD Report
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../reference/molecule-observations/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Per-Molecule Observations
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../reference/complex-indels/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Complex Indels
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../reference/bam-evidence-caveats/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    BAM Evidence Caveats
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../reference/glossary/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Glossary
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_6">
+        
+          
+          <label class="md-nav__link" for="__nav_6" id="__nav_6_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Development
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_6_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_6">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Development
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix="">
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../development/developer-guide/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Developer Guide
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../development/testing-guide/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Testing Guide
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../development/release-guide/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Release Guide
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../development/regression-panel/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Regression Panel
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../development/changelog/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Changelog
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../development/contributing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Contributing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+      
+        
+      
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_7">
+        
+          
+          <label class="md-nav__link" for="__nav_7" id="__nav_7_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Resources
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_7_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_7">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Resources
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix="">
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../resources/troubleshooting/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Troubleshooting
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../resources/citation/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Citation
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc">
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix="">
+      
+        <li class="md-nav__item">
+  <a href="#0-the-principle-operator-2026-10-25" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        0. The principle (operator, 2026-10-25)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#1-the-rule" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1. The rule
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#2-where-it-enters" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2. Where it enters
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#3-mapping-a-decision-to-classifyresult-utilsrs70" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3. Mapping a decision to ClassifyResult (utils.rs:70)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#4-the-scorer-and-cost" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4. The scorer and cost
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#5-contexts-and-states" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        5. Contexts and states
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#6-rna" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        6. RNA
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#7-what-it-replaces-and-what-stays" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        7. What it replaces, and what stays
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#8-tests" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        8. Tests
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#9-acceptance-before-the-default-flips" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        9. Acceptance (before the default flips)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#10-decided-and-open-points-operator-2026-10-23" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        10. Decided and open points (operator, 2026-10-23)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#11-open-tickets-the-judge-resolves-measured-2026-10-28" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        11. Open tickets the judge resolves (measured 2026-10-28)
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+                
+
+
+
+  
+
+
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+  
+
+
+<div><h1 id="proposal-the-sequence-judge-package-2-304">Proposal: the sequence judge (package 2, #304)<a class="headerlink" href="#proposal-the-sequence-judge-package-2-304" title="Permanent link">¶</a></h1>
+<p><strong>Status:</strong> v1 — architecture decided (operator, 2026-10-23; record on #304); this document
+fixes how it enters the engine. <strong>Type:</strong> read judgment, behind <code>--read-judge sequence</code>
+(default <code>rules</code>; <code>haplotype</code>, the judge's name until 2026-10-26, is taken as <code>sequence</code>
+with a warning). <strong>Compat:</strong> default output byte-identical; the flag changes counts.
+<strong>Version:</strong> 6.7.0 (default flip only if every arm, the cost target and the <abbr title="High-Performance Computing - Cluster computing environment">HPC</abbr> gate pass).
+All file:line references are to develop 336c07cd. Internal names (<code>judge::haplotypes</code>,
+<code>ReadJudge::Haplotype</code>) keep the old word until the module is restructured (R6, #314).</p>
+<h2 id="0-the-principle-operator-2026-10-25">0. The principle (operator, 2026-10-25)<a class="headerlink" href="#0-the-principle-operator-2026-10-25" title="Permanent link">¶</a></h2>
+<p>The judge resolves the read's sequence at the row: which local sequence its own bases spell
+there, REF, the row's ALT or another allele at its site. Contexts (the other listed rows, the
+guard's recurring background, the alleles the reads spell away from the site) only explain
+the read's <em>other</em> differences, so they never pass for the row's allele (#246: an insertion
+beside an SNV whose first inserted base reads as the SNV's ALT). The judge does no linkage
+and no phasing: a variant linked to the row elsewhere on the molecule never credits a read.
+The sequences a read is weighed against are the row's <em>candidate sequences</em>.</p>
+<h2 id="1-the-rule">1. The rule<a class="headerlink" href="#1-the-rule" title="Permanent link">¶</a></h2>
+<p>For a row X and each admitted read:
+- <strong>Candidate sequences:</strong> every <em>context</em> of the other listed rows within read reach of X
+  (and the guard's recurring background changes, which explain reads but are never
+  credited), crossed with every <em>state</em> of X's site: REF, X, each other listed allele whose
+  REF span overlaps X's (an insertion's span is its anchor), and each recurring discovered
+  allele there (RJ-25; REJ-20261007-002).
+- <strong>Scorer:</strong> the read, every readable base, against each candidate sequence with its ends
+  free: affine edit cost, confident mismatch 4, gap 6 + k, a base below <code>--min-baseq</code> or N
+  costing 0 (the one quality gate).
+- <strong>Decision:</strong> ALT where the best candidate sequence carrying X beats the best without it
+  by one confident base (4); REF where the best with REF at the site beats every other site state by
+  as much; partial evidence where another site allele wins so; otherwise depth only. Ties are
+  never credited. Because every context appears in every state, only the read's bases at X
+  decide; a linked variant elsewhere never credits it.
+- <strong>Phase C refinements (2026-10-25):</strong>
+  - A state holding X's change at X's site (for a substitution X, an allele of its length
+    over X's bases that reads X's bases there, as an MNV listed beside its component SNV)
+    is X's ALT (RJ-28); <code>MNV_SHARED</code> names the reads the two rows share.
+  - A same-length state's changes beside a substitution X are also contexts of every state,
+    so a read carrying X with such a change is X's.
+  - A substitution inside a long (50+ bp) deletion's bases, past a 4-base junction window at
+    each end, is a context on REF's side, never another allele at X's site (RJ-24); inside
+    a shorter deletion it stays another allele (RJ-5).
+  - A tie of REF with another allele, X beaten, is partial evidence only where the read
+    reaches past where the two candidate sequences differ; a read short of it shows REF.
+  - An <abbr title="Multi-Nucleotide Polymorphism - Multiple adjacent base substitutions">MNP</abbr>'s ALT call needs every changed base covered and none read as another base; one
+    below <code>--min-baseq</code> weighs nothing (RJ-25), and <code>mnp_confirmed</code> needs all read.
+  - A context row is one whose REF span meets X's span widened by the longest read, so a
+    long deletion starting within reach (and running past it) is a context too.
+- <strong>The fit rule (phase B, decided 2026-10-25; RJ-29):</strong> a read whose best score over every
+  candidate sequence is below ten confident mismatches fits none of them; it is depth only
+  where its aligner also doubts it (XS ≥ AS, or <abbr title="Mapping Quality - Confidence score for read alignment">MAPQ</abbr> 0 with no XS), otherwise its margin
+  decides it. <code>UNEXPLAINED_READS(n/m)</code> names how many of a row's depth reads fit none. The
+  other options measured stay behind <code>GBCMS_JUDGE_FITS</code> (measurement only).
+- <strong>Second fix round (2026-10-26), each red-first:</strong>
+  - A substitution's read whose confident bases at X's telling bases show some of X's
+    changes and REF's bases at others is another allele (RJ-28's components), whichever of
+    REF and X the margin favours, or where they tie.
+  - At a substitution X, a recurring guard indel with which REF reads as X over a read
+    reaching X's site (a repeat X lengthens, written as more units beside X) is left out
+    where no reads need it: the single-item, REF-to-X part of the background refinement,
+    for indels only.
+  - A tie of REF with another allele, X beaten, is REF where the read writes an indel of its
+    own across that allele's change (as where it never reaches it).
+  - Measured and dropped: an indel on an MNV's last base taken as at X's site (its REF
+    losses were an oracle v3 artefact); containment for states that change the length (a
+    carrier of a listed delins ending in X's base is that delins's, oracle v3); and X with
+    a listed change on a tandem duplication's inserted copy as a candidate (23 true-REF
+    reads lost at HG002's 1 kb+ insertions, truth v2db; open for the operator); and a tie of
+    X with another allele the read never reads apart from X credited to X (it credited
+    reads the oracles call either).
+  - <code>GBCMS_JUDGE_NEITHER=other</code> (measurement only; default <code>margin</code>): a covered telling base
+    read confidently as neither allele makes a REF or ALT call on an MNV or a delins another
+    allele.
+- <strong>Third measurement round (2026-10-27; measurement options, defaults unchanged):</strong>
+  decided 2026-10-27: margin; a confident third base below the found floor is an error (RJ-26);
+  the per-read forms' gains come from the oracles' strict core. Beside-X: the default stays
+  <code>site</code>; <code>beside</code> and <code>apart</code> are not adopted.
+  - The confident third base (<code>GBCMS_JUDGE_NEITHER</code>). Mechanism: a read is REF only where its
+    bases show REF's where the alleles differ, so a confident base neither allele has there
+    makes a REF or ALT call neither. Errors put such bases on telling bases at the reads' own
+    mismatch rate (on the patient arms, single-read neither bases per telling base at or below
+    the mismatch rate elsewhere in the same reads), so the switch moves reads in proportion to the bases read:
+    about 0.1% of calls at MNVs, 1% at delins of 20-49 bases, 2% at 50 or more; and where
+    REF's molecules hold bases X's never do, the moves fall on REF and raise <abbr title="Variant Allele Frequency - Fraction of reads supporting the variant allele">VAF</abbr> (0.2-0.4
+    points at 20 bases or more), RJ-24's mechanism. Forms: <code>other</code> (every telling base);
+    <code>other:N</code> (alleles under N bases: 20, oracle v3's own core cut, is no mechanism);
+    <code>recur:K</code> (where K other reads show the base: reads, not fragments, and two reads are
+    mostly one fragment's mates; recurring bases are damage-like, C&gt;A and C&gt;T, as single
+    ones are); <code>window</code> (only where both alleles' reads are read alike: a substitution's
+    changed bases, not the bases an MNV keeps; a length change's junction windows, 4 telling
+    bases from either end, as RJ-24 reads). Against <code>margin</code> (patient arms on oracles v2 and
+    v3, HG002 truth v2dbq20 and the delins arm's het band): <code>other</code> fails delins of 20 bases
+    or more on the panel, cohort, WES and gate arms; <code>recur:1</code> and <code>recur:2</code> fail 50+; <code>other:20</code>
+    and <code>window</code> pass every arm on both oracles (<code>window</code> synthesised from the <code>other</code> lane,
+    exact for the reads); HG002's truth arms change no class under any. No form breaks a
+    decided contract. A base the read's haplotype holds, or the guard's background explains,
+    is no neither base.
+  - Beside an insertion (<code>GBCMS_JUDGE_ENDS</code>). <code>beside</code>: an allele removing bases whose
+    placements end at an insertion X's point is a context. It moves 120 reads at 5 gate
+    insertion rows from partial evidence to REF, the listed deletion's carriers (oracle v3
+    calls them sibling carriers: 108 more wrong calls), and on HG002 loses ALT reads at
+    insertions of 50-299 bases. Its general form, <code>apart</code> (a length change with a placement
+    clear of every placement of a length-changing X is beside it), breaks 24 decided
+    contracts: an allele's carriers are another allele wherever it is written (RJ-5, RJ-6,
+    RJ-7). The default stays <code>site</code>.
+- <strong>Fourth measurement round (2026-10-27; the general forms of the second round's two
+  narrowed fixes, measurement options, defaults unchanged, open for the operator):</strong>
+  - The background respelled (<code>GBCMS_JUDGE_BACKGROUND=respell</code>; <code>GBCMS_JUDGE_RESPELL_TRACE=1</code>
+    names each item weighed). Mechanism: a context with which one candidate's sequence spells
+    another's over the reads leaves those reads unable to tell the two apart. General rule:
+    any background item or found allele (the masks excepted, decided), alone or joined with
+    others into one change at X's site, in either direction, for any state and any X, is left
+    out where no read needs it. Against the default: every patient arm passes on both oracles;
+    HG002's truth arms gain (c246's 1-9 bp insertions 34 ALT and 15 REF reads, tr's 10-49 bp
+    10 ALT, the 1 kb insertions 5 ALT and one wrong call fewer), no class failing. Nearly all
+    of it is the step to indel and delins X (HG002: 289 rows, 417 reads changing call, 76 of
+    them right by truth after and 2 before); the guard-indel rule's own items change nothing,
+    and substitutions, other states and the state-to-REF direction move 5 reads at most. No
+    decided contract changes.
+  - The own gap (<code>GBCMS_JUDGE_OWNGAP</code>). Mechanism: a read that reaches a state only through an
+    indel of its own at that state's change does not carry it. <code>all</code> (every state, wins and
+    ties) breaks four decided contracts and fails classes on every patient arm: dropping REF
+    or X in their own tie hands the read to the other by elimination, though its bases show
+    neither where they differ. <code>others</code> (another allele's states only) breaks none, but fails
+    delins under 20 bases and gate insertions on oracle v3: where another allele wins by the
+    margin, a read writing an indel of its own beside that allele's change still carries the
+    allele's bases (25 of 26 such panel reads wrong). Neither replaces the decided tie rule.
+  - decided 2026-10-27 (operator): respell is the default, replacing the narrow guard-indel
+    rule; the tie fix stays narrow, <code>all</code> and <code>others</code> off.
+- <strong>Decided-rule fix round (operator, 2026-10-28; each red-first, class tests in
+  <code>tests/test_kept_base_change_contract.py</code>, <code>test_listed_sibling_floor_contract.py</code>,
+  <code>test_contig_edge_judge_contract.py</code>, <code>test_beside_site_indel_contract.py</code>):</strong>
+  - <em>A change at a base X keeps</em> (REF's and X's alleles alike there, inside the bases X
+    changes; for a delins, aligned from either end) that the REF molecules carry too is a
+    separate event, not another allele (RJ-25): it is a context lying with REF, and X with it
+    is a state of X's class, so carriers holding it stay ALT and REF molecules REF. It
+    qualifies where it recurs on both haplotypes (3 fragments and 5% of the REF molecules,
+    and of X's, or a state spelling X with it), or where the guard's background holds it and
+    the input does not list REF with it (a co-annotated sibling stays one, RJ-5). Until now
+    the judge took X's span from its first to its last change as X's own bases: such a
+    change was dropped as meeting X, a mask there taken for X's base, and an ALT call needed
+    X's base there while a REF call needed none. A base X keeps now tells nothing on either
+    side, and a mask there holds on X's haplotypes as on REF's.
+  - <em>A co-annotated sibling of X's length at X's site</em> is a state only where the reads'
+    own alignments spell it in full on at least one fragment and on 5% of those spelling
+    the allele it is nearest (RJ-25, 2026-10-14): a component never shown apart is part of
+    the event, and at depth one fragment is an error's share.
+  - <em>A pure indel whose placements touch a contig edge</em> (its repeat running to the edge, or,
+    operator 2026-10-29, the indel itself at the contig's first or last base: a <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> insertion
+    at Start 0, the base-after form at position 1, and an insertion after the last base): a
+    read reaching the edge can only be called for the longer allele (the shorter fits it as a
+    read ending early), a call resting on the shorter allele holding no base past the edge,
+    where a circular contig's runs on (RJ-3). An ALT call there (an insertion's) is depth
+    only, counted and warned, as under the rules; reads alike share the judge's verdict and
+    the edge is weighed on each. A REF call there (a deletion's) stands: two decided tests
+    count it REF (<code>test_contig_end_n_read_contract</code>, the <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> deletion at Start 1), where the
+    rules' exact-carrier route makes it depth (a run of six A's ending the contig, five REF
+    reads reading to the edge: (<abbr title="Reference Depth - Reads supporting the reference allele">RD</abbr>, <abbr title="Total Depth - All mapped reads overlapping the variant position">DP</abbr>) (0, 5) under the rules, (5, 5) under the judge);
+    carried to #332 (J1) with these numbers, no change here (operator, 2026-10-29). At a <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> insertion at
+    Start 0 the REF reads tell nothing either (they fit the ALT placed past the insertion), so
+    the row is (<abbr title="Reference Depth - Reads supporting the reference allele">RD</abbr>, <abbr title="Alternate Depth - Reads supporting the alternate allele">AD</abbr>) (0, 0) under the judge, against the rules' (6, 6) that develop's
+    #219 test asserts. Decided by design (operator, 2026-10-29), as the two delins
+    germline-change tests: the test stays as it is, its expectation changing at the default
+    flip (#331).
+  - <em>An indel the reads write beside X's site</em> (two reads and 5%, every placement clear of
+    the site, the repeat X changes included) is a context, a separate event (RJ-8), however
+    a read's aligner wrote it, where the reads need it for their calls (as a respelling
+    over a read is, 2026-10-27: with it, two reads and 5% of those reaching it are REF or
+    ALT that are not so without it). Taken without that test (the first measurement of this
+    round), it cost HG002 14 true ALT reads at insertions of 1 kb or more and 6 at 50-299
+    bp: the event's own reads write such indels (a 1,795-bp insertion at chr16:34590143,
+    whose reads write a 1-bp insertion four bases before it on 639 of 2,393 reads, absent
+    from GIAB), and as a context it tied 13 carriers (ALT -15 against REF -19 without it,
+    -12 against -12 with it). Known partial: where no read writes it beside the site, the
+    judge has no candidate holding it (placing a read's own indel by its bases, RJ-27, is not
+    yet the judge's).
+  - <em>The other allele's base against a third base (<code>GBCMS_JUDGE_REFBASE</code>, measurement
+    only, default <code>margin</code>; operator approved measuring it 2026-10-28; class tests in
+    <code>tests/test_ref_base_option_contract.py</code>):</em> at a base an <abbr title="Multi-Nucleotide Polymorphism - Multiple adjacent base substitutions">MNP</abbr> or a delins changes, a
+    read's confident base that is the other allele's (at a delins, the other allele's base
+    at the same telling index counted from either end, where the read's own gap may put
+    it) is that allele's evidence, not an error, so <code>partial</code> makes such a REF or ALT call
+    another allele (RJ-25: an allele lacking part of the event; RJ-28 at an <abbr title="Multi-Nucleotide Polymorphism - Multiple adjacent base substitutions">MNP</abbr>, where the
+    default already does so); a third base, neither allele's, is an error the margin
+    forgives (RJ-26), so <code>partial</code> keeps an <abbr title="Multi-Nucleotide Polymorphism - Multiple adjacent base substitutions">MNP</abbr> carrier with one ALT instead of depth only.
+    Bases X keeps tell nothing under both. The evidence it answers: a mate test of 72
+    patient delins ALT reads the margin forgave (19 showing REF's base; under 20 bases, 10
+    of 11 decided carry the odd base on both mates). Measured against the default (oracle
+    v3): delins under 20 bp gain (panel +23 reads, gate subset +22, wrong calls −23 and
+    −22, mostly REF reads showing the ALT's base, which v3 calls another allele); delins of
+    20 bp or more lose a few (panel −3, WES −3); MNVs gain wrong calls (panel +6, gate subset
+    +28: carriers with a third base at a changed base, which v3 calls another allele); HG002
+    delins: 21 reads on 19 rows move (of the informative ones, 1 right and 4 wrong by phase),
+    the het band at 20-49 bp 9 → 7 rows, no truth-arm read; a patient normal's 3&gt;1 delins
+    (<abbr title="Reference Depth - Reads supporting the reference allele">RD</abbr>, <abbr title="Alternate Depth - Reads supporting the alternate allele">AD</abbr>, partial) (828, 1, 5) → (827, 0, 7). Decided (operator, 2026-10-29): the default
+    stays <code>margin</code>; the switch stays, off by default; a delins-only form (<code>partial</code> at a
+    delins, <code>margin</code> at an <abbr title="Multi-Nucleotide Polymorphism - Multiple adjacent base substitutions">MNP</abbr>) is measured at the default flip (#331).
+  - <em>Decided (operator, 2026-10-28): a germline change at a base a delins keeps.</em> Carried on
+    both haplotypes, it is a separate event (RJ-25), and each read counts by the bases where
+    REF and ALT differ: under the judge a delins carrier with the change counts ALT and a REF
+    read with it counts REF, as at an <abbr title="Multi-Nucleotide Polymorphism - Multiple adjacent base substitutions">MNP</abbr> (<code>test_locus_alleles_contract.py</code>: the delins test
+    <code>test_a_germline_change_inside_a_delins_the_carriers_carry_too_leaves_ref_reads_ref</code>
+    gives (<abbr title="Reference Depth - Reads supporting the reference allele">RD</abbr>, <abbr title="Alternate Depth - Reads supporting the alternate allele">AD</abbr>) (46, 16) under the judge, the rules' exact reading (26, 6); its <abbr title="Multi-Nucleotide Polymorphism - Multiple adjacent base substitutions">MNP</abbr> twin
+    <code>test_a_germline_change_the_carriers_carry_too_leaves_ref_reads_ref</code> expects (40, 10) on
+    both). The delins expectation updates at the default flip (#331); the rules path keeps it.
+  - <em>Carried to #332 (J1), no change here (operator, 2026-10-29):</em> at an <abbr title="Multi-Nucleotide Polymorphism - Multiple adjacent base substitutions">MNP</abbr> an ALT call with
+    a confident third base at a base X changes is depth only (the phase C rule above) while a
+    REF call with one stays REF, and a delins forgives one either way (RJ-26, round 3). On
+    CC&gt;GT and GCA&gt;ACT, 20 REF reads and 10 carriers, one more read each: a carrier with a
+    confident third base at a changed base is partial under the rules and depth under the
+    judge; a REF read with one is depth under the rules and REF under the judge; at CAGTC&gt;GAGC
+    both judges count such a carrier ALT and such a REF read REF.
+    <code>GBCMS_JUDGE_REFBASE=partial</code> measured one rule for both (above).
+- <strong>The background refinement (measured 2026-10-26, not adopted; <code>GBCMS_JUDGE_BACKGROUND</code>,
+  default <code>asis</code>):</strong> <code>respell</code> leaves out a context item of the guard's background or the
+  found alleles that respells the site's own candidate sequences: one that turns one
+  candidate into another whole (chr5:44868216 A&gt;AT, X with a recurring 1 bp T deletion
+  spelling REF's SNV haplotype), items that together spell one change meeting X
+  (chr16:23024630 TA&gt;AC, a 7 bp deletion and an inserted C spelling a carrier of X with a
+  6 bp deletion beside it), and one that respells only over a read where no reads need it
+  for their call. The guard's masks stay: removing them (<code>off</code>) breaks 26 decided-rule
+  contract tests (a masked germline <abbr title="Single Nucleotide Polymorphism - Single base substitution">SNP</abbr> whose haplotype reads as X never counts ALT), and
+  a duplication's carriers cannot be told from such a <abbr title="Single Nucleotide Polymorphism - Single base substitution">SNP</abbr>'s at its one telling base. Against
+  its pre-registered bar it kept every class and every contract test but recovered under
+  half of what removing the background gains: none of the gate set's 36 bp insertion rows
+  (INS 20-49 +7.7 points with <code>off</code>), 28% of the HG002 insertion reads, 21 of 442 gate
+  wrong calls. It stays behind the switch, off. (The fourth round measured it as the general
+  form of the guard-indel rule; it was adopted as the default on 2026-10-27, <code>asis</code> and <code>off</code>
+  kept for measurement.)</p>
+<p>Measured (HG002 phased truth, R2): see #304. The prototype is <code>plan670/r2/hapjudge</code> (local).</p>
+<h2 id="2-where-it-enters">2. Where it enters<a class="headerlink" href="#2-where-it-enters" title="Permanent link">¶</a></h2>
+<table>
+<thead>
+<tr>
+<th>Seam</th>
+<th>Where</th>
+<th>Change</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Flag</td>
+<td><code>cli.py:387/755</code> → <code>models/core.py:159</code> (<code>AlignmentConfig</code>) → <code>pipeline.py:887 _engine_kwargs</code> → <code>#[pyo3(signature)]</code> <code>engine.rs:924/985</code> → <code>count_bam_binned_core</code> (385) → <code>count_bin_shared</code> (1076) → <code>count_variant_from_cache</code> (1477); stub <code>_rs.pyi:225–296</code> (parity test)</td>
+<td><code>read_judge: "rules" \| "sequence"</code> (<code>"haplotype"</code>, the former name, taken as <code>"sequence"</code>), plumbed like <code>alignment_backend</code>; also the <abbr title="Multi-Nucleotide Polymorphism - Multiple adjacent base substitutions">MNP</abbr>-rescue recount (<code>pipeline.py:1340</code>) and Nextflow (<code>dna/main.nf:60</code>)</td>
+</tr>
+<tr>
+<td>Rows in reach</td>
+<td>prep, a whole-input post-pass after <code>assign_listed_neighbours</code> (<code>normalize/engine.rs:131</code>)</td>
+<td>new <code>Variant::reach_rows</code>: every other PASS row whose REF span lies within X's ± <code>READ_REACH</code> (300, as <code>carrier::WHOLE_READ_REACH</code>); computed also for the decomposed twin (1066) and the <abbr title="Multi-Nucleotide Polymorphism - Multiple adjacent base substitutions">MNP</abbr>-rescue rows (prepared apart, <code>pipeline.py:1306</code>)</td>
+</tr>
+<tr>
+<td>Reference</td>
+<td>prep, beside <code>whole_ref</code> (1104–1105)</td>
+<td><code>Variant::judge_ref</code>: X ± (<code>READ_REACH</code> + the widest reach row), for every kind (SNVs and deletions ≥ 50 bp have no <code>whole_ref</code> today)</td>
+</tr>
+<tr>
+<td>Classifier</td>
+<td><code>engine.rs:1662</code>, after <code>splice_skip_triage</code></td>
+<td>under the flag, <code>judge::classify</code> returns a <code>ClassifyResult</code>; the sibling guards (1691, 1699) are bypassed (the judge weighs the site's alleles itself)</td>
+</tr>
+<tr>
+<td>Background</td>
+<td>the guard, forced before the loop (<code>engine.rs:1540</code>; <code>carrier::guard_for</code> 2655)</td>
+<td><code>Guard.background</code> → context rows; <code>Guard.others</code> → site states; for SNVs (no guard) the site holds REF, X and the listed alleles</td>
+</tr>
+</tbody>
+</table>
+<p>Nothing else changes: the read cache, fragment evidence (<code>fragment.rs:147/258</code>), <abbr title="Reference Depth - Reads supporting the reference allele">RD</abbr>/<abbr title="Alternate Depth - Reads supporting the alternate allele">AD</abbr>/<abbr title="Total Depth - All mapped reads overlapping the variant position">DP</abbr>,
+strand, <abbr title="Mutant Fragment Size Distribution - Insert-size analysis for REF vs ALT fragments">mFSD</abbr> and diagnostics consume the <code>ClassifyResult</code> as today.</p>
+<h2 id="3-mapping-a-decision-to-classifyresult-utilsrs70">3. Mapping a decision to <code>ClassifyResult</code> (<code>utils.rs:70</code>)<a class="headerlink" href="#3-mapping-a-decision-to-classifyresult-utilsrs70" title="Permanent link">¶</a></h2>
+<ul>
+<li><strong>REF / ALT:</strong> <code>is_ref</code> / <code>is_alt</code>; <code>qual</code> = the lowest quality among the read's bases where
+  the winning and the best losing candidate sequence differ (the bases that decided it; at least
+  <code>--min-baseq</code>), so mate resolution (<code>resolve</code>, <code>fragment.rs:258</code>) weighs a decision by the
+  bases it rests on. <code>is_structural</code>: <code>false</code> for every call (decided, §10.3).</li>
+<li><strong>Partial:</strong> neither; <code>partial_match_count = 1</code> (another site allele won).</li>
+<li><strong>Depth only:</strong> neither, <code>uninformative = true</code>.</li>
+<li><strong>Admission:</strong> <code>covers_locus</code> from splice triage as today; <code>clip_admissible</code> (DNA) where a
+  soft clip carries bases over X's span (RJ-13, clipped bases are the read's);
+  <code>read_from_right</code> where the read's first readable base lies past X's left flank. A read is
+  admitted to <abbr title="Total Depth - All mapped reads overlapping the variant position">DP</abbr> when its aligned span, clips included in DNA, reaches X's REF span; for a
+  deletion of 50 bp or more, its anchor (RJ-24): reads wholly inside the deleted bases are not
+  admitted, as today.</li>
+</ul>
+<h2 id="4-the-scorer-and-cost">4. The scorer and cost<a class="headerlink" href="#4-the-scorer-and-cost" title="Permanent link">¶</a></h2>
+<ul>
+<li>Semi-global affine <abbr title="Total Depth - All mapped reads overlapping the variant position">DP</abbr> (read global, candidate sequence local) with a wildcard for masked
+  bases, banded around the read's aligned diagonal mapped into each candidate sequence, the
+  band widened by its length change. Per read, candidate sequences are trimmed to its reach.</li>
+<li><strong>Triage first:</strong> a 31-mer index of the variant's candidate sequences; a read whose fully
+  confident k-mers fall in one site state's sequences only, with no unknown k-mer over X's span ± k,
+  is decided without alignment (R2 round 1: ~40% of reads).</li>
+<li><strong>Target:</strong> within 2× develop's runtime on the panel, ACCESS (deep) and WES arms. The
+  prototype is ~300× develop; SIMD banding (e.g. the <code>block-aligner</code> crate, which takes
+  position-specific scores for the mask) is the next lever if the plain banded <abbr title="Total Depth - All mapped reads overlapping the variant position">DP</abbr> is not
+  enough. <code>wfa2lib-rs</code> (in-tree) aligns ends-free and affine but has no wildcard.</li>
+</ul>
+<h2 id="5-contexts-and-states">5. Contexts and states<a class="headerlink" href="#5-contexts-and-states" title="Permanent link">¶</a></h2>
+<ul>
+<li>Rows in reach ≤ 4 (outside the site): every non-overlapping subset is a context.</li>
+<li>More: singletons, pairs a read shows together (per-row evidence on ≥ 2 reads), then
+  read-supported sets, to 32 candidate sequences; the empty context always.</li>
+<li>States: REF, X, the site's listed alleles, and for an SNV every other base; for an <abbr title="Multi-Nucleotide Polymorphism - Multiple adjacent base substitutions">MNP</abbr> or
+  an indel the guard's discovered alleles there. A state holding X's change is of X's class
+  (RJ-28); a substitution in a long deletion's bases past its junction windows is a context
+  on REF's side (§1).</li>
+<li>Deterministic order everywhere (rows by position; ties to fewer rows); per variant only.</li>
+</ul>
+<h2 id="6-rna">6. RNA<a class="headerlink" href="#6-rna" title="Permanent link">¶</a></h2>
+<p>Spliced reads are judged on candidate sequences built along their mRNA: the read's segments
+(<code>carrier::splice_segments</code>, 1471) give the spliced reference, rows mapped through
+<code>SpliceMap</code> (1364); a splice through X's site leaves the read depth only (as <code>carrier.rs:726</code>).
+Strandedness and antisense handling are unchanged (engine.rs:1637/1721/1924). Measured with
+package 3 on FORTE.</p>
+<h2 id="7-what-it-replaces-and-what-stays">7. What it replaces, and what stays<a class="headerlink" href="#7-what-it-replaces-and-what-stays" title="Permanent link">¶</a></h2>
+<p>Under the flag, <code>check_snp</code>, <code>check_mnp</code>, the exact-carrier rule, <code>junction::classify</code> and
+<code>classify_complex</code> are not called for the row's own counts; the guard still runs (it supplies
+background and discovered alleles). Per-transcript counts (3096) and ASJD (3704) call the same
+<code>judge::classify</code>, so every output agrees. <code>Tolerance</code> and the error census are not used by
+the judge (a recurring change becomes a context row instead).</p>
+<h2 id="8-tests">8. Tests<a class="headerlink" href="#8-tests" title="Permanent link">¶</a></h2>
+<ul>
+<li><code>tests/test_haplotype_judge_contract.py</code> (red-first): #246 in trans and in cis, a compound
+  het, a repeat unit count, a low-quality telling base, no phase credit, a soft-clipped long
+  insertion, admission at a long deletion's anchor.</li>
+<li>Every counting contract runs with the flag too where its shape is the judge's
+  (parametrized); <code>tests/census.py</code> stays the default rules' check — the judge's independent
+  checks are the R2 truth arms (HG002 phased truth) and the <abbr title="Burrows-Wheeler Aligner - Standard short-read DNA aligner (mem/aln)">BWA</abbr> read checks on local arms.</li>
+<li>Binning invariance (<code>tests/test_binning_invariance.py</code>) with the flag: every geometry, one
+  call per row, decoys in the call.</li>
+<li>Rust unit tests: the scorer (wildcard, ends-free, affine), the construction, the decision.</li>
+</ul>
+<h2 id="9-acceptance-before-the-default-flips">9. Acceptance (before the default flips)<a class="headerlink" href="#9-acceptance-before-the-default-flips" title="Permanent link">¶</a></h2>
+<p>Every arm against develop and truth: the HG002 strata and R2 arms (#246 pairs, tandem
+repeats, SVs), the compound hets; panel, ACCESS and normals, WES, the gate set against
+sign-out, FORTE (with package 3); the IMPACT 50–500 bp events read by read (ABRA2 op, <code>YO</code>
+placement, bases). Cost within 2× develop. The <abbr title="High-Performance Computing - Cluster computing environment">HPC</abbr> gate.</p>
+<h2 id="10-decided-and-open-points-operator-2026-10-23">10. Decided and open points (operator, 2026-10-23)<a class="headerlink" href="#10-decided-and-open-points-operator-2026-10-23" title="Permanent link">¶</a></h2>
+<ol>
+<li><strong>Decided:</strong> a judged call's <code>qual</code> is the lowest quality among its deciding bases.</li>
+<li><strong>Decided:</strong> a third base at an SNV is partial evidence: SNV sites hold all four bases as
+   states; <abbr title="Multi-Nucleotide Polymorphism - Multiple adjacent base substitutions">MNP</abbr> and indel sites take the guard's discovered alleles.</li>
+<li><strong>Decided (operator, 2026-10-29):</strong> <code>is_structural</code> under the flag is retired: every call
+   rests on its bases (invariant 7: judge bases, not placement), and mates resolve by
+   quality. Keeping it for reads whose <abbr title="Compact Idiosyncratic Gapped Alignment Report - BAM alignment operation string">CIGAR</abbr> writes X's exact op (<code>GBCMS_JUDGE_STRUCTURAL=keep</code>,
+   removed in #363) was measured on every arm and not adopted: read counts identical
+   everywhere; fragment counts changed on 40 gate-subset rows, all 1-bp homopolymer indels
+   (<abbr title="Alternate Fragment Depth - Fragments resolved to alternate allele">ADF</abbr> +76, <abbr title="Reference Fragment Depth - Fragments resolved to reference allele">RDF</abbr> −8; 82 fragments there have one mate ALT and the other REF, which <code>keep</code>
+   resolves to the ALT mate's structure), and on 7 HG002 rows (<abbr title="Alternate Fragment Depth - Fragments resolved to alternate allele">ADF</abbr> +9); no truth set scores
+   fragments.</li>
+</ol>
+<h2 id="11-open-tickets-the-judge-resolves-measured-2026-10-28">11. Open tickets the judge resolves (measured 2026-10-28)<a class="headerlink" href="#11-open-tickets-the-judge-resolves-measured-2026-10-28" title="Permanent link">¶</a></h2>
+<p>On the merged branch (develop 6efeb5bb merged in), against its own default path, which gives
+develop's counts. HG002 (public) and synthetic shapes; HG002 truth is v2dbq20 (reads whose own
+bases at the run's <code>--min-baseq</code> decide them). Each is resolved for users only with the default
+flip (#331): the default rules path keeps today's behaviour.
+- <strong>#246</strong> (an SNV beside an insertion credited with the insertion's carriers): resolved. The
+  listed insertion is a context in every candidate sequence, so a carrier whose first inserted
+  base an aligner wrote on the SNV's base fits REF at the SNV. #246 arm (4,578 rows), SNV class:
+  REF reads called ALT 243 → 0, ALT reads called REF 322 → 0, true ALT credited 92.9% → 99.3%,
+  true REF 94.9% → 99.5%, Σ|<abbr title="Alternate Depth - Reads supporting the alternate allele">AD</abbr> − truth| 1,702 → 734; insertions 1-9 bp true ALT 59.6% → 98.6%.
+- <strong>#144</strong> (clip-borne duplication carriers): resolved on HG002. Clipped bases inside the
+  fragment are the read's own (RJ-13) and admit it, and carriers written through count by their
+  bases. The 89-bp duplication: <abbr title="Alternate Depth - Reads supporting the alternate allele">AD</abbr> 2 → 7 (bases-only ceiling 10); the 98-bp: 6 → 16 (ceiling 16).
+  The panel's ITD rows were not read read by read.
+- <strong>#290</strong> (another length of the repeat written upstream counts REF): resolved by its decided
+  rule (another allele wherever written). The found alleles make the expansion a state of the
+  site: its synthetic counts 6/6/6 (<abbr title="Reference Depth - Reads supporting the reference allele">RD</abbr>/<abbr title="Alternate Depth - Reads supporting the alternate allele">AD</abbr>/partial) written 0 to 60 bases upstream, where the rules
+  give 6/6/6 up to 30 bases and 12/6/0 at 60. The five strict xfails pinning RJ-27's named limit
+  pass under the judge; in the 40-bp VNTR compound het the rules call 22 of the insertion
+  haplotype's reads REF, the judge none.
+- <strong>#301</strong> (a 33-bp deletion row counting a co-located 22-bp deletion's reads): resolved. The
+  other deletion is a state whether listed or not. Against a per-read bases oracle at the site
+  (12 reads the 33-bp allele's, 14 the 22-bp's, 21 ties, 3 fitting none): with the 33-bp row
+  listed alone the rules count 11 of the 22-bp allele's reads ALT, the judge none (<abbr title="Alternate Depth - Reads supporting the alternate allele">AD</abbr> 25 → 14,
+  12 of them its own); the counts no longer depend on which rows are listed.
+- <strong>#297</strong> (a long deletion's unit count in a repeat): partly. Its synthetic (three 60-bp
+  units; 4 REF, 4 row and 4 two-unit carriers of 100 bp): units differing at one or two bases
+  give 4/4/4 under both judges (since #285); identical units give 4/8/0 under both, the
+  two-unit carriers counted ALT where no read shows the other unit count; with 4 more two-unit
+  carriers of 190 bp that read past the repeat, the rules give 4/12/0 and the judge 4/0/12.
+  Open for the operator: the identical-units case with no read past the repeat (count the given
+  allele, or depth only as #297 proposes), and the phased-change shape of
+  <code>test_a_change_the_input_lists_beside_the_deletion_is_its_neighbour</code>, which the judge counts
+  ALT (no read writes the two-unit allele).
+- <strong>#264</strong> (REF and <abbr title="Variant Allele Frequency - Fraction of reads supporting the variant allele">VAF</abbr> of indels in repeats): the long-insertion shortfall it handed to #304.
+  HG002 het median <abbr title="Variant Allele Frequency - Fraction of reads supporting the variant allele">VAF</abbr> (rows in 0.35-0.65): tandem-repeat insertions 10-49 bp 0.471 (18/41) →
+  0.500 (23/44), 50-299 bp 0.238 (6/34) → 0.429 (17/41), 300-999 bp 0.200 → 0.368, 1 kb+
+  0.241 → 0.348; SV-subset insertions 50-299 bp 0.364 → 0.474, 1 kb+ 0.125 → 0.444. Its
+  decided documentation (allele-level REF and <abbr title="Variant Allele Frequency - Fraction of reads supporting the variant allele">VAF</abbr>) is still open on #264.</p>
+<!-- Abbreviation definitions for gbcms documentation -->
+<!-- These provide hover tooltips for technical acronyms -->
+<p><span hidden="">abbreviations</span></p></div>
+
+
+
+
+
+
+
+  
+    
+  
+  
+    
+  
+
+
+  <aside class="md-source-file">
+    
+      
+  <span class="md-source-file__fact">
+    <span class="md-icon" title="Last update">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M21 13.1c-.1 0-.3.1-.4.2l-1 1 2.1 2.1 1-1c.2-.2.2-.6 0-.8l-1.3-1.3c-.1-.1-.2-.2-.4-.2m-1.9 1.8-6.1 6V23h2.1l6.1-6.1zM12.5 7v5.2l4 2.4-1 1L11 13V7zM11 21.9c-5.1-.5-9-4.8-9-9.9C2 6.5 6.5 2 12 2c5.3 0 9.6 4.1 10 9.3-.3-.1-.6-.2-1-.2s-.7.1-1 .2C19.6 7.2 16.2 4 12 4c-4.4 0-8 3.6-8 8 0 4.1 3.1 7.5 7.1 7.9l-.1.2z"></path></svg>
+    </span>
+    <span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-timeago" title="October 29, 2026 17:39:49 UTC"><span class="timeago" datetime="2026-10-29T17:39:49+00:00" locale="en"></span></span><span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-iso_date" title="October 29, 2026 17:39:49 UTC">2026-10-29</span>
+  </span>
+
+    
+    
+      
+  <span class="md-source-file__fact">
+    <span class="md-icon" title="Created">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M14.47 15.08 11 13V7h1.5v5.25l3.08 1.83c-.41.28-.79.62-1.11 1m-1.39 4.84c-.36.05-.71.08-1.08.08-4.42 0-8-3.58-8-8s3.58-8 8-8 8 3.58 8 8c0 .37-.03.72-.08 1.08.69.1 1.33.32 1.92.64.1-.56.16-1.13.16-1.72 0-5.5-4.5-10-10-10S2 6.5 2 12s4.47 10 10 10c.59 0 1.16-.06 1.72-.16-.32-.59-.54-1.23-.64-1.92M18 15v3h-3v2h3v3h2v-3h3v-2h-3v-3z"></path></svg>
+    </span>
+    <span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-timeago" title="October 26, 2026 11:50:32 UTC"><span class="timeago" datetime="2026-10-26T11:50:32+00:00" locale="en"></span></span><span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-iso_date" title="October 26, 2026 11:50:32 UTC">2026-10-26</span>
+  </span>
+
+    
+    
+    
+  </aside>
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden="">
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"></path></svg>
+  Back to top
+</button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+    <div class="md-copyright__highlight">
+      Developed by <a href="https://github.com/rhshah">Ronak H Shah</a> @ 
+<a href="https://www.mskcc.org">MSKCC</a> | 
+Built with <a href="https://antigravity.google/">Antigravity</a> | 
+<a href="https://github.com/msk-access/gbcms/blob/main/LICENSE">AGPL-3.0</a>
+
+    </div>
+  
+  
+</div>
+      
+        
+<div class="md-social">
+  
+    
+    
+    
+    
+      
+      
+    
+    <a href="https://github.com/msk-access/gbcms" target="_blank" rel="noopener" title="github.com" class="md-social__link">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M173.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6m-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3m44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9M252.8 8C114.1 8 8 113.3 8 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C436.2 457.8 504 362.9 504 252 504 113.3 391.5 8 252.8 8M105.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1m-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7m32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1m-11.4-14.7c-1.6 1-1.6 3.6 0 5.9s4.3 3.3 5.6 2.3c1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2"></path></svg>
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "../..", "features": ["navigation.instant", "navigation.tracking", "navigation.sections", "navigation.expand", "navigation.top", "navigation.indexes", "navigation.path", "toc.follow", "content.code.copy", "content.code.annotate", "search.suggest", "search.highlight"], "search": "../../assets/javascripts/workers/search.a7633da7.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": {"default": "stable", "provider": "mike"}}</script>
+    
+    
+      <script src="../../assets/javascripts/bundle.c21346df.min.js"></script>
+      
+        <script src="../../js/print-site.js"></script>
+      
+        <script src="../../js/timeago.min.js"></script>
+      
+        <script src="../../js/timeago_mkdocs_material.js"></script>
+      
+        <script src="../../javascripts/mathjax.js"></script>
+      
+        <script src="https://unpkg.com/mathjax@3/es5/tex-mml-chtml.js"></script>
+      
+        <script src="../../assets/javascripts/panzoom.min.js"></script>
+      
+        <script src="../../assets/javascripts/zoompan.js"></script>
+      
+    
+  
+<script id="init-glightbox">const lightbox = GLightbox({"touchNavigation": true, "loop": false, "zoomable": true, "draggable": true, "openEffect": "zoom", "closeEffect": "zoom", "slideEffect": "slide"});
+document$.subscribe(()=>{ lightbox.reload(); });
+</script></body></html>
