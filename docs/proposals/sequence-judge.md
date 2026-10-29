@@ -146,13 +146,19 @@ For a row X and each admitted read:
     own alignments spell it in full on at least one fragment and on 5% of those spelling
     the allele it is nearest (RJ-25, 2026-10-14): a component never shown apart is part of
     the event, and at depth one fragment is an error's share.
-  - *A pure indel whose repeat runs to a contig edge:* a read reaching the edge can only be
-    called for the longer allele (the shorter fits it as a read ending early), a call
-    resting on the shorter allele holding no base past the edge, where a circular contig's
-    runs on (RJ-3). An ALT call there (an insertion's) is depth only, counted and warned,
-    as under the rules. A REF call there (a deletion's) stands: two decided tests count it
-    REF (`test_contig_end_n_read_contract`, the MAF deletion at Start 1), where the rules'
-    exact-carrier route makes it depth; open for the operator.
+  - *A pure indel whose placements touch a contig edge* (its repeat running to the edge, or,
+    operator 2026-10-29, the indel itself at the contig's first or last base: a MAF insertion
+    at Start 0, the base-after form at position 1, and an insertion after the last base): a
+    read reaching the edge can only be called for the longer allele (the shorter fits it as a
+    read ending early), a call resting on the shorter allele holding no base past the edge,
+    where a circular contig's runs on (RJ-3). An ALT call there (an insertion's) is depth
+    only, counted and warned, as under the rules; reads alike share the judge's verdict and
+    the edge is weighed on each. A REF call there (a deletion's) stands: two decided tests
+    count it REF (`test_contig_end_n_read_contract`, the MAF deletion at Start 1), where the
+    rules' exact-carrier route makes it depth; open for the operator. At a MAF insertion at
+    Start 0 the REF reads tell nothing either (they fit the ALT placed past the insertion), so
+    the row is (RD, AD) (0, 0) under the judge, against the rules' (6, 6) that develop's
+    #219 test asserts.
   - *An indel the reads write beside X's site* (two reads and 5%, every placement clear of
     the site, the repeat X changes included) is a context, a separate event (RJ-8), however
     a read's aligner wrote it, where the reads need it for their calls (as a respelling
