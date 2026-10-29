@@ -366,6 +366,19 @@ pub(crate) struct Scored {
     steps: Vec<Option<graph::PathSteps>>,
 }
 
+impl Scored {
+    /// The bytes it holds (its capacities, the path steps, and the haplotypes and alignments
+    /// built so far), for the row caches' budget.
+    pub(crate) fn heap_bytes(&self) -> usize {
+        let rows: usize = self.rows.iter().map(|r| r.capacity() * 8).sum::<usize>() + self.rows.capacity() * 24;
+        let steps: usize = self.steps.iter().flatten().map(|p| p.steps.capacity() * std::mem::size_of::<graph::Step>() + p.skipped_after.capacity() * 4).sum::<usize>()
+            + self.steps.capacity() * std::mem::size_of::<Option<graph::PathSteps>>();
+        let haps: usize = self.haps.borrow().iter().map(|(_, h)| h.heap_bytes() + std::mem::size_of::<Hap>() + 16).sum();
+        let aligns: usize = self.aligns.borrow().iter().map(|(_, a)| a.0.heap_bytes() + std::mem::size_of::<Laid>() + 16).sum();
+        std::mem::size_of::<Scored>() + self.halves.capacity() * 16 + rows + steps + haps + aligns
+    }
+}
+
 /// Per class, the best score and the first candidate (haplotype or state) reaching it.
 fn raise(best: &mut [Option<(i32, usize)>; 3], class: usize, s: i32, h: usize) {
     let slot = &mut best[class];
@@ -1233,6 +1246,58 @@ mod tests {
         let haps = Haplotypes::new(&v, move |_| Some(s.clone()));
         let rules = ReadRules { judge: ReadJudge::Haplotype, haplotypes: Some(&haps), ..ReadRules::DNA };
         f(&v, &rules);
+    }
+
+    #[test]
+    fn a_row_whose_caches_the_budget_closes_calls_every_read_as_an_uncapped_one() {
+        // The thread's budget closes a row's caches once work space and caches reach it, and
+        // the row's later reads are judged afresh. A 5-base deletion's reads: carriers and
+        // REF's, at seven starts, three quality patterns, each under its own name (so reads
+        // alike in all but the name meet the verdict cache, and alike in bases and placement
+        // the scored one). With no limit, with nothing cached (0 bytes) and with budgets that
+        // close the caches part way, every read's call is the same.
+        use super::super::BUDGET_FOR_TESTS;
+        let c = random_seq(600, 41);
+        let x = row(301, std::str::from_utf8(&c[300..306]).unwrap(), &(c[300] as char).to_string());
+        let h = applied(&c, &x);
+        let quals = |i: usize| -> Vec<u8> { (0..100).map(|k| [30u8, 37, 25][(i + k * (i % 3 + 1)) % 3]).collect() };
+        let records: Vec<Record> = (0..150)
+            .map(|i| {
+                let start = 240 + (i % 7) * 3;
+                let (seq, cigar) = if i % 3 == 0 {
+                    (c[start..start + 100].to_vec(), vec![Cigar::Match(100)])
+                } else {
+                    let k = 301 - start;
+                    (h[start..start + 100].to_vec(), vec![Cigar::Match(k as u32), Cigar::Del(5), Cigar::Match((100 - k) as u32)])
+                };
+                let mut rec = Record::new();
+                rec.set(format!("r{i}").as_bytes(), Some(&CigarString(cigar)), &seq, &quals(i / 7));
+                rec.set_pos(start as i64);
+                rec
+            })
+            .collect();
+        let s = site(&c, &x, &[], 100);
+        let v = variant(&x);
+        let calls = |budget: Option<usize>| {
+            BUDGET_FOR_TESTS.with(|b| b.set(Some(budget)));
+            let haps = Haplotypes::new(&v, |_| Some(s.clone()));
+            let rules = ReadRules { judge: ReadJudge::Haplotype, haplotypes: Some(&haps), ..ReadRules::DNA };
+            let out: Vec<String> = records.iter().map(|r| format!("{:?}", classify(r, &v, r.qual(), 20, &rules))).collect();
+            let state = haps.cache_state();
+            BUDGET_FOR_TESTS.with(|b| b.set(None));
+            (out, state)
+        };
+        let (uncapped, (bytes, closed)) = calls(None);
+        assert!(bytes > 0 && !closed, "no limit: the caches fill ({bytes} bytes)");
+        let mut part_way = 0;
+        for budget in [0, 64 << 10, 256 << 10, 1 << 20, 4 << 20] {
+            let (capped, (bytes, closed)) = calls(Some(super::super::work_bytes() + budget));
+            assert_eq!(capped, uncapped, "budget {budget} bytes past the work space");
+            part_way += usize::from(closed && bytes > 0);
+        }
+        assert!(part_way > 0, "some budget closes the caches part way");
+        let (capped, (bytes, closed)) = calls(Some(0));
+        assert_eq!((capped == uncapped, bytes, closed), (true, 0, true), "nothing cached");
     }
 
     #[test]

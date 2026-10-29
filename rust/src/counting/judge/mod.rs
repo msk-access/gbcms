@@ -86,6 +86,45 @@ pub(crate) fn listed_holders(v: &Variant) -> Vec<&(i64, String, String)> {
 /// A record's identity at one row: its name, flags, position, and CIGAR and bases.
 pub(crate) type ReadKey = (Vec<u8>, u16, i64, Vec<u8>);
 
+/// The bytes a thread's row caches and the judge's work space may hold together. The work
+/// space (the per-state score tables and the aligner's) takes what the thread's reads need;
+/// the caches of the rows the thread is counting get the rest: once work space and caches
+/// reach it, a row adds no more entries and its later reads are judged afresh (the same
+/// calls, the time a cache saves forgone). A read needing more work space than this alone
+/// gets it, and its row caches nothing more.
+const THREAD_BUDGET: usize = 256 << 20;
+
+/// The budget in force: [`THREAD_BUDGET`], or (measurement only) `GBCMS_JUDGE_BUDGET_MB`'s,
+/// `none` for no limit. Read once.
+fn thread_budget() -> Option<usize> {
+    #[cfg(test)]
+    if let Some(b) = BUDGET_FOR_TESTS.with(std::cell::Cell::get) {
+        return b;
+    }
+    static BUDGET: std::sync::OnceLock<Option<usize>> = std::sync::OnceLock::new();
+    *BUDGET.get_or_init(|| match std::env::var("GBCMS_JUDGE_BUDGET_MB").as_deref() {
+        Ok("none") => None,
+        Ok(v) => Some(v.parse::<usize>().map_or(THREAD_BUDGET, |mb| mb << 20)),
+        Err(_) => Some(THREAD_BUDGET),
+    })
+}
+
+#[cfg(test)]
+thread_local! {
+    /// Tests only: the budget this thread's rows take in place of [`thread_budget`]'s.
+    pub(crate) static BUDGET_FOR_TESTS: std::cell::Cell<Option<Option<usize>>> = const { std::cell::Cell::new(None) };
+}
+
+thread_local! {
+    /// The bytes the row caches alive on this thread hold.
+    static CACHED: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
+}
+
+/// The bytes the judge's work space holds on this thread.
+fn work_bytes() -> usize {
+    graph::pool_bytes() + score::values_bytes()
+}
+
 /// A row's haplotypes, built on first use from its reads (the main counts, the
 /// per-transcript counts and ASJD read the same ones, whichever asks first), and the
 /// call each read got, which they share.
@@ -104,6 +143,34 @@ pub(crate) struct Haplotypes<'a> {
     /// qualities, tags and name), with what its programmes gave: a read alike there has
     /// the same scores, paths and alignments, its call its own.
     scored: RefCell<HashMap<ReadView, std::rc::Rc<decide::Scored>, std::hash::BuildHasherDefault<ViewHasher>>>,
+    /// The bytes this row's caches hold ([`THREAD_BUDGET`]), and whether they are closed to
+    /// more entries.
+    bytes: std::cell::Cell<usize>,
+    closed: std::cell::Cell<bool>,
+    /// Measurement only (`GBCMS_JUDGE_CACHE_TRACE=1`): the judged and scored caches' lookups
+    /// and hits.
+    lookups: std::cell::Cell<[u32; 4]>,
+}
+
+/// Measurement only: whether a row's caches are traced at its end (`GBCMS_JUDGE_CACHE_TRACE=1`).
+fn cache_trace() -> bool {
+    static ON: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+    *ON.get_or_init(|| std::env::var("GBCMS_JUDGE_CACHE_TRACE").is_ok_and(|v| v == "1"))
+}
+
+impl Drop for Haplotypes<'_> {
+    fn drop(&mut self) {
+        CACHED.with(|c| c.set(c.get().saturating_sub(self.bytes.get())));
+        if cache_trace() {
+            let [jl, jh, sl, sh] = self.lookups.get();
+            let (pos, r, a) = &self.key;
+            log::trace!(
+                "judge cache {}:{}>{} bytes={} closed={} judged={}/{} scored={}/{} entries={}/{}/{} work={}",
+                pos + 1, r, a, self.bytes.get(), self.closed.get(), jh, jl, sh, sl,
+                self.judged.borrow().len(), self.scored.borrow().len(), self.verdicts.borrow().len(), work_bytes(),
+            );
+        }
+    }
 }
 
 /// The judged views' hasher: keys are compared whole on a hit, so the hash need only
@@ -165,25 +232,73 @@ impl<'a> Haplotypes<'a> {
             verdicts: RefCell::new(HashMap::new()),
             judged: RefCell::new(HashMap::default()),
             scored: RefCell::new(HashMap::default()),
+            bytes: std::cell::Cell::new(0),
+            closed: std::cell::Cell::new(false),
+            lookups: std::cell::Cell::new([0; 4]),
         }
+    }
+
+    /// Measurement only: counts a lookup of the judged (`at` 0) or scored (2) cache, and its hit.
+    fn looked(&self, at: usize, hit: bool) {
+        if cache_trace() {
+            let mut l = self.lookups.get();
+            l[at] += 1;
+            l[at + 1] += u32::from(hit);
+            self.lookups.set(l);
+        }
+    }
+
+    /// Whether an entry of `add` bytes fits the thread's budget beside the work space and
+    /// the caches alive ([`THREAD_BUDGET`]); taken where it fits. A row that once finds no
+    /// room adds nothing more.
+    fn room(&self, add: usize) -> bool {
+        if self.closed.get() {
+            return false;
+        }
+        if let Some(budget) = thread_budget() {
+            if CACHED.with(std::cell::Cell::get) + work_bytes() + add > budget {
+                self.closed.set(true);
+                return false;
+            }
+        }
+        CACHED.with(|c| c.set(c.get() + add));
+        self.bytes.set(self.bytes.get() + add);
+        true
+    }
+
+    /// Tests only: the bytes this row's caches hold, and whether they are closed to more
+    /// entries (the budget reached).
+    #[cfg(test)]
+    pub(crate) fn cache_state(&self) -> (usize, bool) {
+        (self.bytes.get(), self.closed.get())
     }
 
     /// The verdict a read alike to `view`'s got at this row ([`Haplotypes::judged`]'s key).
     pub(crate) fn judged(&self, view: &JudgedKey) -> Option<decide::Verdict> {
-        self.judged.borrow().get(view).copied()
+        let got = self.judged.borrow().get(view).copied();
+        self.looked(0, got.is_some());
+        got
     }
 
     pub(crate) fn keep_judged(&self, view: JudgedKey, verdict: decide::Verdict) {
-        self.judged.borrow_mut().insert(view, verdict);
+        let add = view.0.heap_bytes() + std::mem::size_of::<(JudgedKey, decide::Verdict)>();
+        if self.room(add) {
+            self.judged.borrow_mut().insert(view, verdict);
+        }
     }
 
     /// What the programmes gave a read alike to `placed` (bases and placement) at this row.
     pub(crate) fn scored(&self, placed: &ReadView) -> Option<std::rc::Rc<decide::Scored>> {
-        self.scored.borrow().get(placed).cloned()
+        let got = self.scored.borrow().get(placed).cloned();
+        self.looked(2, got.is_some());
+        got
     }
 
     pub(crate) fn keep_scored(&self, placed: ReadView, scored: std::rc::Rc<decide::Scored>) {
-        self.scored.borrow_mut().insert(placed, scored);
+        let add = placed.heap_bytes() + scored.heap_bytes() + std::mem::size_of::<(ReadView, usize)>();
+        if self.room(add) {
+            self.scored.borrow_mut().insert(placed, scored);
+        }
     }
 
     /// The call a read already got at this row.
@@ -192,7 +307,10 @@ impl<'a> Haplotypes<'a> {
     }
 
     pub(crate) fn keep_verdict(&self, key: ReadKey, result: ClassifyResult) {
-        self.verdicts.borrow_mut().insert(key, result);
+        let add = key.0.capacity() + key.3.capacity() + std::mem::size_of::<(ReadKey, ClassifyResult)>();
+        if self.room(add) {
+            self.verdicts.borrow_mut().insert(key, result);
+        }
     }
 
     /// The haplotypes when they were found for `v` (the dual-counted decomposed form of

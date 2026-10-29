@@ -285,6 +285,12 @@ impl ReadView {
         self.seq.len()
     }
 
+    /// The bytes it holds on the heap (its capacities), for the row caches' budget.
+    pub(crate) fn heap_bytes(&self) -> usize {
+        let inserts: usize = self.inserts.iter().map(|(_, b)| b.capacity()).sum::<usize>() + self.inserts.capacity() * std::mem::size_of::<(i64, Vec<u8>)>();
+        self.seq.capacity() + self.quals.capacity() + self.refpos.capacity() * 8 + inserts + self.indels.capacity() * 16 + self.aligned.capacity() + self.name.capacity()
+    }
+
     /// The view without its qualities, its aligner's tags and its name: its bases (masked)
     /// and placement alone, which a read's programmes and alignments are fixed by.
     pub(crate) fn placed_alone(&self) -> ReadView {
@@ -318,6 +324,11 @@ pub(crate) struct Hap {
 }
 
 impl Hap {
+    /// The bytes it holds on the heap (its capacities), for the row caches' budget.
+    pub(crate) fn heap_bytes(&self) -> usize {
+        self.rows.capacity() * 8 + self.seq.capacity() + self.segs.capacity() * 32
+    }
+
     /// Measurement only: the haplotype's base at column `c` (a masked base is WILD).
     pub(crate) fn base(&self, c: usize) -> u8 {
         self.seq.get(c).copied().unwrap_or(WILD)

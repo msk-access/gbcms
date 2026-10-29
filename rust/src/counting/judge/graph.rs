@@ -431,6 +431,27 @@ const E_EXT: u8 = 4;
 const F_EXT: u8 = 8;
 const D_START: u8 = 16;
 
+thread_local! {
+    /// The thread's workspaces, one per state ([`with_workspaces`]); each grows to the largest
+    /// band a read has needed of it, never to the full programme ahead of need.
+    static POOL: std::cell::RefCell<Vec<Workspace>> = const { std::cell::RefCell::new(Vec::new()) };
+}
+
+/// The bytes this thread's pooled workspaces hold (their capacities), for the row caches'
+/// budget.
+pub(crate) fn pool_bytes() -> usize {
+    POOL.with(|p| p.borrow().iter().map(Workspace::heap_bytes).sum())
+}
+
+impl Workspace {
+    /// The bytes it holds on the heap (its capacities).
+    fn heap_bytes(&self) -> usize {
+        let words = self.a.capacity() + self.e.capacity() + self.f.capacity() + self.lead.capacity() + self.col.diag.capacity() + self.col.en.capacity() + self.marks.capacity();
+        let bytes = self.touched.capacity() + self.dir.capacity() + self.dpred.capacity() + self.epred.capacity();
+        words * 4 + bytes + (self.ends.capacity() + self.interiors.capacity() + self.snap.1.capacity()) * 8 + self.stack.capacity() * 12
+    }
+}
+
 /// Reusable arrays for the programme: per cell of the band, A, E and F (the insertion), the
 /// read's leftover costs, one column's view of its predecessors, the cells the best ends
 /// lie at, and the edge search's marks and stack; the reference programme's edge bits and
@@ -1305,9 +1326,6 @@ pub(crate) fn kept_path<M: ErrorModel>(m: &M, read: &GraphRead, g: &Graph, half:
 /// Workspaces for `k` programmes (one per state of a site), reused across reads on this
 /// thread: their arrays only grow.
 pub(crate) fn with_workspaces<R>(k: usize, f: impl FnOnce(&mut [Workspace]) -> R) -> R {
-    thread_local! {
-        static POOL: std::cell::RefCell<Vec<Workspace>> = const { std::cell::RefCell::new(Vec::new()) };
-    }
     // taken out for the call (a call inside it starts a pool of its own)
     let mut pool = POOL.with(|p| std::mem::take(&mut *p.borrow_mut()));
     if pool.len() < k {
