@@ -13,6 +13,7 @@ on trust. Two checks keep that trust earned:
 
 import importlib.util
 import re
+import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -118,7 +119,161 @@ def test_name_checker_flags_a_missing_name_flag_path_and_constant(tmp_path):
 def test_the_module_map_lists_the_modules_that_exist():
     """architecture.md names every Rust and Python module file, and only those."""
     checker = _checker()
-    problems = checker.module_map_problems(
-        ROOT / ".agents" / "rules" / "architecture.md", checker.tracked()
-    )
+    text = (ROOT / ".agents" / "rules" / "architecture.md").read_text()
+    problems = checker.module_map_problems(text, checker.Source().names)
     assert not problems, problems
+
+
+# ── a shortened flag, a removed duplicate-name module, staged against unstaged ──────────
+
+
+def _check(skill: Path, *flags: str, cwd: Path = ROOT, script: Path = CHECKER):
+    return subprocess.run(
+        [sys.executable, str(script), *flags, str(skill)],
+        capture_output=True,
+        text=True,
+        cwd=cwd,
+    )
+
+
+def test_a_flag_is_matched_whole_not_as_the_start_of_a_longer_flag(tmp_path):
+    """`--mfsd-report-min` must not pass because `--mfsd-report-min-alt` exists."""
+    skill = tmp_path / "x" / "SKILL.md"
+    skill.parent.mkdir()
+    skill.write_text(
+        '---\nname: x\ndescription: "d. Use when x."\n---\n'
+        "Live: `--mfsd-report-min-alt`, `--mfsd-report`, `--no-baq` (spelled `--apply-baq/--no-baq`).\n"
+        "Dead: `--mfsd-report-min`, `--mfsd-rep`.\n"
+    )
+    done = _check(skill)
+    assert done.returncode == 1
+    assert "flag --mfsd-report-min is not in the code" in done.stdout
+    assert "flag --mfsd-rep is not in the code" in done.stdout
+    for live in ("`--mfsd-report-min-alt`", "`--mfsd-report`", "`--no-baq`"):
+        assert live not in done.stdout, done.stdout
+
+
+MODULE_MAP = """## Project Layout
+
+```
+gbcms/
+├── rust/
+│   └── src/
+│       ├── counting/
+│       │   └── engine.rs        # counting loop
+│       └── normalize/
+│           ├── mod.rs, engine.rs  # entry, preparation engine
+│           └── types.rs
+└── src/gbcms/
+    └── cli.py
+```
+"""
+
+
+def test_the_module_map_tells_two_files_of_one_name_apart():
+    """`counting/engine.rs` and `normalize/engine.rs` are two files; neither stands in for the other."""
+    checker = _checker()
+    everything = [
+        "rust/src/counting/engine.rs",
+        "rust/src/normalize/engine.rs",
+        "rust/src/normalize/mod.rs",
+        "rust/src/normalize/types.rs",
+        "src/gbcms/cli.py",
+    ]
+    assert checker.module_map_problems(MODULE_MAP, everything) == []
+    assert checker.map_paths(MODULE_MAP.split("```")[1]) == {
+        "rust/src/counting/engine.rs",
+        "rust/src/normalize/engine.rs",
+        "rust/src/normalize/mod.rs",
+        "rust/src/normalize/types.rs",
+        "src/gbcms/cli.py",
+    }
+    # The normalize module is gone but counting/engine.rs remains: matching by name alone
+    # would hide it.
+    without = [n for n in everything if n != "rust/src/normalize/engine.rs"]
+    assert checker.module_map_problems(MODULE_MAP, without) == [
+        "module map lists rust/src/normalize/engine.rs, which is not a file"
+    ]
+    # And the other way: a new normalize/engine.rs, with only counting/engine.rs in the map.
+    short_map = MODULE_MAP.replace(
+        "           ├── mod.rs, engine.rs  # entry, preparation engine\n", "           ├── mod.rs\n"
+    )
+    assert checker.module_map_problems(short_map, everything) == [
+        "module map omits rust/src/normalize/engine.rs"
+    ]
+
+
+GOOD_SKILL = '---\nname: foo\ndescription: "Reference. Use when testing."\n---\nCalls `{name}`.\n'
+
+
+def _git(repo: Path, *args: str, check: bool = True):
+    return subprocess.run(["git", *args], cwd=repo, capture_output=True, text=True, check=check)
+
+
+@pytest.fixture
+def repo(tmp_path):
+    """A throwaway repo with the hook, the checker and one function in src/ (no real data)."""
+    pytest.importorskip("yaml")
+    if shutil.which("git") is None or shutil.which("bash") is None:
+        pytest.skip("needs git and bash")
+    _git(tmp_path, "init", "-q")
+    for key, value in (
+        ("user.email", "t@example.org"),
+        ("user.name", "t"),
+        ("commit.gpgsign", "false"),
+        ("core.hooksPath", ".githooks"),
+    ):
+        _git(tmp_path, "config", key, value)
+    shutil.copytree(ROOT / ".githooks", tmp_path / ".githooks")
+    (tmp_path / "scripts").mkdir()
+    shutil.copy(CHECKER, tmp_path / "scripts" / "check_agent_names.py")
+    (tmp_path / "src" / "gbcms").mkdir(parents=True)
+    (tmp_path / "src" / "gbcms" / "x.py").write_text("def real_function():\n    return 1\n")
+    _git(tmp_path, "add", "scripts", "src")
+    first = _git(tmp_path, "commit", "-q", "-m", "base", check=False)
+    assert first.returncode == 0, first.stderr
+    return tmp_path
+
+
+def _skill(repo: Path, name: str) -> Path:
+    path = repo / ".agents" / "skills" / "foo" / "SKILL.md"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(GOOD_SKILL.format(name=name))
+    return path
+
+
+def test_the_hook_judges_the_staged_code_not_the_working_tree(repo):
+    """A function added only in the working tree does not satisfy a committed skill."""
+    skill = _skill(repo, "unstaged_only_function")
+    _git(repo, "add", str(skill.relative_to(repo)))
+    code = repo / "src" / "gbcms" / "x.py"
+    code.write_text(code.read_text() + "\n\ndef unstaged_only_function():\n    return 2\n")
+    # The working tree has the function, so the working-tree check passes ...
+    assert _check(skill, cwd=repo, script=repo / "scripts" / "check_agent_names.py").returncode == 0
+    # ... the staged check does not, and nor does the hook.
+    staged = _check(skill, "--staged", cwd=repo, script=repo / "scripts" / "check_agent_names.py")
+    assert staged.returncode == 1 and "unstaged_only_function" in staged.stdout
+    blocked = _git(repo, "commit", "-q", "-m", "skill", check=False)
+    assert blocked.returncode != 0 and "does not exist" in blocked.stderr, blocked.stderr
+
+
+def test_the_hook_judges_the_staged_skill_not_the_working_tree_copy(repo):
+    """Fixing the skill only in the working tree does not let the staged one through."""
+    skill = _skill(repo, "missing_function")
+    _git(repo, "add", str(skill.relative_to(repo)))
+    skill.write_text(GOOD_SKILL.format(name="real_function"))  # an unstaged fix
+    assert _check(skill, cwd=repo, script=repo / "scripts" / "check_agent_names.py").returncode == 0
+    staged = _check(skill, "--staged", cwd=repo, script=repo / "scripts" / "check_agent_names.py")
+    assert staged.returncode == 1 and "missing_function" in staged.stdout
+    blocked = _git(repo, "commit", "-q", "-m", "skill", check=False)
+    assert blocked.returncode != 0, "the hook committed a skill naming a missing function"
+
+
+def test_the_hook_lets_a_good_staged_skill_through_whatever_the_working_tree_holds(repo):
+    """The staged skill and the staged code agree, so the commit goes in."""
+    skill = _skill(repo, "real_function")
+    _git(repo, "add", str(skill.relative_to(repo)))
+    code = repo / "src" / "gbcms" / "x.py"
+    code.write_text("def renamed_in_the_working_tree():\n    return 1\n")  # unstaged
+    done = _git(repo, "commit", "-q", "-m", "skill", check=False)
+    assert done.returncode == 0, done.stderr
