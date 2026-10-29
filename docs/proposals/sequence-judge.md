@@ -155,7 +155,9 @@ For a row X and each admitted read:
     only, counted and warned, as under the rules; reads alike share the judge's verdict and
     the edge is weighed on each. A REF call there (a deletion's) stands: two decided tests
     count it REF (`test_contig_end_n_read_contract`, the MAF deletion at Start 1), where the
-    rules' exact-carrier route makes it depth; open for the operator. At a MAF insertion at
+    rules' exact-carrier route makes it depth (a run of six A's ending the contig, five REF
+    reads reading to the edge: (RD, DP) (0, 5) under the rules, (5, 5) under the judge);
+    carried to #332 (J1) with these numbers, no change here (operator, 2026-10-29). At a MAF insertion at
     Start 0 the REF reads tell nothing either (they fit the ALT placed past the insertion), so
     the row is (RD, AD) (0, 0) under the judge, against the rules' (6, 6) that develop's
     #219 test asserts. Decided by design (operator, 2026-10-29), as the two delins
@@ -184,7 +186,16 @@ For a row X and each admitted read:
     forgives (RJ-26), so `partial` keeps an MNP carrier with one ALT instead of depth only.
     Bases X keeps tell nothing under both. The evidence it answers: a mate test of 72
     patient delins ALT reads the margin forgave (19 showing REF's base; under 20 bases, 10
-    of 11 decided carry the odd base on both mates).
+    of 11 decided carry the odd base on both mates). Measured against the default (oracle
+    v3): delins under 20 bp gain (panel +23 reads, gate subset +22, wrong calls −23 and
+    −22, mostly REF reads showing the ALT's base, which v3 calls another allele); delins of
+    20 bp or more lose a few (panel −3, WES −3); MNVs gain wrong calls (panel +6, gate subset
+    +28: carriers with a third base at a changed base, which v3 calls another allele); HG002
+    delins: 21 reads on 19 rows move (of the informative ones, 1 right and 4 wrong by phase),
+    the het band at 20-49 bp 9 → 7 rows, no truth-arm read; a patient normal's 3>1 delins
+    (RD, AD, partial) (828, 1, 5) → (827, 0, 7). Decided (operator, 2026-10-29): the default
+    stays `margin`; the switch stays, off by default; a delins-only form (`partial` at a
+    delins, `margin` at an MNP) is measured at the default flip (#331).
   - *Decided (operator, 2026-10-28): a germline change at a base a delins keeps.* Carried on
     both haplotypes, it is a separate event (RJ-25), and each read counts by the bases where
     REF and ALT differ: under the judge a delins carrier with the change counts ALT and a REF
@@ -193,10 +204,14 @@ For a row X and each admitted read:
     gives (RD, AD) (46, 16) under the judge, the rules' exact reading (26, 6); its MNP twin
     `test_a_germline_change_the_carriers_carry_too_leaves_ref_reads_ref` expects (40, 10) on
     both). The delins expectation updates at the default flip (#331); the rules path keeps it.
-  - *Open for the operator:* at an MNP an ALT call with a confident third base at a base X
-    changes is depth only (the phase C rule above) while a REF call with one stays REF and a
-    delins forgives one either way (RJ-26, round 3); `GBCMS_JUDGE_REFBASE=partial` measures
-    one rule for both.
+  - *Carried to #332 (J1), no change here (operator, 2026-10-29):* at an MNP an ALT call with
+    a confident third base at a base X changes is depth only (the phase C rule above) while a
+    REF call with one stays REF, and a delins forgives one either way (RJ-26, round 3). On
+    CC>GT and GCA>ACT, 20 REF reads and 10 carriers, one more read each: a carrier with a
+    confident third base at a changed base is partial under the rules and depth under the
+    judge; a REF read with one is depth under the rules and REF under the judge; at CAGTC>GAGC
+    both judges count such a carrier ALT and such a REF read REF.
+    `GBCMS_JUDGE_REFBASE=partial` measured one rule for both (above).
 - **The background refinement (measured 2026-10-26, not adopted; `GBCMS_JUDGE_BACKGROUND`,
   default `asis`):** `respell` leaves out a context item of the guard's background or the
   found alleles that respells the site's own candidate sequences: one that turns one
@@ -232,8 +247,7 @@ strand, mFSD and diagnostics consume the `ClassifyResult` as today.
 - **REF / ALT:** `is_ref` / `is_alt`; `qual` = the lowest quality among the read's bases where
   the winning and the best losing candidate sequence differ (the bases that decided it; at least
   `--min-baseq`), so mate resolution (`resolve`, `fragment.rs:258`) weighs a decision by the
-  bases it rests on. `is_structural`: to be measured both ways (§10): `false` for every
-  call, or `true` where the read's CIGAR writes X's exact op.
+  bases it rests on. `is_structural`: `false` for every call (decided, §10.3).
 - **Partial:** neither; `partial_match_count = 1` (another site allele won).
 - **Depth only:** neither, `uninformative = true`.
 - **Admission:** `covers_locus` from splice triage as today; `clip_admissible` (DNA) where a
@@ -300,10 +314,14 @@ placement, bases). Cost within 2× develop. The HPC gate.
 1. **Decided:** a judged call's `qual` is the lowest quality among its deciding bases.
 2. **Decided:** a third base at an SNV is partial evidence: SNV sites hold all four bases as
    states; MNP and indel sites take the guard's discovered alleles.
-3. **To measure, then decide:** `is_structural` under the flag — retired (every call rests on
-   its bases; mates resolve by quality) or kept for reads whose CIGAR writes X's exact op.
-   The build carries a measurement-only switch for both; the arms decide, and the switch is
-   removed before the merge.
+3. **Decided (operator, 2026-10-29):** `is_structural` under the flag is retired: every call
+   rests on its bases (invariant 7: judge bases, not placement), and mates resolve by
+   quality. Keeping it for reads whose CIGAR writes X's exact op (`GBCMS_JUDGE_STRUCTURAL=keep`,
+   removed in #363) was measured on every arm and not adopted: read counts identical
+   everywhere; fragment counts changed on 40 gate-subset rows, all 1-bp homopolymer indels
+   (ADF +76, RDF −8; 82 fragments there have one mate ALT and the other REF, which `keep`
+   resolves to the ALT mate's structure), and on 7 HG002 rows (ADF +9); no truth set scores
+   fragments.
 
 ## 11. Open tickets the judge resolves (measured 2026-10-28)
 On the merged branch (develop 6efeb5bb merged in), against its own default path, which gives

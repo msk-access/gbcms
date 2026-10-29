@@ -1012,47 +1012,6 @@ pub(crate) fn read_view(record: &Record, quals: &[u8], min_baseq: u8, rules: &Re
     ReadView::new(&seq, quals, record.pos(), &cigar, readable, min_baseq).map(|v| v.named(record.qname()).tagged(tags))
 }
 
-/// Measurement only, TEMPORARY, to be removed before the merge (design §10): with
-/// `GBCMS_JUDGE_STRUCTURAL=keep` in the environment, an ALT call whose CIGAR writes the
-/// row's exact indel at its position keeps `is_structural`, so the arms can measure both
-/// ways of resolving mates. Read at each such call, so a process may switch it.
-fn keep_structural() -> bool {
-    std::env::var("GBCMS_JUDGE_STRUCTURAL").is_ok_and(|v| v == "keep")
-}
-
-/// Whether the read's CIGAR writes `v`'s pure insertion or deletion exactly: the op,
-/// its length (and an insertion's bases) right after the anchor.
-fn writes_exact_op(record: &Record, v: &Variant) -> bool {
-    let kind = allele_kind(&v.ref_allele, &v.alt_allele);
-    let (mut rp, mut qp) = (record.pos(), 0usize);
-    let after_anchor = v.pos + 1;
-    for op in record.cigar().iter() {
-        match *op {
-            Cigar::Match(n) | Cigar::Equal(n) | Cigar::Diff(n) => {
-                rp += n as i64;
-                qp += n as usize;
-            }
-            Cigar::Ins(n) => {
-                if kind == Some(AlleleKind::Insertion) && rp == after_anchor && n as usize + 1 == v.alt_allele.len() {
-                    let seq = record.seq().as_bytes();
-                    return seq.get(qp..qp + n as usize).is_some_and(|b| b.eq_ignore_ascii_case(&v.alt_allele.as_bytes()[1..]));
-                }
-                qp += n as usize;
-            }
-            Cigar::Del(n) => {
-                if kind == Some(AlleleKind::Deletion) && rp == after_anchor && n as usize + 1 == v.ref_allele.len() {
-                    return true;
-                }
-                rp += n as i64;
-            }
-            Cigar::RefSkip(n) => rp += n as i64,
-            Cigar::SoftClip(n) => qp += n as usize,
-            Cigar::HardClip(_) | Cigar::Pad(_) => {}
-        }
-    }
-    false
-}
-
 /// The haplotype judge's call for one read at `variant` (after the splice-skip triage),
 /// as the engine counts it:
 /// - ALT / REF: `is_alt` / `is_ref`, with `qual` the lowest quality among the bases
@@ -1288,16 +1247,13 @@ fn mark(mut out: ClassifyResult, record: &Record, variant: &Variant) -> Classify
     // An MNP's ALT call that read every base where the alleles differ, confidently and as
     // the ALT's, on the alignment it was called on (however the CIGAR wrote them).
     out.mnp_confirmed &= out.is_alt && kind == Some(AlleleKind::Mnp);
-    if out.is_alt && matches!(kind, Some(AlleleKind::Insertion | AlleleKind::Deletion)) && keep_structural() {
-        out.is_structural = writes_exact_op(record, variant);
-    }
     out
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::counting::judge::haplotypes::tests::{contig, random_seq, row, site};
+    use crate::counting::judge::haplotypes::tests::{random_seq, row, site};
     use crate::counting::judge::{Haplotypes, ReadJudge, Row};
     use rust_htslib::bam::record::CigarString;
 
@@ -1461,23 +1417,5 @@ mod tests {
         assert!(!fired(both, &noisy(12), doubted), "within 14 per 100: judged");
         assert!(fired(both, &noisy(16), doubted), "past both, doubted: depth only");
         assert!(!fired(both, &noisy(16), sure), "placed here alone: judged");
-    }
-
-    #[test]
-    fn the_cigar_writes_the_exact_indel_or_not() {
-        let c = contig(71, 0, b"");
-        let ins = row(300, &(c[299] as char).to_string(), &format!("{}CG", c[299] as char));
-        let v = variant(&ins);
-        let seq = |ins: &[u8]| [&c[250..300], ins, &c[300..348]].concat();
-        let exact = record(&seq(b"CG"), 250, vec![Cigar::Match(50), Cigar::Ins(2), Cigar::Match(48)]);
-        let other_bases = record(&seq(b"TT"), 250, vec![Cigar::Match(50), Cigar::Ins(2), Cigar::Match(48)]);
-        let elsewhere = record(&seq(b"CG"), 250, vec![Cigar::Match(49), Cigar::Ins(2), Cigar::Match(49)]);
-        assert!(writes_exact_op(&exact, &v));
-        assert!(!writes_exact_op(&other_bases, &v));
-        assert!(!writes_exact_op(&elsewhere, &v));
-        let del = Row::new(299, &c[299..302], &c[299..300]);
-        let v = variant(&del);
-        let rec = record(&[&c[250..300], &c[302..352]].concat(), 250, vec![Cigar::Match(50), Cigar::Del(2), Cigar::Match(50)]);
-        assert!(writes_exact_op(&rec, &v));
     }
 }
