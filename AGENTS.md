@@ -61,9 +61,9 @@ removing the strict-xfail marker a fix targets, are fine).
 ## Safety (enforced by hooks, not prose)
 
 Determinism floor: `.claude/hooks/` (block-rm-rf, block-push-main, injection-guard, block-env-edits,
-protect-cbioportal) + `.githooks/` (pre-commit: data-file and PHI guard, skill checks; pre-push:
+protect-cbioportal, hpc-ssh-guard) + `.githooks/` (pre-commit: data-file and PHI guard, skill checks; pre-push:
 gitleaks, main block). Once per clone: `git config core.hooksPath .githooks`; install gitleaks.
-Intent, PHI and cBioPortal rules: `.agents/rules/security.md`.
+Intent, PHI, cBioPortal and HPC rules: `.agents/rules/security.md`.
 
 ## Pointers
 

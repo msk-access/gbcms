@@ -34,6 +34,11 @@
             "type": "command",
             "command": "python3 \"$CLAUDE_PROJECT_DIR/.claude/hooks/protect-cbioportal.py\"",
             "timeout": 5
+          },
+          {
+            "type": "command",
+            "command": "python3 \"$CLAUDE_PROJECT_DIR/.claude/hooks/hpc-ssh-guard.py\"",
+            "timeout": 5
           }
         ]
       },
