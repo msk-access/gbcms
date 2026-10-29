@@ -44,6 +44,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - **It is slower than the rules;** the speed work is #335.
   - **`GBCMS_JUDGE_*` environment variables are measurement switches,** not options:
     they serve the measurement rounds and are removed as their questions are decided.
+    Removed as decided: `TRIAGE`, `TRIAGE_EXACT` and `TRIAGE_UNKNOWN`, together with the
+    k-mer triage; `DELINS`; `CONTEXTS`; and `ENDS`. The default counts do not change.
 
 ### Fixed — an unchecked sample no longer reads as a clean one (#227)
 

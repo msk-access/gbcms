@@ -457,9 +457,6 @@ pub(crate) struct Site {
     /// The graph scorer's graphs, one per state of X's site: REF's bases, X, then the
     /// other states.
     pub(crate) graphs: Vec<StateGraph>,
-    /// The coloured k-mer index triage reads first, where it is on and the site allows it.
-    pub(crate) triage: Option<super::triage::Index>,
-    pub(crate) triage_mode: TriageMode,
     /// What a covered telling base read confidently as neither allele does to a REF or ALT
     /// call ([`neither_rule`]).
     pub(crate) neither: NeitherRule,
@@ -499,28 +496,6 @@ pub(crate) fn scorer_kind() -> ScorerKind {
     match std::env::var("GBCMS_JUDGE_SCORER").as_deref() {
         Ok("enumerated") => ScorerKind::Enumerated,
         _ => ScorerKind::Graph,
-    }
-}
-
-/// TEMPORARY, kept as a measured negative result: coloured k-mer triage in front of the
-/// graph scorer (`GBCMS_JUDGE_TRIAGE`): `off`, the default; `on`, a read triage decides is
-/// not scored; `check`, triage and the scorer both run, every triage-decided read is traced
-/// with both calls, and the scorer's call counts. As built it disagreed with the full
-/// programme on 0.1-0.6% of the reads it decided; confirmed exactly
-/// (`GBCMS_JUDGE_TRIAGE_EXACT`) it disagrees on none but saves only 2-18% of the time, so
-/// it stays off.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum TriageMode {
-    Off,
-    On,
-    Check,
-}
-
-pub(crate) fn triage_mode() -> TriageMode {
-    match std::env::var("GBCMS_JUDGE_TRIAGE").as_deref() {
-        Ok("on") => TriageMode::On,
-        Ok("check") => TriageMode::Check,
-        _ => TriageMode::Off,
     }
 }
 
@@ -618,31 +593,6 @@ pub(crate) fn respell_trace() -> bool {
 pub(crate) fn neither_trace() -> bool {
     static ON: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
     *ON.get_or_init(|| std::env::var("GBCMS_JUDGE_NEITHER_TRACE").is_ok_and(|v| v == "1"))
-}
-
-/// Measurement only, TEMPORARY: where an allele that removes bases, its equivalent placements
-/// ending exactly at an insertion X's point, stands (`GBCMS_JUDGE_ENDS`): `site`, the default,
-/// at X's site (its placements meet X's), another allele there; or `beside`, a change beside
-/// X, a context, so a read carrying it is read at X by its bases there. An allele inserting at
-/// X's point (another insertion there, X's behind a substituted anchor) stays at X's site
-/// either way. `apart`, the general form measured beside it: a length change meeting a
-/// length-changing X with an equivalent placement clear of every placement of X (its anchor,
-/// its point and the bases it changes, wherever X slides) is beside X, a context, whatever it
-/// inserts or removes; one every placement of which touches X's is at X's site. Read when a
-/// site is built.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum EndsRule {
-    Site,
-    Beside,
-    Apart,
-}
-
-pub(crate) fn ends_rule() -> EndsRule {
-    match std::env::var("GBCMS_JUDGE_ENDS").as_deref() {
-        Ok("beside") => EndsRule::Beside,
-        Ok("apart") => EndsRule::Apart,
-        _ => EndsRule::Site,
-    }
 }
 
 /// One state of X's site and its graph: the window with the state's row applied (none for
@@ -781,61 +731,6 @@ fn parse_other(v: &str) -> OtherOption {
     let found = numbered("found");
     let found_min = found.filter(|&k| k > 0).map_or(FOUND_MIN_READS, |k| k as u32);
     OtherOption { runs: on("runs"), found: found.is_some(), fit: on("fit"), rule, edges: on("edges"), found_min }
-}
-
-/// Measurement only, TEMPORARY: which sources of context explain a read's *other*
-/// differences, so they don't pass for X's allele (`GBCMS_JUDGE_CONTEXTS`). The site's
-/// states are the same under every level: REF, X, the listed rows over X's site, an SNV's
-/// other bases, and the guard's and the found alleles at X's site. Each level adds one
-/// source to the one before it:
-/// - `seq`: no context; the candidate sequences differ only at X's site.
-/// - `listed`: the listed rows in reach beside X's site, as bubbles.
-/// - `nofound`: and the guard's recurring background: its changes, its any-base masks and
-///   its recurring indels.
-/// - `all` (the default): and the alleles the reads spell away from X's site: the guard's
-///   other alleles that change bases beside the site only, and a found allele's changes
-///   beside a substitution X.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
-pub(crate) enum ContextSources {
-    Seq,
-    Listed,
-    NoFound,
-    All,
-}
-
-impl ContextSources {
-    fn listed(self) -> bool {
-        self >= ContextSources::Listed
-    }
-
-    fn background(self) -> bool {
-        self >= ContextSources::NoFound
-    }
-
-    fn found(self) -> bool {
-        self == ContextSources::All
-    }
-}
-
-pub(crate) fn context_sources() -> ContextSources {
-    static SOURCES: std::sync::OnceLock<ContextSources> = std::sync::OnceLock::new();
-    *SOURCES.get_or_init(|| {
-        let v = std::env::var("GBCMS_JUDGE_CONTEXTS").unwrap_or_default();
-        parse_contexts(&v).unwrap_or_else(|| {
-            log::warn!("GBCMS_JUDGE_CONTEXTS={v:?} is not seq, listed, nofound or all; every context source is used");
-            ContextSources::All
-        })
-    })
-}
-
-fn parse_contexts(v: &str) -> Option<ContextSources> {
-    match v {
-        "seq" => Some(ContextSources::Seq),
-        "listed" => Some(ContextSources::Listed),
-        "nofound" => Some(ContextSources::NoFound),
-        "all" | "" => Some(ContextSources::All),
-        _ => None,
-    }
 }
 
 /// An event's own bases from which an indel inside them, away from its ends, is a change
@@ -1921,24 +1816,10 @@ impl Site {
         reads: &[ReadView],
         rule: FoundRule,
     ) -> Option<Site> {
-        Site::build_sourced(scorer, target, candidates, window, reads, rule, context_sources())
+        Site::build_backed(scorer, target, candidates, window, reads, rule, background_rule())
     }
 
-    /// [`Site::build_ruled`] with the context sources named.
-    fn build_sourced(
-        scorer: ScorerKind,
-        target: Row,
-        candidates: &Candidates,
-        window: (i64, Vec<u8>),
-        reads: &[ReadView],
-        rule: FoundRule,
-        sources: ContextSources,
-    ) -> Option<Site> {
-        Site::build_backed(scorer, target, candidates, window, reads, rule, sources, background_rule())
-    }
-
-    /// [`Site::build_sourced`] with the guard's background kept by `bg_rule`.
-    #[allow(clippy::too_many_arguments)]
+    /// [`Site::build_ruled`] with the guard's background kept by `bg_rule`.
     pub(crate) fn build_backed(
         scorer: ScorerKind,
         target: Row,
@@ -1946,17 +1827,9 @@ impl Site {
         window: (i64, Vec<u8>),
         reads: &[ReadView],
         rule: FoundRule,
-        sources: ContextSources,
         bg_rule: BackgroundRule,
     ) -> Option<Site> {
-        Site::build_core(scorer, target, candidates, window, reads, rule, sources, bg_rule, None, ends_rule())
-    }
-
-    /// [`Site::build`] with an allele ending at an insertion X's point placed by `ends`.
-    #[cfg(test)]
-    pub(crate) fn build_ended(target: Row, candidates: &Candidates, window: (i64, Vec<u8>), reads: &[ReadView], ends: EndsRule) -> Option<Site> {
-        let (rule, sources, bg) = (other_option().rule, context_sources(), background_rule());
-        Site::build_core(scorer_kind(), target, candidates, window, reads, rule, sources, bg, None, ends)
+        Site::build_core(scorer, target, candidates, window, reads, rule, bg_rule, None)
     }
 
     /// [`Site::build_backed`], the context items in `dropped` left out where given (the
@@ -1969,10 +1842,8 @@ impl Site {
         (start, reference): (i64, Vec<u8>),
         reads: &[ReadView],
         rule: FoundRule,
-        sources: ContextSources,
         bg_rule: BackgroundRule,
         dropped: Option<&Dropped>,
-        ends: EndsRule,
     ) -> Option<Site> {
         let wn = reference.len() as i64;
         let holds = |r: &Row| {
@@ -2061,34 +1932,9 @@ impl Site {
             };
             moved.unwrap_or_else(|| r.clone())
         };
-        // Under `GBCMS_JUDGE_ENDS=beside`: an allele removing bases whose equivalent placements
-        // end exactly at an insertion X's point is beside X, a context. One that inserts there
-        // (net longer) is at X's site, as two insertions at one anchor each count their own.
-        let ends_at_x = |r: &Row| match ends {
-            EndsRule::Site => false,
-            EndsRule::Beside => {
-                pure(&target)
-                    && target.alt_al.len() > target.ref_al.len()
-                    && r.alt_al.len() < r.ref_al.len()
-                    && *r != target
-                    && place(r).1 == target.end()
-            }
-            // Under `GBCMS_JUDGE_ENDS=apart`: a length change one of whose placements (its
-            // leftmost or its rightmost, a REF span's width each) lies clear of every placement
-            // of a length-changing X is beside X.
-            EndsRule::Apart => {
-                // a pure indel slides over its run; any other length change sits where written
-                let span = |a: &Row| if pure(a) { place(a) } else { (a.pos, a.end()) };
-                let ((ls, re), (xs, xe)) = (span(r), span(&target));
-                let w = r.ref_al.len() as i64;
-                target.changes_length() && r.changes_length() && *r != target && (ls + w <= xs || re - w >= xe)
-            }
-        };
         for r in candidates.listed.iter().map(beside) {
-            let state = meets(&target, &r) && !in_deleted(&r) && !ends_at_x(&r);
-            if state || sources.listed() {
-                take(&r, state);
-            }
+            let state = meets(&target, &r) && !in_deleted(&r);
+            take(&r, state);
         }
         if target.ref_al.len() == 1 && target.alt_al.len() == 1 {
             // An SNV's site holds every base (a third base is another allele).
@@ -2112,7 +1958,7 @@ impl Site {
             let spelled = [&reference[..s0], &r.alt_al[..], &reference[e0..]].concat();
             match row_between(&reference, &spelled, start) {
                 Some(minimal) if !meets(&target, &minimal) || in_deleted(&minimal) => {
-                    if sources.found() && take(&minimal, false) {
+                    if take(&minimal, false) {
                         found_contexts.push(minimal);
                     }
                 }
@@ -2146,14 +1992,8 @@ impl Site {
                 // allele wherever written, #290).
                 if !meets(&target, &r) {
                     let (ps, pe) = place(&r);
-                    if (pe <= site_s || ps >= site_e) && sources.found() && take(&r, false) {
+                    if (pe <= site_s || ps >= site_e) && take(&r, false) {
                         beside_found.push(r.clone());
-                        found_contexts.push(r);
-                    }
-                    continue;
-                }
-                if ends_at_x(&r) {
-                    if sources.found() && take(&r, false) {
                         found_contexts.push(r);
                     }
                     continue;
@@ -2164,7 +2004,7 @@ impl Site {
                 // a state.
                 if let Some(beside_x) = split_beside(&target, &r) {
                     for c in beside_x {
-                        if !meets(&target, &c) && sources.found() && take(&c, false) {
+                        if !meets(&target, &c) && take(&c, false) {
                             found_contexts.push(c);
                         }
                     }
@@ -2346,7 +2186,7 @@ impl Site {
                 .listed
                 .iter()
                 .map(beside)
-                .filter(|r| meets(&target, r) && !in_deleted(r) && !ends_at_x(r) && !r.changes_length() && states.contains(r))
+                .filter(|r| meets(&target, r) && !in_deleted(r) && !r.changes_length() && states.contains(r))
                 .collect();
             let x_same = !target.changes_length();
             for row in listed_states {
@@ -2416,7 +2256,6 @@ impl Site {
         // default (`respell`) an item of the guard's background or of the found contexts that
         // respells the site's own candidate sequences ([`respellings`]) is left out where no
         // read needs it; the guard's masks stay.
-        let bg_rule = if sources.background() { bg_rule } else { BackgroundRule::Off };
         let background: Vec<Row> = match bg_rule {
             BackgroundRule::Off => Vec::new(),
             _ => candidates.background.iter().map(beside).filter(|r| !meets(&target, r)).collect(),
@@ -2431,7 +2270,7 @@ impl Site {
                 return whole;
             }
             let build = |d: &Dropped| {
-                Site::build_core(scorer, target.clone(), candidates, (start, reference.clone()), reads, rule, sources, bg_rule, Some(d), ends)
+                Site::build_core(scorer, target.clone(), candidates, (start, reference.clone()), reads, rule, bg_rule, Some(d))
             };
             let Some(kept) = build(&whole) else { return whole };
             let mut out = whole.clone();
@@ -2765,8 +2604,6 @@ impl Site {
             cap_exceeded: false,
             scorer,
             graphs: Vec::new(),
-            triage: None,
-            triage_mode: triage_mode(),
             neither: neither_rule(),
             own_gap: own_gap_rule(),
             ref_base: ref_base_rule(),
@@ -2790,9 +2627,6 @@ impl Site {
             site.drop_spelled_states(&rest);
             site.drop_graph_spellings(&found_states, reads, rule);
             site.link_layouts();
-            if site.triage_mode != TriageMode::Off {
-                site.triage = super::triage::Index::build(&site, l);
-            }
             return Some(site);
         }
         let (ordered, cap) = if rest.len() <= ALL_SUBSETS {
@@ -3992,21 +3826,6 @@ impl Site {
         }
     }
 
-    /// X's site in window coordinates, `[s, e)`.
-    pub(crate) fn site_window(&self) -> (i64, i64) {
-        self.site_window
-    }
-
-    /// The reference window: its genome start and bases.
-    pub(crate) fn window(&self) -> (i64, &[u8]) {
-        (self.start, &self.reference)
-    }
-
-    /// X's REF span in window coordinates.
-    pub(crate) fn x_span(&self) -> (i64, i64) {
-        self.spans[0]
-    }
-
     /// Whether the genome span `[s, e)` of a read reaches a contig edge X's placements touch
     /// ([`Site::edge`]; RJ-3).
     pub(crate) fn edge_reached(&self, s: i64, e: i64) -> bool {
@@ -4361,8 +4180,7 @@ pub(crate) mod tests {
     }
 
     #[test]
-    fn each_context_source_adds_only_its_own_rows() {
-        use ContextSources::*;
+    fn every_context_source_adds_its_rows() {
         let c = random_seq(600, 31);
         let other = |p: usize| if c[p] == b'A' { b"C".to_vec() } else { b"A".to_vec() };
         let x = Row::new(300, &c[300..301], &other(300));
@@ -4384,22 +4202,14 @@ pub(crate) mod tests {
             edges: (None, None),
         };
         let read = ReadView::new(&[b'A'; 150], &[30; 150], 230, &[Cigar::Match(150)], (0, 150), 20).unwrap();
-        // The sources' rows as they come, before the respelling check (the default) leaves
-        // out the items no read needs: the narrow background rule keeps every one here.
-        let shape = |sources| {
-            let (window, reads) = ((0, c.clone()), std::slice::from_ref(&read));
-            let s = Site::build_backed(ScorerKind::Graph, x.clone(), &candidates, window, reads, FoundRule::All, sources, BackgroundRule::AsIs)
-                .unwrap();
-            (s.n_states, s.rows.len() - 1 - s.n_states, s.masked.len())
-        };
-        // The site's states (the two other bases and the deletion) under every level.
-        assert_eq!(shape(Seq), (3, 0, 0));
-        assert_eq!(shape(Listed), (3, 1, 0));
-        assert_eq!(shape(NoFound), (3, 2, 1));
-        assert_eq!(shape(All), (3, 3, 1));
-        assert_eq!(parse_contexts(""), Some(All));
-        assert_eq!(parse_contexts("nofound"), Some(NoFound));
-        assert_eq!(parse_contexts("Seq"), None);
+        // Before the respelling check (the default) leaves out the items no read needs: the
+        // narrow background rule keeps every one here. The site's states (the two other
+        // bases and the deletion); the contexts (the listed SNV beside X, the guard's
+        // recurring change and its allele changing one base beside X); the guard's mask.
+        let (window, reads) = ((0, c.clone()), std::slice::from_ref(&read));
+        let s = Site::build_backed(ScorerKind::Graph, x.clone(), &candidates, window, reads, FoundRule::All, BackgroundRule::AsIs)
+            .unwrap();
+        assert_eq!((s.n_states, s.rows.len() - 1 - s.n_states, s.masked.len()), (3, 3, 1));
     }
 
     /// The chr5:44868216 A>AT shape (#246 arm, HG002): an insertion of T in an A run

@@ -14,13 +14,11 @@
 //!   `GBCMS_JUDGE_SCORER=enumerated`, and the alignments a call is examined on).
 //! - [`haplotypes`]: the window, the site's states and the contexts, built once per row.
 //! - [`decide`]: a read's call, mapped onto `ClassifyResult`.
-//! - [`triage`]: coloured k-mer triage in front of the graph scorer (off).
 
 mod decide;
 mod graph;
 mod haplotypes;
 mod score;
-mod triage;
 
 use std::cell::{OnceCell, RefCell};
 use std::collections::HashMap;
@@ -270,10 +268,10 @@ pub(crate) fn site_for(v: &Variant, guard: Option<&Guard>, reference: &CachedFas
     let site = Site::build(target, &candidates, (lo, window), reads);
     match &site {
         Some(s) if s.scorer == haplotypes::ScorerKind::Graph => debug!(
-            "haplotype judge {}:{} {}>{}: {} state graphs ({} bases){} from {} reads; site {}-{}",
+            "haplotype judge {}:{} {}>{}: {} state graphs ({} bases) from {} reads; site {}-{}",
             v.chrom, v.pos + 1, v.ref_allele, v.alt_allele, s.graphs.len(),
             s.graphs.iter().map(|g| g.graph.len()).sum::<usize>(),
-            if s.triage.is_some() { ", triage on" } else { "" }, reads.len(), s.site_span().0 + 1, s.site_span().1,
+            reads.len(), s.site_span().0 + 1, s.site_span().1,
         ),
         Some(s) => debug!(
             "haplotype judge {}:{} {}>{}: {} haplotypes over {} contexts{} from {} reads; site {}-{}",
@@ -957,7 +955,6 @@ mod tests {
             (0, contig.to_vec()),
             reads,
             haplotypes::other_option().rule,
-            haplotypes::ContextSources::All,
             bg,
         )
         .unwrap();
@@ -1379,80 +1376,27 @@ mod tests {
     }
 
     #[test]
-    fn an_allele_ending_at_an_insertions_point_is_beside_it_under_the_measurement_option() {
-        use haplotypes::EndsRule::{Beside, Site as AtSite};
+    fn an_allele_meeting_an_insertions_point_is_at_its_site() {
         use Call::*;
-        // Item 6's shape: a listed 33 bp deletion whose right placement ends exactly where X
-        // inserts its T. At X's site by its placements (the default), its carriers are
-        // another allele; beside X (the option), they are REF at X's row.
-        let c = contig(59, 261, b"CAGAGAACAAAAGAAAGAAAGATTTTCTTACTTCAGAGAATTCTTTGCCACGTATTTCTAGC");
-        let x = row(301, "A", "AT");
-        let del = Row::new(260, &c[260..294], &c[260..261]);
-        let h_del = haplotype(&c, &[&del]);
-        let reads = vec![read(&h_del, 200, 100, 200, "61M33D39M"), read(&c, 240, 100, 240, "100M")];
-        let candidates = Candidates { listed: vec![del], ..Candidates::default() };
-        let calls_under = |ends| {
-            let s = Site::build_ended(x.clone(), &candidates, (0, c.clone()), &reads, ends).unwrap();
-            reads.iter().map(|r| judge(&s, r, MIN_BQ, false).call).collect::<Vec<_>>()
-        };
-        assert_eq!(calls_under(AtSite), vec![Other, Ref], "at X's site");
-        assert_eq!(calls_under(Beside), vec![Ref, Ref], "beside X");
-    }
-
-    #[test]
-    fn an_allele_inserting_at_an_insertions_point_stays_at_its_site_under_the_beside_option() {
-        use haplotypes::EndsRule::{Beside, Site as AtSite};
-        use Call::*;
-        // Another insertion at X's anchor, and X's insertion behind a substituted anchor (a
-        // delins): each ends at X's point but inserts there, so it is at X's site under the
-        // option too, and its carriers stay another allele (two insertions at one anchor
-        // count their own carriers; a carrier behind an anchor substitution is another
-        // allele). Only an allele that ends there and inserts nothing is beside X.
-        let c = contig(59, 261, b"CAGAGAACAAAAGAAAGAAAGATTTTCTTACTTCAGAGAATTCTTTGCCACGTATTTCTAGC");
-        let x = row(301, "A", "AT");
-        for sibling in [row(301, "A", "AG"), row(301, "A", "CT")] {
-            let h = haplotype(&c, &[&sibling]);
-            let reads = vec![read(&h, 240, 100, 240, "61M1I38M"), read(&c, 240, 100, 240, "100M")];
-            let candidates = Candidates { listed: vec![sibling.clone()], ..Candidates::default() };
-            for ends in [AtSite, Beside] {
-                let s = Site::build_ended(x.clone(), &candidates, (0, c.clone()), &reads, ends).unwrap();
-                let calls: Vec<Call> = reads.iter().map(|r| judge(&s, r, MIN_BQ, false).call).collect();
-                assert_eq!(calls, vec![Other, Ref], "{}>{}, {ends:?}", String::from_utf8_lossy(&sibling.ref_al), String::from_utf8_lossy(&sibling.alt_al));
-            }
-        }
-    }
-
-    #[test]
-    fn an_allele_with_a_placement_clear_of_an_indels_bases_is_beside_it_under_the_apart_option() {
-        use haplotypes::EndsRule::{Apart, Beside, Site as AtSite};
-        use Call::*;
-        // The general form of the beside option: the listed 33 bp deletion ending at X's
-        // point at its rightmost placement is clear of X's bases at its leftmost, so beside
-        // X; another insertion at X's anchor and X's behind a substituted anchor touch X's
-        // anchor wherever written, so at X's site; and a delins removing bases that replaces
-        // X's anchor (one placement, ending at X's point) is at X's site, where the narrower
-        // option takes it as beside.
+        // A listed 33 bp deletion whose right placement ends exactly where X inserts its T
+        // (item 6's shape), another insertion at X's anchor, X's insertion behind a
+        // substituted anchor, and a delins removing bases that replaces X's anchor: each
+        // meets X's site by its placements, so its carriers are another allele.
         let c = contig(59, 261, b"CAGAGAACAAAAGAAAGAAAGATTTTCTTACTTCAGAGAATTCTTTGCCACGTATTTCTAGC");
         let x = row(301, "A", "AT");
         let del = Row::new(260, &c[260..294], &c[260..261]);
         let short = Row::new(297, &c[297..301], b"G");
-        let cases: [(Row, &str, [Call; 3]); 4] = [
-            (del.clone(), "61M33D39M", [Other, Ref, Ref]),
-            (row(301, "A", "AG"), "61M1I38M", [Other, Other, Other]),
-            (row(301, "A", "CT"), "61M1I38M", [Other, Other, Other]),
-            (short.clone(), "57M3D43M", [Other, Ref, Other]),
-        ];
-        for (allele, cig, want) in cases {
+        let cases: [(Row, &str); 4] =
+            [(del.clone(), "61M33D39M"), (row(301, "A", "AG"), "61M1I38M"), (row(301, "A", "CT"), "61M1I38M"), (short, "57M3D43M")];
+        for (allele, cig) in cases {
             let h = haplotype(&c, &[&allele]);
             let from = if allele == del { 200 } else { 240 };
             let reads = vec![read(&h, from, 100, from as i64, cig), read(&c, 240, 100, 240, "100M")];
             let candidates = Candidates { listed: vec![allele.clone()], ..Candidates::default() };
-            for (ends, w) in [(AtSite, want[0]), (Beside, want[1]), (Apart, want[2])] {
-                let s = Site::build_ended(x.clone(), &candidates, (0, c.clone()), &reads, ends).unwrap();
-                let calls: Vec<Call> = reads.iter().map(|r| judge(&s, r, MIN_BQ, false).call).collect();
-                let name = format!("{}>{}", allele.ref_al.len(), allele.alt_al.len());
-                assert_eq!(calls, vec![w, Ref], "{name}, {ends:?}");
-            }
+            let s = Site::build(x.clone(), &candidates, (0, c.clone()), &reads).unwrap();
+            let calls: Vec<Call> = reads.iter().map(|r| judge(&s, r, MIN_BQ, false).call).collect();
+            let name = format!("{}>{}", allele.ref_al.len(), allele.alt_al.len());
+            assert_eq!(calls, vec![Other, Ref], "{name}");
         }
     }
 
