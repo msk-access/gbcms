@@ -555,6 +555,7 @@ class Pipeline:
             self.config.threads,
             self.config.quality.adaptive_context,
             self.config.rescue_homopolymer,
+            read_judge=self.config.alignment.read_judge,
         )
 
         # Split into valid (for counting) and all (for output)
@@ -1357,6 +1358,7 @@ class Pipeline:
             False,  # is_maf: synthetic 0-based coordinates, no MAF anchor handling
             self.config.threads,
             self.config.quality.adaptive_context,
+            read_judge=self.config.alignment.read_judge,
         )
         # Each component is counted under its MNP row's exon-edge rule: the
         # boundary distance is measured over the MNP's REF span, so an adopted

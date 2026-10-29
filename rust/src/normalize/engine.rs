@@ -47,11 +47,15 @@ use super::repeat::{find_tandem_repeat, compute_adaptive_padding, first_change_o
 /// * `adaptive_context` — If true, dynamically increase padding in repeat regions
 /// * `rescue_homopolymer` — If true, build each deletion's homopolymer twin
 ///   (`decomposed_variant`) for dual-counting; off, no twin is built
+/// * `read_judge` — The read judgment the rows will be counted with (`rules` or
+///   `sequence`, as `count_bam_binned` takes it). Each row's rows within a read's reach
+///   (`Variant::reach_rows`) are recorded for the sequence judge only, which alone reads
+///   them; None (not told) records them, as for the judge
 ///
 /// # Returns
 /// One `PreparedVariant` per input variant, in the same order.
 #[pyfunction]
-#[pyo3(signature = (variants, fasta_path, context_padding, is_maf, threads=1, adaptive_context=true, rescue_homopolymer=false))]
+#[pyo3(signature = (variants, fasta_path, context_padding, is_maf, threads=1, adaptive_context=true, rescue_homopolymer=false, read_judge=None))]
 #[allow(clippy::too_many_arguments)]
 pub fn prepare_variants(
     py: Python<'_>,
@@ -62,7 +66,14 @@ pub fn prepare_variants(
     threads: usize,
     adaptive_context: bool,
     rescue_homopolymer: bool,
+    read_judge: Option<String>,
 ) -> PyResult<Vec<PreparedVariant>> {
+    // The rows in reach serve the sequence judge alone: under the rules none is recorded.
+    let reach_rows = match read_judge.as_deref() {
+        None => true,
+        Some(token) => crate::counting::judge::parse_read_judge(token).map_err(pyo3::exceptions::PyValueError::new_err)?
+            == crate::counting::judge::ReadJudge::Haplotype,
+    };
     info!(
         "prepare_variants: {} variants, is_maf={}, context_padding={}, adaptive={}, \
          rescue_homopolymer={}, threads={}",
@@ -130,7 +141,9 @@ pub fn prepare_variants(
             // Post-processing: assign multi-allelic group IDs
             assign_multi_allelic_groups(&mut r);
             assign_listed_neighbours(&mut r);
-            assign_reach_rows(&mut r);
+            if reach_rows {
+                assign_reach_rows(&mut r);
+            }
 
             // Log summary
             let valid = r.iter().filter(|p| p.gbcms_status == "PASS").count();

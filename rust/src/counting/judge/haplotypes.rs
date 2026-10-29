@@ -1675,7 +1675,9 @@ impl Site {
 
     /// Which of [`Site::holders`] (a bit each, in order, the first 32) `read` spells whole
     /// on its alignment `al` (columns offset by `off`) to `hap`: every base such a state
-    /// changes beside X's read confidently as the state's, not only X's part of it.
+    /// changes, X's own included, read confidently (at or above `--min-baseq`) as the
+    /// state's. An ALT call does not vouch for X's bases: an MNP read with a changed base
+    /// below the floor counts ALT, and spells no longer MNV there.
     pub(crate) fn spelled_holders(&self, read: &ReadView, hap: &Hap, al: &Alignment, off: usize) -> u32 {
         if !self.holds_x.contains(&true) {
             return 0;
@@ -1686,7 +1688,6 @@ impl Site {
             .enumerate()
             .filter_map(|(i, p)| if let Placed::At(c) = *p { Some(((c + off) as i64, read.seq[i])) } else { None })
             .collect();
-        let (xs, xe) = self.spans[0];
         let spells = |r: usize| {
             let row = &self.rows[r];
             if row.changes_length() {
@@ -1694,7 +1695,7 @@ impl Site {
                 return false;
             }
             let (s, _) = self.spans[r];
-            (0..row.ref_al.len()).filter(|&i| row.ref_al[i] != row.alt_al[i] && !(xs..xe).contains(&(s + i as i64))).all(|i| {
+            (0..row.ref_al.len()).filter(|&i| row.ref_al[i] != row.alt_al[i]).all(|i| {
                 let col = self.column_in(hap, s + i as i64);
                 at.get(&col).is_some_and(|&b| b != WILD && b == row.alt_al[i])
             })

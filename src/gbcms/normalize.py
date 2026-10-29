@@ -68,6 +68,7 @@ def normalize_variants(
         is_maf,
         threads,
         True,  # adaptive_context — always enabled for standalone normalization
+        read_judge="rules",  # nothing is counted: no row's rows in reach are needed
     )
 
     # 3. Write TSV

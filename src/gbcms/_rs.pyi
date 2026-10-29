@@ -318,6 +318,7 @@ def prepare_variants(
     threads: int = 1,
     adaptive_context: bool = True,
     rescue_homopolymer: bool = False,
+    read_judge: str | None = None,
 ) -> list[PreparedVariant]: ...
 def write_fsd_parquet(
     path: str,
