@@ -77,6 +77,14 @@ end, a coordinate past 2,147,483,647, a missing or empty `transcript_id` (after 
 version is stripped), or bytes that are not UTF-8 text is not loaded. Rejected rows
 are counted in one warning that names the first one's line number and reason.
 
+A **transcript is an ID on one chromosome and strand**. An ID that the GTF uses on
+another chromosome or strand (the same RefSeq `NM_` on chrX and chrY in the PARs,
+alternate loci) is another transcript: its exons, introns and per-transcript counts
+are its own, and are not sorted in with the first one's. The parser warns once, naming
+how many IDs are reused and the first, when it finds any among the loaded
+chromosomes. Exons of one ID at the same chromosome and strand are one transcript,
+including versions that differ only by suffix (`NM_x.1` and `NM_x.2`).
+
 !!! tip "Chromosome Normalization"
     Chromosomes are normalized by stripping the `chr` prefix for internal matching
     (e.g., `chr1` → `1`). This ensures compatibility regardless of whether the BAM
@@ -181,6 +189,11 @@ overlaps multiple transcripts with different exon structures.
 !!! note "Invariant"
     For each transcript: `fragment_count ≤ read_count` (fragments are
     R1/R2 consensus; reads are individual observations).
+
+!!! note "Entry order"
+    Entries are in ascending transcript-ID order (byte order), in both columns,
+    on every machine. The order does not depend on the GTF's line order or on the
+    CPU, so the same run on two machines writes the same bytes.
 
 !!! note "What a transcript's DP counts"
     A transcript's DP (DPF) counts every compatible read (fragment) that observes the

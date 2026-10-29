@@ -276,7 +276,10 @@ pub(crate) fn ref_offsets(
 ///   before it is the anchor, prepended to REF (and it is the ALT). A deletion
 ///   at Start 1 has no base before it: the base after it is appended instead
 ///   (the VCF spec's form at position 1, as the VCF writer writes it), so it is
-///   counted as the same event given as VCF is.
+///   counted as the same event given as VCF is. An insertion at Start 0 lies
+///   before the contig's first base and has no anchor either: the first base is
+///   appended after the inserted bases and is the REF, the same form at
+///   position 1.
 ///
 /// Called only for rows with a `-` allele; sequence alleles are used as
 /// written. The prepared label is derived from the result's alleles.
@@ -291,10 +294,17 @@ pub(crate) fn resolve_maf_anchor(
     alt_allele: &str,
 ) -> anyhow::Result<(i64, String, String)> {
     let is_insertion = ref_allele == "-";
+    // Nothing precedes the event, so the base after it is the anchor: for a deletion
+    // at Start 1 the base past the deleted bases, for an insertion at Start 0 the
+    // contig's first base.
+    let upper = |b: u8| (b as char).to_uppercase().to_string();
     if !is_insertion && start_pos == 1 {
-        let after = fetch_single_base(reader, chrom, ref_allele.len() as i64)?;
-        let after = (after as char).to_uppercase().to_string();
+        let after = upper(fetch_single_base(reader, chrom, ref_allele.len() as i64)?);
         return Ok((0, format!("{ref_allele}{after}"), after));
+    }
+    if is_insertion && start_pos == 0 {
+        let first = upper(fetch_single_base(reader, chrom, 0)?);
+        return Ok((0, first.clone(), format!("{alt_allele}{first}")));
     }
     // Insertion: anchor at Start (1-based) -> Start - 1 (0-based).
     // Deletion: anchor one base before Start -> Start - 2 (0-based).
@@ -327,6 +337,41 @@ mod tests {
         let mut reader = fasta::IndexedReader::from_file(&fa).unwrap();
         assert!(fetch_single_base(&mut reader, "1", -1).is_err());
         assert_eq!(fetch_single_base(&mut reader, "1", 0).unwrap(), b'A');
+        let _ = std::fs::remove_file(fa.with_extension("fa.fai"));
+        let _ = std::fs::remove_file(&fa);
+    }
+
+    /// A reader over a one-contig FASTA ("1") that is removed with the returned guard path.
+    fn reader_over(tag: &str, seq: &str) -> (fasta::IndexedReader<File>, std::path::PathBuf) {
+        let fa = std::env::temp_dir().join(format!("gbcms-anchor-{tag}-{}.fa", std::process::id()));
+        std::fs::write(&fa, format!(">1\n{seq}\n")).unwrap();
+        std::fs::write(fa.with_extension("fa.fai"), format!("1\t{}\t3\t{}\t{}\n", seq.len(), seq.len(), seq.len() + 1)).unwrap();
+        (fasta::IndexedReader::from_file(&fa).unwrap(), fa)
+    }
+
+    #[test]
+    fn a_maf_insertion_at_start_0_is_anchored_on_the_first_base() {
+        // Start 0 lies before the contig's first base: no base precedes it, so the
+        // first base (any case) is the REF and follows the inserted bases in the ALT.
+        let (mut reader, fa) = reader_over("ins0", "acgtacgt");
+        assert_eq!(resolve_maf_anchor(&mut reader, "1", 0, "-", "GT").unwrap(), (0, "A".to_string(), "GTA".to_string()));
+        // Guards: an insertion at Start 1 is still anchored on position 1, and a deletion
+        // at Start 1 still takes the base after it.
+        assert_eq!(resolve_maf_anchor(&mut reader, "1", 1, "-", "GT").unwrap(), (0, "A".to_string(), "AGT".to_string()));
+        assert_eq!(resolve_maf_anchor(&mut reader, "1", 1, "AC", "-").unwrap(), (0, "ACG".to_string(), "G".to_string()));
+        let _ = std::fs::remove_file(fa.with_extension("fa.fai"));
+        let _ = std::fs::remove_file(&fa);
+    }
+
+    #[test]
+    fn a_maf_insertion_before_a_contig_with_no_bases_cannot_be_anchored() {
+        // The contig has no first base to anchor on: the error is the caller's FAIL row.
+        let fa = std::env::temp_dir().join(format!("gbcms-anchor-empty-{}.fa", std::process::id()));
+        std::fs::write(&fa, ">1\n>2\nACGT\n").unwrap();
+        std::fs::write(fa.with_extension("fa.fai"), "1\t0\t3\t0\t1\n2\t4\t6\t4\t5\n").unwrap();
+        let mut reader = fasta::IndexedReader::from_file(&fa).unwrap();
+        assert!(resolve_maf_anchor(&mut reader, "1", 0, "-", "GT").is_err());
+        assert!(resolve_maf_anchor(&mut reader, "2", 0, "-", "GT").is_ok());
         let _ = std::fs::remove_file(fa.with_extension("fa.fai"));
         let _ = std::fs::remove_file(&fa);
     }

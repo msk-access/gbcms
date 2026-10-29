@@ -3137,28 +3137,22 @@ fn count_per_transcript(
         transcript_ids.join(", "),
     );
 
+    // Only a transcript with introns is counted (a single-exon transcript has no splice
+    // structure to check reads against). A transcript here is an ID at this place, so an
+    // ID the GTF reuses on another chromosome or strand reads its own introns.
+    let transcripts = annotation.spliced_transcripts_at(&chrom, variant.pos);
+
     // Step 2: The variant's read window (as in the main counts)
     let (v_start, v_end) = window::read_window(variant);
 
     // Step 3: Create aligners (same pattern as count_variant_from_cache)
 
     // Step 4: Per-transcript counting
-    let mut read_entries: Vec<String> = Vec::with_capacity(transcript_ids.len());
-    let mut frag_entries: Vec<String> = Vec::with_capacity(transcript_ids.len());
+    let mut read_entries: Vec<String> = Vec::with_capacity(transcripts.len());
+    let mut frag_entries: Vec<String> = Vec::with_capacity(transcripts.len());
 
-    for tx_id in &transcript_ids {
-        let tx_introns = match annotation.get_transcript_introns(tx_id) {
-            Some(ti) => ti,
-            None => {
-                // Should not happen if overlapping_transcripts returned this ID,
-                // but guard against index inconsistency.
-                debug!(
-                    "per-transcript: transcript {} has no intron data, skipping",
-                    tx_id,
-                );
-                continue;
-            }
-        };
+    for tx_introns in transcripts {
+        let tx_id = &tx_introns.transcript_id;
 
         // Per-transcript counters
         let mut tx_ad: u32 = 0;

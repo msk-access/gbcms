@@ -65,7 +65,8 @@ Fix in this order: ruff → black → mypy → clippy.
 - `__all__` in every module
 - Use `logging` — never `print()` or `console.print()` for status
 - Pydantic models for all config — no raw dicts between layers
-- `SimpleNamespace` only in test fixtures, never production
+- `SimpleNamespace` only in test fixtures and the one production placeholder, `_zero_counts()`
+  (the zero-count row for a variant with no coverage); add no other
 
 ### pysam Type Patterns (tests)
 - Use `.cigartuples = [(op, len), ...]` NOT `.cigar = (...)`

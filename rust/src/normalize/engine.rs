@@ -22,7 +22,8 @@ use super::repeat::{find_tandem_repeat, compute_adaptive_padding, first_change_o
 /// Prepare variants for counting in a single pass over the reference FASTA.
 ///
 /// For each variant, this function performs (in order; see `prepare_single_variant`):
-/// 1. **Malformed-allele rejection** — EMPTY_ALLELE / ALT_EQUALS_REF FAIL rows
+/// 1. **Malformed-row rejection** — EMPTY_ALLELE / NON_SEQUENCE_ALLELE / ALT_EQUALS_REF /
+///    START_BEFORE_CONTIG FAIL rows
 /// 2. **MAF anchor fetch** — if `is_maf`, resolve `-` alleles to VCF-style
 /// 3. **REF validation** — check REF against the reference genome; reject an
 ///    ALT containing N (ALT_CONTAINS_N)
@@ -648,7 +649,8 @@ impl PrepTally {
 /// Process a single variant through the full preparation pipeline.
 ///
 /// Steps:
-/// 0. Reject malformed alleles (EMPTY_ALLELE, NON_SEQUENCE_ALLELE, ALT_EQUALS_REF)
+/// 0. Reject malformed alleles (EMPTY_ALLELE, NON_SEQUENCE_ALLELE, ALT_EQUALS_REF) and a
+///    row before the contig's first base that is not a MAF insertion (START_BEFORE_CONTIG)
 ///    as FAIL rows.
 /// 1. MAF anchor resolution for dash alleles (FETCH_FAILED when the fetch fails).
 /// 2. REF validation (a REF ≥90% similar to the FASTA is corrected to it,
@@ -690,6 +692,10 @@ fn prepare_single_variant(
     // - ALT_EQUALS_REF: an ALT equal to its REF (bases compared case-insensitively;
     //   "-" for both in a MAF) describes no change, so every read would match both
     //   alleles and the counts would mean nothing.
+    // - START_BEFORE_CONTIG (checked after the allele checks): a variant at position -1,
+    //   a MAF row at Start_Position 0. No base is there, so nothing can be counted or
+    //   fetched; only a MAF dash insertion can lie before the first base (resolved in
+    //   Step 1 to the first base's anchor). Kept as a FAIL row, not dropped.
     // - NON_SEQUENCE_ALLELE: an allele that is not a base sequence (an IUPAC code
     //   such as R, a placeholder such as '.', a stray character from a hand edit)
     //   matches no read base, so it would count 0 silently. Bases are A, C, G, T
@@ -704,6 +710,11 @@ fn prepare_single_variant(
         Some(("NON_SEQUENCE_ALLELE", "an allele is not a base sequence (A, C, G, T, N or a MAF '-')"))
     } else if variant.ref_allele.eq_ignore_ascii_case(&variant.alt_allele) {
         Some(("ALT_EQUALS_REF", "ALT equals REF, no change to count"))
+    } else if variant.pos < 0 && !(is_maf && variant.ref_allele == "-") {
+        Some((
+            "START_BEFORE_CONTIG",
+            "the row starts before the contig's first base (Start_Position 0); only a MAF insertion can lie there",
+        ))
     } else {
         None
     };

@@ -327,6 +327,15 @@ RNA uses **relaxed gap penalties** to tolerate reverse transcriptase (RT) stutte
 
 ---
 
+## QC Summary in the Run Log
+
+The run log ends with a **QC summary**: which QC flags fired, on how many rows, which
+rows need a look and what to do about each, then a `WARNING` when any row needs a look or an
+`INFO` line when none does. It reads the output after writing it and changes nothing. See
+[QC Flags → End-of-run summary](../reference/qc-flags.md#end-of-run-summary).
+
+---
+
 ## RNA-Specific Output Columns
 
 ??? info "RNA-Specific Output Columns (click to expand)"

@@ -67,12 +67,12 @@ block-aligner, trimming), mRNA haplotypes for RNA, junction-based admission for 
 deletions (RJ-24), discovered site alleles on the lacking side (REJ-20261007-002), guard
 background changes as context rows, binning invariance via prep-level row lists.
 
-**Ticketed (2026-10-24):** milestone 6.8.0 holds the SV work as parent #322 with
+**Ticketed (2026-10-24; both milestones moved to 6.9.0 on 2026-10-26, see the release plan below):** the SV work is parent #322 with
 sub-issues #323 (input formats and the separate output), #324 (breakend-junction judge),
 #325 (fragment evidence), #326 (truth, validation, small-variant overlap, community
 standard) and #327 (RNA fusions on mRNA junctions). Decided (operator, 2026-10-24): when
 the judge becomes the default, `--read-judge rules` stays one release as the fallback;
-removing the previous classifier is #328 (6.8.0, moves with the flip). R5–R9 (#313–#317)
+removing the previous classifier is #328 (moves with the flip). R5–R9 (#313–#317)
 stay in 6.7.0: an R-ticket goes later only if every item is separate from 6.7.0 work.
 
 **Scorer architecture under evaluation (2026-10-24; plan and pre-registered acceptance on

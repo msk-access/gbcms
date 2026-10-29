@@ -331,6 +331,11 @@ See [Output Formats](../reference/output-formats.md) for a complete column-level
 - **Normalization columns** (with `--show-normalization`)
 - **Companion files**: `.fsd.parquet` (with `--mfsd-parquet`) and `.observations.parquet` (with `--observations-parquet`)
 
+The run log ends with a **QC summary**: which QC flags fired, on how many rows, which
+rows need a look and what to do about each, then a `WARNING` when any row needs a look or an
+`INFO` line when none does. It reads the output after writing it and changes nothing. See
+[QC Flags → End-of-run summary](../reference/qc-flags.md#end-of-run-summary).
+
 ## Related
 
 - [Quick Start](../getting-started/quickstart.md) — Common patterns

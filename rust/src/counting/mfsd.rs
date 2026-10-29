@@ -24,7 +24,7 @@
 //! let mean = mfsd::calc_mean(&alt_sizes);
 //! ```
 
-use log::trace;
+use log::{trace, warn};
 use rust_htslib::bam::record::Cigar;
 use rust_htslib::bam::Record;
 
@@ -295,7 +295,8 @@ pub fn allele_insert_size(record: &Record, variant: &Variant, is_alt: bool) -> i
 /// series (see [`ks_p_value`]).
 ///
 /// Returns `(f64::NAN, 1.0)` if either slice has fewer than [`MIN_FOR_KS`]
-/// fragments — callers should check `mfsd_ks_valid` before interpreting results.
+/// fragments, or any size is NaN — callers should check `mfsd_ks_valid` before
+/// interpreting results.
 ///
 /// # Arguments
 /// * `a` – Fragment sizes for the first class (e.g., ALT fragments).
@@ -308,11 +309,20 @@ pub fn ks_test(a: &[f64], b: &[f64]) -> (f64, f64) {
         return (f64::NAN, 1.0);
     }
 
-    // Sort copies for CDF walks
+    // A NaN has no place in an ordering: sorting could not place it, and the merge-walk
+    // below would never step past it. Fragment sizes are integers read from alignments,
+    // so none occurs; if one ever does, the test is invalid (D = NaN, p = 1.0), as with
+    // too few fragments.
+    if a.iter().chain(b).any(|x| x.is_nan()) {
+        warn!("ks_test: a fragment size is NaN, so no KS statistic is computed");
+        return (f64::NAN, 1.0);
+    }
+
+    // Sort copies for CDF walks (total order: no NaN is left)
     let mut a_sorted = a.to_vec();
     let mut b_sorted = b.to_vec();
-    a_sorted.sort_unstable_by(|x, y| x.partial_cmp(y).unwrap());
-    b_sorted.sort_unstable_by(|x, y| x.partial_cmp(y).unwrap());
+    a_sorted.sort_unstable_by(f64::total_cmp);
+    b_sorted.sort_unstable_by(f64::total_cmp);
     let (n, m) = (a_sorted.len(), b_sorted.len());
 
     // Merge-walk the two ECDFs, taking the gap after each block of tied values. The
@@ -477,6 +487,31 @@ mod tests {
     }
 
     // ─── ks_test ──────────────────────────────────────────────────────────────
+
+    #[test]
+    fn ks_test_with_a_nan_size_is_invalid_not_a_panic() {
+        // A NaN has no place in an ordering. Fragment sizes are integers read from
+        // alignments, so none occurs; if one ever does, the test is invalid
+        // (D = NaN, p = 1.0, as with too few fragments) in either class.
+        let ok: Vec<f64> = (100..110).map(f64::from).collect();
+        let mut with_nan = ok.clone();
+        with_nan[3] = f64::NAN;
+        for (a, b) in [(&with_nan, &ok), (&ok, &with_nan), (&with_nan, &with_nan)] {
+            let (d, p) = ks_test(a, b);
+            assert!(d.is_nan(), "D is NaN");
+            assert_eq!(p, 1.0);
+        }
+    }
+
+    #[test]
+    fn ks_test_orders_infinite_sizes_like_any_other() {
+        // Not NaN, so valid input: +inf sorts last and the merge-walk ends.
+        let a: Vec<f64> = vec![1.0, 2.0, 3.0, 4.0, f64::INFINITY];
+        let b: Vec<f64> = vec![1.0, 2.0, 3.0, 4.0, 5.0];
+        let (d, p) = ks_test(&a, &b);
+        assert!((d - 0.2).abs() < 1e-12, "D = {d}");
+        assert!(p > 0.99, "p = {p}");
+    }
 
     #[test]
     fn test_ks_insufficient_n() {

@@ -158,9 +158,9 @@ fn phase3_classify<F: Fn(u8, u8) -> i32>(
         } => {
             // Try pangenomic WFA+PairHMM pipeline via pangenomic_classify().
             // Handles: matrix build → WFA triage → marginalized PairHMM.
-            if let Some(ref _ctx) = variant.ref_context {
+            if let Some(ctx) = variant.ref_context.as_ref() {
                 let win_start = variant.ref_context_start;
-                let win_end = win_start + variant.ref_context.as_ref().unwrap().len() as i64;
+                let win_end = win_start + ctx.len() as i64;
 
                 if let Some((sub_seq, sub_quals)) = extract_raw_read_window(
                     record, quals, win_start, win_end, variant.pos, variant.ref_allele.len()
@@ -3074,6 +3074,61 @@ mod tests {
         let scored = insert_placements(&rec, &v, 110, 10, 1, &q, 20, Slide::Scored);
         assert_eq!(junctions(&fits), vec![110]);
         assert_eq!(junctions(&scored), vec![110]);
+    }
+
+    // ── phase3_classify — the pangenomic route needs the prepared reference ──
+
+    fn hmm_backend() -> AlignmentBackend {
+        AlignmentBackend::PairHMM {
+            llr_threshold: 2.3,
+            gap_open: 1e-4,
+            gap_extend: 0.1,
+            gap_open_repeat: 1e-2,
+            gap_extend_repeat: 0.5,
+        }
+    }
+
+    fn sw_match(a: u8, b: u8) -> i32 {
+        if a.eq_ignore_ascii_case(&b) { 2 } else { -3 }
+    }
+
+    /// `phase3_classify` and `check_complex` on the same read, under PairHMM.
+    fn phase3_and_complex(v: &Variant, rec: &Record) -> (ClassifyResult, ClassifyResult) {
+        let quals = vec![30u8; rec.seq_len()];
+        let backend = hmm_backend();
+        let mut aligners = (Aligner::new(-6, -1, &sw_match), Aligner::new(-6, -1, &sw_match));
+        let p3 = phase3_classify(rec, v, &[], &quals, 20, &mut aligners.0, &mut aligners.1, &backend);
+        let cc = check_complex(rec, v, &[], &quals, 20, &mut aligners.0, &mut aligners.1, &backend);
+        (p3, cc)
+    }
+
+    fn same_call(x: &ClassifyResult, y: &ClassifyResult) -> bool {
+        (x.is_ref, x.is_alt, x.qual, x.phase, x.partial_match_count)
+            == (y.is_ref, y.is_alt, y.qual, y.phase, y.partial_match_count)
+    }
+
+    #[test]
+    fn phase3_without_a_prepared_reference_falls_back_to_check_complex() {
+        // No ref_context: the pangenomic route cannot run, so the answer is
+        // check_complex's, with no panic. (An unprepared variant reaches here from
+        // direct API use.)
+        let rec = place_read(b"CCCCGAAAAAATTTT", 5);
+        let mut v = place_variant();
+        v.ref_context = None;
+        let (p3, cc) = phase3_and_complex(&v, &rec);
+        assert!(same_call(&p3, &cc));
+    }
+
+    #[test]
+    fn phase3_with_a_prepared_reference_calls_the_read() {
+        // The read carries the inserted A: the pangenomic route has the prepared
+        // window to build the haplotypes from, and gives a call.
+        let rec = place_read(b"CCCCGAAAAAATTTT", 5);
+        let v = place_variant();
+        assert!(v.ref_context.is_some());
+        let (p3, _) = phase3_and_complex(&v, &rec);
+        assert!(!(p3.is_ref && p3.is_alt));
+        assert!(p3.is_alt, "the read holds the ALT insert: {p3:?}");
     }
 
     #[test]

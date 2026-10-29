@@ -34,12 +34,9 @@ One line per memory. Full content lives in the linked file. Keep this index tigh
 - [Lancet2](lancet2-reference.md) — NYGC somatic caller: cDBG assembly per ~1 kb window, linear minimap2 genotyping per haplotype, small variants only; borrow its two-tier gap model, cDBG allele discovery, complexity guard; not its margin-free best match.
 
 ## Project facts (from the 2026-06-26 code review)
-- [Universal haplotype judge](universal-haplotype-judge.md) — DECIDED 2026-10-23: package 2 adopts a per-haplotype read judge (edit scorer, context x site-state closure, one-base margin) for small-variant rows, flag-first in 6.7.0; `rules` kept one release after the flip (#328); SV/fusion work is 6.8.0 (#322–#327).
+- [Universal haplotype judge](universal-haplotype-judge.md) — DECIDED 2026-10-23: package 2 adopts a per-haplotype read judge (edit scorer, context x site-state closure, one-base margin) for small-variant rows, opt-in in 6.7.0, default in 6.8.0 (#331); `rules` kept one release after the flip (#328); SV/fusion work is 6.9.0 (#322–#327).
 - [Bin fetch-end must cover the anchor variant](bin-anchor-coverage.md) — CR-1; pinned by the bin property test and binning-invariance tests.
-- [WFA fast-path shares the base-quality gate](wfa-bq-gate-contract.md) — CR-2 cross-backend quality contract.
-- [Engine should be output-aware](engine-output-aware.md) — plumb intent across FFI vs compute-then-discard.
 - [Wrong-length indels and complex events](tolerant-deletion-deliberate.md) — wrong-length pure indels → partial_alt; complex events → exact-carrier rule (RJ-4), 50+ bp deletions → junction judge (RJ-24); Phase 3 decides essentially no reads. The 50bp gate is an artifact-SIZE prior.
-- [Nextflow defaults diverge from CLI](nextflow-cli-default-divergence.md) — keep nextflow.config in sync with CLI defaults.
 - [RNA MAPQ default is 1](rna-mapq-default.md) — keeps STAR's 2–4-locus reads (pseudogene-tied junction reads); unique-only cost PIK3CA E545K ALT; decided 2026-10-03.
 - [MAPQ-0 loci (PMS2)](mapq0-loci-pms2.md) — pseudogene genes run at --min-mapq 0; keep MAPQ-0 alignments countable; validate read-admission changes at --min-mapq 0 too.
 - [ABRA2 junction placement](abra2-junction-placement.md) — IMPACT/ACCESS are ABRA2-realigned (YO = original BWA alignment; junction inserts carry assembly evidence); WES (BWA only) is the placement control; 50-500 bp events are called off ABRA2's CIGARs with no SV-caller second opinion.
@@ -47,9 +44,6 @@ One line per memory. Full content lives in the linked file. Keep this index tigh
 
 ## Tooling / build
 - [pyproject is the dep source of truth](deps-pyproject-source-of-truth.md) — floors measured (CI floors leg), dev tools in PEP 735 groups, only the image installs a lock (hash-pinned + pip check); declare every directly-imported package.
-- [Lint-tool version skew (local vs CI)](black-version-skew-venv-vs-ci.md) — venv black 25.9 lags CI 26.5 (rustc caught up to 1.96 on 2026-09-23); run CI's versions before trusting a clean/drift result.
-- [Worktree tests need an isolated venv](worktree-tests-need-isolated-venv.md) — the shared .venv imports the MAIN checkout's gbcms; in a worktree build a scratch venv + maturin develop. Every review-agent prompt says `VIRTUAL_ENV=<scratch venv> maturin develop`, or maturin installs into the main .venv. Scratchpad venvs rot after ~3 days (macOS purges /private/tmp): rebuild, don't repair.
-- [maturin develop: repo root only](maturin-develop-repo-root-only.md) — `-m rust/Cargo.toml` bypasses [tool.maturin] and leaves a stale src/gbcms/_rs.so shadowing every rebuild.
 - [Harness cleanup after merge](harness-cleanup-after-merge.md) — delete the ticket's `src_*` builds (rebuildable from BUILT_FROM; patch prototypes first), gzip traces, `cargo clean` when rust/target bloats.
 - [Merge with gh when asked](merge-with-gh-when-asked.md) — repo disallows GitHub auto-merge; when the operator asks, check CI once and `gh pr merge --merge` if green; never poll.
 - [Long runs visible](long-runs-visible.md) — launch long runs as the tracked background task itself; nohup only to outlive the session, then a waiter on the runner's PID (never a log marker); network-mount runs one at a time, grouped by file.
