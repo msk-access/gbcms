@@ -124,6 +124,8 @@ ASK = [
     f"{SSH} 'head --lines 5 {WORK}/a.txt'",  # a long option's separate value
     f"{SSH} 'tail --lin 5 {WORK}/a.txt'",  # a unique prefix, as GNU tools take
     f"{SSH} 'grep --max-count 3 ALT {WORK}/a.maf'",
+    f"{SSH} 'grep --context=3 ALT {WORK}/a.maf'",
+    f"{SSH} 'file --magic-file={WORK}/m1:{WORK}/m2 {WORK}/a'",  # a list, every name inside
     f"{SSH} 'cut -d, -f1 {WORK}/a.csv | sort -u | uniq -c'",
     f"{SSH} \"find {WORK} -name '*.out' -type f -newer {WORK}/start\"",
     f"{SSH} 'ls {WORK}/runs/*/done'",
@@ -225,6 +227,13 @@ DENY = [
     f"{SSH} 'file --magic-file /etc/magic {WORK}/a'",
     f"{SSH} 'head --lines 5 .bashrc'",
     f"{SSH} 'ls --hide /etc'",  # a path-like value is checked whatever the option
+    # A value that may be optional must not shift a file into the pattern's place.
+    f"{SSH} 'grep --context 3 /etc/passwd'",
+    f"{SSH} 'grep -C 3 /etc/passwd'",
+    f"{SSH} 'grep /etc/passwd'",  # a path-like pattern is checked as a path
+    # A list of files: every name is checked.
+    f"{SSH} 'file --magic-file={WORK}/magic:/etc/magic {WORK}/a'",
+    f"{SSH} 'file -m {WORK}/magic:/etc/magic {WORK}/a'",
     f"{SSH} 'find {WORK} -fls {TEST}/x'",
     f"{SSH} 'file -C -m {WORK}/magic'",
     # ssh options off the list, wherever they stand.

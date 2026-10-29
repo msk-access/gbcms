@@ -188,7 +188,9 @@ LONG_VALUES = {
     "file": {"magic-file": True, "files-from": True, "separator": False, "exclude": False},
     "mkdir": {"mode": False},
 }
-LONG_VALUES["grep"].update({"before-context": False, "context": False})
+# Not --context: its value is optional in BSD grep (--context[=num]), so a separate word after
+# it may be the pattern. An option whose value is optional anywhere consumes nothing here.
+LONG_VALUES["grep"].update({"before-context": False})
 FIND_VALUE_TESTS = {
     "-name",
     "-iname",
@@ -531,6 +533,12 @@ def bundle_value(verb, word):
     return None, ""
 
 
+def check_path_value(value, cwd, roots):
+    """A file-valued option's value; each name of a colon-separated list (file -m a:b) is checked."""
+    for part in value.split(":"):
+        remote_path(part, cwd, roots)
+
+
 def check_words(verb, words, cwd, roots):
     """Check the paths among a remote command's words; return its operands: the file names,
     resolved, and '-' for standard input. A bare number is a name too: option values are
@@ -548,7 +556,7 @@ def check_words(verb, words, cwd, roots):
                 i += 1
                 value = words[i] if i < len(words) else ""
             if is_path:
-                remote_path(value, cwd, roots)
+                check_path_value(value, cwd, roots)
             elif eq or len(known) == 1:
                 for part in re.split(r"[,:]", value):
                     if path_like(part):
@@ -562,9 +570,11 @@ def check_words(verb, words, cwd, roots):
                     i += 1
                     value = words[i] if i < len(words) else ""
                 if letter in PATH_LETTERS.get(verb, "") or (verb == "find" and letter == "f"):
-                    remote_path(value, cwd, roots)
+                    check_path_value(value, cwd, roots)
         elif pattern_first:
             pattern_first = False  # grep's first word is its pattern
+            if path_like(w):  # unless an option's value shifted a file here: check it anyway
+                remote_path(w, cwd, roots)
         elif w == "-":
             names.append(w)  # standard input: an operand all the same
         elif verb in STATUS:
