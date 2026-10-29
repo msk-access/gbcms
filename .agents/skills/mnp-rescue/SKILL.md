@@ -1,6 +1,6 @@
 ---
 name: mnp-rescue
-description: "Reference for gbcms MNP rescue and diagnostic flags — rescue intent and candidate gate, row adoption and the gbcms_rescue audit format, --rescue-mnp-threshold semantics, and the strongly-typed gbcms_diagnostic / gbcms_rescue fields. Use when touching the MNP rescue pass, diagnostic-flag computation, or their tests/stubs."
+description: "MNP rescue and diagnostic flags: candidate gate, row adoption, the gbcms_rescue audit format, --rescue-mnp-threshold, and the gbcms_diagnostic / gbcms_rescue fields. Use when touching the rescue pass, diagnostic flags, or their tests and stubs."
 ---
 
 # MNP Rescue & Diagnostic Flags

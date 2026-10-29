@@ -1,6 +1,6 @@
 ---
 name: rust-python-ffi
-description: "Build and boundary reference for gbcms (Rust + Python via PyO3/maturin): the build recipe (repo root only, VIRTUAL_ENV set, CONDA_PREFIX unset), the stale .so trap, per-worktree venvs, #[pyo3(get)] and .pyi stub synchronization, BaseCounts being get-only from Python, COITree nosimd vs NEON, and triage when a build, cargo test, pytest or CI job fails. Use when building or rebuilding the extension, editing PyO3 bindings or type stubs, or when a Rust compile, test or CI check fails or a fix has no effect."
+description: "Build, FFI boundary and triage: the maturin recipe (repo root, VIRTUAL_ENV set, CONDA_PREFIX unset), the stale .so, per-worktree venvs, #[pyo3(get)] and .pyi stub sync, COITree nosimd vs NEON. Use when building the extension, editing PyO3 bindings or stubs, or when a Rust compile, test or CI check fails or a fix has no effect."
 ---
 
 # Rust/Python FFI: build, boundary and triage

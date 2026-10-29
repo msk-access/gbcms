@@ -1,6 +1,6 @@
 ---
 name: fragment-counting
-description: "Reference for fragment-level counting in gbcms — R1/R2 quality-weighted consensus, the DPF/RDF/ADF fragment counts (FAD/FAF in VCF), QNAME/UMI molecule hashing (--umi-tag), duplex/simplex merging, strand consistency, and amplicon split. Use when touching shared/fragment.rs or any DPF/RDF/ADF logic, or debugging fragment-level VAF."
+description: "Fragment-level counting: R1/R2 quality-weighted consensus, DPF/RDF/ADF (FAD/FAF in VCF), QNAME/UMI molecule hashing, duplex/simplex merging, amplicon split. Use when touching shared/fragment.rs or any DPF/RDF/ADF logic, or debugging fragment-level VAF."
 ---
 
 # Fragment-Level Counting
@@ -29,11 +29,8 @@ locus, evidence is collapsed to one molecule:
 
 ## Fragment counts (DPF/RDF/ADF; FAD/FAF in VCF) and invariants
 
-```
-assert dpf >= rdf + adf          # DPF includes discarded fragments
-assert adf == adf_fwd + adf_rev  # fragment strand consistency
-assert rdf == rdf_fwd + rdf_rev
-```
+`dpf >= rdf + adf` (AGENTS.md); fragment strand consistency:
+`rdf == rdf_fwd + rdf_rev` and `adf == adf_fwd + adf_rev`.
 
 ## UMI molecules, duplex and simplex
 

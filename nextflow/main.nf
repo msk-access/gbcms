@@ -16,6 +16,7 @@ include { GBCMS_DNA_WF }          from './workflows/dna'
 include { GBCMS_RNA_WF }          from './workflows/rna'
 include { FILTER_MAF }            from './modules/local/gbcms/filter_maf/main'
 include { PIPELINE_SUMMARY }      from './modules/local/gbcms/pipeline_summary/main'
+include { QC_SUMMARY }            from './modules/local/gbcms/qc_summary/main'
 include { asBool }                from './modules/local/utils/main'
 
 // Helper: Check if a MAF file has at least one data row (not just header/comments).
@@ -198,10 +199,25 @@ workflow {
             ch_ready,
             ch_fasta_tuple
         )
+        ch_outputs = GBCMS_RNA_WF.out.counts
     } else {
         GBCMS_DNA_WF (
             ch_ready,
             ch_fasta_tuple
+        )
+        // The merged MAFs too: a combined cell that is NA shows only there.
+        ch_outputs = GBCMS_DNA_WF.out.counts.mix(GBCMS_DNA_WF.out.merged)
+    }
+
+    //
+    // STEP 4: QC summary of every output, once all samples are done (--qc_summary)
+    //
+    if (asBool(params.qc_summary)) {
+        QC_SUMMARY(
+            ch_outputs
+                .map { _id, files -> files }
+                .flatten()
+                .collect()
         )
     }
 }

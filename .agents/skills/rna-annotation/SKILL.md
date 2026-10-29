@@ -1,6 +1,6 @@
 ---
 name: rna-annotation
-description: "Reference for gbcms RNA mode — GTF-based transcript annotation (--gtf), the COITree AnnotationIndex, exon-boundary distance, per-transcript counts, and ASJD (allele-specific junction detection). Use when touching annotation/, rna.rs, or RNA output columns. Strandedness/sense-antisense gotchas live here."
+description: "RNA mode: GTF annotation (--gtf), the COITree AnnotationIndex, exon-boundary distance, per-transcript counts, ASJD, and strandedness and sense/antisense gotchas. Use when touching annotation/, rna.rs or RNA output columns."
 ---
 
 # RNA Annotation & ASJD

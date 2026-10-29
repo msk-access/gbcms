@@ -15,6 +15,22 @@ Newest at the top. Before promoting an edit, grep `REJECTED.md` for the target +
 topic — don't re-propose a vetoed dead end. Promote by delta edit, never by
 regenerating a section.
 
+**Memory names in older entries.** The memory files were merged in #317, so an older entry's
+`[[name]]` or `.agents/memory/<name>.md` points here:
+- `working-agreements`: harness-stay-small, describe-labels-in-brackets, model-per-task
+- `genotyper-not-caller`: genotyper-not-caller, count-the-given-allele, identity-band-annotation-tolerance
+- `decided-counting-rules`: tolerant-deletion-deliberate, rna-mapq-default, mapq0-loci-pms2, vaf-informative-reads
+- `mfsd-graded-evidence`: mfsd-graded-evidence, fragmentomics-reference
+- `msk-assay-facts`: abra2-junction-placement, abra2-collapse-artifacts, access-xs1-xs2-consensus, production-aligner-settings, qcfail-flag-absent-msk-data
+- `references`: lancet2-reference, downstream-org-containers-modules
+- `.agents/rules/decision-protocol.md`: decisions-worked-examples, best-not-least-bad, better-than-standard, survey-several-tools, test-across-data-types, fix-the-class-not-the-row, holistic-effects-map, external-review-measure-first, parameters-are-user-settable, read-rule-register-to-the-end
+- `.agents/rules/security.md`: cbioportal-stays-local
+- `.agents/rules/git-conventions.md`: merge-with-gh-when-asked, github-sub-issues, commit-before-review-workflows
+- `.agents/rules/code-quality.md`: no-ticket-labels-in-code, deps-pyproject-source-of-truth; test-changes-need-operator-notice is in `AGENTS.md`
+- `docs/harness/measurement-harness.md`: harness-cleanup-after-merge, long-runs-visible, hpc-partitions, macos-no-timeout-command, trace-output-wraps, harness-references, other-tools-harness, vcf2maf-oracle, giab-truth-arm, pysam-validation-oracle, cluster-aware-oracle, census-mirrors-read-inputs
+- `.agents/skills/qa-check` and `rust-python-ffi`: pipe-masks-gate-exit, black-version-skew-venv-vs-ci, worktree-tests-need-isolated-venv, maturin-develop-repo-root-only
+- Deleted as fixed or covered: wfa-bq-gate-contract, engine-output-aware, nextflow-cli-default-divergence (AGENTS.md invariants 2 and 3, the nextflow-pipeline skill), bin-anchor-coverage (`architecture.md`), claudelicious-reference (`docs/harness/00-plan.md`)
+
 ---
 
 ## [LRN-20261026-001] rule-body | an amended read rule was read from its superseded text

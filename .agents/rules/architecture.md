@@ -18,6 +18,7 @@ gbcms/
 │   ├── observations.py  # Per-molecule observation export (public API; companion Parquet)
 │   ├── rescue_audit.py  # The gbcms_rescue audit contract, shared by the MNP rescue pass and merge
 │   ├── qc_summary.py    # End-of-run QC summary: the flag tier table, read from the written output, one log block
+│   ├── qc_export.py     # `gbcms summarize`: the QC summary as text, JSON, a cohort TSV or MultiQC content
 │   ├── _rs.pyi          # Primary Rust type stubs (authoritative)
 │   ├── core/
 │   │   └── kernel.py    # Coordinates; the one VCF<->MAF rule (vcf2maf/maf2vcf) + type labels
@@ -112,6 +113,7 @@ gbcms/
 9. **Genomic binning**: ~10kb bins, one `bam.fetch()` per bin, max 200 variants/bin.
 10. **COITree for annotation**: Platform-portable metadata access via `Borrow` trait (nosimd vs NEON/AVX backends). The index is built per run from the GTF (plain or gzip/BGZF; ~2 s for a whole Ensembl GTF, ~6.5 s for GENCODE comprehensive; each line's feature and chromosome read before anything else is parsed); there is no disk cache (the 6.6.0 build-gtf-cache command and its cache-dir option are gone).
 11. **Diagnostic flags**: `gbcms_diagnostic` and `gbcms_rescue` are strongly-typed Rust fields, not dynamic attributes.
+12. **Statistics stay in Rust** (KS, LLR, Fisher in `counting/mfsd.rs` and `shared/stats.rs`); there is no scipy dependency. The exact KS p-value is a self-contained Rust DP, checked against SciPy reference values baked into the tests as literals.
 
 ## Binning invariance
 

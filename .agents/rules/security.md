@@ -41,13 +41,28 @@ model's habits and loses under load). The deterministic floor lives in
   `checkpoints.py`'s shape and with no identifier in it (step 1a).
 
 ## Tool output leaves the machine
-- Everything a tool prints, for the session and every agent, is sent to the model
-  provider as part of the conversation. Patient test slices may be worked on, never
-  used downstream; report aggregates and allele shapes, never sample IDs or read names.
-- **cBioPortal study files never enter tool output.** Use the fixed summary script
-  (schema and counts, small counts hidden) or a script whose every output stream goes to
-  a file in a protected directory; protected paths live in `~/.claude/protected-paths.txt`,
-  outside the repo. (Enforced: `.claude/hooks/protect-cbioportal.py`.)
+Everything a tool prints, for the session and every agent, is sent to the model provider as part
+of the conversation. The operator decided (2026-10-26, after asking what reaches the provider):
+- **Patient BAM slices** (panel, ACCESS, WES, germline normals, the gate) are fine for testing,
+  "as long as it's not used for anything downstream". The model-improvement setting is off. Report
+  aggregates and allele shapes, never sample IDs or read names.
+- **cBioPortal study files** (`data_*.txt`, `meta_*.txt`, case lists: cohort-wide patient-level
+  rows) stay on this machine: "I need you to only write scripts and run them here to understand
+  and tease what can be used". Enforced by `.claude/hooks/protect-cbioportal.py`; the protected
+  roots are in `~/.claude/protected-paths.txt`, outside the repo, built from a local search.
+  - Never Read, cat, head, grep or awk a cBioPortal file, and never print its paths, rows, IDs,
+    genes or positions.
+  - The only console channel is the fixed summary script (schema and counts, small counts hidden):
+    `python3 -I ~/test/gbcms/harness/cbio/cbio_summary.py --all`. It prints column names, row
+    counts, fill rates, distinct counts, counts per value for a fixed set of categorical columns,
+    and binned read counts.
+  - Anything finer: write a script and send all of its output (stdout and stderr) to a file under
+    `~/test/gbcms/harness/cbio/out/`, no pipes or chains, then let the operator review it. Never
+    read that directory with a tool. For GitHub text that names these files, use `--body-file`.
+  - Brief every agent that touches SV inputs with this rule. Public format documentation (the
+    cBioPortal file-format pages) is fine to read.
+  - An audit on 2026-10-26, counts only, found no cBioPortal data row in this project's session
+    transcripts.
 
 ## Outward-facing actions
 - **Ask before public.** The default destination for any artifact is private. A

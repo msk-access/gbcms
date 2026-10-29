@@ -119,6 +119,14 @@ These parameters control the multi-BAM merge step. Requires a `bam_type` column 
 | `--merge_add_combined` | `true` | When both `duplex` and `simplex` inputs are present, compute additive `simplex_duplex_*` combined columns (20 columns including strand bias). |
 | `--merge_legacy_naming` | `false` | Use `t_{metric}_{type}` naming (genotype_variants compatible). |
 
+## QC Summary Options
+
+Each `gbcms dna` / `gbcms rna` task already ends its log with a [QC summary](../reference/qc-flags.md#end-of-run-summary). This parameter adds one for the whole run.
+
+| Parameter | Default | Description |
+|:----------|:--------|:------------|
+| `--qc_summary` | `false` | After all samples finish, run [`gbcms summarize`](../cli/summarize.md) over every output (merged MAFs included) and publish to `${params.outdir}/gbcms/qc_summary/`: MultiQC custom content (`gbcms_qc_summary_mqc.json`, and `gbcms_qc_warning_mqc.json` only when a row needs a look) and one `<name>.qc_summary.json` per output. Nothing else changes. |
+
 ## Resource Limits
 
 | Parameter | Default | Description |

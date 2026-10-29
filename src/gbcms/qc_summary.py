@@ -92,6 +92,7 @@ class Kind(enum.Enum):
     RESCUE = "mnp-rescue"
     ASJD = "asjd-splice-flags"
     COLUMN = "qc-columns"
+    MERGE = "merged-output"
 
 
 @dataclass(frozen=True)
@@ -139,6 +140,7 @@ check | asjd | STRAND_DISCORDANT | The ALT junction has mixed transcript-strand 
 check | asjd | RETENTION_DOMINANT | Most reads splice over the locus, so the counted reads are the intron-retaining minority: read vaf as the VAF within them, not as allelic balance
 check | asjd | NOVEL_JUNC_AT_SPLICE_LOSS | Carriers of a splice-destroying variant may splice around the locus while alt_count is low: read asjd_diagnostic for the junction
 check | column | rna_editing_site | The locus overlaps a known A-to-I editing site: an A>G or T>C call there is likely editing, not a somatic mutation
+check | merge | COMBINED_NA | A combined simplex_duplex count is NA (a count missing in one flavour, or mixed MNP rescue): the combined VAF is unusable, so read each flavour's own columns
 
 info | reason | MULTI_ALLELIC | another row has a different ALT here
 info | reason | TRACT_CLUSTER | shares a repeat window with another indel
@@ -167,6 +169,7 @@ _KINDS = {
     "rescue": Kind.RESCUE,
     "asjd": Kind.ASJD,
     "column": Kind.COLUMN,
+    "merge": Kind.MERGE,
 }
 
 
@@ -197,6 +200,8 @@ _FAMILY_FIELDS = {
 _COLUMN_VCF = {"rna_editing_site": "RED", "asjd_flag": "ASJD"}
 
 _STATUS_FAIL = "FAIL"
+# The flag the summary derives from a merged MAF; the table spells it.
+COMBINED_NA = "COMBINED_NA"
 
 
 def _shown(flag: QcFlag) -> str:
@@ -209,6 +214,8 @@ def _field_of(flag: QcFlag, fmt: str) -> str:
     """The MAF column (``fmt`` ``maf``) or VCF INFO key a flag is written in."""
     if flag.kind is Kind.COLUMN:
         return flag.name if fmt == "maf" else _COLUMN_VCF.get(flag.name, flag.name)
+    if flag.kind is Kind.MERGE:
+        return "simplex_duplex_*"
     return _FAMILY_FIELDS[flag.kind][0 if fmt == "maf" else 1]
 
 
@@ -216,60 +223,147 @@ def _field_of(flag: QcFlag, fmt: str) -> str:
 
 
 class _Row(NamedTuple):
-    """The fields of one output row the summary reads. ``columns`` holds the QC
-    columns that are set; ``label`` builds the row's ``chrom:pos ref>alt`` only
-    when the row is shown."""
+    """The fields of one output row the summary reads. ``columns`` holds the flags
+    set by a column (a QC column, or the merge's combined cells); ``locus`` builds
+    the row's ``(chrom:pos ref>alt, gene)`` only when the row is shown."""
 
     status: str
     reasons: str
     diagnostic: str
     asjd_diagnostic: str
-    rescue: str
+    rescue: tuple[str, ...]
     columns: tuple[str, ...]
-    label: Callable[[], str]
+    locus: Callable[[], tuple[str, str]]
 
 
-def _maf_rows(path: Path) -> Iterator[_Row]:
+def _label(variant: str, gene: str) -> str:
+    """``chr1:100 A>T (GENE)``; the gene is left out where the row names none."""
+    return f"{variant} ({gene})" if gene and gene != "Unknown" else variant
+
+
+class _Group(NamedTuple):
+    """Where one flavour's flag columns sit in a MAF header. A run's own MAF has
+    one group, with no prefix. A merged MAF has one per input (``duplex_``,
+    ``simplex_``; ``t_`` before and ``_duplex`` after in the legacy names)."""
+
+    status: int
+    reasons: int | None
+    diagnostic: int | None
+    asjd: int | None
+    rescue: int | None
+    columns: tuple[tuple[str, int], ...]
+
+
+def _groups(header: list[str]) -> list[_Group]:
+    at = {name: i for i, name in enumerate(header)}
+    groups = []
+    for name in header:
+        if name.endswith("gbcms_status"):
+            before, after = name[: -len("gbcms_status")], ""
+        elif name.startswith("t_gbcms_status_"):
+            before, after = "t_", name[len("t_gbcms_status") :]
+        else:
+            continue
+
+        def col(base: str, before: str = before, after: str = after) -> int | None:
+            return at.get(f"{before}{base}{after}")
+
+        columns = tuple((f.name, i) for f in _COLUMN_FLAGS if (i := col(f.name)) is not None)
+        groups.append(
+            _Group(
+                at[name],
+                col("gbcms_status_reason"),
+                col("gbcms_diagnostic"),
+                col("asjd_diagnostic"),
+                col("gbcms_rescue"),
+                columns,
+            )
+        )
+    return groups
+
+
+def _combined_count_columns(header: list[str]) -> list[int]:
+    """The combined cells of a merged MAF whose NA means a missing count: the
+    ``simplex_duplex_*`` counts, totals and VAFs. The strand-bias statistics are left
+    out: they are NA where a test has nothing to say, with every count present."""
+    return [
+        i
+        for i, name in enumerate(header)
+        if (name.startswith("simplex_duplex_") or name.endswith("_simplex_duplex"))
+        and "strand_bias" not in name
+    ]
+
+
+def _maf_rows(path: Path, meta: dict[str, bool]) -> Iterator[_Row]:
     with open(path, newline="") as fh:
         reader = csv.reader((ln for ln in fh if not ln.startswith("#")), delimiter="\t")
         header = next(reader, None)
-        if header is None or "gbcms_status" not in header:
+        groups = _groups(header) if header else []
+        if not groups:
             raise ValueError(f"{path.name} has no gbcms_status column: not a gbcms MAF")
-        at = {name: i for i, name in enumerate(header)}
+        at = {name: i for i, name in enumerate(header or [])}
+        combined = _combined_count_columns(header or [])
+        meta["merged"] = len(groups) > 1 or bool(combined)
 
         def cell(row: list[str], name: str) -> str:
             i = at.get(name)
             return row[i] if i is not None and i < len(row) else ""
 
-        for row in reader:
-            columns = tuple(
-                f.name
-                for f in _COLUMN_FLAGS
-                if f.name in at and _column_set(f.name, cell(row, f.name))
-            )
+        def get(row: list[str], i: int | None) -> str:
+            return row[i] if i is not None and i < len(row) else ""
 
-            def label(row: list[str] = row) -> str:
+        for row in reader:
+            columns = [
+                name for g in groups for name, i in g.columns if _column_set(name, get(row, i))
+            ]
+            if combined and any(get(row, i) == "NA" for i in combined):
+                columns.append(COMBINED_NA)
+
+            def locus(row: list[str] = row) -> tuple[str, str]:
                 ref, alt = cell(row, "Reference_Allele"), cell(row, "Tumor_Seq_Allele2")
                 if alt == ref:
                     alt = cell(row, "Tumor_Seq_Allele1") or alt
-                gene = cell(row, "Hugo_Symbol")
                 where = f"{cell(row, 'Chromosome')}:{cell(row, 'Start_Position')} {ref}>{alt}"
-                return f"{where} ({gene})" if gene and gene != "Unknown" else where
+                return where, cell(row, "Hugo_Symbol")
 
+            if len(groups) == 1:
+                g = groups[0]
+                yield _Row(
+                    get(row, g.status),
+                    get(row, g.reasons),
+                    get(row, g.diagnostic),
+                    get(row, g.asjd),
+                    (get(row, g.rescue),),
+                    tuple(columns),
+                    locus,
+                )
+                continue
+            # A merged row carries the flags of every flavour; one FAIL is a FAIL.
+            statuses = [get(row, g.status) for g in groups]
             yield _Row(
-                cell(row, "gbcms_status"),
-                cell(row, "gbcms_status_reason"),
-                cell(row, "gbcms_diagnostic"),
-                cell(row, "asjd_diagnostic"),
-                cell(row, "gbcms_rescue"),
-                columns,
-                label,
+                _STATUS_FAIL if _STATUS_FAIL in statuses else statuses[0],
+                ";".join(get(row, g.reasons) for g in groups),
+                ";".join(get(row, g.diagnostic) for g in groups),
+                ";".join(get(row, g.asjd) for g in groups),
+                tuple(get(row, g.rescue) for g in groups),
+                tuple(columns),
+                locus,
             )
 
 
 def _vcf_rows(path: Path) -> Iterator[_Row]:
+    """The rows of a gbcms VCF. It carries gbcms's own ``GS`` INFO field: the header
+    declares it, or the first record has it. Without that every record would read as a
+    PASS row with no flags, and an ordinary VCF, or an empty file, would pass for a
+    clean output."""
+    not_gbcms = ValueError(f"{path.name} has no GS INFO field: not a gbcms VCF")
+    declared = False
+    first = True  # the first record is yet to be seen
     with open(path) as fh:
         for line in fh:
+            if line.startswith("##"):
+                declared = declared or line.startswith("##INFO=<ID=GS,")
+                continue
             if line.startswith("#"):
                 continue
             f = line.rstrip("\n").split("\t")
@@ -279,20 +373,25 @@ def _vcf_rows(path: Path) -> Iterator[_Row]:
             for part in f[7].split(";"):
                 key, _, value = part.partition("=")
                 info[key] = value
+            if first and not (declared or "GS" in info):
+                raise not_gbcms
+            first = False
             columns = tuple(name for name, key in _COLUMN_VCF.items() if key in info)
 
-            def label(f: list[str] = f) -> str:
-                return f"{f[0]}:{f[1]} {f[3]}>{f[4]}"
+            def locus(f: list[str] = f) -> tuple[str, str]:
+                return f"{f[0]}:{f[1]} {f[3]}>{f[4]}", ""
 
             yield _Row(
                 info.get("GS", ""),
                 info.get("GSR", ""),
                 info.get("GD", ""),
                 info.get("ASJDD", ""),
-                info.get("GR", ""),
+                (info.get("GR", ""),),
                 columns,
-                label,
+                locus,
             )
+    if first and not declared:  # no record, and a header that does not declare GS
+        raise not_gbcms
 
 
 _COLUMN_FLAGS = tuple(f for f in QC_FLAGS if f.kind is Kind.COLUMN)
@@ -306,6 +405,20 @@ def _column_set(name: str, value: str) -> bool:
     if name == "mfsd_alt_confidence":
         return value in ("SPARSE", "NONE")
     return value == "True"
+
+
+def _written_by(path: Path, fmt: str) -> str:
+    """The build that wrote the output (``gbcms v6.7.0 (abc123)``): the MAF's first
+    line, the VCF's ``##source=`` line; empty where the file names none."""
+    with open(path) as fh:
+        for line in fh:
+            if fmt != "vcf":
+                return line[1:].strip() if line.startswith("#gbcms") else ""
+            if line.startswith("##source="):
+                return line[len("##source=") :].strip()
+            if not line.startswith("##"):
+                break
+    return ""
 
 
 # ── Tallying ──────────────────────────────────────────────────────────────────
@@ -323,12 +436,23 @@ def _base(token: str) -> str:
     return token.split("(", 1)[0]
 
 
+class Skipped(NamedTuple):
+    """A sample whose output was not checked, and why (it could not be read, was refused,
+    or never got written). The summary names it: an incomplete check must not read as a
+    complete one."""
+
+    sample: str
+    reason: str
+
+
 @dataclass
 class QcSummary:
     """The tally of one sample's output. ``flag_rows`` counts rows per flag;
     ``tier_rows`` counts rows carrying at least one flag of a tier; ``need_look``
-    counts rows in the first two tiers (once each); ``unlisted`` counts flags the
-    table does not know (another build's, or a newer one's)."""
+    counts rows in the first two tiers (once each); ``info_only`` rows carry only
+    informational flags; ``unlisted`` counts flags the table does not know (another
+    build's, or a newer one's) and ``unknown_only`` the rows carrying only those.
+    ``written_by`` is the build named in the output's first line."""
 
     sample: str
     fmt: str = "maf"
@@ -336,20 +460,30 @@ class QcSummary:
     need_look: int = 0
     info_only: int = 0
     unknown_only: int = 0
+    written_by: str = ""
+    merged: bool = False
+    source: str = ""  # the output file this was read from, as given
     flag_rows: Counter[str] = field(default_factory=Counter)
     tier_rows: Counter[Tier] = field(default_factory=Counter)
     unlisted: Counter[str] = field(default_factory=Counter)
-    # (label, flags) of rows that need a look: input problems first, then the rest.
+    # (label, flags) of the first rows that need a look: input problems first, then the rest.
     examples: list[tuple[str, str]] = field(default_factory=list)
+    # Every row that needs a look as (variant, gene, flags), in the same order; kept only
+    # where asked (a JSON file lists them all).
+    look_rows: list[tuple[str, str, list[str]]] = field(default_factory=list)
 
 
 def _tally(
-    rows: Iterable[_Row], sample: str, fmt: str = "maf", max_examples: int = MAX_EXAMPLES
+    rows: Iterable[_Row],
+    sample: str,
+    fmt: str = "maf",
+    max_examples: int = MAX_EXAMPLES,
+    keep_rows: bool = False,
 ) -> QcSummary:
     """Tally rows into a :class:`QcSummary`."""
     summary = QcSummary(sample=sample, fmt=fmt)
-    fix_examples: list[tuple[str, str]] = []
-    check_examples: list[tuple[str, str]] = []
+    fix_rows: list[tuple[str, str, list[str]]] = []
+    check_rows: list[tuple[str, str, list[str]]] = []
     for row in rows:
         summary.rows += 1
         hits: dict[str, tuple[QcFlag, str]] = {}
@@ -361,11 +495,13 @@ def _tally(
                     unlisted.setdefault(_base(token), token)
                 else:
                     hits.setdefault(flag.name, (flag, token))
-        outcome = rescue_outcome(row.rescue) if row.rescue else None
-        if outcome in _BY_NAME:
-            hits.setdefault(outcome, (_BY_NAME[outcome], _shown(_BY_NAME[outcome])))
-        elif outcome:
-            unlisted.setdefault(outcome, f"outcome={outcome}")
+        # A merged row has one rescue audit per input; each outcome counts.
+        for audit in row.rescue:
+            outcome = rescue_outcome(audit) if audit else None
+            if outcome in _BY_NAME:
+                hits.setdefault(outcome, (_BY_NAME[outcome], _shown(_BY_NAME[outcome])))
+            elif outcome:
+                unlisted.setdefault(outcome, f"outcome={outcome}")
         for name in row.columns:
             hits.setdefault(name, (_BY_NAME[name], name))
 
@@ -385,26 +521,46 @@ def _tally(
             shown = [t for flag, t in hits.values() if flag.tier is not Tier.INFORMATIONAL]
             if failed:
                 shown += list(unlisted.values())
-            target = fix_examples if Tier.FIX_INPUT in tiers else check_examples
-            if len(target) < max_examples:
-                target.append((row.label(), ", ".join(shown)))
+            target = fix_rows if Tier.FIX_INPUT in tiers else check_rows
+            if keep_rows or len(target) < max_examples:
+                target.append((*row.locus(), shown))
         elif tiers:
             summary.info_only += 1
         elif unlisted:
             summary.unknown_only += 1
-    summary.examples = (fix_examples + check_examples)[:max_examples]
+    ordered = fix_rows + check_rows
+    summary.examples = [(_label(v, g), ", ".join(f)) for v, g, f in ordered[:max_examples]]
+    if keep_rows:
+        summary.look_rows = ordered
     return summary
 
 
+def sample_name(path: Path | str) -> str:
+    """The sample a gbcms output file belongs to: its name without ``.maf`` or ``.vcf``
+    (a run writes ``{sample}{suffix}.maf``)."""
+    p = Path(path)
+    return p.stem if p.suffix in (".maf", ".vcf") else p.name
+
+
 def summarize_output(
-    path: Path | str, sample: str, fmt: str | None = None, max_examples: int = MAX_EXAMPLES
+    path: Path | str,
+    sample: str | None = None,
+    fmt: str | None = None,
+    max_examples: int = MAX_EXAMPLES,
+    keep_rows: bool = False,
 ) -> QcSummary:
     """Tally a gbcms output file (``fmt`` is ``maf`` or ``vcf``; the extension by
-    default). Read-only: the file is opened for reading and nothing is written."""
+    default). Read-only: the file is opened for reading and nothing is written.
+    ``keep_rows`` keeps every row that needs a look, not only the first few."""
     path = Path(path)
     fmt = fmt or ("vcf" if path.suffix == ".vcf" else "maf")
-    rows = _vcf_rows(path) if fmt == "vcf" else _maf_rows(path)
-    return _tally(rows, sample, fmt, max_examples)
+    meta: dict[str, bool] = {}
+    rows = _vcf_rows(path) if fmt == "vcf" else _maf_rows(path, meta)
+    summary = _tally(rows, sample or sample_name(path), fmt, max_examples, keep_rows)
+    summary.written_by = _written_by(path, fmt)
+    summary.source = str(path)
+    summary.merged = meta.get("merged", False)
+    return summary
 
 
 # ── Rendering ─────────────────────────────────────────────────────────────────
@@ -453,8 +609,32 @@ def _tier_lines(tier: Tier, summaries: Sequence[QcSummary]) -> list[str]:
     return lines
 
 
-def render_summary(summaries: Sequence[QcSummary], max_examples: int = MAX_EXAMPLES) -> str:
-    """The summary block for one sample, or the cohort block for several."""
+def _not_checked_lines(skipped: Sequence[Skipped], total: int) -> list[str]:
+    """The samples that were not checked, each with its reason (the first ten)."""
+    lines = [f"  Not checked: {len(skipped)} of {total} samples"]
+    for item in skipped[:MAX_SAMPLES]:
+        lines += _fill(f"{item.sample}: {item.reason}", 4, 8)
+    if len(skipped) > MAX_SAMPLES:
+        lines.append(f"    and {len(skipped) - MAX_SAMPLES} more")
+    return lines
+
+
+def render_summary(
+    summaries: Sequence[QcSummary],
+    max_examples: int = MAX_EXAMPLES,
+    skipped: Sequence[Skipped] = (),
+) -> str:
+    """The summary block for one sample, or the cohort block for several. Samples in
+    ``skipped`` were not checked: the block counts "k of n" samples and names them."""
+    total = len(summaries) + len(skipped)
+    if not summaries:
+        return "\n".join(
+            [
+                f"QC summary for 0 of {total} samples: no output could be read",
+                *_not_checked_lines(skipped, total),
+                "  What each flag means and what to do: " + QC_FLAGS_URL,
+            ]
+        )
     many = len(summaries) > 1
     rows = sum(s.rows for s in summaries)
     need = sum(s.need_look for s in summaries)
@@ -462,14 +642,21 @@ def render_summary(summaries: Sequence[QcSummary], max_examples: int = MAX_EXAMP
     unknown_only = sum(s.unknown_only for s in summaries)
     fmt = summaries[0].fmt
 
-    who = f"{len(summaries)} samples" if many else f"sample {summaries[0].sample}"
+    if skipped:
+        who = f"{len(summaries)} of {total} samples"
+    else:
+        who = f"{len(summaries)} samples" if many else f"sample {summaries[0].sample}"
     lines = [
         f"QC summary for {who}: {need:,} of {_count(rows)} {_need(need)} a look "
-        f"({_share(need, rows)})",
+        f"({_share(need, rows)})"
+    ]
+    if skipped:
+        lines += _not_checked_lines(skipped, total)
+    lines.append(
         f"  Rows with only informational flags: {info_only:,}; with no flag: "
         f"{rows - need - info_only - unknown_only:,}"
-        + (f"; with only flags this build does not know: {unknown_only:,}" if unknown_only else ""),
-    ]
+        + (f"; with only flags this build does not know: {unknown_only:,}" if unknown_only else "")
+    )
     for tier in Tier:
         lines += _tier_lines(tier, summaries)
 
@@ -509,6 +696,8 @@ def render_summary(summaries: Sequence[QcSummary], max_examples: int = MAX_EXAMP
         fields.add("gbcms_status" if fmt == "maf" else "GS")
     if fields:
         kind = "MAF columns" if fmt == "maf" else "VCF INFO keys"
+        if any(s.merged for s in summaries):
+            kind += "; a merged MAF has each under its input's prefix"
         lines.append(f"  Find them in the output ({kind}): {', '.join(sorted(fields))}")
     lines.append("  What each flag means and what to do: " + QC_FLAGS_URL)
     return "\n".join(lines)
@@ -518,30 +707,55 @@ def _need(n: int) -> str:
     return "needs" if n == 1 else "need"
 
 
-def log_qc_summary(summaries: Sequence[QcSummary]) -> None:
-    """Log the summary block (INFO), then, as the run's last line, a WARNING when
-    any row needs a look and an INFO line when none does."""
-    if not summaries:
-        return
-    # markup off: sample names and labels are user text, not Rich markup.
-    logger.info("%s", render_summary(summaries), extra={"markup": False})
+def _not_checked_note(skipped: Sequence[Skipped], total: int) -> str:
+    """``1 of 3 samples not checked: B (why)``; the first three are named."""
+    named = ", ".join(f"{item.sample} ({item.reason})" for item in skipped[:3])
+    if len(skipped) > 3:
+        named += f" and {len(skipped) - 3} more"
+    noun = "sample" if total == 1 else "samples"
+    return f"{len(skipped)} of {total} {noun} not checked: {named}"
+
+
+def closing_line(
+    summaries: Sequence[QcSummary], skipped: Sequence[Skipped] = ()
+) -> tuple[int, str]:
+    """The line that ends a summary: ``(logging level, message)``. A WARNING when any
+    row needs a look or any sample was not checked, an INFO line when every sample was
+    checked and none needs a look."""
     rows = sum(s.rows for s in summaries)
     need = sum(s.need_look for s in summaries)
+    tail = ": see the QC summary above and " + QC_FLAGS_URL
+    note = _not_checked_note(skipped, len(summaries) + len(skipped)) if skipped else ""
     if not need:
-        logger.info("No row needs a look: %s checked (QC flags: %s)", _count(rows), QC_FLAGS_URL)
-        return
+        if not skipped:
+            return (
+                logging.INFO,
+                f"No row needs a look: {_count(rows)} checked (QC flags: " + QC_FLAGS_URL + ")",
+            )
+        if not summaries:
+            return (
+                logging.WARNING,
+                note + "; nothing could be checked (QC flags: " + QC_FLAGS_URL + ")",
+            )
+        checked = f"no row needs a look in the {len(summaries)} checked ({_count(rows)})"
+        return logging.WARNING, f"{note}; {checked}" + tail
     fix = sum(s.tier_rows[Tier.FIX_INPUT] for s in summaries)
     where = ""
     if len(summaries) > 1:
         k = sum(1 for s in summaries if s.need_look)
         where = f" in {k} of {len(summaries)} samples"
-    logger.warning(
-        "%s of %s %s a look%s (%s with a problem in the input): see the QC summary above " "and %s",
-        f"{need:,}",
-        _count(rows),
-        _need(need),
-        where,
-        f"{fix:,}",
-        QC_FLAGS_URL,
-        extra={"markup": False},
-    )
+    head = f"{need:,} of {_count(rows)} {_need(need)} a look{where}"
+    head += f" ({fix:,} with a problem in the input)"
+    return logging.WARNING, head + (f"; {note}" if skipped else "") + tail
+
+
+def log_qc_summary(summaries: Sequence[QcSummary], skipped: Sequence[Skipped] = ()) -> None:
+    """Log the summary block (INFO), then, as the run's last line, a WARNING when any
+    row needs a look or any sample was not checked, and an INFO line when none does."""
+    if not summaries and not skipped:
+        return
+    # markup off: sample names and labels are user text, not Rich markup.
+    if summaries:  # with none read there is no block, only the line that says so
+        logger.info("%s", render_summary(summaries, skipped=skipped), extra={"markup": False})
+    level, message = closing_line(summaries, skipped)
+    logger.log(level, "%s", message, extra={"markup": False})
