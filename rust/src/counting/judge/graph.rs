@@ -1109,7 +1109,7 @@ fn copy_off_band_reference(read: &[u8], g: &Graph, band: &GraphBand) -> bool {
             }
             kmer.iter().enumerate().filter(|(_, &k)| k == b).fold(0u32, |m, (j, _)| m | (1 << j))
         };
-        let masks = [b'A', b'C', b'G', b'T'].map(mask);
+        let masks = (*b"ACGT").map(mask);
         let pick = |b: u8| match b {
             b'A' => masks[0],
             b'C' => masks[1],
