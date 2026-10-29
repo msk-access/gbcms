@@ -40,6 +40,23 @@ from gbcms.qc_summary import (
 runner = CliRunner()
 
 
+def make_vcf_output(path, rows=2):
+    """A VCF shaped as the writer's: its header declares the GS, GSR and GD INFO fields."""
+    header = (
+        "##fileformat=VCFv4.2\n##source=gbcms v0.0.0 (test)\n"
+        '##INFO=<ID=GS,Number=1,Type=String,Description="gbcms verdict: PASS or FAIL">\n'
+        '##INFO=<ID=GSR,Number=1,Type=String,Description="reasons">\n'
+        '##INFO=<ID=GD,Number=1,Type=String,Description="diagnostics">\n'
+        "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\tFORMAT\tS\n"
+    )
+    body = [
+        f"chr1\t{100 + i}\t.\tA\tT\t.\t.\tGS=PASS;GSR=.;GD=ZERO_ALT\tGT:DP\t0/0:5"
+        for i in range(rows)
+    ]
+    path.write_text(header + "".join(line + "\n" for line in body))
+    return path
+
+
 def clean(tmp_path, name="A"):
     return summarize_output(write_maf(tmp_path / f"{name}.maf", [maf_row(0), maf_row(1)]), name)
 
@@ -314,3 +331,107 @@ def test_the_docs_say_what_a_sample_not_checked_looks_like():
     page = (root / "docs/reference/qc-flags.md").read_text()
     assert 'under "Not checked"' in page and "samples not checked" in page
     assert "**not checked**" in (root / "docs/cli/summarize.md").read_text()
+
+
+# ── Greptile, third round (#356) ────────────────────────────────────────────────
+
+
+def plain_vcf(path, header="##fileformat=VCFv4.2\n"):
+    """An ordinary VCF: no gbcms INFO fields, as any caller writes."""
+    path.write_text(
+        header
+        + "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\tFORMAT\tS\n"
+        + "chr1\t100\t.\tA\tT\t50\tPASS\tDP=10\tGT:DP\t0/1:10\n"
+    )
+    return path
+
+
+@pytest.mark.parametrize("content", ["plain", "empty", "header-only-no-gbcms"])
+def test_an_ordinary_or_empty_vcf_is_not_a_clean_gbcms_output(tmp_path, content):
+    """Without gbcms's own fields (the GS INFO the writer declares) every row would read as
+    a PASS row with no flags: a VCF that was never checked would read as a clean one."""
+    path = tmp_path / "v.vcf"
+    if content == "plain":
+        plain_vcf(path)
+    elif content == "empty":
+        path.write_text("")
+    else:
+        path.write_text("##fileformat=VCFv4.2\n#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\n")
+    with pytest.raises(ValueError, match="not a gbcms VCF"):
+        summarize_output(path)
+    summaries, skipped = summarize_inputs([path])
+    assert summaries == [] and [s.sample for s in skipped] == ["v"]
+    assert "not a gbcms VCF" in skipped[0].reason
+
+
+def test_summarize_names_an_ordinary_vcf_as_not_checked_beside_a_real_output(tmp_path):
+    good = make_vcf_output(tmp_path / "good.vcf")
+    other = plain_vcf(tmp_path / "other.vcf")
+    res = cli(good, other)
+    assert res.exit_code == 1, res.output
+    text = " ".join(res.stdout.split())
+    assert "QC summary for 1 of 2 samples" in text
+    assert "other: other.vcf has no GS INFO field: not a gbcms VCF" in text
+
+
+def test_a_gbcms_vcf_with_no_records_is_a_checked_output_of_zero_rows(tmp_path):
+    path = make_vcf_output(tmp_path / "none.vcf", rows=0)
+    s = summarize_output(path)
+    assert (s.rows, s.need_look) == (0, 0)
+
+
+def test_the_run_writes_the_field_the_summary_asks_for(tmp_path):
+    """The check is the writer's own header line, not a copy of it."""
+    fa, bam = _files(tmp_path, _ref_reads())
+    res = runner.invoke(
+        app,
+        ["dna", "-v", str(_maf(tmp_path, _rows(tmp_path)[:1])), "-f", str(fa), "-o"]
+        + [str(tmp_path / "out"), "--format", "vcf", "-b", f"S:{bam}"],
+        env={"COLUMNS": "3000"},
+    )
+    assert res.exit_code == 0, res.output
+    assert summarize_output(tmp_path / "out" / "S.vcf").rows == 1
+
+
+def test_a_skipped_input_with_a_checked_samples_name_does_not_replace_its_row(tmp_path):
+    flagged = summarize_output(make_maf(tmp_path / "S.maf"))
+    warning = multiqc_documents([flagged], [Skipped("S", "two outputs share the sample name S")])[
+        MULTIQC_WARNING_NAME
+    ]
+    row = warning["data"]["S"]
+    assert row["need_look"] == 3 and row["not_checked"] == 0  # the checked sample, intact
+    (other,) = (k for k in warning["data"] if k != "S")
+    assert warning["data"][other] == {"not_checked": 1} and "S" in other
+    columns = {c for r in warning["data"].values() for c in r}
+    assert columns <= set(warning["headers"])
+
+
+def test_skipped_inputs_that_share_a_name_each_get_a_row():
+    docs = multiqc_documents(
+        [], [Skipped("S", "a"), Skipped("S", "b"), Skipped("S", "c"), Skipped("T", "d")]
+    )
+    data = docs[MULTIQC_WARNING_NAME]["data"]
+    assert len(data) == 4 and all(r == {"not_checked": 1} for r in data.values())
+
+
+def test_the_same_through_the_cli_when_two_inputs_share_a_name(tmp_path):
+    (tmp_path / "d1").mkdir()
+    (tmp_path / "d2").mkdir()
+    a = make_maf(tmp_path / "d1" / "S.maf")
+    b = make_maf(tmp_path / "d2" / "S.maf")
+    res = cli("--format", "multiqc", "-o", tmp_path / "mq", a, b)
+    assert res.exit_code == 1
+    data = json.loads((tmp_path / "mq" / MULTIQC_WARNING_NAME).read_text())["data"]
+    assert data["S"]["need_look"] == 3 and len(data) == 2
+
+
+def test_a_table_left_by_an_earlier_run_is_removed_when_nothing_could_be_read(tmp_path):
+    out = tmp_path / "mq"
+    assert cli("--format", "multiqc", "-o", out, make_maf(tmp_path / "good.maf")).exit_code == 0
+    assert (out / MULTIQC_TABLE_NAME).exists()
+    other = plain_vcf(tmp_path / "other.vcf")
+    res = cli("--format", "multiqc", "-o", out, other)
+    assert res.exit_code == 1
+    # MultiQC must not read the earlier run's counts as this run's.
+    assert sorted(p.name for p in out.iterdir()) == [MULTIQC_WARNING_NAME]
+    assert "not checked" in json.loads((out / MULTIQC_WARNING_NAME).read_text())["description"]

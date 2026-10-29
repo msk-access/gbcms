@@ -217,6 +217,7 @@ src/gbcms/
 ├── normalize.py     # Standalone normalization workflow
 ├── convert.py       # Standalone VCF <-> MAF conversion (vcf2maf / maf2vcf)
 ├── qc_summary.py    # End-of-run QC summary (log block read from the written output)
+├── qc_export.py     # `gbcms summarize`: the QC summary as text, JSON, a cohort TSV or MultiQC content
 ├── core/
 │   └── kernel.py    # Coordinates + VCF <-> MAF representation, type labels
 ├── io/

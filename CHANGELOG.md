@@ -16,6 +16,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   is a `WARNING` ("1 of 3 samples not checked: ..."). The exit code is unchanged.
   `gbcms summarize` does the same for an input it refuses or cannot read: it summarizes the
   others, names the input, and still exits 1. A MultiQC report carries the warning.
+- **`gbcms summarize` refuses a VCF that is not gbcms's.** An ordinary VCF, a bare header
+  and an empty `.vcf` read as clean outputs (every record a PASS row with no flags). A VCF
+  now needs gbcms's own `GS` INFO field, declared in its header or on its first record; the
+  rest are named under "Not checked".
+- **A MultiQC file left by an earlier run is removed when this run has nothing for it**, the
+  summary table as well as the warning, so a report never reads old counts. A skipped input
+  that shares a name with a checked sample gets a row of its own in the warning instead of
+  replacing the checked sample's.
 - **The MultiQC table is built in one pass over the cohort.** It looked for the flags that
   fired once for every sample, so its time grew with the square of the cohort; the output is
   byte-identical.

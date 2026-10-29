@@ -378,7 +378,17 @@ def multiqc_warning(
         for row in data.values():
             row["not_checked"] = 0
         for item in skipped:
-            data[item.sample] = {"not_checked": 1}
+            # A skipped input may share a sample name with a checked one (or another
+            # skipped one): it gets a row of its own, never replacing theirs.
+            key, n = item.sample, 1
+            while key in data:
+                n += 1
+                key = (
+                    f"{item.sample} (not checked)"
+                    if n == 2
+                    else f"{item.sample} (not checked {n - 1})"
+                )
+            data[key] = {"not_checked": 1}
         note = _not_checked_note(skipped, len(summaries) + len(skipped))
         description = (description + " " + note + ".").strip()
     return {
@@ -461,11 +471,13 @@ def write_summaries(
         documents = multiqc_documents(summaries, skipped)
         for name, document in documents.items():
             put(folder / name, _dump(document))
-        stale = folder / MULTIQC_WARNING_NAME
-        if MULTIQC_WARNING_NAME not in documents and stale.exists():
-            # A warning left by an earlier run would still say rows need a look.
-            stale.unlink()
-            logger.info("Removed %s: no row needs a look now", stale)
+        # A file left by an earlier run would still describe that run: MultiQC reads it as
+        # this one's. Remove each that this run has no content for.
+        for name in (MULTIQC_TABLE_NAME, MULTIQC_WARNING_NAME):
+            stale = folder / name
+            if name not in documents and stale.exists() and stale.resolve() not in taken:
+                stale.unlink()
+                logger.info("Removed %s: it described an earlier run", stale)
     return written
 
 

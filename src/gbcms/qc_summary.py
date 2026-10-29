@@ -350,8 +350,18 @@ def _maf_rows(path: Path, meta: dict[str, bool]) -> Iterator[_Row]:
 
 
 def _vcf_rows(path: Path) -> Iterator[_Row]:
+    """The rows of a gbcms VCF. It carries gbcms's own ``GS`` INFO field: the header
+    declares it, or the first record has it. Without that every record would read as a
+    PASS row with no flags, and an ordinary VCF, or an empty file, would pass for a
+    clean output."""
+    not_gbcms = ValueError(f"{path.name} has no GS INFO field: not a gbcms VCF")
+    declared = False
+    first = True  # the first record is yet to be seen
     with open(path) as fh:
         for line in fh:
+            if line.startswith("##"):
+                declared = declared or line.startswith("##INFO=<ID=GS,")
+                continue
             if line.startswith("#"):
                 continue
             f = line.rstrip("\n").split("\t")
@@ -361,6 +371,9 @@ def _vcf_rows(path: Path) -> Iterator[_Row]:
             for part in f[7].split(";"):
                 key, _, value = part.partition("=")
                 info[key] = value
+            if first and not (declared or "GS" in info):
+                raise not_gbcms
+            first = False
             columns = tuple(name for name, key in _COLUMN_VCF.items() if key in info)
 
             def locus(f: list[str] = f) -> tuple[str, str]:
@@ -375,6 +388,8 @@ def _vcf_rows(path: Path) -> Iterator[_Row]:
                 columns,
                 locus,
             )
+    if first and not declared:  # no record, and a header that does not declare GS
+        raise not_gbcms
 
 
 _COLUMN_FLAGS = tuple(f for f in QC_FLAGS if f.kind is Kind.COLUMN)
