@@ -204,7 +204,7 @@ class PreparedVariant:
     # Status reason tags, '|'-separated; empty when a clean PASS.
     # PASS: WARN_REF_CORRECTED, WARN_HOMOPOLYMER_DECOMP, MULTI_ALLELIC, TRACT_CLUSTER.
     # FAIL: REF_MISMATCH, FETCH_FAILED, EMPTY_ALLELE, NON_SEQUENCE_ALLELE, ALT_EQUALS_REF,
-    # ALT_CONTAINS_N.
+    # START_BEFORE_CONTIG, ALT_CONTAINS_N.
     gbcms_status_reason: str
     # Diagnostic flags: post-counting on a PASS row (pipeline._compute_diagnostics);
     # on a REF_MISMATCH row, prep's REF_AT_OFFSET(k) where the given REF matches

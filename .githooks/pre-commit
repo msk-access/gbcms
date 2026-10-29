@@ -13,9 +13,10 @@ staged="$(git diff --cached --name-only --diff-filter=ACM)"
 #    and the regression panel's checkpoint list (commit SHAs and PR labels, committed
 #    on a checkpoint-wheels/* branch to build its wheels; checked in 1a).
 #    Variant and read files carry patient or sample identifiers (a VCF's header and
-#    #CHROM line name the sample; FASTQ read names carry run and flowcell IDs), so
-#    VCF, BED and FASTQ are blocked too, plain or gzip/bgzip-compressed, in any case.
-data_re='\.(parquet|bam|bai|cram|crai|tsv|csv|maf|dat|vcf|bed|fastq|fq)(\.(gz|bgz))?$'
+#    #CHROM line name the sample; FASTQ read names carry run and flowcell IDs; a SAM
+#    header's @RG lines and read names carry both; a BCF is a binary VCF), so VCF, BCF,
+#    SAM, BED and FASTQ are blocked too, plain or gzip/bgzip-compressed, in any case.
+data_re='\.(parquet|bam|bai|cram|crai|tsv|csv|maf|dat|vcf|bcf|sam|bed|fastq|fq)(\.(gz|bgz))?$'
 checkpoints='scripts/regression_panel/checkpoints.tsv'
 outside="$(printf '%s\n' "$staged" | grep -Ei "$data_re" | grep -v '^tests/testdata/' | grep -vxF "$checkpoints" || true)"
 if [ -n "$outside" ]; then
@@ -59,7 +60,8 @@ if [ -n "$fixtures" ]; then
     fi
     # The decoder is picked by the lowercased name, so `X.VCF.GZ` is decoded like `x.vcf.gz`.
     case "$(printf '%s' "$f" | tr '[:upper:]' '[:lower:]')" in
-      *.bam) text="$(git show ":$f" | gzip -dc 2>/dev/null | LC_ALL=C tr -c '[:print:]\n' ' ')" ;;
+      # A BAM and a BCF are BGZF (gzip members): decode them to read the header.
+      *.bam|*.bcf) text="$(git show ":$f" | gzip -dc 2>/dev/null | LC_ALL=C tr -c '[:print:]\n' ' ')" ;;
       # Compressed text (a .vcf.gz/.vcf.bgz header, .bed.gz, .fastq.gz): decode it so the
       # scan reads the header and read names, not compressed bytes it could never match.
       *.gz|*.bgz)
@@ -119,6 +121,18 @@ if [ -n "$skills" ]; then
       exit 1
     fi
   done <<< "$skills"
+fi
+
+# 3b) Every code name, flag and path a staged skill or rule mentions must exist
+#     (scripts/check_agent_names.py; stdlib only). A renamed function or a deleted file
+#     stays in the text agents trust until a check reads it. Skipped if the script is absent.
+agent_docs="$(printf '%s\n' "$staged" | grep -E '^\.agents/(skills/[^/]+/SKILL\.md|rules/[^/]+\.md)$' || true)"
+repo_root="$(git rev-parse --show-toplevel)"
+if [ -n "$agent_docs" ] && [ -f "$repo_root/scripts/check_agent_names.py" ]; then
+  if ! (cd "$repo_root" && printf '%s\n' "$agent_docs" | xargs python3 -I scripts/check_agent_names.py); then
+    echo "pre-commit BLOCKED: a skill or rule names code, a flag or a file that does not exist (above). Fix the text, or EXTERNAL in scripts/check_agent_names.py if the name belongs to another tool." >&2
+    exit 1
+  fi
 fi
 
 exit 0

@@ -186,16 +186,20 @@ with their options (see [INFO Fields](#info-fields)).
     `Start_Position` for a `-` insertion, whose Start is the base before the
     insertion) and `POS` moves to it. Anything else is written as-is at
     `Start_Position`. An event at position 1 has no base before it, so the base
-    after it is appended instead (VCF spec; maf2vcf skips such rows). The anchor
+    after it is appended instead (VCF spec; maf2vcf skips such rows); so is an
+    insertion at `Start_Position` 0, which lies before the first base, written at
+    position 1. The anchor
     base comes from `--fasta`; one the reference cannot supply is written as `N`
     and counted in a WARNING. The MAF alleles are read as maf2vcf reads them
     (see [Input Formats](input-formats.md#maf-alleles)); unlike maf2vcf, a
     differing `Tumor_Seq_Allele1` is not written as a second ALT. A row whose
     allele is not a base sequence (FAIL `NON_SEQUENCE_ALLELE`, or an empty
-    allele, FAIL `EMPTY_ALLELE`), or a deletion spanning its whole contig (no base
-    before or after it to anchor a record; FAIL `FETCH_FAILED`), is written as the
-    symbolic record `<NON_SEQUENCE>` at `Start_Position`, REF the reference base
-    there (declared in a `##ALT` header line), so the VCF stays valid. A MAF
+    allele, FAIL `EMPTY_ALLELE`), a deletion spanning its whole contig (no base
+    before or after it to anchor a record; FAIL `FETCH_FAILED`), or a row at
+    `Start_Position` 0 that is not an insertion (FAIL `START_BEFORE_CONTIG`), is
+    written as the symbolic record `<NON_SEQUENCE>` at `Start_Position` (position 1
+    for a row at Start 0), REF the reference base there (declared in a `##ALT`
+    header line), so the VCF stays valid. A MAF
     deletion at `Start_Position` 1 is otherwise counted in the base-after form.
 
     | MAF `Start` `Ref` > `Alt` | VCF `POS` `REF` > `ALT` |

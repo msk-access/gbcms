@@ -11,10 +11,11 @@ mFSD (modified Fragment Size Distribution) analysis is **opt-in** via `--mfsd`.
 
 ## Column Gating
 
-- Without `--mfsd`: 145 MAF columns (0 `mfsd_*`)
-- With `--mfsd`: 186 MAF columns (+41 `mfsd_*`)
-- VCF INFO: exactly 13 `MFSD_*` fields added only when `--mfsd` is set
+- Without `--mfsd`: no `mfsd_*` MAF column. With it: exactly 41 `mfsd_*` columns are added
+  (the total depends on the input MAF's own columns, so test the 41, not a total).
+- VCF INFO: exactly 13 `MFSD_*` fields, added only when `--mfsd` is set
 - Columns are **absent** when off, not NA-filled
+- Pinned by `tests/test_mfsd_flag.py` (the 41 and the 13)
 
 ## Parquet Output
 

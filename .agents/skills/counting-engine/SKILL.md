@@ -11,7 +11,6 @@ What call each read shape gets, and the decision behind it (register RJ-n), is s
 A fix to a call starts from the mechanism, not the failing row: state it without the row,
 test the other shapes of its class, derive any cutoff from it, and justify any narrowing
 (read-judgment.md, "How a change to read judgment is made").
-(A whole-read haplotype judge is being built behind `--read-judge` in package 2, #304.)
 
 ## Dispatch: `check_allele_with_qual` (engine.rs), in order
 1. **Splice triage** (`splice_skip_triage`, variant_checks.rs): a CIGAR `N` spanning every

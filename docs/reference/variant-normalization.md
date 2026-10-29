@@ -117,8 +117,8 @@ past the end fails validation.
 Every variant that reaches REF validation gets a **type label derived from its
 final alleles** (after anchor resolution, REF correction and alignment), with the
 same rule the readers use. A row rejected before that (`EMPTY_ALLELE`,
-`NON_SEQUENCE_ALLELE`, `ALT_EQUALS_REF`, a failed MAF anchor fetch) keeps the
-reader's label.
+`NON_SEQUENCE_ALLELE`, `ALT_EQUALS_REF`, `START_BEFORE_CONTIG`: see [QC Flags](qc-flags.md);
+a failed MAF anchor fetch) keeps the reader's label.
 
 | Condition | Assigned Type |
 |:----------|:-------------|

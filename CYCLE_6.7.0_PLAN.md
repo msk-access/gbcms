@@ -17,7 +17,12 @@
 >   tooling. Aggregates and allele shapes only in issues, PRs and this plan.
 > - Check `.agents/learnings/REJECTED.md` before proposing an alternative.
 
-**Status (2026-10-08).** Draft for operator review; nothing is implemented.
+**Status (updated 2026-10-28).** The plan as decided on 2026-10-08; the decisions below are
+dated records. Implemented and closed since: C39 (#253), C40 (#254), D8 (#255), H4 (#269),
+C42 (#244, replaced by #265) and most C43 follow-ups (for example #277, #278, #279, #280,
+#294, #300). Open: C41's docs (#264, with package 2), the truth arms D9 to D11 (#266 to
+#268), #290, #297, #301 and the rest of the table. The live state is `CONTINUITY.md`
+("Next") and tracker #196.
 - **Decided (operator, 2026-10-08):** 2 (C41: keep allele-level REF and VAF, add docs),
   4 (close #244 and replace it with the Phase-3 sub-issue), 5 (re-measure #246 and close
   it unless seen) and 6 (remove `build-gtf-cache`). Go-aheads: the GIAB region fetch,

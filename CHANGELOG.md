@@ -7,6 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added — an end-of-run QC summary in the run log (#227)
+
+- **The run log now ends with a QC summary.** `gbcms dna` and `gbcms rna` log one block
+  after the last sample: which QC flags fired and on how many rows, which rows need a look
+  (a flag is "fix the input", "check the call" or informational; the first two need a look),
+  what to do about each, the first rows to look at, the output fields to filter on, and the
+  address of the QC Flags page. With several samples in one run the block combines them.
+  The run's last line is a `WARNING` when any row needs a look and an `INFO` line when none
+  does; the exit code is unchanged.
+- **It reads the written output and changes nothing.** The block comes from the MAF or VCF
+  the run wrote, read back after writing: no count, column, row or file differs (a test pins
+  the output files byte-identical with and without it), and there is no new flag or output
+  file. A failure to read the output is a warning, never a failed run.
+- **One table for the code and the docs.** `QC_FLAGS` in `gbcms.qc_summary` holds each
+  flag's tier and one-line action; the QC Flags page repeats it under "End-of-run summary".
+  Tests fail when a flag the page defines has no entry, when an entry names no flag on the
+  page, and when the page's tiers, actions or example block differ from the code's.
+
 ### Changed — a read-rule change starts from its mechanism (#304)
 
 - **Fix the class, not the row.** The procedure for changing how reads are judged
@@ -17,6 +35,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   than its mechanism says why. The fix is judged on data the bug was not found in.
 - **Each decided read rule states its mechanism.** The register has a Mechanism column,
   filled for RJ-1 to RJ-27, and new entries state theirs. Counts are unchanged.
+
+### Fixed — a GTF transcript ID that another chromosome or strand reuses is another transcript (#216)
+
+- **The GTF parser keyed transcripts by ID alone.** An ID used on more than one chromosome
+  or strand (the same RefSeq `NM_` on chrX and chrY, alternate loci) merged into one
+  transcript: its exons from both places were sorted together, so the consecutive pairs
+  made introns that exist nowhere and missed the real ones, and the whole transcript sat on
+  the first chromosome seen. A spliced read over a real intron then matched none of them
+  and was left out of the transcript's counts; the same introns fed the intron boundaries
+  (`RETENTION_DOMINANT`, the exon-edge BAQ rule, RNA clip edges) and ASJD's known-junction
+  check. A transcript is now an ID at one chromosome and strand, as the strand spans
+  already were (#185): its exons, introns, boundaries and `transcript_read_counts` /
+  `transcript_fragment_counts` entries are its own. The parser warns once when a GTF
+  reuses an ID. Exons of one ID at the same chromosome and strand still join (versions that
+  differ only by suffix share a transcript). Counts are unchanged for a GTF that reuses
+  no ID: Ensembl GRCh38.111 (FORTE's) has none among its 252,989 transcript IDs.
 
 ### Fixed — the docs state the unreadable-insert rule as decided (#304)
 
@@ -30,6 +64,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Those pages now lead with the current rule.** They say that the CIGAR checks, which run
   only for an insertion the exact-carrier rule cannot judge (no prepared reference), still
   count such a read neither, in `partial_alt`. Counts are unchanged.
+
+### Fixed — a MAF row at Start 0 is kept: an insertion is counted, any other fails visibly (#219)
+
+- **An insertion before a contig's first base is no longer dropped.** A MAF row with
+  `Reference_Allele` `-` and `Start_Position` 0 (`Start_Position` is the base before an
+  insertion, so 0 is before base 1) failed the internal model's `pos >= 0` check in the
+  reader and vanished with a warning: no output row, no `FAIL` row. It is now resolved
+  to the VCF spec's form at position 1, the base after the event (`REF` the first base,
+  `ALT` the inserted bases then that base), and counted as the same event given as VCF
+  is, as a deletion at Start 1 is (#122). MAF output keeps the row's input columns; VCF
+  output and `gbcms convert` write the position-1 record with the row in
+  `MAF_START`/`MAF_REF`/`MAF_ALT`. Where the first base is `N` (human contigs), the
+  `ALT` contains `N` and the row is a visible `FAIL` with `ALT_CONTAINS_N`. None in the
+  sign-out data (vcf2maf writes such an event with sequence alleles at Start 1).
+- **Any other row at Start 0 is a visible `FAIL` row, not a dropped one.** A substitution,
+  a deletion, a delins, or an insertion written with sequence alleles at `Start_Position`
+  0 names a base that does not exist. The reader dropped it with a warning (only the first
+  five named); it is now kept as `FAIL` with the new reason `START_BEFORE_CONTIG`, its
+  input columns as written, not counted. VCF output and `gbcms convert` write it as the
+  symbolic `<NON_SEQUENCE>` record at position 1 (REF the first base, reason in `GSR`).
+  A negative `Start_Position` is still skipped with a warning. A VCF `POS` of 0 is still
+  an error.
 
 ### Fixed — `--min-baseq` help and docs say what it does (#304)
 
