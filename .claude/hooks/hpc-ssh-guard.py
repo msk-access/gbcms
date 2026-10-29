@@ -172,6 +172,23 @@ VALUE_LETTERS = {
     "mkdir": "m",
 }
 PATH_LETTERS = {"grep": "f", "file": "fm"}
+# The same for long options given with a separate value (`--lines 5`): name -> its value is a file.
+# An option not listed here takes no separate value, so a file it reads is checked as a name.
+LONG_VALUES = {
+    "grep": {"regexp": False, "file": True, "max-count": False, "after-context": False},
+    "head": {"lines": False, "bytes": False},
+    "tail": {"lines": False, "bytes": False, "sleep-interval": False},
+    "cut": {"bytes": False, "characters": False, "delimiter": False, "fields": False},
+    "sort": {"key": False, "field-separator": False, "buffer-size": False},
+    "uniq": {"skip-fields": False, "skip-chars": False, "check-chars": False},
+    "stat": {"format": False, "printf": False},
+    "du": {"max-depth": False, "block-size": False, "threshold": False},
+    "df": {"block-size": False, "type": False},
+    "ls": {"ignore": False, "hide": False, "width": False},
+    "file": {"magic-file": True, "files-from": True, "separator": False, "exclude": False},
+    "mkdir": {"mode": False},
+}
+LONG_VALUES["grep"].update({"before-context": False, "context": False})
 FIND_VALUE_TESTS = {
     "-name",
     "-iname",
@@ -523,10 +540,19 @@ def check_words(verb, words, cwd, roots):
     while i < len(words):
         w = words[i]
         if w.startswith("--") and len(w) > 2:
-            _, eq, value = w[2:].partition("=")
-            for part in re.split(r"[,:]", value) if eq else ():
-                if path_like(part):
-                    remote_path(part, cwd, roots)
+            name, eq, value = w[2:].partition("=")
+            # GNU tools take a unique prefix of a long option: match it the same way.
+            known = [k for k in LONG_VALUES.get(verb, {}) if k.startswith(name)]
+            is_path = len(known) == 1 and LONG_VALUES[verb][known[0]]
+            if not eq and len(known) == 1:
+                i += 1
+                value = words[i] if i < len(words) else ""
+            if is_path:
+                remote_path(value, cwd, roots)
+            elif eq or len(known) == 1:
+                for part in re.split(r"[,:]", value):
+                    if path_like(part):
+                        remote_path(part, cwd, roots)
         elif w.startswith("-") and len(w) > 1:
             letter, value = bundle_value(verb, w)
             if verb == "find" and w in FIND_VALUE_TESTS | FIND_PATH_TESTS:

@@ -121,6 +121,9 @@ ASK = [
     # Everyday reads: a pattern, a count or a format is not a file name.
     f"{SSH} 'squeue -u tester | grep RUNNING'",
     f"{SSH} 'head -n 5 {WORK}/a.txt'",
+    f"{SSH} 'head --lines 5 {WORK}/a.txt'",  # a long option's separate value
+    f"{SSH} 'tail --lin 5 {WORK}/a.txt'",  # a unique prefix, as GNU tools take
+    f"{SSH} 'grep --max-count 3 ALT {WORK}/a.maf'",
     f"{SSH} 'cut -d, -f1 {WORK}/a.csv | sort -u | uniq -c'",
     f"{SSH} \"find {WORK} -name '*.out' -type f -newer {WORK}/start\"",
     f"{SSH} 'ls {WORK}/runs/*/done'",
@@ -217,6 +220,11 @@ DENY = [
     f"{SSH} 'uniq - {TEST}/out'",  # standard input is the first operand
     f"{SSH} 'uniq {WORK}/a 5'",  # a number left over is a file name
     f"{SSH} 'grep 5 /etc/passwd'",  # the pattern is 5; the file is checked
+    f"{SSH} 'grep --file .patterns {WORK}/a'",  # a long option whose value is a file
+    f"{SSH} 'grep --file=notes {WORK}/a'",
+    f"{SSH} 'file --magic-file /etc/magic {WORK}/a'",
+    f"{SSH} 'head --lines 5 .bashrc'",
+    f"{SSH} 'ls --hide /etc'",  # a path-like value is checked whatever the option
     f"{SSH} 'find {WORK} -fls {TEST}/x'",
     f"{SSH} 'file -C -m {WORK}/magic'",
     # ssh options off the list, wherever they stand.
