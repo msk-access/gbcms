@@ -32,4 +32,3 @@ modules adapted to that version's CLI (since 6.3.1: drop
 removed in 6.7.0; widen the `gtf` pattern to `*.{gtf,gtf.gz}`; check the mFSD,
 observations and merge changes). The modules are buehlere's (modules#259,
 2026-08-27); ask whether to open a PR or coordinate first.
-Related: [[nextflow-cli-default-divergence]].

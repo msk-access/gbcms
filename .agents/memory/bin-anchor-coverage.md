@@ -21,5 +21,4 @@ event's first base, which every fetch holds). This was review finding **CR-1**.
 `bin.end >= max over all bin variants of (v.pos + v.ref_allele.len() + window_pad_v)`,
 including the anchor. The `build_genomic_bins` property test and
 `tests/test_binning_invariance.py` (clip carriers past a long anchor) pin it; with the
-bug reintroduced both fail (mutation-checked 2026-10-01). See [[engine-output-aware]] for the broader
-"don't silently drop work" theme.
+bug reintroduced both fail (mutation-checked 2026-10-01).
