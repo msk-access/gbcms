@@ -8596,12 +8596,12 @@ completely absent without the <code>--gtf</code> flag — no empty/NA placeholde
 <tr>
 <td style="text-align: left;"><code>transcript_read_counts</code></td>
 <td style="text-align: left;">String</td>
-<td style="text-align: left;">Pipe-separated per-transcript read-level count triplets. Format: <code>ENST...:AD,RD,DP\|ENST...:AD,RD,DP</code>. Example: <code>ENST00000269305:11,140,162\|ENST00000445888:7,95,108</code>. Empty when no GTF or no overlapping transcripts.</td>
+<td style="text-align: left;">Pipe-separated per-transcript read-level count triplets. Format: <code>ENST...:AD,RD,DP\|ENST...:AD,RD,DP</code>. Example: <code>ENST00000269305:11,140,162\|ENST00000445888:7,95,108</code>. Entries are in ascending transcript-ID order. Empty when no GTF or no overlapping transcripts.</td>
 </tr>
 <tr>
 <td style="text-align: left;"><code>transcript_fragment_counts</code></td>
 <td style="text-align: left;">String</td>
-<td style="text-align: left;">Same format as <code>transcript_read_counts</code> but with fragment-level counts: <code>ENST...:ADF,RDF,DPF</code>. Fragment counts ≤ read counts for each transcript.</td>
+<td style="text-align: left;">Same format as <code>transcript_read_counts</code> but with fragment-level counts: <code>ENST...:ADF,RDF,DPF</code>. Same entry order. Fragment counts ≤ read counts for each transcript.</td>
 </tr>
 </tbody>
 </table>
@@ -11941,6 +11941,12 @@ overlaps multiple transcripts with different exon structures.</p>
 <p class="admonition-title">Invariant</p>
 <p>For each transcript: <code>fragment_count ≤ read_count</code> (fragments are
 R1/R2 consensus; reads are individual observations).</p>
+</div>
+<div class="admonition note">
+<p class="admonition-title">Entry order</p>
+<p>Entries are in ascending transcript-ID order (byte order), in both columns,
+on every machine. The order does not depend on the GTF's line order or on the
+CPU, so the same run on two machines writes the same bytes.</p>
 </div>
 <div class="admonition note">
 <p class="admonition-title">What a transcript's <abbr title="Total Depth - All mapped reads overlapping the variant position">DP</abbr> counts</p>
@@ -19823,6 +19829,17 @@ and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semant
   flag's tier and one-line action; the QC Flags page repeats it under "End-of-run summary".
   Tests fail when a flag the page defines has no entry, when an entry names no flag on the
   page, and when the page's tiers, actions or example block differ from the code's.</li>
+</ul>
+<h3 id="development-changelog-fixed-per-transcript-count-lists-in-a-machine-independent-order-284">Fixed — per-transcript count lists in a machine-independent order (#284)<a class="headerlink" href="#development-changelog-fixed-per-transcript-count-lists-in-a-machine-independent-order-284" title="Permanent link">¶</a></h3>
+<ul>
+<li><strong><code>transcript_read_counts</code> and <code>transcript_fragment_counts</code> list their transcripts in
+  ascending ID order</strong>, on every machine. They listed them in the order the exon interval
+  tree visited the overlapping exons, which depends on the CPU's SIMD backend (NEON, AVX
+  or none) and on how equal intervals fall, so one build on one input wrote the same
+  entries in another order on another machine (23 of 73,649 cells differed between an
+  Apple Silicon run and an x86 Linux run of the 6.6.0 release panel). Counts are
+  unchanged; only the order of entries is. The cells of two machines now compare as
+  bytes, with no set comparison. The RNA docs state the order.</li>
 </ul>
 <h3 id="development-changelog-changed-a-read-rule-change-starts-from-its-mechanism-304">Changed — a read-rule change starts from its mechanism (#304)<a class="headerlink" href="#development-changelog-changed-a-read-rule-change-starts-from-its-mechanism-304" title="Permanent link">¶</a></h3>
 <ul>

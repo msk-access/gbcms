@@ -1411,6 +1411,12 @@ overlaps multiple transcripts with different exon structures.</p>
 R1/R2 consensus; reads are individual observations).</p>
 </div>
 <div class="admonition note">
+<p class="admonition-title">Entry order</p>
+<p>Entries are in ascending transcript-ID order (byte order), in both columns,
+on every machine. The order does not depend on the GTF's line order or on the
+CPU, so the same run on two machines writes the same bytes.</p>
+</div>
+<div class="admonition note">
 <p class="admonition-title">What a transcript's <abbr title="Total Depth - All mapped reads overlapping the variant position">DP</abbr> counts</p>
 <p>A transcript's <abbr title="Total Depth - All mapped reads overlapping the variant position">DP</abbr> (<abbr title="Fragment Depth - Total unique fragments at a variant position">DPF</abbr>) counts every compatible read (fragment) that observes the
 locus, as the row's <code>total_count</code> does: reads carrying another allele (the row's

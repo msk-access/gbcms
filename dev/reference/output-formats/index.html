@@ -2605,12 +2605,12 @@ completely absent without the <code>--gtf</code> flag — no empty/NA placeholde
 <tr>
 <td style="text-align: left;"><code>transcript_read_counts</code></td>
 <td style="text-align: left;">String</td>
-<td style="text-align: left;">Pipe-separated per-transcript read-level count triplets. Format: <code>ENST...:AD,RD,DP\|ENST...:AD,RD,DP</code>. Example: <code>ENST00000269305:11,140,162\|ENST00000445888:7,95,108</code>. Empty when no GTF or no overlapping transcripts.</td>
+<td style="text-align: left;">Pipe-separated per-transcript read-level count triplets. Format: <code>ENST...:AD,RD,DP\|ENST...:AD,RD,DP</code>. Example: <code>ENST00000269305:11,140,162\|ENST00000445888:7,95,108</code>. Entries are in ascending transcript-ID order. Empty when no GTF or no overlapping transcripts.</td>
 </tr>
 <tr>
 <td style="text-align: left;"><code>transcript_fragment_counts</code></td>
 <td style="text-align: left;">String</td>
-<td style="text-align: left;">Same format as <code>transcript_read_counts</code> but with fragment-level counts: <code>ENST...:ADF,RDF,DPF</code>. Fragment counts ≤ read counts for each transcript.</td>
+<td style="text-align: left;">Same format as <code>transcript_read_counts</code> but with fragment-level counts: <code>ENST...:ADF,RDF,DPF</code>. Same entry order. Fragment counts ≤ read counts for each transcript.</td>
 </tr>
 </tbody>
 </table>
