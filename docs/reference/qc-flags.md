@@ -279,6 +279,7 @@ an informational flag). The definitions are above; the tests keep the two in ste
 | `EMPTY_ALLELE` | REF or ALT is empty: fix the input row |
 | `NON_SEQUENCE_ALLELE` | An allele is not a base sequence: fix the input row |
 | `ALT_EQUALS_REF` | ALT equals REF, so there is no change to count: fix the input row |
+| `START_BEFORE_CONTIG` | The row starts before the contig's first base (Start_Position 0): fix the input row; MAF positions are 1-based |
 | `ALT_CONTAINS_N` | The ALT contains an N base: fix the input row |
 
 ### Check the call

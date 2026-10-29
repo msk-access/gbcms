@@ -40,6 +40,19 @@ from .rescue_audit import rescue_outcome
 
 logger = logging.getLogger(__name__)
 
+# The classes and functions, as in io.output; the constants (``QC_FLAGS`` and the rest) are
+# imported by name. A docs test reads every upper-case string literal in the source as a QC
+# flag the code emits, so a constant's name listed here would have to be documented as one.
+__all__ = [
+    "Kind",
+    "QcFlag",
+    "QcSummary",
+    "Tier",
+    "log_qc_summary",
+    "render_summary",
+    "summarize_output",
+]
+
 # Where every flag is defined (the mkdocs site_url + the page); a test pins it.
 QC_FLAGS_URL = "https://msk-access.github.io/gbcms/reference/qc-flags/"
 
@@ -104,6 +117,7 @@ fix | reason | FETCH_FAILED | The reference region could not be read: check cont
 fix | reason | EMPTY_ALLELE | REF or ALT is empty: fix the input row
 fix | reason | NON_SEQUENCE_ALLELE | An allele is not a base sequence: fix the input row
 fix | reason | ALT_EQUALS_REF | ALT equals REF, so there is no change to count: fix the input row
+fix | reason | START_BEFORE_CONTIG | The row starts before the contig's first base (Start_Position 0): fix the input row; MAF positions are 1-based
 fix | reason | ALT_CONTAINS_N | The ALT contains an N base: fix the input row
 
 check | reason | WARN_REF_CORRECTED | The input's REF was corrected to the reference: check the REF; the counts are for the corrected REF

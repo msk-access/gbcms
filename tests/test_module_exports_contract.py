@@ -39,7 +39,11 @@ def test_the_rescue_audit_contract_lists_its_functions():
     as flags.)"""
     from gbcms import rescue_audit
 
-    assert sorted(rescue_audit.__all__) == ["format_rescue_audit", "rescued_component"]
+    assert sorted(rescue_audit.__all__) == [
+        "format_rescue_audit",
+        "rescue_outcome",
+        "rescued_component",
+    ]
 
 
 def test_the_mfsd_report_lists_its_public_names():
@@ -50,3 +54,19 @@ def test_the_mfsd_report_lists_its_public_names():
     assert not any(
         n.startswith("_") or n in ("json", "logging", "math") for n in mfsd_report.__all__
     )
+
+
+def test_the_qc_summary_lists_its_classes_and_functions():
+    """Classes and functions only, like the rescue audit: ``QC_FLAGS`` and the other
+    upper-case constants would be read by the qc-flags docs test as flags the code emits."""
+    from gbcms import qc_summary
+
+    assert sorted(qc_summary.__all__) == [
+        "Kind",
+        "QcFlag",
+        "QcSummary",
+        "Tier",
+        "log_qc_summary",
+        "render_summary",
+        "summarize_output",
+    ]
