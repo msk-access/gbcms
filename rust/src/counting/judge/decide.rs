@@ -1117,7 +1117,8 @@ pub(crate) fn classify(record: &Record, variant: &Variant, quals: &[u8], min_bas
             });
             let ns = clock.elapsed().as_nanos();
             let read = &view.0;
-            // X's repeat runs to a contig edge and the read reaches it: an ALT call there
+            // X's placements touch a contig edge (its repeat runs to it, or X sits at the
+            // contig's first or last base) and the read reaches it: an ALT call there
             // rests on REF holding no base past the edge, which a circular contig would
             // hold (RJ-3), so the read is depth only, counted and warned. A REF call rests
             // on REF's own bases inside the contig and stands. The judge's verdict is kept

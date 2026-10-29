@@ -476,9 +476,10 @@ pub(crate) struct Site {
     /// the positions it masks (any base). A base it explains is no allele's third base.
     background_bases: HashSet<(i64, u8)>,
     background_masks: Vec<i64>,
-    /// Where a pure indel X's repeat runs to a contig edge (the base past it, which tells
-    /// its lengths apart, lies past the edge, where a circular contig runs on at its
-    /// start): that edge, genome coordinates, as (first base, one past the last).
+    /// Where a pure indel X's placements touch a contig edge (its repeat running to it, or X
+    /// at the contig's first or last base: the base that tells its lengths apart lies past
+    /// the edge, where a circular contig runs on at its start): that edge, genome
+    /// coordinates, as (first base, one past the last).
     edge: (Option<i64>, Option<i64>),
 }
 
@@ -1484,6 +1485,15 @@ fn kept_bases(x: &Row) -> Vec<(usize, usize)> {
         }
     }
     out
+}
+
+/// Whether `r` changes the length alone: its alleles, the bases they share at either end set
+/// aside, one empty and the other not. A pure insertion or deletion anchored on the base before
+/// it, or, at a contig's first base, on the base after it (the base-after form, which
+/// [`pure_indel`] calls complex).
+fn length_change_only(r: &Row) -> bool {
+    let (on_ref, on_alt) = telling(r);
+    on_ref.is_empty() != on_alt.is_empty()
 }
 
 fn pure_indel(r: &Row) -> bool {
@@ -2729,8 +2739,11 @@ impl Site {
             masks.sort_unstable();
             (bases, masks)
         };
-        let edge = if pure(&rows[0]) {
-            let (lo, hi) = run(&rows[0]);
+        // X's placements, its anchor included, touching a contig edge: its repeat running to
+        // the edge, or X itself at the contig's first or last base (a MAF insertion at Start
+        // 0, the base-after form at position 1, anchored on the base after it).
+        let edge = if length_change_only(&rows[0]) {
+            let (lo, hi) = place(&rows[0]);
             (candidates.edges.0.filter(|&first| lo <= first), candidates.edges.1.filter(|&end| hi >= end))
         } else {
             (None, None)
@@ -3993,7 +4006,7 @@ impl Site {
         self.spans[0]
     }
 
-    /// Whether the genome span `[s, e)` of a read reaches a contig edge X's repeat runs to
+    /// Whether the genome span `[s, e)` of a read reaches a contig edge X's placements touch
     /// ([`Site::edge`]; RJ-3).
     pub(crate) fn edge_reached(&self, s: i64, e: i64) -> bool {
         self.edge.0.is_some_and(|first| s <= first) || self.edge.1.is_some_and(|end| e >= end)
