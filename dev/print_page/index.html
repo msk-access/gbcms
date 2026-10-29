@@ -5185,7 +5185,8 @@ use for their own output, without a <abbr title="Binary Alignment Map - Compress
   totals by reason.</li>
 <li><strong><abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> → <abbr title="Variant Call Format - Standard variant call file format">VCF</abbr></strong> — each row as maf2vcf writes it: the reference base is prepended
   when an allele is <code>-</code>, or when the alleles differ in length and first base
-  (the base after, at position 1). Alleles are read as maf2vcf reads them
+  (the base after, at position 1; an insertion at <code>Start_Position</code> 0, before the
+  first base, is written the same way). Alleles are read as maf2vcf reads them
   (<code>Tumor_Seq_Allele1</code> when <code>Tumor_Seq_Allele2</code> is the reference). Records are
   written in input order; contigs keep the <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr>'s naming.</li>
 </ul>
@@ -7231,7 +7232,7 @@ Use mouse to pan and zoom
 </table>
 <div class="admonition note">
 <p class="admonition-title">Position Shift for Deletions</p>
-<p>For insertions, <code>Start_Position</code> already points to the anchor base. For deletions, <code>Start_Position</code> points to the <em>first deleted base</em>, so gbcms shifts back by one position to find the anchor. A deletion at <code>Start_Position</code> 1 has no base before it: the base after it is appended instead (the <abbr title="Variant Call Format - Standard variant call file format">VCF</abbr> spec's form at position 1, as gbcms's <abbr title="Variant Call Format - Standard variant call file format">VCF</abbr> output writes it), and the row is counted as the same event given as <abbr title="Variant Call Format - Standard variant call file format">VCF</abbr> is.</p>
+<p>For insertions, <code>Start_Position</code> already points to the anchor base. For deletions, <code>Start_Position</code> points to the <em>first deleted base</em>, so gbcms shifts back by one position to find the anchor. A deletion at <code>Start_Position</code> 1 has no base before it: the base after it is appended instead (the <abbr title="Variant Call Format - Standard variant call file format">VCF</abbr> spec's form at position 1, as gbcms's <abbr title="Variant Call Format - Standard variant call file format">VCF</abbr> output writes it), and the row is counted as the same event given as <abbr title="Variant Call Format - Standard variant call file format">VCF</abbr> is. An insertion at <code>Start_Position</code> 0 lies before the contig's first base and has no anchor either: the first base is appended after the inserted bases (<code>REF</code> the first base, <code>ALT</code> the inserted bases then that base, at position 1), and the row is counted the same way. A reference whose first base is <code>N</code> (human contigs) makes that <code>ALT</code> contain <code>N</code>, so the row is kept as <code>FAIL</code> with <code>ALT_CONTAINS_N</code>. Any other row at <code>Start_Position</code> 0 (a substitution, a deletion, a delins, or an insertion written with sequence alleles) names a base that does not exist: it is kept as a <code>FAIL</code> row with reason <code>START_BEFORE_CONTIG</code>, not counted. (A negative <code>Start_Position</code> is not a position at all: that row is skipped with a warning.)</p>
 </div>
 <p>A <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> row whose alleles are both sequences (an <abbr title="Single Nucleotide Polymorphism - Single base substitution">SNP</abbr>, an <abbr title="Multi-Nucleotide Polymorphism - Multiple adjacent base substitutions">MNP</abbr>, or a delins such as
 <code>TTAC&gt;A</code>) is used as written, at <code>Start_Position</code>, with no anchor base.</p>
@@ -7527,16 +7528,20 @@ their first base, the reference base before them is prepended (the base <strong>
 <code>Start_Position</code> for a <code>-</code> insertion, whose Start is the base before the
 insertion) and <code>POS</code> moves to it. Anything else is written as-is at
 <code>Start_Position</code>. An event at position 1 has no base before it, so the base
-after it is appended instead (<abbr title="Variant Call Format - Standard variant call file format">VCF</abbr> spec; maf2vcf skips such rows). The anchor
+after it is appended instead (<abbr title="Variant Call Format - Standard variant call file format">VCF</abbr> spec; maf2vcf skips such rows); so is an
+insertion at <code>Start_Position</code> 0, which lies before the first base, written at
+position 1. The anchor
 base comes from <code>--fasta</code>; one the reference cannot supply is written as <code>N</code>
 and counted in a WARNING. The <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> alleles are read as maf2vcf reads them
 (see <a href="#reference-input-formats-maf-alleles">Input Formats</a>); unlike maf2vcf, a
 differing <code>Tumor_Seq_Allele1</code> is not written as a second ALT. A row whose
 allele is not a base sequence (FAIL <code>NON_SEQUENCE_ALLELE</code>, or an empty
-allele, FAIL <code>EMPTY_ALLELE</code>), or a deletion spanning its whole contig (no base
-before or after it to anchor a record; FAIL <code>FETCH_FAILED</code>), is written as the
-symbolic record <code>&lt;NON_SEQUENCE&gt;</code> at <code>Start_Position</code>, REF the reference base
-there (declared in a <code>##ALT</code> header line), so the <abbr title="Variant Call Format - Standard variant call file format">VCF</abbr> stays valid. A <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr>
+allele, FAIL <code>EMPTY_ALLELE</code>), a deletion spanning its whole contig (no base
+before or after it to anchor a record; FAIL <code>FETCH_FAILED</code>), or a row at
+<code>Start_Position</code> 0 that is not an insertion (FAIL <code>START_BEFORE_CONTIG</code>), is
+written as the symbolic record <code>&lt;NON_SEQUENCE&gt;</code> at <code>Start_Position</code> (position 1
+for a row at Start 0), REF the reference base there (declared in a <code>##ALT</code>
+header line), so the <abbr title="Variant Call Format - Standard variant call file format">VCF</abbr> stays valid. A <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr>
 deletion at <code>Start_Position</code> 1 is otherwise counted in the base-after form.</p>
 <table>
 <thead>
@@ -9364,6 +9369,12 @@ same string is in the <abbr title="Variant Call Format - Standard variant call f
 <td style="text-align: left;">Fix the input row</td>
 </tr>
 <tr>
+<td style="text-align: left;"><code>START_BEFORE_CONTIG</code></td>
+<td style="text-align: left;">FAIL</td>
+<td style="text-align: left;">A <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> row at <code>Start_Position</code> 0 that is not a dash insertion (a substitution, a deletion, a delins, or an insertion written with sequence alleles). Position 0 is no base, so nothing can be counted. A dash insertion there is counted (resolved to the base after it); see <a href="#reference-input-formats-maf-indel-normalization">Input Formats</a>. Kept in <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> output, written as <code>&lt;NON_SEQUENCE&gt;</code> at position 1 in <abbr title="Variant Call Format - Standard variant call file format">VCF</abbr> output</td>
+<td style="text-align: left;">Fix the input row (<abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> positions are 1-based)</td>
+</tr>
+<tr>
 <td style="text-align: left;"><code>ALT_CONTAINS_N</code></td>
 <td style="text-align: left;">FAIL</td>
 <td style="text-align: left;">The ALT contains an <code>N</code> base</td>
@@ -9725,7 +9736,7 @@ report.</p>
 <tbody>
 <tr>
 <td style="text-align: left;">ALT <code>&lt;NON_SEQUENCE&gt;</code></td>
-<td style="text-align: left;"><abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> input, a row with no <abbr title="Variant Call Format - Standard variant call file format">VCF</abbr> allele: an allele that is not a base sequence (or empty), or a deletion spanning its whole contig</td>
+<td style="text-align: left;"><abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> input, a row with no <abbr title="Variant Call Format - Standard variant call file format">VCF</abbr> allele: an allele that is not a base sequence (or empty), a deletion spanning its whole contig, or a row at <code>Start_Position</code> 0 that is not an insertion</td>
 <td style="text-align: left;">The row is FAIL (reason in <code>GSR</code>); REF is the reference base at POS</td>
 </tr>
 <tr>
@@ -10229,8 +10240,8 @@ past the end fails validation.</p>
 <p>Every variant that reaches REF validation gets a <strong>type label derived from its
 final alleles</strong> (after anchor resolution, REF correction and alignment), with the
 same rule the readers use. A row rejected before that (<code>EMPTY_ALLELE</code>,
-<code>NON_SEQUENCE_ALLELE</code>, <code>ALT_EQUALS_REF</code>, a failed <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> anchor fetch) keeps the
-reader's label.</p>
+<code>NON_SEQUENCE_ALLELE</code>, <code>ALT_EQUALS_REF</code>, <code>START_BEFORE_CONTIG</code>: see <a href="#reference-qc-flags">QC Flags</a>;
+a failed <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> anchor fetch) keeps the reader's label.</p>
 <table>
 <thead>
 <tr>
@@ -10583,6 +10594,12 @@ string is byte-identical in the <abbr title="Mutation Annotation Format - Standa
 <td style="text-align: left;">FAIL</td>
 <td style="text-align: left;">ALT equals REF (any case; <code>-</code> for both in a <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr>): no change to count</td>
 <td style="text-align: left;">Fix the input row</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>START_BEFORE_CONTIG</code></td>
+<td style="text-align: left;">FAIL</td>
+<td style="text-align: left;">A <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> row at <code>Start_Position</code> 0 that is not a dash insertion (a substitution, a deletion, a delins, or an insertion written with sequence alleles). Position 0 is no base, so nothing can be counted. A dash insertion there is counted (resolved to the base after it); see <a href="#reference-input-formats-maf-indel-normalization">Input Formats</a>. Kept in <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> output, written as <code>&lt;NON_SEQUENCE&gt;</code> at position 1 in <abbr title="Variant Call Format - Standard variant call file format">VCF</abbr> output</td>
+<td style="text-align: left;">Fix the input row (<abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> positions are 1-based)</td>
 </tr>
 <tr>
 <td style="text-align: left;"><code>ALT_CONTAINS_N</code></td>
@@ -18956,6 +18973,13 @@ varies it further. For pure indels, <code>tests/census.py</code> judges each rea
 <td style="text-align: left;"><code>warn</code> (validation)</td>
 </tr>
 <tr>
+<td style="text-align: left;"><abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> row at <code>Start_Position</code> 0 that is not a dash insertion</td>
+<td style="text-align: left;"><code>FAIL</code> + reason <code>START_BEFORE_CONTIG</code></td>
+<td style="text-align: left;">—</td>
+<td style="text-align: left;">—</td>
+<td style="text-align: left;"><code>warn</code> (validation)</td>
+</tr>
+<tr>
 <td style="text-align: left;">ThirdAllele with partial match</td>
 <td style="text-align: left;">neither + partial</td>
 <td style="text-align: left;">—</td>
@@ -19835,6 +19859,28 @@ and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semant
 <li><strong>Those pages now lead with the current rule.</strong> They say that the <abbr title="Compact Idiosyncratic Gapped Alignment Report - BAM alignment operation string">CIGAR</abbr> checks, which run
   only for an insertion the exact-carrier rule cannot judge (no prepared reference), still
   count such a read neither, in <code>partial_alt</code>. Counts are unchanged.</li>
+</ul>
+<h3 id="development-changelog-fixed-a-maf-row-at-start-0-is-kept-an-insertion-is-counted-any-other-fails-visibly-219">Fixed — a <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> row at Start 0 is kept: an insertion is counted, any other fails visibly (#219)<a class="headerlink" href="#development-changelog-fixed-a-maf-row-at-start-0-is-kept-an-insertion-is-counted-any-other-fails-visibly-219" title="Permanent link">¶</a></h3>
+<ul>
+<li><strong>An insertion before a contig's first base is no longer dropped.</strong> A <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> row with
+  <code>Reference_Allele</code> <code>-</code> and <code>Start_Position</code> 0 (<code>Start_Position</code> is the base before an
+  insertion, so 0 is before base 1) failed the internal model's <code>pos &gt;= 0</code> check in the
+  reader and vanished with a warning: no output row, no <code>FAIL</code> row. It is now resolved
+  to the <abbr title="Variant Call Format - Standard variant call file format">VCF</abbr> spec's form at position 1, the base after the event (<code>REF</code> the first base,
+  <code>ALT</code> the inserted bases then that base), and counted as the same event given as <abbr title="Variant Call Format - Standard variant call file format">VCF</abbr>
+  is, as a deletion at Start 1 is (#122). <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> output keeps the row's input columns; <abbr title="Variant Call Format - Standard variant call file format">VCF</abbr>
+  output and <code>gbcms convert</code> write the position-1 record with the row in
+  <code>MAF_START</code>/<code>MAF_REF</code>/<code>MAF_ALT</code>. Where the first base is <code>N</code> (human contigs), the
+  <code>ALT</code> contains <code>N</code> and the row is a visible <code>FAIL</code> with <code>ALT_CONTAINS_N</code>. None in the
+  sign-out data (vcf2maf writes such an event with sequence alleles at Start 1).</li>
+<li><strong>Any other row at Start 0 is a visible <code>FAIL</code> row, not a dropped one.</strong> A substitution,
+  a deletion, a delins, or an insertion written with sequence alleles at <code>Start_Position</code>
+  0 names a base that does not exist. The reader dropped it with a warning (only the first
+  five named); it is now kept as <code>FAIL</code> with the new reason <code>START_BEFORE_CONTIG</code>, its
+  input columns as written, not counted. <abbr title="Variant Call Format - Standard variant call file format">VCF</abbr> output and <code>gbcms convert</code> write it as the
+  symbolic <code>&lt;NON_SEQUENCE&gt;</code> record at position 1 (REF the first base, reason in <code>GSR</code>).
+  A negative <code>Start_Position</code> is still skipped with a warning. A <abbr title="Variant Call Format - Standard variant call file format">VCF</abbr> <code>POS</code> of 0 is still
+  an error.</li>
 </ul>
 <h3 id="development-changelog-fixed-min-baseq-help-and-docs-say-what-it-does-304">Fixed — <code>--min-baseq</code> help and docs say what it does (#304)<a class="headerlink" href="#development-changelog-fixed-min-baseq-help-and-docs-say-what-it-does-304" title="Permanent link">¶</a></h3>
 <ul>

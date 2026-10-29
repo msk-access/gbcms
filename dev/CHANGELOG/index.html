@@ -29,7 +29,7 @@
             body[data-md-color-scheme="slate"] .gslide-title { color: var(--md-default-fg-color); }
             body[data-md-color-scheme="slate"] .gslide-desc { color: var(--md-default-fg-color); }
         </style><meta name="panzoom-theme" content="material">
-<meta name="panzoom-data" content='{"selectors": [".d2", ".mermaid"], "initial_zoom_level": 1.0}'> </head>
+<meta name="panzoom-data" content='{"selectors": [".mermaid", ".d2"], "initial_zoom_level": 1.0}'> </head>
 <body data-md-color-accent="custom" data-md-color-primary="custom" data-md-color-scheme="default" dir="ltr">
 <input autocomplete="off" class="md-toggle" data-md-toggle="drawer" id="__drawer" type="checkbox">
 <input autocomplete="off" class="md-toggle" data-md-toggle="search" id="__search" type="checkbox">
@@ -789,6 +789,15 @@
 <span class="md-ellipsis">
       
         Fixed — the docs state the unreadable-insert rule as decided (#304)
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#fixed-a-maf-row-at-start-0-is-kept-an-insertion-is-counted-any-other-fails-visibly-219">
+<span class="md-ellipsis">
+      
+        Fixed — a MAF row at Start 0 is kept: an insertion is counted, any other fails visibly (#219)
       
     </span>
 </a>
@@ -2981,6 +2990,28 @@ and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semant
 <li><strong>Those pages now lead with the current rule.</strong> They say that the <abbr title="Compact Idiosyncratic Gapped Alignment Report - BAM alignment operation string">CIGAR</abbr> checks, which run
   only for an insertion the exact-carrier rule cannot judge (no prepared reference), still
   count such a read neither, in <code>partial_alt</code>. Counts are unchanged.</li>
+</ul>
+<h3 id="fixed-a-maf-row-at-start-0-is-kept-an-insertion-is-counted-any-other-fails-visibly-219">Fixed — a <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> row at Start 0 is kept: an insertion is counted, any other fails visibly (#219)<a class="headerlink" href="#fixed-a-maf-row-at-start-0-is-kept-an-insertion-is-counted-any-other-fails-visibly-219" title="Permanent link">¶</a></h3>
+<ul>
+<li><strong>An insertion before a contig's first base is no longer dropped.</strong> A <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> row with
+  <code>Reference_Allele</code> <code>-</code> and <code>Start_Position</code> 0 (<code>Start_Position</code> is the base before an
+  insertion, so 0 is before base 1) failed the internal model's <code>pos &gt;= 0</code> check in the
+  reader and vanished with a warning: no output row, no <code>FAIL</code> row. It is now resolved
+  to the <abbr title="Variant Call Format - Standard variant call file format">VCF</abbr> spec's form at position 1, the base after the event (<code>REF</code> the first base,
+  <code>ALT</code> the inserted bases then that base), and counted as the same event given as <abbr title="Variant Call Format - Standard variant call file format">VCF</abbr>
+  is, as a deletion at Start 1 is (#122). <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> output keeps the row's input columns; <abbr title="Variant Call Format - Standard variant call file format">VCF</abbr>
+  output and <code>gbcms convert</code> write the position-1 record with the row in
+  <code>MAF_START</code>/<code>MAF_REF</code>/<code>MAF_ALT</code>. Where the first base is <code>N</code> (human contigs), the
+  <code>ALT</code> contains <code>N</code> and the row is a visible <code>FAIL</code> with <code>ALT_CONTAINS_N</code>. None in the
+  sign-out data (vcf2maf writes such an event with sequence alleles at Start 1).</li>
+<li><strong>Any other row at Start 0 is a visible <code>FAIL</code> row, not a dropped one.</strong> A substitution,
+  a deletion, a delins, or an insertion written with sequence alleles at <code>Start_Position</code>
+  0 names a base that does not exist. The reader dropped it with a warning (only the first
+  five named); it is now kept as <code>FAIL</code> with the new reason <code>START_BEFORE_CONTIG</code>, its
+  input columns as written, not counted. <abbr title="Variant Call Format - Standard variant call file format">VCF</abbr> output and <code>gbcms convert</code> write it as the
+  symbolic <code>&lt;NON_SEQUENCE&gt;</code> record at position 1 (REF the first base, reason in <code>GSR</code>).
+  A negative <code>Start_Position</code> is still skipped with a warning. A <abbr title="Variant Call Format - Standard variant call file format">VCF</abbr> <code>POS</code> of 0 is still
+  an error.</li>
 </ul>
 <h3 id="fixed-min-baseq-help-and-docs-say-what-it-does-304">Fixed — <code>--min-baseq</code> help and docs say what it does (#304)<a class="headerlink" href="#fixed-min-baseq-help-and-docs-say-what-it-does-304" title="Permanent link">¶</a></h3>
 <ul>
