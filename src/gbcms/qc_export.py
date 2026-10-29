@@ -41,6 +41,24 @@ from .qc_summary import (
 
 logger = logging.getLogger(__name__)
 
+# The functions and the format enum. The module's constants (the file names, the schema and
+# section ids) are imported by name: the QC flags docs test reads every upper-case string
+# literal in the source as a flag the code emits, so listing them here would document them
+# as flags.
+__all__ = [
+    "SummaryFormat",
+    "multiqc_documents",
+    "multiqc_table",
+    "multiqc_warning",
+    "render_tsv",
+    "summarize_inputs",
+    "summarize_paths",
+    "summary_from_dict",
+    "summary_to_dict",
+    "text_report",
+    "write_summaries",
+]
+
 JSON_SCHEMA = "gbcms.qc_summary/1"
 
 JSON_SUFFIX = ".qc_summary.json"
