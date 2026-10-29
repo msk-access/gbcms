@@ -169,6 +169,7 @@ VALUE_LETTERS = {
     "df": "Bt",
     "ls": "Iw",
     "file": "efFmP",
+    "mkdir": "m",
 }
 PATH_LETTERS = {"grep": "f", "file": "fm"}
 FIND_VALUE_TESTS = {
@@ -204,7 +205,6 @@ FIND_VALUE_TESTS = {
 FIND_PATH_TESTS = {"-newer", "-anewer", "-cnewer", "-samefile", "-files0-from"}
 FIND_ACTIONS = {"-delete", "-exec", "-execdir", "-ok", "-okdir", "-fprint", "-fprint0"}
 FIND_ACTIONS |= {"-fprintf", "-fls"}
-NUMBER = re.compile(r"[+-]?\d+[KMGTkmgt]?")
 
 
 def _letter_map(pairs):
@@ -423,16 +423,36 @@ def segments(cmd, joins=False):
 
 
 def substitutions(cmd):
-    """The bodies of the `$(...)` and backtick substitutions in a command, read roughly."""
-    bodies = re.findall(r"`([^`]*)`", cmd)
-    start = cmd.find("$(")
-    while start >= 0:
-        depth, j = 1, start + 2
-        while j < len(cmd) and depth:
-            depth += {"(": 1, ")": -1}.get(cmd[j], 0)
-            j += 1
-        bodies.append(cmd[start + 2 : j - 1] if depth == 0 else cmd[start + 2 :])
-        start = cmd.find("$(", start + 2)
+    """The bodies of the `$(...)` and backtick substitutions the shell would run.
+
+    Text in single quotes and escaped characters are literal and skipped; in double quotes a
+    substitution still runs. A body's own nested quotes are not followed (it is read roughly,
+    and a nested substitution is found when the body is checked in its turn).
+    """
+    bodies, i, single, double = [], 0, False, False
+    while i < len(cmd):
+        c = cmd[i]
+        if single:
+            single = c != "'"
+        elif c == "\\":
+            i += 1  # the next character is literal
+        elif c == "'" and not double:
+            single = True
+        elif c == '"':
+            double = not double
+        elif c == "`":
+            j = cmd.find("`", i + 1)
+            j = len(cmd) if j < 0 else j
+            bodies.append(cmd[i + 1 : j])
+            i = j
+        elif cmd.startswith("$(", i):
+            depth, j = 1, i + 2
+            while j < len(cmd) and depth:
+                depth += {"(": 1, ")": -1}.get(cmd[j], 0)
+                j += 1
+            bodies.append(cmd[i + 2 : j - 1] if depth == 0 else cmd[i + 2 :])
+            i = j - 1
+        i += 1
     return bodies
 
 
@@ -495,7 +515,9 @@ def bundle_value(verb, word):
 
 
 def check_words(verb, words, cwd, roots):
-    """Check the paths among a remote command's words; return its file names, resolved."""
+    """Check the paths among a remote command's words; return its operands: the file names,
+    resolved, and '-' for standard input. A bare number is a name too: option values are
+    consumed through VALUE_LETTERS, so a number left over is an operand."""
     names, i = [], 0
     pattern_first = verb == "grep" and not has_option(verb, words, "ef", ("regexp", "file"))
     while i < len(words):
@@ -515,10 +537,10 @@ def check_words(verb, words, cwd, roots):
                     value = words[i] if i < len(words) else ""
                 if letter in PATH_LETTERS.get(verb, "") or (verb == "find" and letter == "f"):
                     remote_path(value, cwd, roots)
-        elif w == "-" or NUMBER.fullmatch(w):
-            pass
         elif pattern_first:
             pattern_first = False  # grep's first word is its pattern
+        elif w == "-":
+            names.append(w)  # standard input: an operand all the same
         elif verb in STATUS:
             if path_like(w):  # status commands take no files; a path stays in the folders
                 remote_path(w, cwd, READ_ROOTS)
@@ -556,11 +578,12 @@ def check_read(verb, words, cwd):
         deny("file -C writes a file")
     names = check_words(verb, words, cwd, READ_ROOTS)
     if verb == "uniq" and len(names) > 1:
-        deny("uniq writes to its second name; give it one input at most")
+        deny("uniq writes to its second operand ('-' counts); give it one input at most")
     recursive = verb == "grep" and has_option(
         verb, words, "rR", ("recursive", "dereference-recursive")
     )
-    if cwd is None and not names and (verb in ("ls", "du", "find") or recursive):
+    files = [n for n in names if n != "-"]
+    if cwd is None and not files and (verb in ("ls", "du", "find") or recursive):
         deny(f"{verb} with no path reads the home folder; give a path in the allowed folders")
 
 

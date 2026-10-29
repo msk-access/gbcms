@@ -98,6 +98,9 @@ PASS = [
     "rsync --version 2>&1",
     "rsync -a /tmp/a/ /tmp/b/",
     "git commit -m 'docs: describe the ssh guard'",
+    # Text in single quotes is printed, not run.
+    f"echo '$(ssh {HOST} rm x)'",
+    f"grep -n '`ssh {HOST}' {LOCAL}/notes.md",
 ]
 
 ASK = [
@@ -123,6 +126,8 @@ ASK = [
     f"{SSH} 'ls {WORK}/runs/*/done'",
     f"{SSH} 'cd {WORK} && grep -c ALT runs/a.maf'",
     f"{SSH} 'cd {WORK} && ls'",
+    f"{SSH} 'mkdir -m 755 {WORK}/x'",
+    f"{SSH} 'squeue -u tester | uniq -c -'",
     sbatch(f"--job-name={PREFIX}o --partition={SHORT} --time=30 --output={WORK}/logs/%x-%j.out"),
     sbatch(f"--job-name={PREFIX}a --partition={SHORT} --time=30", f"{WORK}/a.sbatch {TEST}/x.bam"),
     f"rsync -avz -e 'ssh -a -x -o BatchMode=yes' --exclude='*.tmp' {LOCAL}/kit/ {HOST}:{WORK}/kit/",
@@ -186,6 +191,7 @@ DENY = [
     f"{SSH} squeue '' ';' 'rm {WORK}/x'",
     f'echo "$(ssh {HOST} rm x)"',
     f"echo `ssh {HOST} rm x`",
+    f'echo "it\'s $(ssh {HOST} rm x)"',  # a quote inside double quotes is literal
     f"{SSH} 'cd {WORK} || cat .bashrc'",
     f"{SSH} 'ls {WORK} & cat .bashrc'",
     # A script or path in the place of a listed command.
@@ -208,6 +214,9 @@ DENY = [
     f"{SSH} 'sort -o {WORK}/y {WORK}/x'",
     f"{SSH} 'sort --out={WORK}/y {WORK}/x'",
     f"{SSH} 'uniq {WORK}/a {TEST}/b'",
+    f"{SSH} 'uniq - {TEST}/out'",  # standard input is the first operand
+    f"{SSH} 'uniq {WORK}/a 5'",  # a number left over is a file name
+    f"{SSH} 'grep 5 /etc/passwd'",  # the pattern is 5; the file is checked
     f"{SSH} 'find {WORK} -fls {TEST}/x'",
     f"{SSH} 'file -C -m {WORK}/magic'",
     # ssh options off the list, wherever they stand.
