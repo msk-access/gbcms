@@ -127,6 +127,8 @@ check | diagnostic | OBSERVED_ALLELE | No read carries the given allele but othe
 check | diagnostic | PARTIAL_DOMINANT | More reads partly match the ALT than carry it, often a coexisting allele the annotation misses: inspect the locus (--trace shows per-read lengths)
 check | diagnostic | CLIP_CANDIDATES | An insertion with no ALT reads, but soft-clipped reads may hold its carriers: inspect in IGV
 check | diagnostic | POSSIBLE_MINORITY_HAPLOTYPE | A change on a minority of nearby reads may be counted as ALT: weigh a low alt_count with that in mind (the counts are unchanged)
+check | diagnostic | MNV_SHARED | Under the sequence judge the SNV's ALT reads include a co-listed MNV's carriers, so one molecule counts in both rows: read the two rows together (the counts are unchanged)
+check | diagnostic | UNEXPLAINED_READS | Under the sequence judge some depth reads fit none of the row's candidate sequences: where they are a large share, foreign reads may count (the counts are unchanged)
 check | diagnostic | SW_FALLBACK | Some reads were scored by a fallback aligner or left uncounted: the row's counts came partly from another scorer
 check | diagnostic | SPLICE_SKIP_DOMINANT | More reads splice over the deleted span than confirm ALT: an alt_count of 0 may hide carriers written as junction reads
 check | diagnostic | NON_DISCRIMINATING_LOCUS | A nearby germline combination makes REF and ALT the same sequence: a zero REF and ALT here is not an absence

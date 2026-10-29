@@ -352,6 +352,140 @@ def _paired(read, tlen, reverse=False):
     return read
 
 
+# ── The sequence judge (--read-judge sequence) ───────────────────────────────
+# A read is judged against the haplotypes built from its row's rows within reach (prep's,
+# from the whole input), its guard and the reads over it: none of them may depend on
+# which rows share a bin.
+def _judge_contig():
+    rng = random.Random(304)
+    c = [rng.choice("ACGT") for _ in range(3600)]
+    for start, seq in ((299, "CA"), (899, "CA"), (1499, "G" + "CA" * 8 + "TTGACG")):
+        c[start : start + len(seq)] = seq
+    return "".join(c)
+
+
+JUDGE = _judge_contig()
+INS60 = "".join(random.Random(60).choice("ACGT") for _ in range(60))
+# (0-based pos, REF, ALT): #246 (an insertion and the SNV on its first inserted base), a
+# compound het at one anchor, +CA in a (CA)x8 tract, a 400bp deletion, a 60bp insertion.
+JUDGE_ROWS = [
+    (299, "C", "CTGGAC"),
+    (300, "A", "T"),
+    (899, "C", "CTGGAC"),
+    (899, "C", "CAATTG"),
+    (1499, "G", "GCA"),
+    (2000, JUDGE[2000:2401], JUDGE[2000]),
+    (3000, JUDGE[3000], JUDGE[3000] + INS60),
+]
+
+
+def _judge_hap(*rows):
+    """JUDGE with `rows` applied, right to left."""
+    h = JUDGE
+    for pos, ref, alt in sorted(rows, reverse=True):
+        h = h[:pos] + alt + h[pos + len(ref) :]
+    return h
+
+
+def _through(name, hap, start):
+    """A read of `hap` from `start`, written gapless there."""
+    return make_read(name, hap[start : start + READ], start, ((0, READ),))
+
+
+def _ins_gapped(name, anchor, ins, start):
+    """A carrier of `ins` after the 0-based `anchor`, its gap written there."""
+    left = anchor + 1 - start
+    seq = JUDGE[start : anchor + 1] + ins + JUDGE[anchor + 1 : start + READ - len(ins)]
+    return make_read(name, seq, start, ((0, left), (1, len(ins)), (0, READ - left - len(ins))))
+
+
+def _judge_reads():
+    ins, snv, a, b, rep, dele, ins60 = JUDGE_ROWS
+    reads = [_ins_gapped(f"j{i}", 299, "TGGAC", 260 - i) for i in range(4)]
+    reads += [_through(f"t{i}", _judge_hap(ins), 260 - i) for i in range(6)]
+    reads += [_through(f"s{i}", _judge_hap(snv), 250 + i) for i in range(5)]
+    reads += [_through(f"c{i}", _judge_hap(ins, snv), 255 - i) for i in range(6)]
+    reads += [_through(f"r{i}", JUDGE, 250 + i) for i in range(4)]
+    reads += [_ins_gapped(f"a{i}", 899, "TGGAC", 860 - i) for i in range(5)]
+    reads += [_ins_gapped(f"b{i}", 899, "AATTG", 860 - i) for i in range(5)]
+    reads += [_through(f"q{i}", JUDGE, 850 + i) for i in range(3)]
+    reads += [_through(f"e{i}", _judge_hap(rep), 1440 + i) for i in range(5)]
+    reads += [_through(f"f{i}", JUDGE, 1440 + i) for i in range(4)]
+    reads += [_through(f"g{i}", JUDGE, 1406 + i) for i in range(3)]  # end inside the tract
+    reads += [_through(f"o{i}", _judge_hap((1499, "G", "GCACA")), 1440 + i) for i in range(2)]
+    reads += [_through(f"d{i}", _judge_hap(dele), 1950 + i) for i in range(5)]
+    reads += [_through(f"k{i}", JUDGE, 1950 + i) for i in range(4)]
+    reads += [_through(f"x{i}", JUDGE, 2100 + 20 * i) for i in range(6)]  # inside the deletion
+    reads += [_ins_gapped(f"l{i}", 3000, INS60, 2970 - i) for i in range(4)]
+    for i in range(4):
+        start = 2970 - i
+        seq = JUDGE[start:3001] + INS60 + JUDGE[3001 : start + READ - 60]
+        reads.append(make_read(f"m{i}", seq, start, ((0, 3001 - start), (4, READ - 3001 + start))))
+    reads += [_through(f"n{i}", JUDGE, 2950 + i) for i in range(4)]
+    return reads
+
+
+def test_haplotype_judge_counts_do_not_depend_on_bin_geometry(tmp_path, caplog):
+    """The judge's contract shapes on one contig, under every geometry, one call per row
+    and with decoy rows in the call."""
+    fa, bam = write_contig(tmp_path, JUDGE, _judge_reads(), "judge")
+    variants, decomposed, siblings = _prepared(fa, JUDGE_ROWS)
+    judged = {"read_judge": "sequence", "reference_fasta": fa}
+    base, run = _check_invariance(caplog, bam, variants, decomposed, siblings, **judged)
+    # #246: the insertion counts its carriers however written (4 gapped, 6 through, 6
+    # in cis with the SNV); the SNV its own 5 and the 6 in cis, the insertion's other
+    # carriers REF.
+    assert [(c.rd, c.ad) for c in base[:2]] == [(9, 16), (14, 11)]
+
+    decoy_rows = [(p, JUDGE[p], "T" if JUDGE[p] != "T" else "G") for p in range(240, 3100, 41)]
+    decoy_rows = [r for r in decoy_rows if r[0] not in {v[0] for v in JUDGE_ROWS}]
+    decoys, _, _ = _prepared(fa, decoy_rows)
+    half = len(decoys) // 2
+    with_decoys, _ = _bins(
+        caplog,
+        lambda: run(
+            decoys[:half] + variants + decoys[half:],
+            [None] * half + decomposed + [None] * (len(decoys) - half),
+            [[]] * half + siblings + [[]] * (len(decoys) - half),
+            bin_window=50,
+        ),
+    )
+    targets = with_decoys[half : half + len(variants)]
+    assert_same_counts(targets, base, "with decoys", skip=ROW_SET_FIELDS)
+
+
+def test_haplotype_judge_dense_dna_counts_do_not_depend_on_bin_geometry(tmp_path, caplog):
+    """The dense DNA clusters (an MNP, a delins with its decomposed twin, siblings, a
+    55bp deletion with rows inside it, contig ends) as read pairs, judged."""
+    reads = _pairs(DNA, DNA_VARIANTS, seed=1)
+    fa, bam = write_contig(tmp_path, DNA, reads, "dna")
+    variants, decomposed, siblings = _prepared(fa, DNA_VARIANTS)
+    _check_invariance(
+        caplog, bam, variants, decomposed, siblings, read_judge="sequence", reference_fasta=fa
+    )
+
+
+def test_haplotype_judge_clip_carriers_do_not_depend_on_bin_geometry(tmp_path, caplog):
+    """Carriers aligned only after a long event, the event in their leading clip: the
+    judge admits them by the clipped bases over the row's REF span, in any bin."""
+    ref, alt, hap = _clip_case()
+    reads = [
+        _paired(make_read(f"r{i}", ref[s : s + READ], s, ((0, READ),)), 260)
+        for i, s in enumerate(range(CLIP_POS - 60, CLIP_POS - 50))
+    ]
+    after = CLIP_POS + 60
+    for i, hs in enumerate(range(CLIP_POS - 40, CLIP_POS - 20)):
+        clip = CLIP_POS + 10 - hs
+        read = make_read(f"l{i}", hap[hs : hs + READ], after, ((4, clip), (0, READ - clip)))
+        reads.append(_paired(read, 260, reverse=True))
+    fa, bam = write_contig(tmp_path, ref, reads, "clip")
+    variants, decomposed, siblings = _prepared(fa, [(CLIP_POS, ref[CLIP_POS : CLIP_POS + 60], alt)])
+    base, _ = _check_invariance(
+        caplog, bam, variants, decomposed, siblings, read_judge="sequence", reference_fasta=fa
+    )
+    assert (base[0].rd, base[0].ad) == (10, 20), "the clipped carriers must count"
+
+
 # ── RNA ───────────────────────────────────────────────────────────────────────
 def test_rna_counts_do_not_depend_on_bin_geometry(tmp_path, caplog):
     ref = mk_ref()

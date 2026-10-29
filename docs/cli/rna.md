@@ -319,6 +319,12 @@ RNA uses **relaxed gap penalties** to tolerate reverse transcriptase (RT) stutte
 
     **Note on left-alignment shift (Fix 4):** This fix was motivated by BWA's indel left-alignment behaviour, where the variant anchor can sit several bases left of where the CIGAR `D` op appears in reads. STAR does not left-align indels in the same way, so this scenario is less common in RNA BAMs — but it still applies when STAR places a CIGAR `D` slightly offset from the annotated position, or when the input MAF was derived from a BWA-aligned DNA call set being counted against an RNA BAM.
 
+### Read judgment
+
+| Option | Default | Description |
+|:-------|:--------|:------------|
+| `--read-judge` | `rules` | Only `rules`, the size-specific read rules, in RNA mode. The sequence judge (`sequence`, opt-in for DNA, see [the DNA command](dna.md#read-judgment)) does not judge spliced reads yet, so `gbcms rna --read-judge sequence` exits with an error; RNA under the judge is [#333](https://github.com/msk-access/gbcms/issues/333). |
+
 ---
 
 ## QC Summary in the Run Log

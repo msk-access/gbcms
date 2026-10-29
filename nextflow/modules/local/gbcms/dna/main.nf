@@ -59,6 +59,9 @@ process GBCMS_DNA {
     // Alignment backend — always pass explicitly
     def backend_arg = "--alignment-backend ${params.alignment_backend}"
 
+    // Read judgment — always pass explicitly ('rules' or 'sequence')
+    def judge_arg = "--read-judge ${params.read_judge}"
+
     // Per-molecule observation export (companion Parquet; counts unchanged).
     def observations_arg = asBool(params.observations_parquet) ? "--observations-parquet" : ""
     def hmm_args = params.alignment_backend in ['hmm', 'pairhmm'] ? \
@@ -104,6 +107,7 @@ process GBCMS_DNA {
         ${rescue_homopolymer_arg} \\
         ${adaptive_arg} \\
         ${backend_arg} \\
+        ${judge_arg} \\
         ${hmm_args} \\
         --threads ${task.cpus} \\
         --min-mapq ${params.min_mapq} \\

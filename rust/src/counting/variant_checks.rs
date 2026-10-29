@@ -3022,6 +3022,7 @@ mod tests {
             event_ref: None,
             boundary_span: None,
             listed_neighbours: Vec::new(),
+            reach_rows: Vec::new(),
             whole_ref: None,
         }
     }

@@ -53,7 +53,14 @@ gbcms/
 │       │   ├── rna.rs           # RNA validation, strandedness, splice junctions, editing sites
 │       │   ├── mfsd.rs          # Fragment size distribution (KS test, LLR)
 │       │   ├── parquet_writer.rs # Arrow/ZSTD native Parquet
-│       │   └── fragment.rs      # Re-export shim for shared::fragment
+│       │   ├── fragment.rs      # Re-export shim for shared::fragment
+│       │   └── judge/           # The sequence judge, opt-in (--read-judge sequence, #304)
+│       │       ├── mod.rs       # site_for (a row's site), found indels, per-row verdict caches
+│       │       ├── haplotypes.rs # Site: its states and contexts, the rules that admit them
+│       │       ├── graph.rs     # The graph scorer: one programme per site state
+│       │       ├── score.rs     # Per-haplotype affine aligner (the alignments a call is read on)
+│       │       ├── decide.rs    # The call (margin, fit, telling bases) as a ClassifyResult
+│       │       └── triage.rs    # Coloured k-mer triage (measurement only, off)
 │       ├── annotation/          # v5.0.0: GTF-informed annotation
 │       │   ├── mod.rs           # AnnotationIndex (COITree, splice sites, transcript introns)
 │       │   ├── gtf.rs           # GTF loader (plain or gzip/BGZF, variant-guided streaming)

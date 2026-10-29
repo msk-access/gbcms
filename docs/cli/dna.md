@@ -213,6 +213,47 @@ Phase 3 (haplotype-based) classification uses a **two-stage pipeline**:
 
     `sw` runs Smith-Waterman on every Phase 3 read (no WFA pre-filter). Use only if you need exact reproducibility with versions <3.0.0.
 
+## Read Judgment
+
+How each read is judged against a row. The default is the size-specific rules, unchanged.
+The sequence judge is opt-in while it is measured toward becoming the default
+([#304](https://github.com/msk-access/gbcms/issues/304); the default flip is
+[#331](https://github.com/msk-access/gbcms/issues/331)).
+
+| Option | Default | Description |
+|:-------|:--------|:------------|
+| `--read-judge` | `rules` | `rules`: the size-specific read rules of the [Read Judgment](../reference/read-judgment.md) register. `sequence`: the sequence judge. Each read is scored whole against the row's candidate sequences (REF, the ALT and the other alleles at its site, each with every context of the other listed rows nearby and the recurring background), and counts REF or ALT only where its own bases favour one by at least one confident base; another allele winning by as much is partial evidence, and anything closer is depth only. `haplotype`, its former name, is taken as `sequence` with a warning. Invalid values are rejected at parse time. |
+
+```bash
+gbcms dna \
+    --variants mutations.maf \
+    --bam tumor:tumor.bam \
+    --fasta reference.fa \
+    --format maf \
+    --read-judge sequence \
+    --output-dir results/
+```
+
+Under `--read-judge sequence`:
+
+- **Contexts explain, never credit.** The other listed rows and the recurring background
+  only explain a read's other differences: the judge does no linkage and no phasing, so a
+  variant linked to the row elsewhere on the molecule never credits a read.
+- **Two diagnostics** can appear in `gbcms_diagnostic`: `MNV_SHARED(chrom:pos:REF>ALT:n/m)`
+  at an SNV whose change a co-listed MNV holds (the MNV's carriers count at both rows,
+  RJ-28), and `UNEXPLAINED_READS(n/m)`, the row's depth reads that fit none of its candidate
+  sequences (RJ-29). See [QC Flags](../reference/qc-flags.md). No column is added.
+- **The Phase 3 options do not apply** to the row's counts (`--alignment-backend` and the
+  PairHMM probabilities above): the judge has its own scorer.
+- **Spliced reads are not judged yet.** A read whose CIGAR splices (an `N` op) is depth
+  only, and `gbcms rna` refuses `--read-judge sequence`.
+- **It is slower** than the rules.
+- **`GBCMS_JUDGE_*` environment variables** are measurement switches for the judge's
+  development, not options: leave them unset.
+
+The design, the rule and every measurement round are in
+[the sequence judge proposal](../proposals/sequence-judge.md).
+
 ## Examples
 
 === "Single BAM"

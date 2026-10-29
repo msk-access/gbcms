@@ -65,6 +65,7 @@ use super::rna;
 use super::window::{self, AlleleKind};
 use super::observed;
 use super::carrier;
+use super::judge;
 use super::junction;
 use crate::shared::baq::apply_heuristic_baq;
 
@@ -419,6 +420,7 @@ fn count_bam_binned_core(
     bin_window: Option<i64>,
     bin_max_variants: Option<i64>,
     warn_per_bam: bool,
+    read_judge: &str,
 ) -> PyResult<(Vec<BaseCounts>, Vec<Observation>)> {
     let (window, max_variants) = bin_geometry(bin_window, bin_max_variants)?;
     // The decomposed and sibling lists run parallel to the variants: a shorter
@@ -435,6 +437,19 @@ fn count_bam_binned_core(
     decomposed.resize_with(variants.len(), || None);
     let mut sibling_variants = sibling_variants;
     sibling_variants.resize_with(variants.len(), Vec::new);
+    let read_judge = judge::parse_read_judge(read_judge).map_err(pyo3::exceptions::PyValueError::new_err)?;
+    if read_judge == judge::ReadJudge::Haplotype && mode == "rna" {
+        // Until spliced reads are judged on the reference spliced along their junctions,
+        // RNA would count every spliced read as depth only: refused, never silent.
+        return Err(pyo3::exceptions::PyValueError::new_err(
+            "read_judge \"sequence\" does not judge spliced reads yet: RNA mode needs read_judge \"rules\"",
+        ));
+    }
+    if read_judge == judge::ReadJudge::Haplotype && reference_fasta.is_none() {
+        return Err(pyo3::exceptions::PyValueError::new_err(
+            "read_judge \"sequence\" needs reference_fasta: each row's candidate sequences are read from it",
+        ));
+    }
     let backend = parse_alignment_backend(
         alignment_backend,
         hmm_llr_threshold,
@@ -677,11 +692,13 @@ fn count_bam_binned_core(
                                 bio::io::fasta::IndexedReader::from_file(path).ok()
                             });
                         // RNA: a cached reader for the far exon of a spliced read's
-                        // junctions (the exact-carrier rule reads across them). A
-                        // worker that cannot open it fails the run: judging its bins
-                        // differently from the others' would be silent.
+                        // junctions (the exact-carrier rule reads across them); under the
+                        // haplotype judge, in either mode, the reader its windows come
+                        // from. A worker that cannot open it fails the run: judging its
+                        // bins differently from the others' would be silent.
+                        let reads_reference = mode == "rna" || read_judge == judge::ReadJudge::Haplotype;
                         let far_reference: Result<Option<crate::normalize::fasta::CachedFasta>, String> =
-                            match (mode == "rna", fasta_path_owned.as_deref()) {
+                            match (reads_reference, fasta_path_owned.as_deref()) {
                                 (true, Some(path)) => crate::normalize::fasta::CachedFasta::open(path)
                                     .map(Some)
                                     .ok_or_else(|| format!("cannot open the reference FASTA {path}")),
@@ -725,6 +742,7 @@ fn count_bam_binned_core(
                             filter_indel,
                             fragment_qual_threshold,
                             &backend,
+                            read_judge,
                             apply_baq,
                             umi_tag_owned,
                             mode,
@@ -921,7 +939,7 @@ fn count_bam_binned_core(
 /// arguments (production passes neither): counts must not depend on them.
 #[allow(clippy::too_many_arguments)]
 #[pyfunction]
-#[pyo3(signature = (bam_path, variants, decomposed, min_mapq, min_baseq, filter_duplicates, filter_secondary, filter_supplementary, filter_qc_failed, filter_improper_pair, filter_indel, threads, fragment_qual_threshold=10, sibling_variants=Vec::new(), alignment_backend="pairhmm", hmm_llr_threshold=2.3, hmm_gap_open=1e-4, hmm_gap_extend=0.1, hmm_gap_open_repeat=1e-2, hmm_gap_extend_repeat=0.5, apply_baq=false, umi_tag=None, mode="dna", enforce_strandedness=false, strandedness="reverse", mfsd=false, rna_editing_db=None, gtf_path=None, reference_fasta=None, library_type="capture", bin_window=None, bin_max_variants=None, warn_per_bam=true))]
+#[pyo3(signature = (bam_path, variants, decomposed, min_mapq, min_baseq, filter_duplicates, filter_secondary, filter_supplementary, filter_qc_failed, filter_improper_pair, filter_indel, threads, fragment_qual_threshold=10, sibling_variants=Vec::new(), alignment_backend="pairhmm", hmm_llr_threshold=2.3, hmm_gap_open=1e-4, hmm_gap_extend=0.1, hmm_gap_open_repeat=1e-2, hmm_gap_extend_repeat=0.5, apply_baq=false, umi_tag=None, mode="dna", enforce_strandedness=false, strandedness="reverse", mfsd=false, rna_editing_db=None, gtf_path=None, reference_fasta=None, library_type="capture", bin_window=None, bin_max_variants=None, warn_per_bam=true, read_judge="rules"))]
 pub fn count_bam_binned(
     py: Python<'_>,
     bam_path: String,
@@ -957,6 +975,7 @@ pub fn count_bam_binned(
     bin_window: Option<i64>,
     bin_max_variants: Option<i64>,
     warn_per_bam: bool,
+    read_judge: &str,
 ) -> PyResult<Vec<BaseCounts>> {
     let (counts, _observations) = count_bam_binned_core(
         py, false, None, bam_path, variants, decomposed, min_mapq, min_baseq, filter_duplicates,
@@ -965,7 +984,7 @@ pub fn count_bam_binned(
         hmm_llr_threshold, hmm_gap_open, hmm_gap_extend, hmm_gap_open_repeat,
         hmm_gap_extend_repeat, apply_baq, umi_tag, mode, enforce_strandedness, strandedness,
         mfsd, rna_editing_db, gtf_path, reference_fasta, library_type,
-        bin_window, bin_max_variants, warn_per_bam,
+        bin_window, bin_max_variants, warn_per_bam, read_judge,
     )?;
     Ok(counts)
 }
@@ -982,7 +1001,7 @@ pub fn count_bam_binned(
 /// Counts are byte-identical to `count_bam_binned` — same core, same classifier.
 #[allow(clippy::too_many_arguments)]
 #[pyfunction]
-#[pyo3(signature = (bam_path, variants, decomposed, min_mapq, min_baseq, filter_duplicates, filter_secondary, filter_supplementary, filter_qc_failed, filter_improper_pair, filter_indel, threads, fragment_qual_threshold=10, sibling_variants=Vec::new(), alignment_backend="pairhmm", hmm_llr_threshold=2.3, hmm_gap_open=1e-4, hmm_gap_extend=0.1, hmm_gap_open_repeat=1e-2, hmm_gap_extend_repeat=0.5, apply_baq=false, umi_tag=None, mode="dna", enforce_strandedness=false, strandedness="reverse", mfsd=false, rna_editing_db=None, gtf_path=None, reference_fasta=None, library_type="capture", observations_path=None, bin_window=None, bin_max_variants=None))]
+#[pyo3(signature = (bam_path, variants, decomposed, min_mapq, min_baseq, filter_duplicates, filter_secondary, filter_supplementary, filter_qc_failed, filter_improper_pair, filter_indel, threads, fragment_qual_threshold=10, sibling_variants=Vec::new(), alignment_backend="pairhmm", hmm_llr_threshold=2.3, hmm_gap_open=1e-4, hmm_gap_extend=0.1, hmm_gap_open_repeat=1e-2, hmm_gap_extend_repeat=0.5, apply_baq=false, umi_tag=None, mode="dna", enforce_strandedness=false, strandedness="reverse", mfsd=false, rna_editing_db=None, gtf_path=None, reference_fasta=None, library_type="capture", observations_path=None, bin_window=None, bin_max_variants=None, read_judge="rules"))]
 pub fn count_bam_binned_observations(
     py: Python<'_>,
     bam_path: String,
@@ -1018,6 +1037,7 @@ pub fn count_bam_binned_observations(
     observations_path: Option<&str>,
     bin_window: Option<i64>,
     bin_max_variants: Option<i64>,
+    read_judge: &str,
 ) -> PyResult<(Vec<BaseCounts>, Vec<Observation>)> {
     count_bam_binned_core(
         py, true, observations_path, bam_path, variants, decomposed, min_mapq, min_baseq, filter_duplicates,
@@ -1026,7 +1046,7 @@ pub fn count_bam_binned_observations(
         hmm_llr_threshold, hmm_gap_open, hmm_gap_extend, hmm_gap_open_repeat,
         hmm_gap_extend_repeat, apply_baq, umi_tag, mode, enforce_strandedness, strandedness,
         mfsd, rna_editing_db, gtf_path, reference_fasta, library_type,
-        bin_window, bin_max_variants, true,
+        bin_window, bin_max_variants, true, read_judge,
     )
 }
 
@@ -1089,6 +1109,7 @@ fn count_bin_shared(
     filter_indel: bool,
     fragment_qual_threshold: u8,
     backend: &AlignmentBackend,
+    read_judge: judge::ReadJudge,
     apply_baq: bool,
     umi_tag: Option<[u8; 2]>,
     mode: &str,
@@ -1244,8 +1265,32 @@ fn count_bin_shared(
                 }
             })
         };
+        // Under the haplotype judge, the variant's haplotypes: from its window of the
+        // reference, its rows within reach, its guard and the reads the counts read (as
+        // the guard finds them), on first use, for the main and per-transcript counts and
+        // ASJD alike. The decomposed form has its own.
+        let haplotypes_of = |v| {
+            judge::Haplotypes::new(v, move |rules: &carrier::ReadRules| {
+                let reference = far_reference?;
+                let (v_start, v_end) = window::read_window(v);
+                let use_baq = baq_applies(apply_baq, boundary_distance(v, annotation));
+                let spare = if use_baq { baq_own_span(v) } else { None };
+                let reads = cache
+                    .iter()
+                    .filter(|r| {
+                        r.pos() < v_end
+                            && ref_end(r) > v_start
+                            && counted_read(r, v, mode, enforce_strandedness, strandedness, min_mapq)
+                    })
+                    .map(|r| (r, effective_quals(r, use_baq, spare)));
+                let reads = judge::read_views(reads, min_baseq, rules);
+                judge::site_for(v, rules.guard.and_then(|g| g.get(v)), reference, &reads)
+            })
+        };
+        let judged = read_judge == judge::ReadJudge::Haplotype;
         let guard = guard_of(variant);
         let tolerance = tolerance_of(variant);
+        let haplotypes = judged.then(|| haplotypes_of(variant));
         let rules = if mode == "rna" {
             carrier::ReadRules {
                 clip_edges: Some(&edges),
@@ -1253,9 +1298,17 @@ fn count_bin_shared(
                 spliced: Some(&spliced),
                 guard: Some(&guard),
                 tolerance: Some(&tolerance),
+                judge: read_judge,
+                haplotypes: haplotypes.as_ref(),
             }
         } else {
-            carrier::ReadRules { guard: Some(&guard), tolerance: Some(&tolerance), ..carrier::ReadRules::DNA }
+            carrier::ReadRules {
+                guard: Some(&guard),
+                tolerance: Some(&tolerance),
+                judge: read_judge,
+                haplotypes: haplotypes.as_ref(),
+                ..carrier::ReadRules::DNA
+            }
         };
 
         let (counts_orig, obs_orig) = count_variant_from_cache(
@@ -1278,6 +1331,13 @@ fn count_bin_shared(
         let (mut final_counts, final_obs) = if let Some(ref decomp) = decomposed[vi] {
             let decomp_guard = guard_of(decomp);
             let decomp_tolerance = tolerance_of(decomp);
+            let decomp_haplotypes = judged.then(|| haplotypes_of(decomp));
+            let decomp_rules = carrier::ReadRules {
+                guard: Some(&decomp_guard),
+                tolerance: Some(&decomp_tolerance),
+                haplotypes: decomp_haplotypes.as_ref(),
+                ..rules
+            };
             let (counts_decomp, obs_decomp) = count_variant_from_cache(
                 &read_cache, decomp, siblings,
                 min_mapq, min_baseq,
@@ -1285,7 +1345,7 @@ fn count_bin_shared(
                 fragment_qual_threshold, backend,
                 apply_baq, umi_tag, mode, enforce_strandedness, strandedness, mfsd,
                 editing_sites, annotation, amplicon_mode,
-                emit_obs, vi as u32, &carrier::ReadRules { guard: Some(&decomp_guard), tolerance: Some(&decomp_tolerance), ..rules },
+                emit_obs, vi as u32, &decomp_rules,
             )?;
 
             if counts_decomp.ad > counts_orig.ad {
@@ -1558,6 +1618,9 @@ fn count_variant_from_cache(
     // Distance-to-read-end tracking for QC metrics
     let mut alt_dists: Vec<u32> = Vec::with_capacity(500);
     let mut ref_dists: Vec<u32> = Vec::with_capacity(500);
+    // Per co-listed row holding a substitution's change (the haplotype judge counts its
+    // carriers as this row's ALT), the ALT reads that spell it whole (MNV_SHARED).
+    let mut spelled: [u32; 32] = [0; 32];
 
     // Create SW aligners ONCE per variant (indelpost pattern), scored by `sw_score`.
     let mut alt_aligner = Aligner::new(SW_GAP_OPEN, SW_GAP_EXTEND, &sw_score);
@@ -1658,8 +1721,8 @@ fn count_variant_from_cache(
         let quals = effective_quals(record, use_baq, baq_spare);
         let effective_quals: &[u8] = &quals;
 
-        // ── Allele classification
-        let result = check_allele_with_qual(
+        // ── Allele classification, under the row's read judgment.
+        let result = classify_read(
             record, variant, sibling_variants, effective_quals, min_baseq,
             &mut alt_aligner, &mut ref_aligner, backend, rules,
         );
@@ -1688,7 +1751,9 @@ fn count_variant_from_cache(
         // read-level counting — so AD and ADF exclude it consistently. The
         // read still counts toward DP/DPF and is recorded as
         // partial_alt/any_alt below.
-        let claimed_by_sibling = sibling_claims_alt(
+        // The haplotype judge weighs the site's alleles itself: no sibling contest.
+        let contested = rules.judge == judge::ReadJudge::Rules;
+        let claimed_by_sibling = contested && sibling_claims_alt(
             record, variant, &result, sibling_variants, effective_quals, min_baseq, rules,
         );
         let is_alt = result.is_alt && !claimed_by_sibling;
@@ -1696,7 +1761,7 @@ fn count_variant_from_cache(
         // whose change lies where this row's REF is read (`ref_guard_siblings`)
         // is the sibling's molecule. Excluded here, beside the AD guard, so RD and
         // RDF drop the same molecules; recorded as partial_alt/any_alt below.
-        let ref_claimed_by_sibling = sibling_claims_ref(
+        let ref_claimed_by_sibling = contested && sibling_claims_ref(
             record, variant, &result, &ref_guard_siblings, effective_quals, min_baseq,
             &mut alt_aligner, &mut ref_aligner, backend, rules,
         );
@@ -1800,6 +1865,11 @@ fn count_variant_from_cache(
             // true for reads that contribute to those counts.
             if result.sw_fallback {
                 counts.sw_fallback_reads += 1;
+            }
+            // A read the haplotype judge found no candidate sequence explains, counted
+            // with DP: the n of UNEXPLAINED_READS(n/m), whatever its call.
+            if result.fits_none {
+                counts.unexplained_reads += 1;
             }
             // Which rule decided the read (logs only).
             let d = &mut counts.decisions;
@@ -1910,6 +1980,9 @@ fn count_variant_from_cache(
             counts.ad += 1;
             counts.any_alt += 1; // Full ALT → counts toward any_alt
             if result.mnp_confirmed { counts.mnp_confirmed_alt += 1; }
+            for (k, n) in spelled.iter_mut().enumerate() {
+                *n += result.spells_listed >> k & 1;
+            }
             if is_reverse { counts.ad_rev += 1; } else { counts.ad_fwd += 1; }
 
             // ── RNA-SPECIFIC ALT TRACKING ──
@@ -1934,6 +2007,15 @@ fn count_variant_from_cache(
 
     // ── QC MEDIAN COMPUTATION: compute median distance-to-end for REF/ALT.
     counts.alt_dist_end_median = compute_median_u32(&mut alt_dists);
+    if spelled.iter().any(|&n| n > 0) {
+        counts.mnv_shared = judge::listed_holders(variant)
+            .into_iter()
+            .zip(spelled)
+            .filter(|&(_, n)| n > 0)
+            .map(|((p, r, a), n)| format!("{}:{r}>{a}:{n}/{}", p + 1, counts.ad))
+            .collect::<Vec<_>>()
+            .join("+");
+    }
     counts.ref_dist_end_median = compute_median_u32(&mut ref_dists);
 
     // ── RNA editing site flag (DB-only) ────────────────────────────
@@ -2627,6 +2709,31 @@ fn alt_needs_the_window(
 }
 
 
+/// A read's call at a variant under the row's read judgment (`rules.judge`): the
+/// haplotype judge after the splice-skip triage, or the size-specific rules
+/// ([`check_allele_with_qual`]).
+#[allow(clippy::too_many_arguments)]
+fn classify_read<F: Fn(u8, u8) -> i32>(
+    record: &Record,
+    variant: &Variant,
+    siblings: &[Variant],
+    quals: &[u8],
+    min_baseq: u8,
+    alt_aligner: &mut Aligner<F>,
+    ref_aligner: &mut Aligner<F>,
+    backend: &AlignmentBackend,
+    rules: &carrier::ReadRules,
+) -> ClassifyResult {
+    match rules.judge {
+        judge::ReadJudge::Haplotype => {
+            splice_skip_triage(record, variant).unwrap_or_else(|| judge::classify(record, variant, quals, min_baseq, rules))
+        }
+        judge::ReadJudge::Rules => {
+            check_allele_with_qual(record, variant, siblings, quals, min_baseq, alt_aligner, ref_aligner, backend, rules)
+        }
+    }
+}
+
 /// Check if a read supports the reference or alternate allele.
 /// Returns `ClassifyResult` containing (is_ref, is_alt, base_quality, phase)
 /// where base_quality is the quality score at the variant position
@@ -3086,8 +3193,8 @@ fn count_per_transcript(
             let quals = effective_quals(record, use_baq, baq_spare);
             let effective_quals: &[u8] = &quals;
 
-            // ── Allele classification
-            let result = check_allele_with_qual(
+            // ── Allele classification, under the row's read judgment
+            let result = classify_read(
                 record, variant, sibling_variants, effective_quals, min_baseq,
                 &mut alt_aligner, &mut ref_aligner, backend, rules,
             );
@@ -3128,15 +3235,17 @@ fn count_per_transcript(
             // (`ref_guard_siblings`) is excluded from tx_rd and from REF
             // fragment evidence.
             // Both still count tx_dp.
-            let claimed_by_sibling = sibling_claims_alt(
+            // (The haplotype judge weighs the site's alleles itself: no sibling contest.)
+            let contested = rules.judge == judge::ReadJudge::Rules;
+            let claimed_by_sibling = contested && sibling_claims_alt(
                 record, variant, &result, sibling_variants, effective_quals, min_baseq, rules,
             );
             let is_alt = result.is_alt && !claimed_by_sibling;
             let is_ref = result.is_ref
-                && !sibling_claims_ref(
+                && !(contested && sibling_claims_ref(
                     record, variant, &result, &ref_guard_siblings, effective_quals, min_baseq,
                     &mut alt_aligner, &mut ref_aligner, backend, rules,
-                );
+                ));
 
             // Only the resolved call reads this evidence (`resolve`), so whether the
             // read was informative is not needed here.
@@ -3694,8 +3803,8 @@ fn detect_asjd(
         let quals = effective_quals(record, use_baq, baq_spare);
         let effective_quals: &[u8] = &quals;
 
-        // Classify allele
-        let result = check_allele_with_qual(
+        // Classify allele, under the row's read judgment
+        let result = classify_read(
             record, variant, sibling_variants, effective_quals, min_baseq,
             &mut alt_aligner, &mut ref_aligner, backend, rules,
         );
@@ -4006,6 +4115,7 @@ mod tests {
             event_ref: None,
             boundary_span: None,
             listed_neighbours: Vec::new(),
+            reach_rows: Vec::new(),
             whole_ref: None,
         }
     }
@@ -4734,6 +4844,7 @@ mod tests {
             event_ref: None,
             boundary_span: None,
             listed_neighbours: Vec::new(),
+            reach_rows: Vec::new(),
             whole_ref: None,
         }
     }

@@ -10,6 +10,7 @@ Config hierarchy:
     └── GbcmsRnaConfig     — RNA-specific defaults (strandedness, editing, pairhmm)
 """
 
+import logging
 import sys
 from pathlib import Path
 
@@ -25,6 +26,8 @@ else:
 
 
 from pydantic import BaseModel, Field, field_validator, model_validator
+
+logger = logging.getLogger(__name__)
 
 __all__ = [
     "VariantType",
@@ -206,6 +209,32 @@ class AlignmentConfig(BaseModel):
         lt=1.0,
         description="PairHMM gap-extend probability for tandem repeat regions.",
     )
+
+    read_judge: str = Field(
+        default="rules",
+        description=(
+            "Read judgment: 'rules' (the size-specific rules, default) or 'sequence' "
+            "(the sequence judge: which of the row's candidate sequences each read's own "
+            "bases spell at the row; #304). 'haplotype', its former name, is taken as "
+            "'sequence' with a warning."
+        ),
+    )
+
+    @field_validator("read_judge")
+    @classmethod
+    def validate_read_judge(cls, v: str) -> str:
+        """Validate the read judgment is a supported value; the judge's former name
+        ('haplotype') is taken as 'sequence', with a warning."""
+        v = v.lower().strip()
+        if v == "haplotype":
+            logger.warning(
+                "read judge 'haplotype' is deprecated: it is the sequence judge, "
+                "'--read-judge sequence'; counting with it."
+            )
+            v = "sequence"
+        if v not in ("rules", "sequence"):
+            raise ValueError(f"Invalid read judge '{v}'. Must be 'rules' or 'sequence'.")
+        return v
 
     @field_validator("backend")
     @classmethod

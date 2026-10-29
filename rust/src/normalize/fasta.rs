@@ -49,6 +49,16 @@ impl CachedFasta {
         cache.insert(key, got.clone());
         got
     }
+
+    /// The reference bases `[start, end)` of `chrom` that lie on the contig (its end
+    /// clamped there, as [`fetch_window`]), uppercased; None when the contig is not held
+    /// or `start` lies past its end. Not cached: each caller reads its window once.
+    pub(crate) fn window(&self, chrom: &str, start: i64, end: i64) -> Option<Vec<u8>> {
+        if start < 0 || end <= start {
+            return None;
+        }
+        fetch_window(&mut self.reader.borrow_mut(), chrom, start as u64, end as u64).ok()
+    }
 }
 
 /// Fetch a region from FASTA under any name the contig goes by: as given, with

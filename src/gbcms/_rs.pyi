@@ -24,6 +24,8 @@ class Variant:
     # rows inside its prepared reference: (0-based POS, REF, ALT).
     @property
     def listed_neighbours(self) -> list[tuple[int, str, str]]: ...
+    @property
+    def reach_rows(self) -> list[tuple[int, str, str]]: ...
     def __init__(
         self,
         chrom: str,
@@ -148,6 +150,16 @@ class BaseCounts:
     # haplotype's, left unmasked, as POS:REF>ALT:c/n (1-based POS); empty when none.
     # Diagnostic only (POSSIBLE_MINORITY_HAPLOTYPE flag).
     possible_minority: str
+    # Under the sequence judge, at a substitution: per co-listed row holding its change
+    # (an MNV beside its component SNV), the ALT reads spelling it whole, as
+    # POS:REF>ALT:n/m (1-based POS; n of the m ALT reads), several joined by '+'; empty
+    # when none. Diagnostic only (MNV_SHARED flag).
+    mnv_shared: str
+    # Under the sequence judge: DP reads whose bases fit none of the row's candidate
+    # sequences (REF, ALT, the other alleles at its site, with every context) within ten
+    # confident mismatches, whether or not the fit rule made them depth only; 0 under the
+    # rules. Diagnostic only (UNEXPLAINED_READS flag).
+    unexplained_reads: int
     # GTF-informed annotation (None when no GTF)
     exon_boundary_dist: int | None
     # Per-transcript counts (empty string when no GTF or no overlap)
@@ -256,6 +268,8 @@ def count_bam_binned(
     bin_window: int | None = None,
     bin_max_variants: int | None = None,
     warn_per_bam: bool = True,
+    # 'rules' or 'sequence' (the sequence judge; 'haplotype', its former name, is taken as it)
+    read_judge: str = "rules",
 ) -> list[BaseCounts]: ...
 def count_bam_binned_observations(
     bam_path: str,
@@ -291,6 +305,8 @@ def count_bam_binned_observations(
     observations_path: str | None = None,
     bin_window: int | None = None,
     bin_max_variants: int | None = None,
+    # 'rules' or 'sequence', as count_bam_binned
+    read_judge: str = "rules",
 ) -> tuple[list[BaseCounts], list[Observation]]: ...
 def reset_log_caching() -> None: ...
 def build_commit() -> str: ...
@@ -302,6 +318,7 @@ def prepare_variants(
     threads: int = 1,
     adaptive_context: bool = True,
     rescue_homopolymer: bool = False,
+    read_judge: str | None = None,
 ) -> list[PreparedVariant]: ...
 def write_fsd_parquet(
     path: str,

@@ -7,6 +7,44 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added — the sequence judge, opt-in (`--read-judge sequence`, #304)
+
+- **A second read judgment for small-variant rows, behind a flag.** With
+  `--read-judge sequence`, each admitted read is scored whole, every readable base,
+  against the row's candidate sequences: REF, the row's ALT and the other alleles at its
+  site (listed rows over its span, and alleles the reads themselves write recurringly and
+  tell apart), each with every context of the other listed rows within a read's reach and
+  of the recurring background the carrier guard finds. Costs are affine (a confident
+  mismatch 4, a gap 6 plus its length); a base below `--min-baseq`, or `N`, costs nothing.
+  A read counts ALT or REF only where its best candidate with that allele beats every
+  other by one confident base; another allele winning by as much is partial evidence;
+  anything closer is depth only. Contexts only explain a read's other differences: the
+  judge does no linkage and no phasing, so a variant linked to the row elsewhere on the
+  molecule never credits a read. Design and every measurement round:
+  `docs/proposals/sequence-judge.md`; its rules RJ-28 and RJ-29 are in
+  `docs/reference/read-judgment.md`.
+- **Opt-in: the default is unchanged.** Without the flag (`--read-judge rules`) the
+  size-specific rules count the reads, with output unchanged. The Nextflow `read_judge`
+  parameter (DNA only) defaults to `rules`. `haplotype`, the judge's name during
+  development, is taken as `sequence` with a warning. Making the judge the default is
+  6.8.0's work (#331).
+- **Two diagnostics, under the judge only** (no new column; they change no count):
+  `MNV_SHARED(chrom:pos:REF>ALT:n/m)` at an SNV whose change a co-listed MNV holds (RJ-28:
+  the MNV's carriers count at both rows, so one molecule can sit in both rows' counts and
+  mFSD distributions), and `UNEXPLAINED_READS(n/m)`, the row's depth reads that fit none of
+  its candidate sequences within ten confident mismatches (RJ-29: such a read is depth
+  only where its aligner also doubts its placement, XS at least AS).
+- **Named limits.**
+  - **Spliced reads are refused.** `gbcms rna --read-judge sequence` exits with an error,
+    and the engine refuses RNA mode under the judge; in a DNA run, a read whose CIGAR
+    splices (an `N` op) is depth only. RNA under the judge is #333.
+  - **The Phase 3 options do not apply** to a row's counts under the judge
+    (`--alignment-backend` and the PairHMM probabilities): it has its own scorer, and it
+    reads each row's candidate sequences from the reference FASTA.
+  - **It is slower than the rules;** the speed work is #335.
+  - **`GBCMS_JUDGE_*` environment variables are measurement switches,** not options:
+    they serve the measurement rounds and are removed as their questions are decided.
+
 ### Fixed — an unchecked sample no longer reads as a clean one (#227)
 
 - **The QC summary names a sample whose output could not be read.** When one sample's

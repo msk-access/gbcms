@@ -52,6 +52,16 @@ class AlignmentBackend(StrEnum):
     PAIRHMM = "pairhmm"
 
 
+class ReadJudge(StrEnum):
+    """CLI-exposed read judgments: the size-specific rules, or the sequence judge.
+    HAPLOTYPE is the sequence judge's former name, kept for old command lines (the
+    configuration takes it as 'sequence' and warns)."""
+
+    RULES = "rules"
+    SEQUENCE = "sequence"
+    HAPLOTYPE = "haplotype"
+
+
 # Column-prefix charset: only letters, digits, underscores
 _COLUMN_PREFIX_RE = re.compile(r"^[A-Za-z0-9_]*$")
 
@@ -380,6 +390,16 @@ def dna(
             "Invalid values are rejected at parse time."
         ),
     ),
+    read_judge: ReadJudge = typer.Option(
+        ReadJudge.RULES,
+        "--read-judge",
+        help=(
+            "Read judgment: 'rules' (the size-specific rules, default) or 'sequence' "
+            "(which of the row's candidate sequences each read's own bases spell at the "
+            "row; opt-in while it is measured, #304). 'haplotype' is its former name "
+            "(deprecated)."
+        ),
+    ),
     hmm_llr_threshold: float = typer.Option(
         2.3,
         "--llr-threshold",
@@ -522,6 +542,7 @@ def dna(
         # This is required because AlignmentConfig.validate_backend operates on str.
         alignment_config = AlignmentConfig(
             backend=alignment_backend.value,
+            read_judge=read_judge.value,
             hmm_llr_threshold=hmm_llr_threshold,
             hmm_gap_open=hmm_gap_open,
             hmm_gap_extend=hmm_gap_extend,
@@ -767,6 +788,14 @@ def rna(
             "'sw' (Smith-Waterman) or 'pairhmm' (WFA2 + PairHMM, default for RNA)."
         ),
     ),
+    read_judge: ReadJudge = typer.Option(
+        ReadJudge.RULES,
+        "--read-judge",
+        help=(
+            "Read judgment: 'rules' (the size-specific rules, default). 'sequence' does "
+            "not judge spliced reads yet and is refused in RNA mode (#304)."
+        ),
+    ),
     hmm_llr_threshold: float = typer.Option(
         2.3,
         "--llr-threshold",
@@ -821,6 +850,13 @@ def rna(
         logger.warning(
             "--preserve-barcode has no effect when the variant file is not a MAF.",
         )
+
+    if read_judge in (ReadJudge.SEQUENCE, ReadJudge.HAPLOTYPE):
+        logger.error(
+            f"--read-judge {read_judge.value} does not judge spliced reads yet; RNA mode needs "
+            "--read-judge rules."
+        )
+        raise typer.Exit(code=1)
 
     cpu_count = os.cpu_count() or 1
     if threads > cpu_count:
@@ -896,6 +932,7 @@ def rna(
 
         alignment_config = AlignmentConfig(
             backend=alignment_backend.value,
+            read_judge=read_judge.value,
             hmm_llr_threshold=hmm_llr_threshold,
             hmm_gap_open=hmm_gap_open,
             hmm_gap_extend=hmm_gap_extend,

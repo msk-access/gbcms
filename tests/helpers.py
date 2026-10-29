@@ -6,9 +6,14 @@ Provides:
 - count_bam_checked / count_checked / count_one_checked: production counting,
   checked for binning invariance (every field equal with one variant per bin)
 - assert_same_counts: every field of two lists of BaseCounts equal
+- install_suite_read_judge: the suite under the sequence judge
+  (GBCMS_TEST_READ_JUDGE=sequence; installed by conftest.py)
 """
 
+import functools
+import glob
 import math
+import os
 
 import pysam
 
@@ -184,6 +189,112 @@ def assert_same_counts(got: list, want: list, what: str, skip=frozenset()) -> No
             assert _same(
                 getattr(g, f), getattr(w, f)
             ), f"{what}: row {i} field {f!r}: {getattr(g, f)!r} vs {getattr(w, f)!r}"
+
+
+# ── The suite under the sequence judge ───────────────────────────────────
+#
+# With GBCMS_TEST_READ_JUDGE=sequence in the environment ('haplotype', the judge's former
+# name, is taken as it), every engine call and every CLI `dna` run that names no read
+# judgment counts under the sequence judge (`--read-judge sequence`, #304), so the whole
+# suite runs under it with no test edited (docs/proposals/sequence-judge.md §8). The judge
+# reads each row's candidate sequences from the reference: an engine call given none takes the one FASTA beside its BAM; a call with no
+# single FASTA there runs under the rules and is reported as not judged (in the session
+# summary, and appended to GBCMS_TEST_READ_JUDGE_LOG when set), never passed silently.
+# A call that names a read judgment keeps it.
+
+SUITE_READ_JUDGE = os.environ.get("GBCMS_TEST_READ_JUDGE", "rules").strip().lower()
+if SUITE_READ_JUDGE == "haplotype":
+    SUITE_READ_JUDGE = "sequence"
+
+# Positional slots of `count_bam_binned(_observations)` (see `_rs.pyi`).
+_BAM_AT, _REFERENCE_AT = 0, 28
+_READ_JUDGE_AT = {"count_bam_binned": 33, "count_bam_binned_observations": 34}
+
+# (test, reason) for every engine call the switch left under the rules.
+UNJUDGED: list[tuple[str, str]] = []
+
+
+def _fasta_beside(bam_path) -> str | None:
+    """The one FASTA (.fa / .fasta) in the BAM's directory whose contigs the BAM's header
+    names with the same lengths (an extract of a region is not the BAM's reference), or
+    None."""
+    if not bam_path:
+        return None
+    d = os.path.dirname(os.path.abspath(str(bam_path)))
+    found = sorted(set(glob.glob(os.path.join(d, "*.fa")) + glob.glob(os.path.join(d, "*.fasta"))))
+    if len(found) != 1:
+        return None
+    try:
+        with pysam.FastaFile(found[0]) as fa, pysam.AlignmentFile(str(bam_path)) as bam:
+            lengths = dict(zip(fa.references, fa.lengths, strict=True))
+            shared = [
+                (n, ln) for n, ln in zip(bam.references, bam.lengths, strict=True) if n in lengths
+            ]
+            if not shared or any(lengths[n] != ln for n, ln in shared):
+                return None
+    except (OSError, ValueError):
+        return None
+    return found[0]
+
+
+def _note_unjudged(reason: str) -> None:
+    test = os.environ.get("PYTEST_CURRENT_TEST", "?").rsplit(" (", 1)[0]
+    UNJUDGED.append((test, reason))
+    log = os.environ.get("GBCMS_TEST_READ_JUDGE_LOG")
+    if log:
+        with open(log, "a") as fh:
+            fh.write(f"{test}\t{reason}\n")
+
+
+def _under_suite_judge(engine):
+    """`engine` with calls that name no read judgment run under the sequence judge."""
+    judge_at = _READ_JUDGE_AT[engine.__name__]
+
+    @functools.wraps(engine)
+    def call(*args, **kwargs):
+        if "read_judge" in kwargs or len(args) > judge_at:
+            return engine(*args, **kwargs)
+        given = kwargs.get("reference_fasta") or (len(args) > _REFERENCE_AT and args[_REFERENCE_AT])
+        if not given:
+            bam = args[_BAM_AT] if args else kwargs.get("bam_path")
+            fasta = _fasta_beside(bam)
+            if fasta is None:
+                _note_unjudged("no single FASTA of the BAM's contigs beside it")
+                return engine(*args, **kwargs)
+            kwargs["reference_fasta"] = fasta
+        return engine(*args, **kwargs, read_judge="sequence")
+
+    # pyo3 publishes the signature the stub-parity test reads.
+    call.__text_signature__ = engine.__text_signature__  # type: ignore[attr-defined]
+    return call
+
+
+def install_suite_read_judge() -> None:
+    """Run the suite under the sequence judge: the engine entry points, the pipeline's
+    configuration default, and CLI `dna` runs through `CliRunner` that name no read
+    judgment."""
+    from typer.testing import CliRunner
+
+    import gbcms.observations
+    from gbcms.models.core import AlignmentConfig
+
+    for name in _READ_JUDGE_AT:
+        wrapped = _under_suite_judge(getattr(gbcms_rs, name))
+        setattr(gbcms_rs, name, wrapped)
+        if hasattr(gbcms.observations, name):
+            setattr(gbcms.observations, name, wrapped)
+    AlignmentConfig.model_fields["read_judge"].default = "sequence"
+    AlignmentConfig.model_rebuild(force=True)
+
+    invoke = CliRunner.invoke
+
+    def judged_invoke(self, app, args=None, *rest, **kwargs):
+        named = args and any(str(a).startswith("--read-judge") for a in args)
+        if args and list(args)[0] == "dna" and not named:
+            args = [*args, "--read-judge", "sequence"]
+        return invoke(self, app, args, *rest, **kwargs)
+
+    CliRunner.invoke = judged_invoke  # type: ignore[method-assign]
 
 
 # ── MAF Output Reading ───────────────────────────────────────────────────

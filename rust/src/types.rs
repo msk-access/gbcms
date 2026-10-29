@@ -74,6 +74,14 @@ pub struct Variant {
     #[pyo3(get)]
     pub listed_neighbours: Vec<(i64, String, String)>,
 
+    /// The input's other rows (PASS) whose REF span lies within a read's reach of this
+    /// row's (`judge::READ_REACH` each side): 0-based POS, REF, ALT, upper case, in
+    /// position order. The haplotype judge builds this row's haplotypes from them; prep
+    /// fills it from the whole input, so no bin geometry can change it. The decomposed
+    /// twin carries its parent's.
+    #[pyo3(get)]
+    pub reach_rows: Vec<(i64, String, String)>,
+
     /// Reference bases a whole read reaches each side of an event the exact-carrier rule
     /// judges, with their 0-based start (covering `event_ref`): a read the aligner placed
     /// a unit off in a repeat is read whole over all its bases. Prep's; None otherwise.
@@ -113,6 +121,7 @@ impl Variant {
             event_ref,
             boundary_span,
             listed_neighbours: Vec::new(),
+            reach_rows: Vec::new(),
             whole_ref: None,
         }
     }
@@ -498,6 +507,21 @@ pub struct BaseCounts {
     /// changes.
     #[pyo3(get)]
     pub possible_minority: String,
+    /// Under the haplotype judge, at a substitution: per co-listed row holding its change
+    /// (an MNV beside its component SNV, whose carriers count as this row's ALT), how many
+    /// of the ALT reads spell that row whole, as `POS:REF>ALT:n/m` (1-based POS; n of the
+    /// m ALT reads), several joined by `+`; empty when none. Diagnostic only (feeds
+    /// MNV_SHARED); no count changes.
+    #[pyo3(get)]
+    pub mnv_shared: String,
+    /// Under the haplotype judge: reads counted in DP whose bases fit none of the row's
+    /// candidate sequences (REF, ALT, the other alleles at its site, with every context)
+    /// within ten confident mismatches. The fit rule makes such a read depth only where
+    /// its aligner places it elsewhere at least as well (XS >= AS); otherwise its margin
+    /// decides it. 0 under the rules. Diagnostic only (feeds UNEXPLAINED_READS); no count
+    /// changes.
+    #[pyo3(get)]
+    pub unexplained_reads: u32,
     /// Reads processed with the requested `--umi-tag` present. Internal only
     /// (no Python getter): summed per BAM to warn when a requested UMI tag is
     /// never seen and fragment grouping silently fell back to QNAME.

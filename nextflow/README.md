@@ -112,6 +112,7 @@ nextflow run nextflow/main.nf \
 | `--filter_indel` | Filter reads with indels | `false` |
 | `--filter_by_sample` | Filter multi-sample MAF by Tumor_Sample_Barcode | `false` |
 | `--alignment_backend` | Phase 3 alignment: `pairhmm` (default), `sw` (Smith-Waterman), or `hmm` (alias for `pairhmm`) | `pairhmm` |
+| `--read_judge` | Read judgment (DNA only): `rules` (the size-specific rules) or `sequence` (the sequence judge, opt-in, #304; `haplotype` is its former name) | `rules` |
 
 ### RNA-Specific
 | Parameter | Description | Default |

@@ -186,6 +186,15 @@ pub struct ClassifyResult {
     pub carrier_judged: bool,
     /// The junction judge (a deletion of 50+ bp at its POS breakpoint) judged the read.
     pub junction_judged: bool,
+    /// The haplotype judge's ALT call at a substitution, on a read that also spells whole
+    /// a co-listed row holding the row's change (an MNV beside its component SNV): one
+    /// bit per such row, in `judge::listed_holders` order. Diagnostic only (MNV_SHARED).
+    pub spells_listed: u32,
+    /// The haplotype judge found the read's bases fit none of the row's candidate
+    /// sequences (REF, ALT, the other alleles at its site, with every context) within ten
+    /// confident mismatches, whether or not the fit rule made it depth only. Diagnostic
+    /// only (UNEXPLAINED_READS).
+    pub fits_none: bool,
 }
 
 impl ClassifyResult {
@@ -221,6 +230,8 @@ impl ClassifyResult {
             alt_by_bases: false,
             carrier_judged: false,
             junction_judged: false,
+            spells_listed: 0,
+            fits_none: false,
         }
     }
 
