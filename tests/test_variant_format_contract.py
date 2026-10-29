@@ -10,7 +10,9 @@ from pathlib import Path
 
 import pysam
 import pytest
+from typer.testing import CliRunner
 
+from gbcms.cli import app
 from gbcms.io.input import variant_format
 from gbcms.normalize import normalize_variants
 
@@ -34,6 +36,35 @@ def test_variant_format_by_extension(name, fmt):
 def test_variant_format_refuses_other_extensions(name):
     with pytest.raises(ValueError, match="Unsupported variant file"):
         variant_format(Path(name))
+
+
+@pytest.mark.parametrize("command", ["normalize", "convert"])
+@pytest.mark.parametrize("ext", [".vcf", ".vcf.gz", ".vcf.bgz"])
+def test_the_commands_that_only_read_variants_accept_every_vcf_extension(tmp_path, ext, command):
+    """The user-facing commands, not only the functions behind them."""
+    fasta = tmp_path / "ref.fa"
+    fasta.write_text(">chr1\n" + "ACGT" * 50 + "\n")
+    pysam.faidx(str(fasta))
+    plain = tmp_path / "plain.vcf"
+    plain.write_text(
+        "##fileformat=VCFv4.2\n##contig=<ID=chr1,length=200>\n"
+        "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\n"
+        "chr1\t2\t.\tC\tT\t.\t.\t.\n"
+    )
+    variants = tmp_path / f"variants{ext}"
+    if ext == ".vcf":
+        shutil.copy(plain, variants)
+    else:
+        pysam.tabix_compress(str(plain), str(variants))
+    out = tmp_path / ("normalized.tsv" if command == "normalize" else "converted.maf")
+
+    args = [command, "-v", str(variants), "-o", str(out)]
+    if command == "normalize":  # a VCF converts to MAF without a reference
+        args += ["-f", str(fasta)]
+    res = CliRunner().invoke(app, args)
+
+    assert res.exit_code == 0, res.output
+    assert out.exists() and out.stat().st_size > 0
 
 
 @pytest.mark.parametrize("ext", [".vcf", ".vcf.gz", ".vcf.bgz"])

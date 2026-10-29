@@ -117,6 +117,21 @@ def test_observations_parquet_honours_the_suffix(tmp_path):
     assert "S.1.genotyped.observations.parquet" in names, names
 
 
+def test_rna_observations_parquet_keeps_a_dotted_suffix_and_sample_name(tmp_path):
+    """``gbcms rna`` names its companion as ``gbcms dna`` does."""
+    pytest.importorskip("pyarrow.parquet")
+    out = tmp_path / "out"
+    res = runner.invoke(
+        app,
+        ["rna", "-v", str(_vcf(tmp_path)), "-f", str(_reference(tmp_path)), "-o", str(out)]
+        + ["-b", f"S.1:{_bam(tmp_path, 'S_1')}"]
+        + ["--format", "maf", "--suffix", ".genotyped", "--observations-parquet"],
+    )
+    assert res.exit_code == 0, res.output
+    names = sorted(p.name for p in out.iterdir())
+    assert names == ["S.1.genotyped.maf", "S.1.genotyped.observations.parquet"], names
+
+
 def test_mfsd_report_with_vcf_output_is_refused_at_the_cli(tmp_path):
     res, out = _run(tmp_path, ["S1"], "--format", "vcf", "--mfsd-report")
     assert res.exit_code != 0, res.output
