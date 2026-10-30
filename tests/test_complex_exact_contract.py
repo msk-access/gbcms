@@ -45,9 +45,17 @@ def _files(tmp_path, ref, reads):
     return str(fa), str(bam)
 
 
-def _prepared(fa, ref_allele, alt_allele, pos=POS):
+def _prepared(fa, ref_allele, alt_allele, pos=POS, **judge):
+    """The row prepared; `judge` names the read judgment it is counted with (`read_judge`),
+    where a test names one."""
     (pv,) = gbcms_rs.prepare_variants(
-        [gbcms_rs.Variant("1", pos, ref_allele, alt_allele, "COMPLEX")], fa, 5, False, 1, True
+        [gbcms_rs.Variant("1", pos, ref_allele, alt_allele, "COMPLEX")],
+        fa,
+        5,
+        False,
+        1,
+        True,
+        **judge,
     )
     assert pv.gbcms_status == "PASS", pv.gbcms_status_reason
     return pv.variant

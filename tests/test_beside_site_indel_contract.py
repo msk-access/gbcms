@@ -81,7 +81,9 @@ def _reads(kind, n, written_beside, first=0):
 
 def _count(tmp_path, reads):
     fa, bam = write_contig(tmp_path, CONTIG, reads)
-    (pv,) = _rs.prepare_variants([_rs.Variant("1", Z, "G", "GA", "INS")], fa, 5, False, 1, True)
+    (pv,) = _rs.prepare_variants(
+        [_rs.Variant("1", Z, "G", "GA", "INS")], fa, 5, False, 1, True, read_judge="sequence"
+    )
     (c,) = count_checked(bam, [pv.variant], read_judge="sequence", reference_fasta=fa)
     assert c.dp >= c.rd + c.ad and c.rd == c.rd_fwd + c.rd_rev and c.ad == c.ad_fwd + c.ad_rev
     return c

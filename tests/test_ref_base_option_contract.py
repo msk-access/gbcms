@@ -127,7 +127,13 @@ class Locus:
         d.mkdir(exist_ok=True)
         fa, bam = write_contig(d, self.contig, self.reads)
         (pv,) = _rs.prepare_variants(
-            [_rs.Variant("1", P, self.ref_al, self.alt_al, "X")], fa, 5, False, 1, True
+            [_rs.Variant("1", P, self.ref_al, self.alt_al, "X")],
+            fa,
+            5,
+            False,
+            1,
+            True,
+            read_judge="sequence",
         )
         (c,) = count_bam_checked(
             bam, [pv.variant], [None], *ARGS, read_judge="sequence", reference_fasta=fa

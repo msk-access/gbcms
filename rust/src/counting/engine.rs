@@ -450,6 +450,26 @@ fn count_bam_binned_core(
             "read_judge \"sequence\" needs reference_fasta: each row's candidate sequences are read from it",
         ));
     }
+    if read_judge == judge::ReadJudge::Haplotype {
+        // A row prepared for the rules lists none of the rows in its reach: the judge would
+        // weigh its reads against too few candidate sequences, silently. Refused, whole-input
+        // (before any bin), so no bin geometry can change it.
+        let unrecorded: Vec<&Variant> =
+            variants.iter().chain(decomposed.iter().flatten()).filter(|v| v.reach_unrecorded).collect();
+        if let Some(first) = unrecorded.first() {
+            return Err(pyo3::exceptions::PyValueError::new_err(format!(
+                "read_judge \"sequence\" refuses {} row(s) prepared for the rules (first: {}:{} {}>{}): \
+                 preparation records the rows within a read's reach the judge weighs each read against \
+                 only when told the judge; prepare them with read_judge \"sequence\", or count them with \
+                 read_judge \"rules\"",
+                unrecorded.len(),
+                first.chrom,
+                first.pos + 1,
+                first.ref_allele,
+                first.alt_allele,
+            )));
+        }
+    }
     let backend = parse_alignment_backend(
         alignment_backend,
         hmm_llr_threshold,
@@ -4116,6 +4136,7 @@ mod tests {
             boundary_span: None,
             listed_neighbours: Vec::new(),
             reach_rows: Vec::new(),
+            reach_unrecorded: false,
             whole_ref: None,
         }
     }
@@ -4845,6 +4866,7 @@ mod tests {
             boundary_span: None,
             listed_neighbours: Vec::new(),
             reach_rows: Vec::new(),
+            reach_unrecorded: false,
             whole_ref: None,
         }
     }

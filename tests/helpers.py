@@ -200,7 +200,9 @@ def assert_same_counts(got: list, want: list, what: str, skip=frozenset()) -> No
 # reads each row's candidate sequences from the reference: an engine call given none takes the one FASTA beside its BAM; a call with no
 # single FASTA there runs under the rules and is reported as not judged (in the session
 # summary, and appended to GBCMS_TEST_READ_JUDGE_LOG when set), never passed silently.
-# A call that names a read judgment keeps it.
+# Preparation that names no read judgment prepares for the judge too (told nothing it
+# prepares for the rules, whose rows the judge refuses). A call that names a read judgment
+# keeps it.
 
 SUITE_READ_JUDGE = os.environ.get("GBCMS_TEST_READ_JUDGE", "rules").strip().lower()
 if SUITE_READ_JUDGE == "haplotype":
@@ -209,6 +211,8 @@ if SUITE_READ_JUDGE == "haplotype":
 # Positional slots of `count_bam_binned(_observations)` (see `_rs.pyi`).
 _BAM_AT, _REFERENCE_AT = 0, 28
 _READ_JUDGE_AT = {"count_bam_binned": 33, "count_bam_binned_observations": 34}
+# And of `prepare_variants`.
+_PREPARE_JUDGE_AT = 7
 
 # (test, reason) for every engine call the switch left under the rules.
 UNJUDGED: list[tuple[str, str]] = []
@@ -269,10 +273,23 @@ def _under_suite_judge(engine):
     return call
 
 
+def _prepared_for_suite_judge(prepare):
+    """`prepare` with calls that name no read judgment preparing for the sequence judge."""
+
+    @functools.wraps(prepare)
+    def call(*args, **kwargs):
+        if "read_judge" in kwargs or len(args) > _PREPARE_JUDGE_AT:
+            return prepare(*args, **kwargs)
+        return prepare(*args, **kwargs, read_judge="sequence")
+
+    call.__text_signature__ = prepare.__text_signature__  # type: ignore[attr-defined]
+    return call
+
+
 def install_suite_read_judge() -> None:
-    """Run the suite under the sequence judge: the engine entry points, the pipeline's
-    configuration default, and CLI `dna` runs through `CliRunner` that name no read
-    judgment."""
+    """Run the suite under the sequence judge: the engine entry points and preparation, the
+    pipeline's configuration default (which `observe_molecules` takes too), and CLI `dna`
+    runs through `CliRunner` that name no read judgment."""
     from typer.testing import CliRunner
 
     import gbcms.observations
@@ -283,6 +300,7 @@ def install_suite_read_judge() -> None:
         setattr(gbcms_rs, name, wrapped)
         if hasattr(gbcms.observations, name):
             setattr(gbcms.observations, name, wrapped)
+    gbcms_rs.prepare_variants = _prepared_for_suite_judge(gbcms_rs.prepare_variants)
     AlignmentConfig.model_fields["read_judge"].default = "sequence"
     AlignmentConfig.model_rebuild(force=True)
 

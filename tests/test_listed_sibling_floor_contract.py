@@ -75,6 +75,7 @@ def _alt_count(tmp_path, name, j, alone, n_ref):
         False,
         1,
         True,
+        read_judge="sequence",
     )
     vs = [pv.variant for pv in pvs]
     c = count_checked(
