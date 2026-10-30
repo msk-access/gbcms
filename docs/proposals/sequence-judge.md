@@ -255,14 +255,18 @@ For a row X and each admitted read:
     carrier's), so the masks stay on every state; one that so written is a candidate the site
     already holds (X with a listed neighbour) is that candidate, and spellings apart only at a
     mask are one allele (`Guard::judge_others`; the rules' windows keep the window spelling,
-    which they read past the masks already). Written as its changes, such an allele can end
-    before a listed neighbour that changes one of its bases does, so the check that drops an
-    other state spelling X (or REF) with listed neighbours now reads the neighbours meeting
-    the state's place, not only those inside it: at HG002 chr10:12910609 A>ATTT (an insertion
-    where an A run meets a T run, listed A>T and AT>TT on the next two bases) the allele, X
-    with both, is AA>TTTTT, which the AT>TT runs one base past; read inside only, it stayed a
-    state and 15 carriers tied X with it (13 ALT by the truth set; c246 INS 1-9 −11 ALT
-    reads in the first build). With the wider check the row is develop's (RD, AD) (21, 15).
+    which they read past the masks already). Written as its changes, such an allele no longer
+    spans the guard's window, so the check that drops an other state spelling X (or REF) with
+    listed neighbours reads every neighbour that, or one of whose equivalent placements, meets
+    the state's place, not only those wholly inside it. Two HG002 sites showed why (each a
+    regression of a first build, found in the measurement): at chr10:12910609 A>ATTT (an
+    insertion where an A run meets a T run, listed A>T and AT>TT on the next two bases) the
+    allele, X with both, is AA>TTTTT, which the AT>TT runs one base past (read inside only, 15
+    carriers tied X with it, 13 ALT by the truth set); at chr10:83775882 A>AC (at
+    `--min-baseq` 0; a C inserted in an A run after CAAAA units, listed T>TA before the units
+    and A>C on the next base) the allele of REF's length, REF with both, starts at the units'
+    first C, while the T>TA is written before it and slides into it (15 REF reads, REF by the
+    truth set, tied REF with it). With the wider check both rows are develop's.
     - Worked example (a patient panel tumour, the same run in the panel and twice in the gate
       set; read by read, operator 2026-10-29): X a 17-base tandem duplication; a listed SNV
       seven bases past the copies on every carrier (111 of 111 ALT-spelling fragments), and
@@ -283,9 +287,9 @@ For a row X and each admitted read:
       (RD, AD, partial) (60, 0, 30) → (60, 30, 0). REF's other allele beside the mask:
       (0, 100, 300) → (280, 100, 20). X's other allele beside the mask: (300, 0, 100) →
       (300, 80, 20). Unit tests: the allele trimmed to its change, past the mask; two spellings
-      apart only at the mask one allele; the HG002 shape above, an other state that is X with
-      neighbours running past its changes dropped (3 state graphs under the inside-only check,
-      2 now).
+      apart only at the mask one allele; the two HG002 shapes above, an other state that is X
+      with neighbours running past its changes, and one that is REF with a neighbour written
+      before it, dropped (3 state graphs under the narrower checks, 2 now).
     - Contracts: the judge-switch suite (`GBCMS_TEST_READ_JUDGE=sequence`) keeps develop's 139
       baseline failures with identical assertion values; the default suite passes.
     - Measured against develop (dc16364c) at `--min-baseq` 20 on every arm (ACCESS XS1 and

@@ -2808,16 +2808,27 @@ impl Site {
     /// An other state whose allele spells X's haplotype (or REF's) with rows of the reads'
     /// reach meeting its place (an allele the reads spell over X with a listed neighbour
     /// beside it) is that haplotype: X's or REF's, never another allele's. Its graph is
-    /// dropped. A row reaching past the place counts too: an allele the guard found is
-    /// written as the bases it changes (RJ-25), and a neighbour that changes one of them may
-    /// run on past its last (a delins over an insertion's run, beside an SNV written with its
-    /// next base).
+    /// dropped. A row counts where it, or one of its equivalent placements, meets the
+    /// place: an allele the guard found is written as the bases it changes (RJ-25), and a
+    /// neighbour may run on past its last (a delins over an insertion's run, beside an SNV
+    /// written with its next base) or be written before its first (an insertion written at
+    /// the start of the run it slides through).
     fn drop_spelled_states(&mut self, rest: &[usize]) {
         let mut dropped: Vec<usize> = Vec::new();
         for (k, st) in self.graphs.iter().enumerate() {
             let Some(o) = st.row.filter(|_| st.class == Class::Other) else { continue };
             let (ps, pe) = (self.spans[o].0.min(self.places[o].0), self.spans[o].1.max(self.places[o].1));
-            let inside: Vec<usize> = rest.iter().copied().filter(|&r| self.spans[r].0 < pe && self.spans[r].1 > ps).take(SPELL_MAX_ROWS).collect();
+            // a row's span with its equivalent placements (a length change slides over its run)
+            let reach = |r: usize| (self.spans[r].0.min(self.places[r].0), self.spans[r].1.max(self.places[r].1));
+            let inside: Vec<usize> = rest
+                .iter()
+                .copied()
+                .filter(|&r| {
+                    let (rs, re) = reach(r);
+                    rs < pe && re > ps
+                })
+                .take(SPELL_MAX_ROWS)
+                .collect();
             let own = Hap::build(self, &[o]).seq;
             let sets = self.lying_together(&inside, None, 1 << SPELL_MAX_ROWS).unwrap_or_else(|| vec![Vec::new()]);
             let spells = sets.iter().any(|c| {
@@ -3057,6 +3068,31 @@ pub(crate) mod tests {
         let candidates = Candidates {
             listed: vec![Row::new(299, b"A", b"T"), Row::new(300, b"AT", b"TT")],
             discovered: vec![Row::new(299, b"AA", b"TTTTT")],
+            background: Vec::new(),
+            masked: Vec::new(),
+            found: Vec::new(),
+            edges: (None, None),
+        };
+        let read = ReadView::new(&c[230..380], &[30; 150], 230, &[Cigar::Match(150)], (0, 150), 20).unwrap();
+        let s = Site::build_backed(x, &candidates, (0, c.clone()), std::slice::from_ref(&read), FoundRule::All, BackgroundRule::AsIs).unwrap();
+        assert_eq!(s.n_states, 1, "the allele taken as a state");
+        assert_eq!(s.graphs.len(), 2, "its graph dropped: REF's and X's alone");
+    }
+
+    /// The chr10:83775882 A>AC shape (HG002 c246 arm, at `--min-baseq` 0): an insertion of
+    /// C in an A x11 run after CAAAA units, with a listed T>TA four bases before the units
+    /// (an A inserted in the A run it slides through) and a listed A>C on the next base. The
+    /// guard's allele of REF's length, REF with both, written as the bases it changes, starts
+    /// at the units' first C: the T>TA's written base lies before it, its placements inside
+    /// it. It spells REF with its listed neighbours, so it is REF's (else every REF read
+    /// carrying them ties REF with it).
+    #[test]
+    fn an_other_state_that_is_ref_with_a_neighbour_written_before_it_is_dropped() {
+        let c = contig(11, 290, b"CCTAAAACAAAACAAAACAAAAAAAAAAACCC");
+        let x = Row::new(311, b"A", b"AC");
+        let candidates = Candidates {
+            listed: vec![Row::new(292, b"T", b"TA"), Row::new(312, b"A", b"C")],
+            discovered: vec![Row::new(297, b"CAAAACAAAACAAAAA", b"ACAAAACAAAACAAAAC")],
             background: Vec::new(),
             masked: Vec::new(),
             found: Vec::new(),
