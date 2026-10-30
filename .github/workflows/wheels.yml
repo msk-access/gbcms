@@ -51,11 +51,23 @@ jobs:
           manylinux: ${{ matrix.manylinux }}
           commit: ${{ github.sha }}
       - name: The wheel
+        env:
+          MANYLINUX: ${{ matrix.manylinux }}
         run: |
           ls -l dist
-          # a wheel that tags itself for a newer glibc than its container's would
-          # not install on RHEL 8: the name must carry the container's tag
-          ls dist | grep -F "${{ matrix.manylinux }}_x86_64.whl"
+          python3 - <<'PY'
+          import glob, os, re
+          (wheel,) = glob.glob("dist/*.whl")
+          platform = wheel[: -len(".whl")].split("-")[-1]
+          floors = [tuple(map(int, m.groups())) for m in re.finditer(r"manylinux_(\d+)_(\d+)", platform)]
+          if "manylinux2014" in platform:
+              floors.append((2, 17))
+          # a wheel that tags itself for a newer glibc than its container's would not
+          # install on RHEL 8; an older tag is fine
+          limit = tuple(map(int, os.environ["MANYLINUX"].split("_")[1:]))
+          print(wheel, "->", platform, "glibc floors", floors, "limit", limit)
+          assert floors and min(floors) <= limit, (platform, limit)
+          PY
       - name: Upload the wheel
         uses: actions/upload-artifact@v4
         with:
