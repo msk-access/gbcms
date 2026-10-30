@@ -47,7 +47,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Written with its carriers' bases over the guard's window, such an allele took from the
   row every read carrying the masked change: at a 17-base duplication whose carriers all
   carry a listed SNV beside it, 293 carriers per run were partial evidence instead of ALT.
-  The rules path is unchanged.
+  An allele that is the row's ALT (or REF) with listed neighbours is the row's ALT (or REF)
+  however a neighbour is written: the judge reads every neighbour whose placements meet it,
+  so a molecule the input lists several ways (a delins and its two component deletions)
+  counts at each of those rows. The rules path is unchanged.
 - **Named limits.**
   - **Spliced reads are refused.** `gbcms rna --read-judge sequence` exits with an error,
     and the engine refuses RNA mode under the judge; in a DNA run, a read whose CIGAR
