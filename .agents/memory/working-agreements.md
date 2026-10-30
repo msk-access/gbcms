@@ -28,6 +28,11 @@ front of them.
   "the fix round on the graph scorer (phase C)", "clipped bases inside the fragment are the read's own
   (RJ-13)", "the build after the fix round (`src_c50d`)". Tables name rows in words too. A bare label
   is fine only in code, commits and GitHub records, which keep their own conventions.
+- **Build, job and run labels are labels too** (2026-10-30: "again just giving me bunch of
+  abbrevations does not help, need to describe each and put abbreviations in brackets"). Status
+  tables and relayed agent reports carry the most labels (`c61hs`, `hyR`, item A). Rewrite each one
+  in words before it reaches the operator, and ask agents to report in this form. When work comes
+  back after the operator thought it was done, say why it is back.
 - **Write in ASD-STE100 Simplified Technical English** (2026-10-28):
   - Use 20 words at most per instruction sentence and 25 per description. Give one instruction per
     sentence, in the imperative.
