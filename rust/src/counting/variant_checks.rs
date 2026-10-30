@@ -3023,6 +3023,7 @@ mod tests {
             boundary_span: None,
             listed_neighbours: Vec::new(),
             reach_rows: Vec::new(),
+            reach_unrecorded: false,
             whole_ref: None,
         }
     }

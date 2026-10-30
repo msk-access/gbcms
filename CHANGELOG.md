@@ -28,6 +28,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   parameter (DNA only) defaults to `rules`. `haplotype`, the judge's name during
   development, is taken as `sequence` with a warning. Making the judge the default is
   6.8.0's work (#331).
+- **Preparation and counting are told the same read judgment.** `prepare_variants` takes
+  `read_judge` (`"rules"`, the default, or `"sequence"`). It records each row's rows within
+  a read's reach only for the sequence judge, the only one that reads them. Counting
+  under the judge refuses rows prepared for the rules, with an error that names the
+  first such row, so a caller never silently gets the judge without those rows.
+  `observe_molecules` takes `read_judge` as well (default: its alignment config's,
+  `"rules"`) and passes it to both preparation and counting.
 - **Two diagnostics, under the judge only** (no new column; they change no count):
   `MNV_SHARED(chrom:pos:REF>ALT:n/m)` at an SNV whose change a co-listed MNV holds (RJ-28:
   the MNV's carriers count at both rows, so one molecule can sit in both rows' counts and
@@ -51,6 +58,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - **It is slower than the rules;** the speed work is #335.
   - **`GBCMS_JUDGE_*` environment variables are measurement switches,** not options:
     they serve the measurement rounds and are removed as their questions are decided.
+    Removed as decided: `SCORER`, together with the enumerated scorer it selected (and
+    `FOUND_PROBE` and `OTHER`'s found rules other than `told`, which only that scorer
+    read); `TRIAGE`, `TRIAGE_EXACT` and
+    `TRIAGE_UNKNOWN`, together with the k-mer triage; `DELINS`; `CONTEXTS`; and `ENDS`.
+    The default counts do not change.
 
 ### Fixed — an unchecked sample no longer reads as a clean one (#227)
 

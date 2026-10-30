@@ -163,6 +163,7 @@ for obs in result.observations:
 | `filters` | `ReadFilters` — which reads are excluded. |
 | `quality` | `QualityThresholds` — MAPQ and base-quality gates. |
 | `alignment` | `AlignmentConfig` — backend and PairHMM parameters. Defaults to `pairhmm`. |
+| `read_judge` | `"rules"` or `"sequence"`, as `--read-judge` takes it. Defaults to the `alignment` config's (`"rules"` unless it is set there). Both preparation and counting get it. |
 | `umi_tag` | BAM tag holding the UMI (e.g. `"MI"`). Folded into `molecule_hash`, so it decides what counts as one molecule. |
 | `threads`, `apply_baq`, `library_type` | Worker threads; BAQ; `capture` (default) or `amplicon`. |
 | `config` | A whole `GbcmsDnaConfig` to take settings from — convenient if you already have one. |

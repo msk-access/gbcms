@@ -11,7 +11,7 @@ use rust_htslib::bam::record::{Aux, Cigar, Record};
 
 
 use super::graph::{self, ShortReads, Workspace};
-use super::haplotypes::{neither_trace, other_option, AlnTags, Class, Hap, NeitherRule, OwnGapRule, ReadView, RefBaseRule, Scorer, ScorerKind, Site, TriageMode};
+use super::haplotypes::{neither_trace, other_option, AlnTags, Class, Hap, NeitherRule, OwnGapRule, ReadView, RefBaseRule, Scorer, Site};
 use super::score::{Alignment, Placed, DELTA, WILD};
 use crate::counting::carrier::{readable_range, ReadRules};
 use crate::counting::utils::{soft_clips, ClassifyPhase, ClassifyResult};
@@ -46,9 +46,6 @@ pub(crate) struct Verdict {
     /// The read bases (`ReadView` indices, `[first, after)`) its alignment to the
     /// haplotype it was called on places, where asked for the anchor.
     pub(crate) placed: Option<(usize, usize)>,
-    /// Measurement only (`GBCMS_JUDGE_TRIAGE=check`): the call and quality triage gave the
-    /// read, where it decided it, and the unknown k-mers it held.
-    pub(crate) triage: Option<(Call, u8, u16)>,
     /// An ALT call on a substitution that read every base X changes confidently, as X's.
     pub(crate) confirmed: bool,
     /// For an ALT call, the states holding X's change the read spells whole
@@ -59,8 +56,7 @@ pub(crate) struct Verdict {
     /// and its fit to the local reference neighbourhood where that was computed.
     pub(crate) fits: FitsTrace,
     /// The read's best score over every candidate sequence is below [`FITS_NOTHING`]: it
-    /// fits none of them (an upper bound under the enumerated scorer), whether or not the
-    /// fit rule made it depth only. Diagnostic (UNEXPLAINED_READS).
+    /// fits none of them, whether or not the fit rule made it depth only. Diagnostic (UNEXPLAINED_READS).
     pub(crate) fits_none: bool,
     /// Measurement only, TEMPORARY: where a substitution's telling bases lie in the read's
     /// soft clip (asked for the anchor), the clip's bases around them ([`ClipBases`]).
@@ -198,30 +194,10 @@ fn clip_bases(read: &ReadView, hap: &Hap, wa: &Alignment, off: usize, idx: &[usi
     }
 }
 
-/// Measurement only, TEMPORARY: what a delins call needs read (`GBCMS_JUDGE_DELINS`):
-/// `asym`, an ALT call X's telling bases and a REF call none; `sym`, each call its own
-/// allele's; `margin`, neither (the margin alone). Default `margin`.
-#[derive(Clone, Copy, PartialEq, Eq)]
-pub(crate) enum DelinsOption {
-    Asym,
-    Sym,
-    Margin,
-}
-
-pub(crate) fn delins_option() -> DelinsOption {
-    static OPT: std::sync::OnceLock<DelinsOption> = std::sync::OnceLock::new();
-    *OPT.get_or_init(|| match std::env::var("GBCMS_JUDGE_DELINS").as_deref() {
-        Ok("asym") => DelinsOption::Asym,
-        Ok("sym") => DelinsOption::Sym,
-        _ => DelinsOption::Margin,
-    })
-}
-
 /// The fit rule: which test, if any, makes a read that fits none of the site's candidate
 /// sequences depth only on the graph scorer (decided 2026-10-25: `xs`). The other options
-/// stay behind `GBCMS_JUDGE_FITS` for measurement, TEMPORARY. The enumerated scorer keeps
-/// applying [`FITS_NOTHING`] to upper bounds on every haplotype's score. Whatever the rule,
-/// such a read is named in the row's `UNEXPLAINED_READS` diagnostic.
+/// stay behind `GBCMS_JUDGE_FITS` for measurement, TEMPORARY. Whatever the rule, such a
+/// read is named in the row's `UNEXPLAINED_READS` diagnostic.
 /// - `xs` (the default): the aligner places the read elsewhere at least as well (XS at
 ///   least AS; MAPQ 0 where it wrote no XS) and its best score is below [`FITS_NOTHING`]:
 ///   a read the aligner doubts and no candidate sequence explains. A read that fits none
@@ -371,10 +347,7 @@ pub(crate) fn judge(site: &Site, read: &ReadView, min_baseq: u8, ask_anchor: boo
 /// read. The call is the read's own: the aligner's tags, its qualities and whether its
 /// anchor is asked for are weighed afresh.
 pub(crate) fn judge_kept(site: &Site, read: &ReadView, min_baseq: u8, ask_anchor: bool, kept: Option<std::rc::Rc<Scored>>) -> (Verdict, Option<std::rc::Rc<Scored>>) {
-    match site.scorer {
-        ScorerKind::Enumerated => (judge_enumerated(site, read, min_baseq, ask_anchor), None),
-        ScorerKind::Graph => judge_graph(site, read, min_baseq, ask_anchor, kept),
-    }
+    judge_graph(site, read, min_baseq, ask_anchor, kept)
 }
 
 /// A read's programmes over a site's state graphs, fixed by its bases (masked) and
@@ -388,51 +361,6 @@ pub(crate) struct Scored {
     rows: Vec<Vec<usize>>,
     haps: std::cell::RefCell<Vec<(usize, std::rc::Rc<Hap>)>>,
     aligns: std::cell::RefCell<Vec<(usize, Aligned)>>,
-}
-
-/// [`judge`] against the enumerated haplotypes.
-fn judge_enumerated(site: &Site, read: &ReadView, min_baseq: u8, ask_anchor: bool) -> Verdict {
-    let mut scorer = Scorer::new(read);
-    // Per class, the best score and the first haplotype reaching it. A haplotype whose
-    // banded score cannot stand is scored in full only where an upper bound on its score
-    // could still raise its class's best (or reach it first), so a read fitting none of
-    // the haplotypes well (a dense cluster) does not run the full programme on each.
-    let mut best: [Option<(i32, usize)>; 3] = [None; 3];
-    let mut pending = Vec::new();
-    let mut top = i32::MIN;
-    for (h, hap) in site.haps.iter().enumerate() {
-        match scorer.score_or_bound(site, hap, Some(i32::MAX)) {
-            Ok(s) => {
-                top = top.max(s);
-                raise(&mut best, hap.class as usize, s, h)
-            }
-            Err(bound) => {
-                top = top.max(bound);
-                pending.push(h)
-            }
-        }
-    }
-    // A read that fits none of the haplotypes within FITS_NOTHING (an upper bound on its
-    // best score below it: a paralog's read, or one from a cluster of changes the site's
-    // haplotypes do not hold) is depth only: a margin between two misfits is no evidence.
-    if top < FITS_NOTHING {
-        trace!("haplotype judge: the read fits no haplotype (best at most {top}) → depth only");
-        return Verdict { call: Call::Depth, qual: 0, best: [None; 3], holds_anchor: false, placed: None, triage: None, confirmed: false, spells: 0, clip: None, fits: FitsTrace::default(), fits_none: true, neither: NeitherTrace::default(), owngap: OwnGapTrace::default() };
-    }
-    for h in pending {
-        let hap = &site.haps[h];
-        let class = hap.class as usize;
-        // a bound at most the class's best cannot raise it, nor reach it first past it
-        let beaten = best[class].map(|(b, bh)| if h < bh { b - 1 } else { b });
-        let s = match scorer.score_or_bound(site, hap, beaten) {
-            Ok(s) => s,
-            Err(_) => continue,
-        };
-        raise(&mut best, class, s, h);
-    }
-    let aligns = std::cell::RefCell::new(Vec::new());
-    let ex = Examined::new(site, &scorer, |h| std::rc::Rc::new(site.haps[h].clone()), &aligns);
-    conclude(site, read, &ex, best, min_baseq, ask_anchor)
 }
 
 /// Per class, the best score and the first candidate (haplotype or state) reaching it.
@@ -452,22 +380,10 @@ fn judge_graph(site: &Site, read: &ReadView, min_baseq: u8, ask_anchor: bool, ke
     // The aligner's own tags decide before any programme runs.
     if rule == FitsRule::XsPure && read.tags.fits_elsewhere() {
         let fits = FitsTrace { states: site.graphs.len() as u8, fired: true, ..FitsTrace::default() };
-        let verdict = Verdict { call: Call::Depth, qual: 0, best: [None; 3], holds_anchor: false, placed: None, triage: None, confirmed: false, spells: 0, clip: None, fits, fits_none: false, neither: NeitherTrace::default(), owngap: OwnGapTrace::default() };
+        let verdict = Verdict { call: Call::Depth, qual: 0, best: [None; 3], holds_anchor: false, placed: None, confirmed: false, spells: 0, clip: None, fits, fits_none: false, neither: NeitherTrace::default(), owngap: OwnGapTrace::default() };
         return (verdict, kept);
     }
     let gr = site.graph_read(read);
-    // Triage first: a read whose confident k-mers name one state.
-    let triaged = match (site.triage_mode, &site.triage) {
-        (TriageMode::Off, _) | (_, None) => None,
-        (_, Some(ix)) if !ask_anchor => ix.decide(site, read, &gr, min_baseq),
-        _ => None,
-    };
-    if site.triage_mode == TriageMode::On {
-        if let Some(t) = triaged {
-            let verdict = Verdict { call: t.call, qual: t.qual, best: [None; 3], holds_anchor: false, placed: None, triage: None, confirmed: false, spells: 0, clip: None, fits: FitsTrace::default(), fits_none: false, neither: NeitherTrace::default(), owngap: OwnGapTrace::default() };
-            return (verdict, kept);
-        }
-    }
     let scored = kept.unwrap_or_else(|| std::rc::Rc::new(graph::with_workspaces(site.graphs.len(), |wss| score_states(site, &gr, wss))));
     let (best, halves) = (scored.best, &scored.halves);
     let top = best.iter().flatten().map(|b| b.0).max().unwrap_or(i32::MIN);
@@ -475,7 +391,7 @@ fn judge_graph(site: &Site, read: &ReadView, min_baseq: u8, ask_anchor: bool, ke
     let fits = FitsTrace { full: halves.iter().filter(|h| h.is_none()).count() as u8, states: halves.len() as u8, fired, neighbourhood };
     let verdict = if fired {
         trace!("haplotype judge: the read fits no state's graph (best {top}, {rule:?}) → depth only");
-        Verdict { call: Call::Depth, qual: 0, best: best.map(|b| b.map(|(s, _)| s)), holds_anchor: false, placed: None, triage: None, confirmed: false, spells: 0, clip: None, fits, fits_none: false, neither: NeitherTrace::default(), owngap: OwnGapTrace::default() }
+        Verdict { call: Call::Depth, qual: 0, best: best.map(|b| b.map(|(s, _)| s)), holds_anchor: false, placed: None, confirmed: false, spells: 0, clip: None, fits, fits_none: false, neither: NeitherTrace::default(), owngap: OwnGapTrace::default() }
     } else {
         let scorer = Scorer::new(read);
         let ex = Examined::new(
@@ -493,7 +409,7 @@ fn judge_graph(site: &Site, read: &ReadView, min_baseq: u8, ask_anchor: bool, ke
         );
         conclude(site, read, &ex, best, min_baseq, ask_anchor)
     };
-    (Verdict { triage: triaged.map(|t| (t.call, t.qual, t.unknown)), fits, fits_none: top < FITS_NOTHING, ..verdict }, Some(scored))
+    (Verdict { fits, fits_none: top < FITS_NOTHING, ..verdict }, Some(scored))
 }
 
 /// The read's programmes over the site's states, a workspace each (`wss`): each state's
@@ -635,7 +551,7 @@ fn conclude<'h, F: Fn(usize) -> std::rc::Rc<Hap>>(
     if kept.iter().all(Option::is_none) {
         trace!("haplotype judge: every state is reached only through an indel of the read's own → another allele");
         let scores = best.map(|b| b.map(|(s, _)| s));
-        return Verdict { call: Call::Other, qual: 0, best: scores, holds_anchor: false, placed: None, triage: None, confirmed: false, spells: 0, clip: None, fits: FitsTrace::default(), fits_none: false, neither: NeitherTrace::default(), owngap: og };
+        return Verdict { call: Call::Other, qual: 0, best: scores, holds_anchor: false, placed: None, confirmed: false, spells: 0, clip: None, fits: FitsTrace::default(), fits_none: false, neither: NeitherTrace::default(), owngap: og };
     }
     trace!("haplotype judge: states reached only through an indel of the read's own dropped ({:?})", og.dropped);
     Verdict { owngap: og, ..conclude_margin(site, read, ex, kept, min_baseq, ask_anchor) }
@@ -716,10 +632,10 @@ fn conclude_margin<'h, F: Fn(usize) -> std::rc::Rc<Hap>>(
         Call::Depth => None,
     };
     let Some(won) = won else {
-        return Verdict { call, qual: 0, best: scores, holds_anchor: false, placed: None, triage: None, confirmed: false, spells: 0, clip: None, fits: FitsTrace::default(), fits_none: false, neither: NeitherTrace::default(), owngap: OwnGapTrace::default() };
+        return Verdict { call, qual: 0, best: scores, holds_anchor: false, placed: None, confirmed: false, spells: 0, clip: None, fits: FitsTrace::default(), fits_none: false, neither: NeitherTrace::default(), owngap: OwnGapTrace::default() };
     };
     if call == Call::Other && !ask_anchor {
-        return Verdict { call, qual: 0, best: scores, holds_anchor: false, placed: None, triage: None, confirmed: false, spells: 0, clip: None, fits: FitsTrace::default(), fits_none: false, neither: NeitherTrace::default(), owngap: OwnGapTrace::default() };
+        return Verdict { call, qual: 0, best: scores, holds_anchor: false, placed: None, confirmed: false, spells: 0, clip: None, fits: FitsTrace::default(), fits_none: false, neither: NeitherTrace::default(), owngap: OwnGapTrace::default() };
     }
     let w = fit_other.or(mixed_on).unwrap_or_else(|| best[won as usize].map_or(0, |(_, h)| h));
     let (hap_w, w_al) = (ex.hap(w), ex.align(w));
@@ -746,14 +662,14 @@ fn conclude_margin<'h, F: Fn(usize) -> std::rc::Rc<Hap>>(
         trace!("haplotype judge: a {call:?} call on a read with a telling base read as neither allele → another allele");
         call = Call::Other;
         if !ask_anchor {
-            return Verdict { call, qual: 0, best: scores, holds_anchor: false, placed: None, triage: None, confirmed: false, spells: 0, clip: None, fits: FitsTrace::default(), fits_none: false, neither: nt, owngap: OwnGapTrace::default() };
+            return Verdict { call, qual: 0, best: scores, holds_anchor: false, placed: None, confirmed: false, spells: 0, clip: None, fits: FitsTrace::default(), fits_none: false, neither: nt, owngap: OwnGapTrace::default() };
         }
     }
     if matches!(call, Call::Alt | Call::Ref) && site.changed_bases() >= 2 && read_at_x(site, read, hap_w, wa, off).mixed() {
         trace!("haplotype judge: a {call:?} call on a read carrying some of X's changes → another allele");
         call = Call::Other;
         if !ask_anchor {
-            return Verdict { call, qual: 0, best: scores, holds_anchor: false, placed: None, triage: None, confirmed: false, spells: 0, clip: None, fits: FitsTrace::default(), fits_none: false, neither: NeitherTrace::default(), owngap: OwnGapTrace::default() };
+            return Verdict { call, qual: 0, best: scores, holds_anchor: false, placed: None, confirmed: false, spells: 0, clip: None, fits: FitsTrace::default(), fits_none: false, neither: NeitherTrace::default(), owngap: OwnGapTrace::default() };
         }
     }
     // Measurement only (GBCMS_JUDGE_REFBASE=partial): at a delins, a REF or ALT call on a
@@ -767,7 +683,7 @@ fn conclude_margin<'h, F: Fn(usize) -> std::rc::Rc<Hap>>(
         trace!("haplotype judge: a {call:?} call on a read showing the other allele's base at a telling base → another allele");
         call = Call::Other;
         if !ask_anchor {
-            return Verdict { call, qual: 0, best: scores, holds_anchor: false, placed: None, triage: None, confirmed: false, spells: 0, clip: None, fits: FitsTrace::default(), fits_none: false, neither: nt, owngap: OwnGapTrace::default() };
+            return Verdict { call, qual: 0, best: scores, holds_anchor: false, placed: None, confirmed: false, spells: 0, clip: None, fits: FitsTrace::default(), fits_none: false, neither: nt, owngap: OwnGapTrace::default() };
         }
     }
     let column = |p: &Placed| if let Placed::At(c) = *p { Some((c + off) as i64) } else { None };
@@ -778,7 +694,7 @@ fn conclude_margin<'h, F: Fn(usize) -> std::rc::Rc<Hap>>(
     let at = |p: &Placed| matches!(p, Placed::At(_));
     let placed = wa.placed.iter().position(at).zip(wa.placed.iter().rposition(at)).map(|(a, b)| (a, b + 1));
     if call == Call::Other {
-        return Verdict { call, qual: 0, best: scores, holds_anchor, placed, triage: None, confirmed: false, spells: 0, clip: None, fits: FitsTrace::default(), fits_none: false, neither: nt, owngap: OwnGapTrace::default() };
+        return Verdict { call, qual: 0, best: scores, holds_anchor, placed, confirmed: false, spells: 0, clip: None, fits: FitsTrace::default(), fits_none: false, neither: nt, owngap: OwnGapTrace::default() };
     }
     // The bases that tell X from REF at its site, covered by the winning alignment: X's
     // own for an ALT call, none of them read confidently as another base; REF's for a REF
@@ -786,12 +702,7 @@ fn conclude_margin<'h, F: Fn(usize) -> std::rc::Rc<Hap>>(
     // rules read equal-length windows there). A base below `--min-baseq` there weighs
     // nothing either way, as an MNP read with a differing base below it counts ALT under
     // the rules (RJ-25); the margin already rests the call on its confident bases.
-    let need = site.is_substitution()
-        || match delins_option() {
-            DelinsOption::Asym => call == Call::Alt,
-            DelinsOption::Sym => true,
-            DelinsOption::Margin => false,
-        };
+    let need = site.is_substitution();
     let telling = if need { site.telling_in(hap_w) } else { Vec::new() };
     // Measurement only (GBCMS_JUDGE_REFBASE=partial): REF's base at each of them, where a
     // third base (neither REF's nor X's) is an error the margin forgives (RJ-26).
@@ -819,7 +730,7 @@ fn conclude_margin<'h, F: Fn(usize) -> std::rc::Rc<Hap>>(
     let clip = if ask_anchor && site.is_substitution() && reads_all { clip_bases(read, hap_w, wa, off, &telling_at) } else { None };
     if !reads_all {
         call = Call::Depth;
-        return Verdict { call, qual: 0, best: scores, holds_anchor: false, placed: None, triage: None, confirmed: false, spells: 0, clip: None, fits: FitsTrace::default(), fits_none: false, neither: nt, owngap: OwnGapTrace::default() };
+        return Verdict { call, qual: 0, best: scores, holds_anchor: false, placed: None, confirmed: false, spells: 0, clip: None, fits: FitsTrace::default(), fits_none: false, neither: nt, owngap: OwnGapTrace::default() };
     }
     // The best losing haplotype: the best of the other classes, the first on a tie (X's,
     // for a REF call the other allele tied: the bases that beat X decided it).
@@ -834,7 +745,7 @@ fn conclude_margin<'h, F: Fn(usize) -> std::rc::Rc<Hap>>(
         deciding_quality(read, wa, &la.0).map_or(floor, |q| q.max(floor))
     });
     let spells = if call == Call::Alt { site.spelled_holders(read, hap_w, wa, off) } else { 0 };
-    Verdict { call, qual, best: scores, holds_anchor, placed, triage: None, confirmed, spells, clip, fits: FitsTrace::default(), fits_none: false, neither: nt, owngap: OwnGapTrace::default() }
+    Verdict { call, qual, best: scores, holds_anchor, placed, confirmed, spells, clip, fits: FitsTrace::default(), fits_none: false, neither: nt, owngap: OwnGapTrace::default() }
 }
 
 /// What a read's confident bases show at a substitution X's telling bases, on its
@@ -1144,10 +1055,10 @@ pub(crate) fn classify(record: &Record, variant: &Variant, quals: &[u8], min_bas
             if tracing {
                 trace!(
                     "haplotype judge {}:{} {}>{} read={}: {:?} (best alt={:?} ref={:?} other={:?}) qual={} \
-                     holds the anchor={} over {} haplotypes",
+                     holds the anchor={} over {} state graphs",
                     variant.chrom, variant.pos + 1, variant.ref_allele, variant.alt_allele,
                     String::from_utf8_lossy(record.qname()), call, verdict.best[0], verdict.best[1],
-                    verdict.best[2], out.qual, overlaps_anchor || verdict.holds_anchor, site.haps.len(),
+                    verdict.best[2], out.qual, overlaps_anchor || verdict.holds_anchor, site.graphs.len(),
                 );
             }
             // Measurement only, the "fits nothing" decision package: per judged read, its best
@@ -1189,15 +1100,6 @@ pub(crate) fn classify(record: &Record, variant: &Variant, quals: &[u8], min_bas
                     call, opt(verdict.best[0]), opt(verdict.best[1]), opt(verdict.best[2]), read.confident(), read.seq.len(),
                     read.expected_errors(), f.full, f.states, ns, read.tags.mapq, opt(read.tags.best), opt(read.tags.elsewhere),
                     opt(read.tags.nm), opt(f.neighbourhood), f.fired, fits_rule(),
-                );
-            }
-            if let Some((t, tq, unknown)) = verdict.triage {
-                // Measurement only: triage's call beside the scorer's, for every read it decided.
-                trace!(
-                    "judge triage {}:{} {}>{} read={} mate={} triage={:?} dp={:?} agree={} triage_qual={} dp_qual={} unknown={}",
-                    variant.chrom, variant.pos + 1, variant.ref_allele, variant.alt_allele,
-                    String::from_utf8_lossy(record.qname()), if record.is_first_in_template() { 1 } else { 2 },
-                    t, call, t == call, tq, verdict.qual, unknown,
                 );
             }
             if judged.is_none() {

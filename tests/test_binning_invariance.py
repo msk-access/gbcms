@@ -169,7 +169,9 @@ def _pairs(contig, variants, seed, step=3, umi=False):
     return reads
 
 
-def _prepared(fa, rows):
+def _prepared(fa, rows, **judge):
+    """The rows prepared as the pipeline prepares them; `judge` names the read judgment
+    they are counted with (`read_judge`), where a test names one."""
     pvs = gbcms_rs.prepare_variants(
         [gbcms_rs.Variant("1", p, r, a, "X") for p, r, a in rows],
         fa,
@@ -178,6 +180,7 @@ def _prepared(fa, rows):
         1,
         True,
         rescue_homopolymer=True,
+        **judge,
     )
     assert all(pv.gbcms_status == "PASS" for pv in pvs), [pv.gbcms_status_reason for pv in pvs]
     variants = [pv.variant for pv in pvs]
@@ -429,7 +432,7 @@ def test_haplotype_judge_counts_do_not_depend_on_bin_geometry(tmp_path, caplog):
     """The judge's contract shapes on one contig, under every geometry, one call per row
     and with decoy rows in the call."""
     fa, bam = write_contig(tmp_path, JUDGE, _judge_reads(), "judge")
-    variants, decomposed, siblings = _prepared(fa, JUDGE_ROWS)
+    variants, decomposed, siblings = _prepared(fa, JUDGE_ROWS, read_judge="sequence")
     judged = {"read_judge": "sequence", "reference_fasta": fa}
     base, run = _check_invariance(caplog, bam, variants, decomposed, siblings, **judged)
     # #246: the insertion counts its carriers however written (4 gapped, 6 through, 6
@@ -439,7 +442,7 @@ def test_haplotype_judge_counts_do_not_depend_on_bin_geometry(tmp_path, caplog):
 
     decoy_rows = [(p, JUDGE[p], "T" if JUDGE[p] != "T" else "G") for p in range(240, 3100, 41)]
     decoy_rows = [r for r in decoy_rows if r[0] not in {v[0] for v in JUDGE_ROWS}]
-    decoys, _, _ = _prepared(fa, decoy_rows)
+    decoys, _, _ = _prepared(fa, decoy_rows, read_judge="sequence")
     half = len(decoys) // 2
     with_decoys, _ = _bins(
         caplog,
@@ -459,7 +462,7 @@ def test_haplotype_judge_dense_dna_counts_do_not_depend_on_bin_geometry(tmp_path
     55bp deletion with rows inside it, contig ends) as read pairs, judged."""
     reads = _pairs(DNA, DNA_VARIANTS, seed=1)
     fa, bam = write_contig(tmp_path, DNA, reads, "dna")
-    variants, decomposed, siblings = _prepared(fa, DNA_VARIANTS)
+    variants, decomposed, siblings = _prepared(fa, DNA_VARIANTS, read_judge="sequence")
     _check_invariance(
         caplog, bam, variants, decomposed, siblings, read_judge="sequence", reference_fasta=fa
     )
@@ -479,7 +482,9 @@ def test_haplotype_judge_clip_carriers_do_not_depend_on_bin_geometry(tmp_path, c
         read = make_read(f"l{i}", hap[hs : hs + READ], after, ((4, clip), (0, READ - clip)))
         reads.append(_paired(read, 260, reverse=True))
     fa, bam = write_contig(tmp_path, ref, reads, "clip")
-    variants, decomposed, siblings = _prepared(fa, [(CLIP_POS, ref[CLIP_POS : CLIP_POS + 60], alt)])
+    variants, decomposed, siblings = _prepared(
+        fa, [(CLIP_POS, ref[CLIP_POS : CLIP_POS + 60], alt)], read_judge="sequence"
+    )
     base, _ = _check_invariance(
         caplog, bam, variants, decomposed, siblings, read_judge="sequence", reference_fasta=fa
     )

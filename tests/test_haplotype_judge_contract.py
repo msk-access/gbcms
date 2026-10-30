@@ -434,7 +434,10 @@ def test_prep_lists_every_other_row_within_a_reads_reach(tmp_path):
 
     deletion = _rs.Variant("1", x - 305, contig[x - 305 : x - 295], contig[x - 305], "DEL")
     rows = [snv(x), snv(x + 100), snv(x + 299), snv(x + 302), snv(x - 299), deletion, snv(x + 900)]
-    prepared = [pv.variant for pv in _rs.prepare_variants(rows, fa, 5, False, 1, True)]
+    prepared = [
+        pv.variant
+        for pv in _rs.prepare_variants(rows, fa, 5, False, 1, True, read_judge="sequence")
+    ]
     near = {(p, r, a) for p, r, a in prepared[0].reach_rows}
     want = {
         (v.pos, v.ref_allele.upper(), v.alt_allele.upper())
@@ -692,7 +695,14 @@ def _judged_fixture(tmp_path, caplog, monkeypatch, name, **kw):
         k.setdefault("reference_fasta", str(Path(bam).with_suffix(".fa")))
         return count_checked(bam, variants, **k)
 
+    prepare = masked._rs.prepare_variants
+
+    def prepared(*args, **k):
+        k.setdefault("read_judge", "sequence")
+        return prepare(*args, **k)
+
     monkeypatch.setattr(masked, "count_checked", judged)
+    monkeypatch.setattr(masked._rs, "prepare_variants", prepared)
     counts, calls = masked._counted(tmp_path, caplog, name, **kw)
     assert counts.dp >= counts.rd + counts.ad
     assert counts.dpf >= counts.rdf + counts.adf
@@ -734,7 +744,10 @@ def _mnp_beside_indel(tmp_path, reads_of, extra=()):
     hap = ref[:p] + "TA" + ref[p + 2 :]
     fa, bam = _files(tmp_path, ref, reads_of(ref, hap, p) + list(extra))
     (c,) = count_checked(
-        bam, [_prepared(fa, "GC", "TA", pos=p)], read_judge="sequence", reference_fasta=fa
+        bam,
+        [_prepared(fa, "GC", "TA", pos=p, read_judge="sequence")],
+        read_judge="sequence",
+        reference_fasta=fa,
     )
     assert c.dp >= c.rd + c.ad and c.dpf >= c.rdf + c.adf
     assert c.rd == c.rd_fwd + c.rd_rev and c.ad == c.ad_fwd + c.ad_rev
@@ -838,6 +851,7 @@ def _imperfect_repeat_counts(tmp_path, where):
         False,
         1,
         True,
+        read_judge="sequence",
     )
     (c,) = count_checked(bam, [pv.variant], read_judge="sequence", reference_fasta=fa)
     assert c.dp >= c.rd + c.ad and c.rd == c.rd_fwd + c.rd_rev and c.ad == c.ad_fwd + c.ad_rev
@@ -895,6 +909,7 @@ def test_another_unit_count_of_a_vntr_is_partial_evidence(tmp_path, differ):
         False,
         1,
         True,
+        read_judge="sequence",
     )
     (got,) = count_checked(bam, [pv.variant], read_judge="sequence", reference_fasta=fa)
     assert got.dp >= got.rd + got.ad and got.rd == got.rd_fwd + got.rd_rev
@@ -1141,7 +1156,13 @@ def _two_haplotype_calls(tmp_path, caplog, window, g0, rows, x_pos, written=None
         reads += [_read_on(f"h{k}_{s}", hap, origin, s) for s in range(0, len(hap) - 151, 4)]
     fa, bam = write_contig(tmp_path, window, reads, "w")
     pvs = _rs.prepare_variants(
-        [_rs.Variant("1", p - 1, r, a, "X") for p, r, a in local], fa, 5, False, 1, True
+        [_rs.Variant("1", p - 1, r, a, "X") for p, r, a in local],
+        fa,
+        5,
+        False,
+        1,
+        True,
+        read_judge="sequence",
     )
     vs = [pv.variant for pv in pvs]
     xi = next(i for i, (p, _, _) in enumerate(local) if p == x_pos - g0 + 1)
@@ -1242,7 +1263,13 @@ def test_a_dense_cluster_of_rows_is_judged_in_bounded_time(tmp_path):
         reads.append(make_read(f"r{i}", h[st : st + 150], st, ((0, 150),), quals=quals))
     fa, bam = write_contig(tmp_path, contig, reads, "c")
     pvs = _rs.prepare_variants(
-        [_rs.Variant("1", p, r, a, "SNP") for p, r, a in rows], fa, 5, False, 1, True
+        [_rs.Variant("1", p, r, a, "SNP") for p, r, a in rows],
+        fa,
+        5,
+        False,
+        1,
+        True,
+        read_judge="sequence",
     )
     x = pvs[30].variant
     t0 = time.monotonic()

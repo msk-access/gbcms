@@ -55,7 +55,7 @@ def _edge_counts(tmp_path, caplog, ref_al, alt_al, carriers_ins):
         reads.append(make_read(f"r{i}", contig[s:], s, ((0, len(contig) - s),), flag=flag))
     fa, bam = write_contig(tmp_path, contig, reads, "edge")
     (pv,) = _rs.prepare_variants(
-        [_rs.Variant("1", a, ref_al, alt_al, "INDEL")], fa, 5, False, 1, True
+        [_rs.Variant("1", a, ref_al, alt_al, "INDEL")], fa, 5, False, 1, True, read_judge="sequence"
     )
     with caplog.at_level(logging.WARNING, logger=ENGINE_LOGGER):
         _rs.reset_log_caching()
@@ -96,7 +96,9 @@ def test_an_insertion_in_a_run_starting_the_contig_is_depth_only_and_warned(tmp_
         )
         reads.append(make_read(f"r{i}", contig[: 60 + i], 0, ((0, 60 + i),), flag=flag))
     fa, bam = write_contig(tmp_path, contig, reads, "edge")
-    (pv,) = _rs.prepare_variants([_rs.Variant("1", 6, "G", "AG", "INDEL")], fa, 5, False, 1, True)
+    (pv,) = _rs.prepare_variants(
+        [_rs.Variant("1", 6, "G", "AG", "INDEL")], fa, 5, False, 1, True, read_judge="sequence"
+    )
     assert (pv.variant.pos, pv.variant.ref_allele, pv.variant.alt_allele) == (0, "A", "AA")
     with caplog.at_level(logging.WARNING, logger=ENGINE_LOGGER):
         _rs.reset_log_caching()
@@ -120,7 +122,9 @@ def test_alike_carriers_at_a_contig_end_are_each_depth_only_and_warned(tmp_path,
     reads = [make_read(f"c{i}", seq, s, ((0, a + 1 - s), (1, 1), (0, 6))) for i in range(5)]
     reads += [make_read(f"r{i}", contig[s:], s, ((0, len(contig) - s),)) for i in range(5)]
     fa, bam = write_contig(tmp_path, contig, reads, "edge")
-    (pv,) = _rs.prepare_variants([_rs.Variant("1", a, "G", "GA", "INDEL")], fa, 5, False, 1, True)
+    (pv,) = _rs.prepare_variants(
+        [_rs.Variant("1", a, "G", "GA", "INDEL")], fa, 5, False, 1, True, read_judge="sequence"
+    )
     with caplog.at_level(logging.WARNING, logger=ENGINE_LOGGER):
         _rs.reset_log_caching()
         (c,) = count_bam_checked(
@@ -151,7 +155,13 @@ def _edge_contig():
 def _count_at(tmp_path, caplog, contig, reads, pos, ref_al, alt_al):
     fa, bam = write_contig(tmp_path, contig, reads, "edge")
     (pv,) = _rs.prepare_variants(
-        [_rs.Variant("1", pos, ref_al, alt_al, "INDEL")], fa, 5, False, 1, True
+        [_rs.Variant("1", pos, ref_al, alt_al, "INDEL")],
+        fa,
+        5,
+        False,
+        1,
+        True,
+        read_judge="sequence",
     )
     with caplog.at_level(logging.WARNING, logger=ENGINE_LOGGER):
         _rs.reset_log_caching()

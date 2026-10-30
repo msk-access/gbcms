@@ -4,8 +4,8 @@ Mechanism. `Variant.reach_rows` (the input's other rows within a read's reach of
 whole-input so they never depend on the bin) is read by the sequence judge alone. Under the
 default `--read-judge rules` nothing reads it, so preparation that is told the judge skips it
 (the engine is output-aware: the intent is plumbed, nothing is computed to be discarded).
-Told nothing, preparation records it as before, so a caller that prepares and then counts
-under the judge gets the same rows.
+An unset read judgment means the rules; counting under the judge refuses rows prepared for
+the rules (tests/test_read_judge_intent_contract.py).
 """
 
 import random
@@ -47,11 +47,9 @@ def test_the_rules_path_prepares_no_reach_rows(tmp_path):
 
 @pytest.mark.parametrize("judge", ["sequence", "haplotype"])
 def test_the_judge_path_prepares_the_reach_rows_as_before(tmp_path, judge):
-    """Told the sequence judge (or its former name), the rows are those preparation records
-    when told nothing: the near SNV and deletion each list the other; the far SNV none."""
+    """Told the sequence judge (or its former name), preparation records the rows in reach:
+    the near SNV and deletion each list the other; the far SNV none."""
     told = _prepare(tmp_path, read_judge=judge)
-    untold = _prepare(tmp_path)
-    assert [p.variant.reach_rows for p in told] == [p.variant.reach_rows for p in untold]
     snv, deletion, far = (p.variant.reach_rows for p in told)
     assert [r[0] for r in snv] == [329] and [r[0] for r in deletion] == [300] and far == []
 
