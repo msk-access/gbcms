@@ -323,6 +323,53 @@ placement, bases). Cost within 2× develop. The HPC gate.
    resolves to the ALT mate's structure), and on 7 HG002 rows (ADF +9); no truth set scores
    fragments.
 
+4. **Decided (operator, 2026-10-29):** a read's call is examined on the alignment its score
+   came from. The call reads which bases sit at X's telling bases, whether the read holds the
+   anchor, and the deciding quality off the read's alignment to the haplotype its best path
+   spells. That was a second, linear alignment, banded its own way; it is now the path the
+   graph programme traced (`graph::kept_steps`, `Site::alignment_on_path`). The linear aligner
+   stays only where no state's path spells the haplotype or keeps its steps: `Site::reaches_state`
+   (REF's haplotype with another state's contexts, for REF tied with another allele), and a
+   path keeping no steps (a graph not laid out in order, which the builder never lays out, or
+   an empty read).
+   - **Mechanism.** On tied placements in a run both choose the same alignment (32,064
+     synthetic alignments agreed). They part where the two bands differ (the linear band can
+     miss the path the graph finds: a read beside a listed 14-base deletion in an 18-base
+     repeat aligned at -20 against its state's -17) and where a deletion ties across repeat
+     units (each aligner breaks the tie its own way, and the deciding quality followed the
+     second one: 21 where X's base reads 25). Red-first tests pin both shapes and the tie.
+   - **Effects.** Both read loops call the same `judge::classify`, so every output that
+     consumes its `ClassifyResult` follows: RD/AD and fragment counts (mates resolve by
+     quality), mFSD, the observations export and the MNP-rescue recount. RNA, per-transcript
+     counts and ASJD are unchanged: RNA mode refuses the sequence judge. The writers,
+     diagnostics, flags and Nextflow are unchanged in code.
+   - **Measured on every arm** (develop dc16364c against this change; oracles v2 and v3;
+     HG002 truth v2dbq20):
+
+     | Arm | Reads changed | Oracle v2 (agree, wrong) | Oracle v3 (agree, wrong) |
+     |:--|--:|:--|:--|
+     | panel (IMPACT tumour) | 37 (2 SNV rows) | +36, +0 | +0, +0 |
+     | across (IMPACT normal, ACCESS XS1, XS2) | 0 | 0 | 0 |
+     | WES | 0 | 0 | 0 |
+     | germline normals | 0 | 0 | 0 |
+     | gate subset | 69 (18 rows) | +36 SNV, +2 MNV, -2 DEL 20-49 unique; +0 | +2 MNV, -2 DEL 20-49 unique; +0 |
+     | HG002, 8 arms | 830 (317 rows; most in SV rows the truth leaves undecided) | | |
+
+     HG002 truth v2dbq20: tr SNVs +1 ALT, no wrong calls. The decided-contract suite (the
+     judge switch) is identical to develop's. Cost (Mac CPU, develop's judge path against this
+     change, timed together): 2 to 10% lower on the patient arms (panel 10%, across 4%, WES 5%,
+     normals 2%), 4% on the gate subset (3.19× to 3.07× the rules path), 11 to 28% lower on
+     HG002 (no second alignment per examined state).
+   - **Worked rows (HG002, public).** tr 20:19346218 A>G: one read scores ALT 0, REF -4,
+     OTHER -4 either way; the linear alignment does not place its base at X (depth only), the
+     traced path does (ALT); truth ALT. c246 17:80743837 A>T: one read scores ALT -4, REF 0,
+     OTHER -4; depth only becomes REF; truth REF. On the panel, two SNV rows' 36 reads go from
+     depth only to ALT (oracle v2 ALT, v3 ambiguous).
+   - **Other tools.** GATK HaplotypeCaller genotypes from PairHMM likelihoods summed over every
+     alignment of a read to each haplotype (no single alignment decides), its realigned output
+     a separate Smith-Waterman alignment; freebayes calls from reads' literal sequences over a
+     window; Strelka2's handling is not documented.
+
 ## 11. Open tickets the judge resolves (measured 2026-10-28)
 On the merged branch (develop 6efeb5bb merged in), against its own default path, which gives
 develop's counts. HG002 (public) and synthetic shapes; HG002 truth is v2dbq20 (reads whose own

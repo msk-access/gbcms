@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed — the sequence judge examines a call on the alignment its score came from (#304)
+
+- Under `--read-judge sequence`, a read's call (the bases at X, the anchor, the deciding
+  quality) is read off the path the graph programme traced, not a second, linear alignment.
+  Tied placements in a run are as before; where the two differed (a band missing the graph's
+  path, a deletion tied across repeat units) the call now rests on its score's own alignment.
+  Measured on every arm: both oracles pass everywhere, HG002 truth +1 ALT; the judge takes 2 to
+  28% less CPU. `docs/proposals/sequence-judge.md` §10.4.
+
 ### Added — the sequence judge, opt-in (`--read-judge sequence`, #304)
 
 - **A second read judgment for small-variant rows, behind a flag.** With
