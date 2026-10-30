@@ -421,6 +421,14 @@ placement, bases). Cost within 2× develop. The HPC gate.
      from it; on truth-decided reads the two differ by 5. Most moves are REF to depth only (319,
      truth undecided): in a long repeat the read fits the other states as well one unit along,
      where it does not reach X. The decided-contract suite is identical to develop's.
+
+     On develop with path-align (a2ca57c1) the floor moves the same 2 reads on the patient arms
+     and 666 on HG002, 618 of them as on dc16364c. The others differ through path-align: 27 it
+     already moves to the floor's call, 12 the floor moved only through the linear aligner's
+     band (which no longer decides a call), 25 start from a call path-align changed, 14 move
+     now because the call is read off the traced path the floor changes, and 9 move from or to
+     another call. HG002 truth v2dbq20: tr INS 1-9 +2 ALT, INS 10-49 +1, SNV +1 (path-align
+     makes the other); no wrong calls under any truth set.
    - **The band gap left** (reads the band scores below the full programme, per 10,000 judged;
      the band rule traced beside the full programme on one build, `GBCMS_JUDGE_FREESHIFT=off`
      for the floor before):

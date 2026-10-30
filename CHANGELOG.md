@@ -14,10 +14,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   aligner placed a repeat unit off slides along the repeat at no cost and leaves the band on a
   short gap, so the band could stand on a worse score than the read's best. The floor now
   takes the longest tandem-repeat period in the read's reach off the band's slack, and asks
-  for a perfect score once the period reaches it. Measured on every arm: on the patient arms 2
-  reads change (gate subset, both agreeing with the oracles); on HG002 666, truth +5 ALT on the
-  tandem-repeat arm and no wrong calls, 90% of them moving to the full programme's call. CPU +2
-  to +12% on the patient arms, +16 to +38% on HG002. `docs/proposals/sequence-judge.md` §10.
+  for a perfect score once the period reaches it. Measured on every arm, with path-align: on
+  the patient arms 2 reads change (gate subset, both agreeing with the oracles); on HG002 666,
+  truth +4 ALT on the tandem-repeat arm and no wrong calls (without path-align, 90% of them
+  move to the full programme's call). CPU +2 to +12% on the patient arms, +16 to +38% on
+  HG002. `docs/proposals/sequence-judge.md` §10.
 
 ### Changed — the sequence judge examines a call on the alignment its score came from (#304)
 
