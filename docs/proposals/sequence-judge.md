@@ -322,7 +322,6 @@ placement, bases). Cost within 2× develop. The HPC gate.
    (ADF +76, RDF −8; 82 fragments there have one mate ALT and the other REF, which `keep`
    resolves to the ALT mate's structure), and on 7 HG002 rows (ADF +9); no truth set scores
    fragments.
-
 4. **Decided (operator, 2026-10-29):** a read's call is examined on the alignment its score
    came from. The call reads which bases sit at X's telling bases, whether the read holds the
    anchor, and the deciding quality off the read's alignment to the haplotype its best path
@@ -369,6 +368,107 @@ placement, bases). Cost within 2× develop. The HPC gate.
      alignment of a read to each haplotype (no single alignment decides), its realigned output
      a separate Smith-Waterman alignment; freebayes calls from reads' literal sequences over a
      window; Strelka2's handling is not documented.
+5. **Decided (operator, 2026-10-29): the five speed options.** Each was built as an
+   off-by-default switch (`feature/c46-speed-opts`, not merged) and measured on every arm
+   against the judge head: oracles v2 and v3, HG002 truth v2dbq20, the decided-contract suite,
+   Mac CPU time.
+
+   | Option | Speed | Counts | Decision |
+   |:--|:--|:--|:--|
+   | The call examined on the traced path (`GBCMS_JUDGE_PATHALIGN`) | −6% gate subset, −3 to −10% patient arms, −9 to −33% HG002 | small; agrees with oracle v2 and truth | adopted as the default (#370) |
+   | No other-base states at an SNV for a read whose base at X is REF's or X's (`GBCMS_JUDGE_SKIPOTHER`) | 0 to −3% | where a third base ties X or REF the tie rule (RJ-25) no longer sees it: oracle v2 fails on wrong calls (panel +12, gate subset +38), v3 and truth gain | not a speed lever; a rule question (#367, under #332); the switch stays off |
+   | The narrow band widened only by the rows the read crosses (`GBCMS_JUDGE_BANDROWS=crossed`) | none | HG002 tr SNVs +3 wrong calls (fails the bar) | rejected |
+   | The floor from the band's own half-width (`GBCMS_JUDGE_BANDFLOOR=half`) | up to −5% | gate subset −22 agreeing, +4 wrong (v2); widens the band gap | rejected |
+   | The full programme for every read (`GBCMS_JUDGE_BAND=full`) | ×2.75 gate subset, ×1.1 to ×2.9 elsewhere | exact; small gains | measurement only: the yardstick of the band's rule |
+
+   The full programme showed the band gap: a band standing on a worse score than the read's
+   best, on 2.3 reads in 10,000 on the gate subset, 32 on the panel and up to 40 on HG002.
+
+6. **Chosen (operator, 2026-10-29): a band's floor counts the repeat a read may slide along
+   (#369).**
+   - **Mechanism.** A band stood on its edge alone for any score down to what an indel leaving
+     it costs (16 bases each side: −23). A read its aligner placed a repeat unit off does not
+     pay that: it slides a unit along the repeat at no cost and leaves the band on a short gap,
+     so the band stood on a worse score than the read's best. The floor now takes the longest
+     tandem-repeat period p in the read's reach (its span ± its length) off the slack: a band
+     stands on its edge alone only down to the cost of an indel of slack − p + 1 bases, and
+     only on a perfect score once p reaches the slack (`score::stand_floor`). A repeat is a
+     stretch repeating at period p (to 64) for two periods and at least 20 bases
+     (`score::tandem_tracts`); a long run counts its multi-unit shifts. It holds for the narrow
+     and wide graph bands and for the linear aligner's band. Red-first tests: a period-13 read
+     placed a unit off scored −19 in its band against its best −16 (now −16); 20 of 912
+     synthetic shapes of the class fell short, none now.
+   - **Effects.** As for the path-align decision: both read loops call `judge::classify`, so
+     read and fragment counts, mFSD, the observations export and the MNP-rescue recount
+     follow; RNA mode refuses the sequence judge; the writers, flags and Nextflow are unchanged
+     in code.
+   - **Measured on every arm** (develop dc16364c against this change on it, and against the
+     full programme on this change; the judge cleanup since is identity-neutral):
+
+     | Arm | Reads changed | Oracle v2 (agree, wrong) | Oracle v3 (agree, wrong) | Reads the full programme changes |
+     |:--|--:|:--|:--|--:|
+     | panel (IMPACT tumour) | 0 | 0 | 0 | 6 |
+     | across (IMPACT normal, ACCESS XS1, XS2) | 0 | 0 | 0 | 0 |
+     | WES | 0 | 0 | 0 | 1 |
+     | germline normals | 0 | 0 | 0 | 0 |
+     | gate subset | 2 (1 DEL row) | +2 DEL 1 repeat, +0 | +2 DEL 1 repeat, +0 | 177 |
+     | HG002, 8 arms | 666 (401 rows) | | | 1,508 |
+
+     HG002 truth v2dbq20: tr INS 1-9 +2 ALT, INS 10-49 +1, SNV +2; no wrong calls (the full
+     programme: the same, and DEL 50-299 +1 on nocl and sub). The looser truths agree: v2db
+     one wrong call fewer on INS 50-299 (nocl, sub); v2cq20 tr +17 ALT and 6 wrong calls fewer,
+     c246 +1 REF. Of the 666 HG002 reads, 600 move to the full programme's call and 38 away
+     from it; on truth-decided reads the two differ by 5. Most moves are REF to depth only (319,
+     truth undecided): in a long repeat the read fits the other states as well one unit along,
+     where it does not reach X. The decided-contract suite is identical to develop's.
+
+     On develop with path-align (a2ca57c1) the floor moves the same 2 reads on the patient arms
+     and 666 on HG002, 618 of them as on dc16364c. The others differ through path-align: 27 it
+     already moves to the floor's call, 12 the floor moved only through the linear aligner's
+     band (which no longer decides a call), 25 start from a call path-align changed, 14 move
+     now because the call is read off the traced path the floor changes, and 9 move from or to
+     another call. HG002 truth v2dbq20: tr INS 1-9 +2 ALT, INS 10-49 +1, SNV +1 (path-align
+     makes the other); no wrong calls under any truth set.
+   - **The band gap left** (reads the band scores below the full programme, per 10,000 judged;
+     the band rule traced beside the full programme on one build, `GBCMS_JUDGE_FREESHIFT=off`
+     for the floor before):
+
+     | Arm | Reads judged | The floor before: short (per 10k), margin's call moved | This floor |
+     |:--|--:|--:|--:|
+     | panel | 421,745 | 1,352 (32.1), 43 | 1,343 (31.8), 43 |
+     | across | 411,166 | 329 (8.0), 0 | 329 (8.0), 0 |
+     | WES | 125,144 | 133 (10.6), 2 | 125 (10.0), 2 |
+     | germline normals | 100,598 | 0 | 0 |
+     | gate subset | 12,151,735 | 2,797 (2.3), 208 | 2,743 (2.3), 206 |
+     | HG002 delins | 16,662 | 7 (4.2), 1 | 4 (2.4), 0 |
+     | HG002 compound hets (3 arms) | 46,462 | 8 (1.7), 0 | 0 |
+     | HG002 c246 | 130,386 | 307 (23.5), 197 | 133 (10.2), 98 |
+     | HG002 tr | 97,328 | 267 (27.4), 118 | 109 (11.2), 45 |
+     | HG002 sub | 151,157 | 584 (38.6), 286 | 371 (24.5), 195 |
+     | HG002 nocl | 473,505 | 1,908 (40.3), 923 | 1,228 (25.9), 621 |
+
+     On the patient arms what is left is reads that fit no state well (best below −23: long
+     indels' sites, and 2 panel SNV rows whose 43 such reads the full programme leaves depth
+     only, 6 of them ALT under the band) and reads short on a losing state only: among reads
+     that fit well (best −12 or better) the margin's call moves for none on the panel, across
+     and WES, and for 6 on the gate subset. On HG002 it is repeats the exact-tract rule does
+     not see (units varying in length or base, as a CCTTC/CCCTTC run at 13:113419038, where a
+     REF state scores −58 in its band and −4 in full) and copies of the read away from X.
+   - **Worked rows (HG002, public).** tr 1:193564034 CTATA>C, a 4-base deletion inside a 69-base
+     tract of a 34-base unit (the floor there 0): one read scored ALT −20 and REF −10 in its
+     band and was called REF; it now scores ALT 0, as in the full programme, and is called ALT;
+     truth ALT. c246 13:60977860 G>A, in a 171-base compound TG/TA repeat: one read scored REF
+     0, ALT and OTHER −4 (REF); one unit along it fits ALT and OTHER perfectly (0/0/0), as in
+     the full programme: depth only; truth undecided.
+   - **Cost** (Mac CPU, develop's judge path against this change, timed together): panel +12%,
+     across +4%, WES −1%, normals 0, gate subset +2%; HG002 +16 to +38%, the compound-het arms
+     (where no read changes) +29 to +38%. The cost is reads in long repeats going on to the
+     wider band or the full programme, not the reads whose calls move. The full programme for
+     every read costs ×1.35 on the panel, ×2.75 on the gate subset and up to ×2.9 on HG002.
+   - **Other tools.** GATK's PairHMM scores every read against every haplotype over the full
+     matrix, so it has no band to stand on; htslib's BAQ uses a fixed band of 10 (realn.c). The
+     repeat-aware floor is the judge's own rule for when its band may stand in for the full
+     programme.
 
 ## 11. Open tickets the judge resolves (measured 2026-10-28)
 On the merged branch (develop 6efeb5bb merged in), against its own default path, which gives

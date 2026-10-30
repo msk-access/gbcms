@@ -997,9 +997,10 @@ fn edge_cell(g: &Graph, band: &GraphBand, v: usize, i: u32, lo: u32, hi: u32, n:
         || g.succs(v).iter().any(|&w| out(w as usize, i) || (i < n && out(w as usize, i + 1)))
 }
 
-/// The lowest score the band answers for by its edge alone (as the linear scorer's).
-fn floor_for(slack: i64) -> i32 {
-    -(GAP_OPEN + GAP_EXTEND * (slack as i32 + 1))
+/// The lowest score a band of `slack` answers for by its edge alone, for `read` (as the linear
+/// scorer's: [`score::stand_floor`], the read's free shift along a repeat counted).
+fn floor_for(slack: i64, read: &GraphRead) -> i32 {
+    score::stand_floor(slack, read.free_shift)
 }
 
 /// Whether one of the read's exact k-mers (at its start, middle and end, unmasked) lies
@@ -1145,6 +1146,11 @@ pub(crate) struct GraphRead<'r> {
     pub(crate) rp: Vec<i64>,
     /// Its reference span (soft clips extrapolated), window coordinates.
     pub(crate) span: (i64, i64),
+    /// The longest tandem-repeat period in its reach: how far its own placement may sit off its
+    /// best alignment at no cost, which lowers what a band answers for ([`score::stand_floor`]).
+    pub(crate) free_shift: i64,
+    /// Measurement only (`GBCMS_JUDGE_BAND=full`): no band; the full programme over its reach.
+    pub(crate) full: bool,
 }
 
 /// Half-width of the wider band tried before the full programme (past the length changes).
@@ -1202,7 +1208,7 @@ pub(crate) fn decided_states<M: ErrorModel>(m: &M, read: &GraphRead, graphs: &[&
         return vec![(0, None); k];
     }
     let planned: Vec<((i64, i64), [i64; 2])> = graphs.iter().map(|g| bands(g, read)).collect();
-    for step in 0..3 {
+    for step in (if read.full { 2 } else { 0 })..3 {
         let runs: Vec<bool> = out.iter().map(Option::is_none).collect();
         // this step's band per state; a state laid out as the one it shares from has its band
         let mut stepped: Vec<Option<std::rc::Rc<GraphBand>>> = vec![None; k];
@@ -1241,7 +1247,7 @@ pub(crate) fn decided_states<M: ErrorModel>(m: &M, read: &GraphRead, graphs: &[&
             };
             let stands = match step {
                 0 | 1 => {
-                    let floor = floor_for([BAND_SLACK, WIDE_SLACK][step]);
+                    let floor = floor_for([BAND_SLACK, WIDE_SLACK][step], read);
                     let clipped = if g.topological { r.score >= floor && touches_edge(m, read.seq, g, &band, ws) } else { r.clipped };
                     !clipped && r.score >= floor && (r.score == 0 || !copy_off_band(read.seq, g, &band))
                 }
@@ -1266,10 +1272,12 @@ pub(crate) fn decided<M: ErrorModel>(m: &M, read: &GraphRead, g: &Graph, ws: &mu
         return (0, None);
     }
     let (trim, halves) = bands(g, read);
-    for (half, slack) in halves.into_iter().zip([BAND_SLACK, WIDE_SLACK]) {
+    let steps = if read.full { 0 } else { 2 };
+    for (half, slack) in halves.into_iter().zip([BAND_SLACK, WIDE_SLACK]).take(steps) {
         let band = GraphBand::new(g, &read.rp, Some(half), trim);
-        let r = if g.topological { run_tracked(m, read.seq, g, &band, ws, floor_for(slack)) } else { run_reference::<M, true, false>(m, read.seq, g, &band, ws) };
-        if !r.clipped && r.score >= floor_for(slack) && (r.score == 0 || !copy_off_band(read.seq, g, &band)) {
+        let floor = floor_for(slack, read);
+        let r = if g.topological { run_tracked(m, read.seq, g, &band, ws, floor) } else { run_reference::<M, true, false>(m, read.seq, g, &band, ws) };
+        if !r.clipped && r.score >= floor && (r.score == 0 || !copy_off_band(read.seq, g, &band)) {
             if g.topological {
                 ws.last = Some((std::rc::Rc::new(band), r));
             }
@@ -1282,6 +1290,23 @@ pub(crate) fn decided<M: ErrorModel>(m: &M, read: &GraphRead, g: &Graph, ws: &mu
         ws.last = Some((std::rc::Rc::new(full), r));
     }
     (r.score, None)
+}
+
+/// Tests only: the full programme over the read's reach (the last of [`decided`]'s steps,
+/// what its bands stand for).
+#[cfg(test)]
+pub(crate) fn reach_score<M: ErrorModel>(m: &M, read: &GraphRead, g: &Graph) -> i32 {
+    if read.seq.is_empty() {
+        return 0;
+    }
+    let (trim, _) = bands(g, read);
+    let full = GraphBand::new(g, &read.rp, None, trim);
+    let mut ws = Workspace::default();
+    if g.topological {
+        run::<M, false>(m, read.seq, g, &full, &mut ws).score
+    } else {
+        run_reference::<M, false, false>(m, read.seq, g, &full, &mut ws).score
+    }
 }
 
 /// The best path of the read in a graph: its score and the rows whose alleles it takes.
@@ -1732,7 +1757,7 @@ mod tests {
         for (half, slack) in halves.into_iter().zip([BAND_SLACK, WIDE_SLACK]) {
             let band = GraphBand::new(g, &read.rp, Some(half), trim);
             let r = run_reference::<ShortReads, true, true>(&ShortReads, read.seq, g, &band, &mut ws);
-            if !r.clipped && r.score >= floor_for(slack) && (r.score == 0 || !copy_off_band(read.seq, g, &band)) {
+            if !r.clipped && r.score >= floor_for(slack, read) && (r.score == 0 || !copy_off_band(read.seq, g, &band)) {
                 return (r.score, Some(half), traceback_reference(g, &band, &ws, r));
             }
         }
@@ -1781,7 +1806,7 @@ mod tests {
             assert_eq!(copy_off_band_lanes(&read, &g, &band), copy, "copy off the band, case {case}");
             copies += usize::from(copy);
             // and the scores, bands and paths the judge reads
-            let gr = GraphRead { seq: &read, rp: rp.clone(), span: (lo, hi + 1) };
+            let gr = GraphRead { seq: &read, rp: rp.clone(), span: (lo, hi + 1), free_shift: 0, full: false };
             let (s0, h0, p0) = decided_reference(&gr, &g);
             let (s1, h1) = decided(&ShortReads, &gr, &g, &mut ws);
             assert_eq!((s0, h0), (s1, h1), "decided, case {case}");
@@ -1808,7 +1833,7 @@ mod tests {
                 let band = GraphBand::new(&g, &rp, half, (lo - 170, hi + 170));
                 same_run(&read, &g, &band, &mut ws, case);
             }
-            let gr = GraphRead { seq: &read, rp: rp.clone(), span: (lo, hi + 1) };
+            let gr = GraphRead { seq: &read, rp: rp.clone(), span: (lo, hi + 1), free_shift: 0, full: false };
             let (s0, h0, p0) = decided_reference(&gr, &g);
             let (s1, h1) = decided(&ShortReads, &gr, &g, &mut ws);
             assert_eq!((s0, h0), (s1, h1), "decided, case {case}");
@@ -1872,7 +1897,7 @@ mod tests {
             let base = &graphs[shares.iter().position(|s| s.is_some()).map_or(0, |k| shares[k].unwrap().0)];
             let (read, rp) = random_read_of(base, &mut st, 100);
             let (lo, hi) = (rp[0], *rp.last().unwrap());
-            let gr = GraphRead { seq: &read, rp: rp.clone(), span: (lo, hi + 1) };
+            let gr = GraphRead { seq: &read, rp: rp.clone(), span: (lo, hi + 1), free_shift: 0, full: false };
             let refs: Vec<&Graph> = graphs.iter().collect();
             let mut wss: Vec<Workspace> = (0..graphs.len()).map(|_| Workspace::default()).collect();
             let all = decided_states(&ShortReads, &gr, &refs, &shares, &mut wss);
@@ -1900,7 +1925,7 @@ mod tests {
         g.pred_off = vec![0, 1, 2, 3, 4, 5, 6];
         g.preds = vec![4, 0, 1, 2, 3, 4];
         g.topological = false;
-        let gr = GraphRead { seq: b"ACGTA", rp: (0..5).collect(), span: (0, 5) };
+        let gr = GraphRead { seq: b"ACGTA", rp: (0..5).collect(), span: (0, 5), free_shift: 0, full: false };
         let mut ws = Workspace::default();
         let (s0, h0, p0) = decided_reference(&gr, &g);
         let (s1, h1) = decided(&ShortReads, &gr, &g, &mut ws);

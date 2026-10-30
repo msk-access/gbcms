@@ -445,9 +445,10 @@ fn score_states(site: &Site, gr: &graph::GraphRead, wss: &mut [Workspace]) -> Sc
 
 /// Tests only: per state of a graph site, the state's score, the read's alignment to the
 /// haplotype its best path spells as the call examines it, and the linear aligner's alignment
-/// to that haplotype (each with where its columns start).
+/// to that haplotype (each with where its columns start); `free`: the linear aligner's band
+/// with its repeat forced (Some(0): the floor before the repeat-aware one).
 #[cfg(test)]
-pub(crate) fn examined_alignments(site: &Site, read: &ReadView) -> Vec<(i32, Laid, Laid)> {
+pub(crate) fn examined_alignments(site: &Site, read: &ReadView, free: Option<i64>) -> Vec<(i32, Laid, Laid)> {
     let gr = site.graph_read(read);
     let scored = graph::with_workspaces(site.graphs.len(), |wss| score_states(site, &gr, wss));
     let decided: Vec<i32> = {
@@ -462,7 +463,8 @@ pub(crate) fn examined_alignments(site: &Site, read: &ReadView) -> Vec<(i32, Lai
     (0..site.graphs.len())
         .map(|k| {
             let hap = ex.hap(k);
-            (decided[k], (*ex.align(k)).clone(), scorer.align(site, &hap))
+            let lin = free.map_or_else(|| scorer.align(site, &hap), |f| scorer.align_with_free(site, &hap, f));
+            (decided[k], (*ex.align(k)).clone(), lin)
         })
         .collect()
 }
