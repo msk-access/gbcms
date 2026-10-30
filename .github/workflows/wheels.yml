@@ -6,7 +6,9 @@ name: Wheels
 # In each environment pip must take the wheel (never the source distribution) and a
 # counting run on a synthetic data set must write the same bytes in every environment.
 # The suite runs in RHEL's own Python 3.11 (on 8 and 9) and at both ends of the range.
-# Nothing is published.
+# The macOS wheel (Apple silicon, arm64) is built with .github/actions/macos-wheel and
+# installed on a macOS runner with Python 3.10 and 3.14: the suite runs, and its counting
+# run must write the same bytes as the Linux ones. Nothing is published.
 #
 # The "reference" wheel is the one earlier releases shipped (manylinux_2_34). Its
 # outputs on Rocky 9 are the baseline the manylinux_2_28 wheel must match, byte for byte.
@@ -21,6 +23,7 @@ on:
       - 'scripts/check_wheel.sh'
       - 'scripts/wheel_fixture_run.py'
       - '.github/actions/linux-wheel/**'
+      - '.github/actions/macos-wheel/**'
       - '.github/workflows/wheels.yml'
   push:
     branches: [ main, develop ]
@@ -30,6 +33,7 @@ on:
       - 'scripts/check_wheel.sh'
       - 'scripts/wheel_fixture_run.py'
       - '.github/actions/linux-wheel/**'
+      - '.github/actions/macos-wheel/**'
       - '.github/workflows/wheels.yml'
   workflow_dispatch:
 
@@ -136,9 +140,64 @@ jobs:
           path: digests
           if-no-files-found: error
 
+  macos-build:
+    name: Build (macOS arm64)
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.10'
+      - name: Install build tools
+        run: brew install autoconf automake
+      - name: Build the wheel
+        uses: ./.github/actions/macos-wheel
+        with:
+          commit: ${{ github.sha }}
+      - name: The wheel
+        run: |
+          ls -l dist
+          # one wheel for every Python, for Apple silicon
+          test "$(ls dist | wc -l)" -eq 1
+          ls dist | grep -E -- '-cp310-abi3-macosx_[0-9]+_[0-9]+_arm64\.whl$'
+      - name: Upload the wheel
+        uses: actions/upload-artifact@v4
+        with:
+          name: wheel-macos-arm64
+          path: dist
+          if-no-files-found: error
+
+  macos-test:
+    name: macOS arm64, Python ${{ matrix.python }}
+    needs: macos-build
+    runs-on: macos-14
+    strategy:
+      fail-fast: false
+      matrix:
+        python: [ '3.10', '3.14' ]
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/download-artifact@v4
+        with:
+          name: wheel-macos-arm64
+          path: dist
+      - uses: actions/setup-python@v6
+        with:
+          python-version: ${{ matrix.python }}
+      - name: Install and test the wheel
+        run: |
+          mkdir -p digests
+          bash scripts/check_wheel.sh dist "$(command -v python)" "digests/macos-arm64-py${{ matrix.python }}.txt"
+      - name: Upload the output digests
+        uses: actions/upload-artifact@v4
+        with:
+          name: digests-macos-arm64-py${{ matrix.python }}
+          path: digests
+          if-no-files-found: error
+
   compare:
     name: The outputs are the same everywhere
-    needs: rocky
+    needs: [rocky, macos-test]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/download-artifact@v4

@@ -220,13 +220,15 @@ After PR approval:
 The tag triggers `.github/workflows/release.yml`:
 
 0. **Verify** — `scripts/release.py check --tag X.Y.Z`; every other job waits for it
-1. **Build one wheel** — `cp310-abi3`, `manylinux_2_28_x86_64` (the stable ABI, so one
+1. **Build two wheels** — `cp310-abi3`, `manylinux_2_28_x86_64` (the stable ABI, so one
    wheel serves every CPython from 3.10; AlmaLinux 8, glibc 2.28: it installs on RHEL 8
-   and newer) — plus an **sdist** (jobs `linux` and `sdist`). The
-   `linux` job builds with the local action `.github/actions/linux-wheel`; the `Wheels`
-   workflow builds with the same action on every change to the build and installs the
-   wheel in Rocky Linux 8 and 9 containers (pip with binary wheels only, the suite, and
-   a counting run whose output digests must match everywhere)
+   and newer) and `cp310-abi3`, `macosx_11_0_arm64` (Apple silicon) — plus an **sdist**
+   (jobs `linux`, `macos` and `sdist`). The `linux` and `macos` jobs build with the local
+   actions `.github/actions/linux-wheel` and `.github/actions/macos-wheel`; the `Wheels`
+   workflow builds with the same actions on every change to the build and installs the
+   wheels (the Linux one in Rocky Linux 8 and 9 containers, the macOS one on an Apple
+   silicon runner): pip with binary wheels only, the suite, and a counting run whose
+   output digests must match everywhere
 2. **Publish to PyPI** (via maturin)
 3. **Build Docker image** → push to `ghcr.io/msk-access/gbcms:X.Y.Z`
 4. **Create the GitHub Release** — title and notes from the CHANGELOG section, the
@@ -243,15 +245,16 @@ The docs are not part of this workflow: `deploy-docs.yml` publishes them (via `m
 
 !!! warning "One wheel, not a matrix"
     This list previously claimed Linux x86_64 + aarch64, macOS x86_64 + arm64, and Windows.
-    `release.yml` has only `linux` and `sdist` jobs, and 6.2.0 published exactly
-    `gbcms-X.Y.Z-cp311-cp311-manylinux_2_34_x86_64.whl` and `gbcms-X.Y.Z.tar.gz` (the
-    wheel is `manylinux_2_28` from 6.7.0).
+    `release.yml` had only `linux` and `sdist` jobs, and 6.2.0 published exactly
+    `gbcms-X.Y.Z-cp311-cp311-manylinux_2_34_x86_64.whl` and `gbcms-X.Y.Z.tar.gz`. From
+    6.7.0 it publishes a Linux x86_64 wheel (`manylinux_2_28`) and an Apple silicon wheel
+    (`macosx_11_0_arm64`), each `cp310-abi3`.
 
     The practical consequence, worth knowing before telling a user to `pip install gbcms`:
-    **everyone not on manylinux x86_64 builds from the sdist**, which needs a Rust
-    toolchain. That includes macOS (Intel and Apple Silicon). Broadening the matrix is a
-    real change to `release.yml`, not a docs fix — until then, this list should describe
-    what actually ships. (Until 6.6.0 the wheel was `cp311` only, so every other Python
+    **everyone not on Linux x86_64 or Apple silicon builds from the sdist**, which needs a
+    Rust toolchain. That includes Intel Macs, Linux aarch64 and Windows. Broadening the
+    matrix is a real change to `release.yml`, not a docs fix — until then, this list should
+    describe what actually ships. (Until 6.6.0 the wheel was `cp311` only, so every other Python
     built from the sdist.)
 
 ### 9. Check the GitHub Release
@@ -359,8 +362,8 @@ Interactive helper for git-flow operations:
 |:---------|:--------|:--------|
 | `test.yml` | Push to develop/main, PR | Run tests: Ubuntu 3.10 (dependencies at their floors), 3.11 and 3.14, macOS 3.12; lint; Rust unit tests; build the image and run it under Docker and under Apptainer (as a RHEL cluster does) |
 | `latest-deps.yml` | Monthly (the 1st), manual before a release | The suite on the newest dependency releases, Python 3.10–3.14, with compatible Rust updates; a failure opens or updates one `latest-deps` issue |
-| `release.yml` | Tag push `X.Y.Z` | Verify the version sources, build the wheel and sdist, publish PyPI and Docker, create the GitHub Release |
-| `wheels.yml` | Push/PR touching `rust/`, `pyproject.toml`, the wheel action or the check scripts; manual | Build the Linux wheel with the release's action and install it in Rocky Linux 8 and 9 containers (`pip` with binary wheels only, the suite, and a counting run whose output digests must match everywhere); publishes nothing |
+| `release.yml` | Tag push `X.Y.Z` | Verify the version sources, build the Linux and macOS wheels and the sdist, publish PyPI and Docker, create the GitHub Release |
+| `wheels.yml` | Push/PR touching `rust/`, `pyproject.toml`, the wheel actions or the check scripts; manual | Build the Linux and macOS wheels with the release's actions and install them (Linux in Rocky Linux 8 and 9 containers, Python 3.10 to 3.14; macOS on an Apple silicon runner, 3.10 and 3.14): `pip` with binary wheels only, the suite, and a counting run whose output digests must match everywhere; publishes nothing |
 | `nextflow-lint.yml` | Push/PR touching `nextflow/` | Strict-syntax lint; every process `nextflow inspect` resolves runs the manifest's image |
 | `deploy-docs.yml` | Push to main or develop (docs/) | Deploy versioned docs via `mike` (`stable` from main, `dev` from develop) |
 

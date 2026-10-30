@@ -8,10 +8,11 @@
     gbcms --version
     ```
 
-    !!! info "One prebuilt wheel"
-        A release publishes one wheel, for **every CPython from 3.10 on Linux x86_64 with
-        glibc 2.28+** (RHEL 8 and 9, Ubuntu 20.04+, Debian 10+), and the source
-        distribution. On any other platform, `pip install gbcms` compiles the source
+    !!! info "Two prebuilt wheels"
+        A release publishes a wheel for **every CPython from 3.10 on Linux x86_64 with
+        glibc 2.28+** (RHEL 8 and 9, Ubuntu 20.04+, Debian 10+), a wheel for **every CPython
+        from 3.10 on Apple silicon Macs with macOS 11+**, and the source distribution.
+        On any other platform, `pip install gbcms` compiles the source
         distribution on your machine, which needs a Rust toolchain and a C compiler.
         The wheel needs pip 20.3 or newer; on RHEL 8, install it into a virtual
         environment of a newer Python (see [RHEL 8](#legacy-linux-rhel-8-hpc)).
@@ -42,7 +43,7 @@
 | Component | Requirement |
 |:----------|:------------|
 | Python | 3.10+ (CI runs 3.10, 3.11 and 3.14 on every change, and 3.10 to 3.14 monthly) |
-| OS | Linux (x86_64 wheel needs glibc 2.28+: RHEL 8 and newer), macOS (built from source), Windows through WSL2 |
+| OS | Linux (x86_64 wheel needs glibc 2.28+: RHEL 8 and newer), macOS (the wheel is for Apple silicon, macOS 11+; Intel builds from source), Windows through WSL2 |
 | Memory | 4GB+ (8GB for large BAMs) |
 
 ### For Nextflow Workflow
@@ -56,16 +57,19 @@
 
 What a release builds is exactly what `.github/workflows/release.yml` builds: the
 `linux` job (`ubuntu-latest`, `--release`, in the `manylinux_2_28` image, which is
-AlmaLinux 8) and the `sdist` job. The extension uses Python's stable ABI (`abi3-py310`),
-so the `linux` job builds one wheel, `cp310-abi3`, that every CPython from 3.10 installs.
-The `Wheels` workflow installs that wheel in Rocky Linux 8 and 9 containers with Python
-3.10 to 3.14 and runs the test suite there. So `pip install gbcms` gives:
+AlmaLinux 8), the `macos` job (`macos-14`, Apple silicon) and the `sdist` job. The
+extension uses Python's stable ABI (`abi3-py310`), so each wheel job builds one wheel,
+`cp310-abi3`, that every CPython from 3.10 installs. The `Wheels` workflow installs the
+Linux wheel in Rocky Linux 8 and 9 containers and the macOS wheel on an Apple silicon
+runner, with Python 3.10 to 3.14, and runs the test suite there. So `pip install gbcms`
+gives:
 
 | Your platform | What `pip install gbcms` does |
 |:--------------|:------------------------------|
 | Linux x86_64, glibc 2.28+ (RHEL 8 and newer), Python 3.10 to 3.14 | Installs the prebuilt wheel (`cp310-abi3`, `manylinux_2_28_x86_64`) |
 | Linux with glibc below 2.28 (RHEL 7, CentOS 7), or Linux aarch64 | Builds the source distribution; see [Legacy Linux](#legacy-linux-rhel-8-hpc) |
-| macOS, Intel or Apple Silicon | Builds the source distribution (CI builds and tests it on macOS with Python 3.12) |
+| macOS on Apple silicon (arm64), macOS 11+, Python 3.10 to 3.14 | Installs the prebuilt wheel (`cp310-abi3`, `macosx_11_0_arm64`) |
+| macOS on an Intel Mac | Builds the source distribution (not built in CI; Intel Macs are the last that macOS supports) |
 | Windows (native) | Not built or tested; use WSL2, which is the Linux row |
 
 The Docker image (`ghcr.io/msk-access/gbcms`) is built by the same workflow for

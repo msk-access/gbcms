@@ -1,0 +1,36 @@
+name: Build the macOS wheel
+description: >
+  The recipe for the macOS wheel (maturin on the runner it is built for). The release
+  workflow and the wheel checks both use it, so what the checks install is what a release
+  publishes. Run actions/checkout and actions/setup-python first (the interpreter below
+  must be on the PATH). On an Apple silicon runner (macos-14) it builds the arm64 wheel.
+
+inputs:
+  interpreter:
+    description: >
+      A Python for maturin to read its settings from (maturin -i). The extension uses
+      Python's stable ABI (abi3-py310), so the wheel is tagged cp310-abi3 and installs on
+      every CPython from 3.10 on, whichever interpreter this is.
+    required: false
+    default: python3.10
+  commit:
+    description: The commit the wheel is built from, recorded in output provenance (rust/build.rs).
+    required: true
+  out:
+    description: The folder the wheel is written to.
+    required: false
+    default: dist
+
+runs:
+  using: composite
+  steps:
+    - name: Build the wheel
+      uses: PyO3/maturin-action@v1
+      env:
+        GBCMS_BUILD_COMMIT: ${{ inputs.commit }}
+        # Apple silicon starts at macOS 11: the wheel is tagged macosx_11_0_arm64
+        MACOSX_DEPLOYMENT_TARGET: '11.0'
+      with:
+        command: build
+        # Don't pass --manifest-path here; it's in pyproject.toml [tool.maturin]
+        args: --release --out ${{ inputs.out }} -i ${{ inputs.interpreter }}
