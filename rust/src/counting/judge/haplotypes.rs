@@ -425,6 +425,11 @@ pub(crate) struct Site {
     /// The graph scorer's graphs, one per state of X's site: REF's bases, X, then the
     /// other states.
     pub(crate) graphs: Vec<StateGraph>,
+    /// The other states whose allele is X with listed neighbours ([`Site::drop_spelled_states`],
+    /// RJ-28's indel twin): each state's row, and the context rows that with X spell it.
+    /// Their carriers are X's ALT reads; the diagnostic INDEL_SHARED names how many spell
+    /// each whole ([`Site::spelled_x_spellings`]).
+    pub(crate) x_spellings: Vec<(usize, Vec<usize>)>,
     /// What a covered telling base read confidently as neither allele does to a REF or ALT
     /// call ([`neither_rule`]).
     pub(crate) neither: NeitherRule,
@@ -1510,6 +1515,11 @@ impl Site {
         x.ref_al.iter().zip(&x.alt_al).filter(|(a, b)| a != b).count()
     }
 
+    /// The alleles that are X with listed neighbours ([`Site::x_spellings`]), in order.
+    pub(crate) fn x_spelling_rows(&self) -> Vec<&Row> {
+        self.x_spellings.iter().map(|&(o, _)| &self.rows[o]).collect()
+    }
+
     /// The states holding X's change (`holds_x`), in order.
     pub(crate) fn holders(&self) -> Vec<&Row> {
         (1..=self.n_states).filter(|&r| self.holds_x[r]).map(|r| &self.rows[r]).collect()
@@ -2526,6 +2536,7 @@ impl Site {
             masked,
             site_window,
             graphs: Vec::new(),
+            x_spellings: Vec::new(),
             neither: neither_rule(),
             own_gap: own_gap_rule(),
             ref_base: ref_base_rule(),
@@ -2871,32 +2882,82 @@ impl Site {
     }
 
     /// An other state whose allele spells X's haplotype (or REF's) with rows of the reads'
-    /// reach inside its place (an allele the reads spell over X with a listed neighbour
+    /// reach meeting its place (an allele the reads spell over X with a listed neighbour
     /// beside it) is that haplotype: X's or REF's, never another allele's. Its graph is
-    /// dropped.
+    /// dropped. A row counts where it, or one of its equivalent placements, meets the
+    /// place: an allele the guard found is written as the bases it changes (RJ-25), and a
+    /// neighbour may run on past its last (a delins over an insertion's run, beside an SNV
+    /// written with its next base) or be written before its first (an insertion written at
+    /// the start of the run it slides through).
     fn drop_spelled_states(&mut self, rest: &[usize]) {
         let mut dropped: Vec<usize> = Vec::new();
+        let mut spelled_x: Vec<(usize, Vec<usize>)> = Vec::new();
         for (k, st) in self.graphs.iter().enumerate() {
             let Some(o) = st.row.filter(|_| st.class == Class::Other) else { continue };
             let (ps, pe) = (self.spans[o].0.min(self.places[o].0), self.spans[o].1.max(self.places[o].1));
-            let inside: Vec<usize> = rest.iter().copied().filter(|&r| self.spans[r].0 >= ps && self.spans[r].1 <= pe).take(SPELL_MAX_ROWS).collect();
+            // a row's span with its equivalent placements (a length change slides over its run)
+            let reach = |r: usize| (self.spans[r].0.min(self.places[r].0), self.spans[r].1.max(self.places[r].1));
+            let inside: Vec<usize> = rest
+                .iter()
+                .copied()
+                .filter(|&r| {
+                    let (rs, re) = reach(r);
+                    rs < pe && re > ps
+                })
+                .take(SPELL_MAX_ROWS)
+                .collect();
             let own = Hap::build(self, &[o]).seq;
             let sets = self.lying_together(&inside, None, 1 << SPELL_MAX_ROWS).unwrap_or_else(|| vec![Vec::new()]);
-            let spells = sets.iter().any(|c| {
-                let with_x = c.iter().all(|&r| !self.conflict(0, r)) && {
+            let with_x = |c: &[usize]| {
+                c.iter().all(|&r| !self.conflict(0, r)) && {
                     let mut h: Vec<usize> = std::iter::once(0).chain(c.iter().copied()).collect();
                     h.sort_unstable();
                     Hap::build(self, &h).seq == own
-                };
-                with_x || Hap::build(self, c).seq == own
-            });
-            if spells {
+                }
+            };
+            if let Some(c) = sets.iter().find(|c| with_x(c)) {
+                spelled_x.push((o, c.clone()));
+                dropped.push(k);
+            } else if sets.iter().any(|c| Hap::build(self, c).seq == own) {
                 dropped.push(k);
             }
         }
         for k in dropped.into_iter().rev() {
             self.graphs.remove(k);
         }
+        if spelled_x.len() > 64 {
+            log::warn!(
+                "sequence judge: {} alleles at one site are X with listed neighbours; INDEL_SHARED names the reads of the first 64",
+                spelled_x.len()
+            );
+        }
+        self.x_spellings = spelled_x;
+    }
+
+    /// Which of [`Site::x_spellings`] (a bit each, in order, the first 64) `read` spells
+    /// whole on its alignment `al` (columns offset by `off`) to `hap`: `hap` holds X with
+    /// every context row that makes the allele, and the read places a base, read
+    /// confidently as `hap`'s, at every column from the base before the allele's REF span
+    /// to the base after it (both junctions of a deletion, every base a delins writes).
+    pub(crate) fn spelled_x_spellings(&self, read: &ReadView, hap: &Hap, al: &Alignment, off: usize) -> u64 {
+        if self.x_spellings.is_empty() || hap.rows.first() != Some(&0) {
+            return 0;
+        }
+        let at: HashMap<i64, u8> = al
+            .placed
+            .iter()
+            .enumerate()
+            .filter_map(|(i, p)| if let Placed::At(c) = *p { Some(((c + off) as i64, read.seq[i])) } else { None })
+            .collect();
+        let spells = |o: usize, c: &[usize]| {
+            if !c.iter().all(|r| hap.rows.binary_search(r).is_ok()) {
+                return false;
+            }
+            let (s, e) = self.spans[o];
+            let (a, b) = (self.column_in(hap, s - 1), self.column_in(hap, e));
+            a < b && (a..=b).all(|col| at.get(&col).is_some_and(|&x| x != WILD && Some(x) == hap.seq.get(col as usize).copied()))
+        };
+        self.x_spellings.iter().take(64).enumerate().filter(|(_, (o, c))| spells(*o, c)).fold(0u64, |m, (k, _)| m | 1 << k)
     }
 
     /// A found allele stays a state only where the reads tell it from X and from REF by
@@ -3118,6 +3179,55 @@ pub(crate) mod tests {
         let s = Site::build_backed(x.clone(), &candidates, window, reads, FoundRule::All, BackgroundRule::AsIs)
             .unwrap();
         assert_eq!((s.n_states, s.rows.len() - 1 - s.n_states, s.masked.len()), (3, 3, 1));
+    }
+
+    /// The chr10:12910609 A>ATTT shape (HG002 c246 arm): an insertion of TTT after the
+    /// ninth A of an A x11 run meeting a T x14 run, with a listed A>T on the next A and a
+    /// listed AT>TT on the one after (an A>T written with its next base). The guard's allele
+    /// X with both, written as the bases it changes (RJ-25), is AA>TTTTT over the run's last
+    /// two A's, which the AT>TT runs one base past: it spells X with its listed neighbours,
+    /// so it is X's, never another allele's (else every carrier ties X with it).
+    #[test]
+    fn an_other_state_that_is_x_with_neighbours_running_past_its_changes_is_dropped() {
+        let c = contig(10, 290, b"AAAAAAAAAAATTTTTTTTTTTTTT");
+        let x = Row::new(298, b"A", b"ATTT");
+        let candidates = Candidates {
+            listed: vec![Row::new(299, b"A", b"T"), Row::new(300, b"AT", b"TT")],
+            discovered: vec![Row::new(299, b"AA", b"TTTTT")],
+            background: Vec::new(),
+            masked: Vec::new(),
+            found: Vec::new(),
+            edges: (None, None),
+        };
+        let read = ReadView::new(&c[230..380], &[30; 150], 230, &[Cigar::Match(150)], (0, 150), 20).unwrap();
+        let s = Site::build_backed(x, &candidates, (0, c.clone()), std::slice::from_ref(&read), FoundRule::All, BackgroundRule::AsIs).unwrap();
+        assert_eq!(s.n_states, 1, "the allele taken as a state");
+        assert_eq!(s.graphs.len(), 2, "its graph dropped: REF's and X's alone");
+    }
+
+    /// The chr10:83775882 A>AC shape (HG002 c246 arm, at `--min-baseq` 0): an insertion of
+    /// C in an A x11 run after CAAAA units, with a listed T>TA four bases before the units
+    /// (an A inserted in the A run it slides through) and a listed A>C on the next base. The
+    /// guard's allele of REF's length, REF with both, written as the bases it changes, starts
+    /// at the units' first C: the T>TA's written base lies before it, its placements inside
+    /// it. It spells REF with its listed neighbours, so it is REF's (else every REF read
+    /// carrying them ties REF with it).
+    #[test]
+    fn an_other_state_that_is_ref_with_a_neighbour_written_before_it_is_dropped() {
+        let c = contig(11, 290, b"CCTAAAACAAAACAAAACAAAAAAAAAAACCC");
+        let x = Row::new(311, b"A", b"AC");
+        let candidates = Candidates {
+            listed: vec![Row::new(292, b"T", b"TA"), Row::new(312, b"A", b"C")],
+            discovered: vec![Row::new(297, b"CAAAACAAAACAAAAA", b"ACAAAACAAAACAAAAC")],
+            background: Vec::new(),
+            masked: Vec::new(),
+            found: Vec::new(),
+            edges: (None, None),
+        };
+        let read = ReadView::new(&c[230..380], &[30; 150], 230, &[Cigar::Match(150)], (0, 150), 20).unwrap();
+        let s = Site::build_backed(x, &candidates, (0, c.clone()), std::slice::from_ref(&read), FoundRule::All, BackgroundRule::AsIs).unwrap();
+        assert_eq!(s.n_states, 1, "the allele taken as a state");
+        assert_eq!(s.graphs.len(), 2, "its graph dropped: REF's and X's alone");
     }
 
     /// The chr5:44868216 A>AT shape (#246 arm, HG002): an insertion of T in an A run
