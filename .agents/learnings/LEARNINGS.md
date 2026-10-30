@@ -33,6 +33,35 @@ regenerating a section.
 
 ---
 
+## [LRN-20261030-003] rule-body | the PHI sanitizer filtered stdout but not library warnings on stderr
+- **Status:** resolved (rule promoted).
+- **Cause:** rule-body.
+- **Summary:**
+  - An agent comparing gbcms with the C++ tool wrote its sanitizer first, as the rule says, but
+    passed only stdout through it. htslib's "index older than data" warning on stderr printed WES
+    patient BAM file names (sample IDs) into two tool outputs: one name, then twelve. No position or
+    read name was shown. The agent reported it, masked its log and silenced the warnings.
+  - The rule said "every printed line" but named no stderr, and library warnings are easy to miss.
+- **Promotion target:** `.agents/rules/security.md` (patient BAM slices, the sanitizer bullet) —
+  `DONE:` the sanitizer covers stderr; library warnings print file names; merge stderr into the
+  filtered stream or keep it in a file that never prints.
+- **Related:** the 2026-10-29 sanitizer-first rule (#372).
+
+## [LRN-20261030-002] rule-trigger | follow-up work went to the agent at hand, not the model the task needs
+- **Status:** resolved (rule promoted).
+- **Cause:** rule-trigger.
+- **Summary:**
+  - The operator asked (2026-10-30) whether delegation still follows the model-per-task rule.
+  - New agents got explicit models. But follow-up work went to the two long-lived agents because
+    they were already running: an Opus agent was given the C++ timing tables (Sonnet work).
+  - No fresh adversarial review was planned before count decisions; Greptile was the only outside read.
+  - The rule fired when an agent was spawned, and stayed silent when work was handed to an agent
+    already running.
+- **Promotion target:** `.agents/memory/working-agreements.md` ("Model per task") — `DONE:` the rule
+  holds for follow-up work; routine aggregation goes to a new Sonnet or Haiku agent; a fresh Fable or
+  Opus agent reviews each count-changing option before it goes to the operator.
+- **Related:** [[working-agreements]].
+
 ## [LRN-20261030-001] rule-trigger | status tables and relayed agent reports went out as bare labels
 - **Status:** resolved (rule promoted).
 - **Cause:** rule-trigger.
