@@ -20203,6 +20203,23 @@ count-affecting merge since the previous release, run on the changed rows only.<
 <p>The format is based on <a href="https://keepachangelog.com/en/1.0.0/">Keep a Changelog</a>,
 and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semantic Versioning</a>.</p>
 <h2 id="development-changelog-unreleased">[Unreleased]<a class="headerlink" href="#development-changelog-unreleased" title="Permanent link">¶</a></h2>
+<h3 id="development-changelog-changed-the-sequence-judge-holds-one-memory-budget-per-thread-304">Changed — the sequence judge holds one memory budget per thread (#304)<a class="headerlink" href="#development-changelog-changed-the-sequence-judge-holds-one-memory-budget-per-thread-304" title="Permanent link">¶</a></h3>
+<ul>
+<li>Under <code>--read-judge sequence</code>, a row's caches (the verdicts and programmes of reads alike)
+  and the judge's work space now share one budget of 128 MB per thread. Past it a row caches
+  nothing more and its later reads are judged afresh, with the same calls; work space past a
+  quarter of the budget is freed at a row's end. Counts are unchanged. On <abbr title="High-Performance Computing - Cluster computing environment">HPC</abbr> the deepest HG002
+  arm's peak memory falls from 2.8 to 1.7 GB for 1.8% more CPU; patient data types are within
+  2% of no limit at every budget. <code>docs/proposals/sequence-judge.md</code> §10.</li>
+</ul>
+<h3 id="development-changelog-fixed-the-sequence-judge-keeps-a-reads-path-steps-only-for-the-states-its-call-can-examine-304">Fixed — the sequence judge keeps a read's path steps only for the states its call can examine (#304)<a class="headerlink" href="#development-changelog-fixed-the-sequence-judge-keeps-a-reads-path-steps-only-for-the-states-its-call-can-examine-304" title="Permanent link">¶</a></h3>
+<ul>
+<li>Under <code>--read-judge sequence</code>, a read's best path, base by base, was kept for every state of
+  the site with the read's programmes, which the row keeps for every read alike, so at sites of
+  many alleles it grew with reads × states × read length. It is now kept only for each class's
+  best state and state 0, the only ones a call is examined on. Counts are unchanged. The row
+  caches are 6 to 7% smaller; with the 128 MB cache limit, HG002 peak memory falls 3 to 9%.</li>
+</ul>
 <h3 id="development-changelog-fixed-the-sequence-judges-band-no-longer-stands-on-a-worse-score-in-a-tandem-repeat-369">Fixed — the sequence judge's band no longer stands on a worse score in a tandem repeat (#369)<a class="headerlink" href="#development-changelog-fixed-the-sequence-judges-band-no-longer-stands-on-a-worse-score-in-a-tandem-repeat-369" title="Permanent link">¶</a></h3>
 <ul>
 <li>Under <code>--read-judge sequence</code>, the band around a read's own placement stood on its edge
