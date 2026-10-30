@@ -318,7 +318,8 @@ def prepare_variants(
     threads: int = 1,
     adaptive_context: bool = True,
     rescue_homopolymer: bool = False,
-    read_judge: str | None = None,
+    # 'rules' or 'sequence', as count_bam_binned: the rows in reach are recorded for 'sequence'
+    read_judge: str = "rules",
 ) -> list[PreparedVariant]: ...
 def write_fsd_parquet(
     path: str,

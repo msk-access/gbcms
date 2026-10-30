@@ -1,6 +1,5 @@
-//! The graph scorer (the judge's default; `GBCMS_JUDGE_SCORER=enumerated` selects the
-//! enumeration it replaces): per state of X's site, one dynamic programme of the read over
-//! a small local sequence graph, in place of enumerating the contexts of the other rows and
+//! The judge's scorer: per state of X's site, one dynamic programme of the read over a
+//! small local sequence graph, in place of enumerating the contexts of the other rows and
 //! scoring the read against each haplotype.
 //!
 //! - **The graph** is segments joined by edges: reference segments, and a segment per

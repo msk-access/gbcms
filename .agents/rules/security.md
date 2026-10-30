@@ -46,6 +46,10 @@ of the conversation. The operator decided (2026-10-26, after asking what reaches
 - **Patient BAM slices** (panel, ACCESS, WES, germline normals, the gate) are fine for testing,
   "as long as it's not used for anything downstream". The model-improvement setting is off. Report
   aggregates and allele shapes, never sample IDs or read names.
+  - Whoever inspects patient reads (a probe, a trace filter, a read-by-read check) writes the
+    sanitizer first and sends every printed line through it, so no output shows a position, sample
+    ID or read name, not even while debugging. Every brief that touches patient reads says so.
+    (Operator 2026-10-29, after two agents printed patient positions and a read name.)
 - **cBioPortal study files** (`data_*.txt`, `meta_*.txt`, case lists: cohort-wide patient-level
   rows) stay on this machine: "I need you to only write scripts and run them here to understand
   and tease what can be used". Enforced by `.claude/hooks/protect-cbioportal.py`; the protected

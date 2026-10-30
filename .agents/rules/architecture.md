@@ -59,8 +59,7 @@ gbcms/
 │       │       ├── haplotypes.rs # Site: its states and contexts, the rules that admit them
 │       │       ├── graph.rs     # The graph scorer: one programme per site state
 │       │       ├── score.rs     # Per-haplotype affine aligner (the alignments a call is read on)
-│       │       ├── decide.rs    # The call (margin, fit, telling bases) as a ClassifyResult
-│       │       └── triage.rs    # Coloured k-mer triage (measurement only, off)
+│       │       └── decide.rs    # The call (margin, fit, telling bases) as a ClassifyResult
 │       ├── annotation/          # v5.0.0: GTF-informed annotation
 │       │   ├── mod.rs           # AnnotationIndex (COITree, splice sites, transcript introns)
 │       │   ├── gtf.rs           # GTF loader (plain or gzip/BGZF, variant-guided streaming)

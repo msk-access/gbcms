@@ -63,20 +63,13 @@ pub(crate) fn overhang_cost(read_base: u8) -> i32 {
 pub(crate) struct Band {
     lo: Vec<usize>,
     hi: Vec<usize>,
-    /// Whether the haplotype's ends cut the band somewhere (its edge there is the
-    /// haplotype's own, so the band is not the same relative to another trim of it).
-    pub(crate) cut: bool,
 }
 
 impl Band {
     /// The band around `centers` (per row, the column the read's own alignment puts it
     /// at), `half` columns each side, on a haplotype of `m` bases.
     pub(crate) fn around(centers: &[i64], half: i64, m: usize) -> Band {
-        let mut cut = false;
-        let mut clamp = |c: i64| {
-            cut |= c < 0 || c > m as i64;
-            c.clamp(0, m as i64) as usize
-        };
+        let clamp = |c: i64| c.clamp(0, m as i64) as usize;
         let mut lo: Vec<usize> = Vec::with_capacity(centers.len());
         let mut hi: Vec<usize> = Vec::with_capacity(centers.len());
         for (i, &c) in centers.iter().enumerate() {
@@ -89,12 +82,12 @@ impl Band {
                 hi.push(b.max(hi[i - 1]));
             }
         }
-        Band { lo, hi, cut }
+        Band { lo, hi }
     }
 
     /// Every column, every row: the full programme.
     fn full(n: usize, m: usize) -> Band {
-        Band { lo: vec![0; n + 1], hi: vec![m; n + 1], cut: true }
+        Band { lo: vec![0; n + 1], hi: vec![m; n + 1] }
     }
 
     fn holds(&self, i: usize, j: usize) -> bool {
@@ -116,11 +109,12 @@ impl Band {
 
 /// The best alignment's score, where it ends (the row and column of its last aligned
 /// read base; None for a read left over whole), and whether its path (or one as good)
-/// touched the band's edge.
+/// touched the band's edge (`TRACK`; the tests' oracle for [`touches_edge`]).
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct Run {
     pub(crate) score: i32,
     end: Option<(usize, usize)>,
+    #[cfg_attr(not(test), allow(dead_code))]
     clipped: bool,
 }
 
@@ -539,7 +533,9 @@ pub(crate) fn copy_off_band(read: &[u8], hap: &[u8], band: &Band) -> bool {
     })
 }
 
-/// The banded programme, scores only.
+/// The banded programme, scores only (the tests' reference for the band rule [`align`]
+/// applies).
+#[cfg(test)]
 pub(crate) fn banded(read: &[u8], hap: &[u8], band: &Band) -> Run {
     run::<true, false>(read, hap, band, &mut [], &[])
 }
@@ -547,14 +543,9 @@ pub(crate) fn banded(read: &[u8], hap: &[u8], band: &Band) -> Run {
 /// Whether a banded run stands by itself: its best path stays off the band's edge and
 /// scores at least [`BAND_FLOOR`]. One that stands short of exact also needs no copy of
 /// the read off the band ([`copy_off_band`]).
+#[cfg(test)]
 pub(crate) fn stands(r: &Run) -> bool {
     !r.clipped && r.score >= BAND_FLOOR
-}
-
-/// [`stands`] for a band `slack` columns each side of the read's diagonal (past the
-/// length changes it carries).
-pub(crate) fn stands_in(r: &Run, slack: i64) -> bool {
-    !r.clipped && r.score >= -(GAP_OPEN + GAP_EXTEND * (slack as i32 + 1))
 }
 
 /// The full programme, scores only.
@@ -567,7 +558,7 @@ pub(crate) fn full_score(read: &[u8], hap: &[u8]) -> i32 {
 
 /// The best score of `read` (masked bases [`WILD`]) consumed whole inside `hap`, ends
 /// free: in `band` where it stands (and is exact, or no copy of the read lies off it),
-/// else over every column. The rule `haplotypes::Scorer` applies with its caches.
+/// else over every column: the rule [`align`] applies.
 #[cfg(test)]
 pub(crate) fn score(read: &[u8], hap: &[u8], band: Option<&Band>) -> i32 {
     if read.is_empty() {

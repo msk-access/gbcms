@@ -117,6 +117,7 @@ def observe_molecules(
     library_type: str | None = None,
     observations_path: str | Path | None = None,
     rescue_homopolymer: bool | None = None,
+    read_judge: str | None = None,
 ) -> ObservationResult:
     """Observe the per-molecule allele at each variant.
 
@@ -163,6 +164,11 @@ def observe_molecules(
             best_qual, min_mapq`` (self-describing, so it stands alone once written).
         rescue_homopolymer: Dual-count the homopolymer twin, as ``--rescue-homopolymer``
             does (off by default: each variant counts the given allele).
+        read_judge: The read judgment, as ``--read-judge`` takes it: ``"rules"`` or
+            ``"sequence"`` (the sequence judge). Defaults to the ``alignment`` config's,
+            ``"rules"`` unless set there. Preparation and counting are both told it:
+            preparation records each row's rows within a read's reach for the sequence
+            judge alone, which refuses rows prepared without them.
 
     Returns:
         An :class:`ObservationResult`. Check ``variant_status`` before trusting rows for a
@@ -215,6 +221,9 @@ def observe_molecules(
     library_type = cast(str, _pick(library_type, "library_type", "capture"))
     rescue_homopolymer = cast(bool, _pick(rescue_homopolymer, "rescue_homopolymer", False))
     reference_fasta = cast("str | Path | None", _pick(reference_fasta, "reference_fasta", None))
+    # One read judgment for preparation and counting: the judge's rows in reach are prepared
+    # only when it counts, and it refuses rows prepared without them.
+    read_judge = read_judge if read_judge is not None else align.read_judge
     if not reference_fasta:
         raise ValueError(
             "observe_molecules needs reference_fasta (or a config that carries one): variants "
@@ -238,6 +247,7 @@ def observe_molecules(
         threads,
         quality.adaptive_context,
         rescue_homopolymer,
+        read_judge=read_judge,
     )
     rs_variants = [p.variant for p in prepared]
     decomposed: list[_RsVariant | None] = [p.decomposed_variant for p in prepared]
@@ -268,6 +278,7 @@ def observe_molecules(
         library_type=library_type,
         reference_fasta=str(reference_fasta) if reference_fasta is not None else None,
         observations_path=str(observations_path) if observations_path is not None else None,
+        read_judge=read_judge,
     )
     if observations_path is not None:
         # Rows were written from Rust and never crossed the FFI boundary, so `observations`

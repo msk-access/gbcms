@@ -96,14 +96,14 @@ For a row X and each admitted read:
     exact for the reads); HG002's truth arms change no class under any. No form breaks a
     decided contract. A base the read's haplotype holds, or the guard's background explains,
     is no neither base.
-  - Beside an insertion (`GBCMS_JUDGE_ENDS`). `beside`: an allele removing bases whose
+  - Beside an insertion (`GBCMS_JUDGE_ENDS`, since removed). `beside`: an allele removing bases whose
     placements end at an insertion X's point is a context. It moves 120 reads at 5 gate
     insertion rows from partial evidence to REF, the listed deletion's carriers (oracle v3
     calls them sibling carriers: 108 more wrong calls), and on HG002 loses ALT reads at
     insertions of 50-299 bases. Its general form, `apart` (a length change with a placement
     clear of every placement of a length-changing X is beside it), breaks 24 decided
     contracts: an allele's carriers are another allele wherever it is written (RJ-5, RJ-6,
-    RJ-7). The default stays `site`.
+    RJ-7). The default stayed `site`, and the switch is removed.
 - **Fourth measurement round (2026-10-27; the general forms of the second round's two
   narrowed fixes, measurement options, defaults unchanged, open for the operator):**
   - The background respelled (`GBCMS_JUDGE_BACKGROUND=respell`; `GBCMS_JUDGE_RESPELL_TRACE=1`
@@ -328,7 +328,10 @@ placement, bases). Cost within 2× develop. The HPC gate.
    anchor, and the deciding quality off the read's alignment to the haplotype its best path
    spells. That was a second, linear alignment, banded its own way; it is now the path the
    graph programme traced (`graph::kept_steps`, `Site::alignment_on_path`). The linear aligner
-   stays for the enumerated scorer and where a path keeps no steps.
+   stays only where no state's path spells the haplotype or keeps its steps: `Site::reaches_state`
+   (REF's haplotype with another state's contexts, for REF tied with another allele), and a
+   path keeping no steps (a graph not laid out in order, which the builder never lays out, or
+   an empty read).
    - **Mechanism.** On tied placements in a run both choose the same alignment (32,064
      synthetic alignments agreed). They part where the two bands differ (the linear band can
      miss the path the graph finds: a read beside a listed 14-base deletion in an 18-base
