@@ -324,6 +324,11 @@ pub(crate) struct GraphBand {
 }
 
 impl GraphBand {
+    /// The bytes it holds (its arrays' capacities and itself), for the work space's count.
+    fn heap_bytes(&self) -> usize {
+        (self.lo.capacity() + self.hi.capacity() + self.off.capacity()) * 4 + std::mem::size_of::<GraphBand>()
+    }
+
     /// The band `half` coordinates each side of each read base's aligned position (`rp`,
     /// window coordinates, non-decreasing), over the bases in the read's reach `trim`;
     /// None for every row of every base in reach (the full programme).
@@ -437,10 +442,21 @@ thread_local! {
     static POOL: std::cell::RefCell<Vec<Workspace>> = const { std::cell::RefCell::new(Vec::new()) };
 }
 
-/// The bytes this thread's pooled workspaces hold (their capacities), for the row caches'
-/// budget.
+/// The bytes this thread's pooled workspaces hold (their capacities, and the bands they keep
+/// for the paths, a band states laid out alike share counted once), for the row caches' budget.
 pub(crate) fn pool_bytes() -> usize {
-    POOL.with(|p| p.borrow().iter().map(Workspace::heap_bytes).sum())
+    POOL.with(|p| {
+        let pool = p.borrow();
+        let mut seen: Vec<*const GraphBand> = Vec::new();
+        let mut bands = 0;
+        for (b, _) in pool.iter().filter_map(|ws| ws.last.as_ref()) {
+            if !seen.contains(&std::rc::Rc::as_ptr(b)) {
+                seen.push(std::rc::Rc::as_ptr(b));
+                bands += b.heap_bytes();
+            }
+        }
+        pool.iter().map(Workspace::heap_bytes).sum::<usize>() + bands
+    })
 }
 
 /// Frees this thread's pooled workspaces (they grow again as reads need them).
@@ -1579,6 +1595,41 @@ pub(crate) fn full_score<M: ErrorModel>(m: &M, read: &[u8], g: &Graph) -> i32 {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_threads_work_space_counts_the_bands_its_workspaces_keep() {
+        // A read's programmes leave each state's deciding band in its workspace (`last`), its
+        // path traced back from it; the bands stay in the thread's pool with the arrays, and
+        // the work space the budget counts holds them, a band states laid out alike share once.
+        use super::super::haplotypes::tests::{random_seq, site};
+        use super::super::haplotypes::{ReadView, Row};
+        use rust_htslib::bam::record::Cigar;
+        free_pool();
+        let c = random_seq(600, 51);
+        let x = Row::new(300, &c[300..301], if c[300] == b'A' { b"C" } else { b"A" });
+        let s = site(&c, &x, &[], 100);
+        let read = ReadView::new(&c[250..350], &[30; 100], 250, &[Cigar::Match(100)], (0, 100), 20).unwrap();
+        let gr = s.graph_read(&read);
+        let graphs: Vec<&Graph> = s.graphs.iter().map(|g| &g.graph).collect();
+        let shares: Vec<Option<(usize, usize)>> = s.graphs.iter().map(|g| g.share).collect();
+        with_workspaces(graphs.len(), |wss| decided_states(&ShortReads, &gr, &graphs, &shares, wss));
+        let (arrays, bands) = POOL.with(|p| {
+            let pool = p.borrow();
+            let mut seen: Vec<*const GraphBand> = Vec::new();
+            let mut bands = 0;
+            for ws in pool.iter() {
+                if let Some((b, _)) = &ws.last {
+                    if !seen.contains(&std::rc::Rc::as_ptr(b)) {
+                        seen.push(std::rc::Rc::as_ptr(b));
+                        bands += (b.lo.capacity() + b.hi.capacity() + b.off.capacity()) * 4 + std::mem::size_of::<GraphBand>();
+                    }
+                }
+            }
+            (pool.iter().map(Workspace::heap_bytes).sum::<usize>(), bands)
+        });
+        assert!(bands > 0, "the workspaces keep their bands");
+        assert_eq!(pool_bytes(), arrays + bands, "the work space counted, against the arrays and bands the pool holds");
+    }
 
     fn linear(seq: &[u8]) -> Graph {
         let mut b = GraphBuilder::default();

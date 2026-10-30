@@ -124,6 +124,11 @@ thread_local! {
     static CACHED: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
 }
 
+/// The bytes a hash table's buckets take: its capacity's entries, each with its control byte.
+fn table_bytes<K, V, S>(m: &HashMap<K, V, S>) -> usize {
+    m.capacity() * (std::mem::size_of::<(K, V)>() + 1)
+}
+
 /// The bytes the judge's work space holds on this thread.
 fn work_bytes() -> usize {
     graph::pool_bytes() + score::values_bytes()
@@ -290,6 +295,19 @@ impl<'a> Haplotypes<'a> {
         (self.bytes.get(), self.closed.get())
     }
 
+    /// Tests only: the bytes this row's caches hold as they stand: their tables whole
+    /// ([`table_bytes`]) and each entry's heap, a kept programme as it has grown since.
+    #[cfg(test)]
+    pub(crate) fn held_bytes(&self) -> usize {
+        let (j, s, v) = (self.judged.borrow(), self.scored.borrow(), self.verdicts.borrow());
+        table_bytes(&j)
+            + table_bytes(&s)
+            + table_bytes(&v)
+            + j.keys().map(|k| k.0.heap_bytes()).sum::<usize>()
+            + s.iter().map(|(k, sc)| k.heap_bytes() + sc.heap_bytes()).sum::<usize>()
+            + v.keys().map(|k| k.0.capacity() + k.3.capacity()).sum::<usize>()
+    }
+
     /// The verdict a read alike to `view`'s got at this row ([`Haplotypes::judged`]'s key).
     pub(crate) fn judged(&self, view: &JudgedKey) -> Option<decide::Verdict> {
         let got = self.judged.borrow().get(view).copied();
@@ -297,11 +315,42 @@ impl<'a> Haplotypes<'a> {
         got
     }
 
-    pub(crate) fn keep_judged(&self, view: JudgedKey, verdict: decide::Verdict) {
-        let add = view.0.heap_bytes() + std::mem::size_of::<(JudgedKey, decide::Verdict)>();
-        if self.room(add) {
-            self.judged.borrow_mut().insert(view, verdict);
+    /// Inserts `k`, `v` into `map` where it fits the thread's budget: charged its heap
+    /// bytes (`heap`) and what the table grows by to hold it ([`table_bytes`]: a table's
+    /// buckets are allocated whole as it grows). Where it does not fit, the table is given back
+    /// its earlier size and the row adds nothing more.
+    fn insert<K: Eq + std::hash::Hash, V, S: std::hash::BuildHasher>(&self, map: &RefCell<HashMap<K, V, S>>, k: K, v: V, heap: usize) {
+        if self.closed.get() {
+            return;
         }
+        let mut m = map.borrow_mut();
+        let (before, cap) = (table_bytes(&m), m.capacity());
+        m.reserve(1);
+        let grown = table_bytes(&m) - before;
+        if self.room(heap + grown) {
+            m.insert(k, v);
+        } else if grown > 0 {
+            m.shrink_to(cap);
+        }
+    }
+
+    /// Charges what a kept entry grew by since it was kept (a later read alike building more
+    /// of a kept programme's haplotypes and alignments): held whether or not it fits, it is
+    /// counted either way, and a row past the budget adds no more entries.
+    pub(crate) fn grew(&self, add: usize) {
+        if add == 0 {
+            return;
+        }
+        CACHED.with(|c| c.set(c.get() + add));
+        self.bytes.set(self.bytes.get() + add);
+        if thread_budget().is_some_and(|budget| CACHED.with(std::cell::Cell::get) + work_bytes() > budget) {
+            self.closed.set(true);
+        }
+    }
+
+    pub(crate) fn keep_judged(&self, view: JudgedKey, verdict: decide::Verdict) {
+        let heap = view.0.heap_bytes();
+        self.insert(&self.judged, view, verdict, heap);
     }
 
     /// What the programmes gave a read alike to `placed` (bases and placement) at this row.
@@ -312,10 +361,8 @@ impl<'a> Haplotypes<'a> {
     }
 
     pub(crate) fn keep_scored(&self, placed: ReadView, scored: std::rc::Rc<decide::Scored>) {
-        let add = placed.heap_bytes() + scored.heap_bytes() + std::mem::size_of::<(ReadView, usize)>();
-        if self.room(add) {
-            self.scored.borrow_mut().insert(placed, scored);
-        }
+        let heap = placed.heap_bytes() + scored.heap_bytes();
+        self.insert(&self.scored, placed, scored, heap);
     }
 
     /// The call a read already got at this row.
@@ -324,10 +371,8 @@ impl<'a> Haplotypes<'a> {
     }
 
     pub(crate) fn keep_verdict(&self, key: ReadKey, result: ClassifyResult) {
-        let add = key.0.capacity() + key.3.capacity() + std::mem::size_of::<(ReadKey, ClassifyResult)>();
-        if self.room(add) {
-            self.verdicts.borrow_mut().insert(key, result);
-        }
+        let heap = key.0.capacity() + key.3.capacity();
+        self.insert(&self.verdicts, key, result, heap);
     }
 
     /// The haplotypes when they were found for `v` (the dual-counted decomposed form of
