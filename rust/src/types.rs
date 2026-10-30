@@ -82,6 +82,12 @@ pub struct Variant {
     #[pyo3(get)]
     pub reach_rows: Vec<(i64, String, String)>,
 
+    /// Prep was told the rules, so it left `reach_rows` unrecorded (the rules never read
+    /// them). The sequence judge refuses such a row: judged without the rows in its reach,
+    /// its reads would be weighed against too few candidate sequences, silently. False for
+    /// a row built by hand, never prepared, which lists no other row.
+    pub reach_unrecorded: bool,
+
     /// Reference bases a whole read reaches each side of an event the exact-carrier rule
     /// judges, with their 0-based start (covering `event_ref`): a read the aligner placed
     /// a unit off in a repeat is read whole over all its bases. Prep's; None otherwise.
@@ -122,6 +128,7 @@ impl Variant {
             boundary_span,
             listed_neighbours: Vec::new(),
             reach_rows: Vec::new(),
+            reach_unrecorded: false,
             whole_ref: None,
         }
     }

@@ -83,7 +83,13 @@ def _count(tmp_path, contig, row, groups, name="s"):
     reads = [r for g in groups for r in g]
     fa, bam = write_contig(tmp_path, contig, reads, name)
     (pv,) = _rs.prepare_variants(
-        [_rs.Variant("1", P, row[0], row[1], "COMPLEX")], fa, 5, False, 1, True
+        [_rs.Variant("1", P, row[0], row[1], "COMPLEX")],
+        fa,
+        5,
+        False,
+        1,
+        True,
+        read_judge="sequence",
     )
     assert pv.gbcms_status == "PASS", pv.gbcms_status_reason
     (c,) = count_checked(bam, [pv.variant], read_judge="sequence", reference_fasta=fa)

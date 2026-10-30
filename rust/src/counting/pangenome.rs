@@ -438,6 +438,7 @@ mod tests {
             boundary_span: None,
             listed_neighbours: Vec::new(),
             reach_rows: Vec::new(),
+            reach_unrecorded: false,
             whole_ref: None,
         }
     }
@@ -484,6 +485,7 @@ mod tests {
             boundary_span: None,
             listed_neighbours: Vec::new(),
             reach_rows: Vec::new(),
+            reach_unrecorded: false,
             whole_ref: None,
         };
         assert!(build_haplotype_matrix(&v, &[]).is_none());

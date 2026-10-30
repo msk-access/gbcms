@@ -52,7 +52,10 @@ def _counts(tmp_path, min_baseq):
         reads.append(make_read(f"r{i}", contig[s : s + READ], s, ((0, READ),)))
     fa, bam = write_contig(tmp_path, contig, reads, f"q{min_baseq}")
     rows = [_rs.Variant("1", P, "CC", "GT", "MNP"), _rs.Variant("1", P, "CCA", "GTC", "MNP")]
-    prepared = [pv.variant for pv in _rs.prepare_variants(rows, fa, 5, False, 1, True)]
+    prepared = [
+        pv.variant
+        for pv in _rs.prepare_variants(rows, fa, 5, False, 1, True, read_judge="sequence")
+    ]
     counts = count_bam_checked(
         bam,
         prepared,
