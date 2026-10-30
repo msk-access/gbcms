@@ -45,7 +45,10 @@ maturin develop   # fast, unoptimized: for iterating; use --release for tests an
   its own venv (no change to any git state).
 - `mkdocs build --strict` in a worktree: the git-revision-date plugin warns (`.git` is a file),
   so build with a temporary config without that plugin.
-- **Linux wheels** (release.yml, manylinux) build with `OPENSSL_NO_VENDOR=1`.
+- **Linux wheels** (release.yml and wheels.yml, through `.github/actions/linux-wheel/action.yml`) build in
+  the manylinux_2_28 image; the extension links no OpenSSL or libcurl (rust-htslib has no `curl`
+  feature). `checkpoint-wheels.yml` builds older commits that do, so it keeps manylinux_2_34 and
+  `OPENSSL_NO_VENDOR=1`. Check a wheel on RHEL 8 and 9 with `scripts/check_wheel.sh`.
 - **Logging** is controlled by flags: `--verbose` (DEBUG, Rust records forwarded through
   `pyo3-log`) and `--trace` (per-read). `RUST_LOG` has no effect.
 

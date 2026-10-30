@@ -220,8 +220,12 @@ After PR approval:
 The tag triggers `.github/workflows/release.yml`:
 
 0. **Verify** — `scripts/release.py check --tag X.Y.Z`; every other job waits for it
-1. **Build one wheel** — `cp311`, `manylinux_2_34_x86_64` — plus an **sdist** (jobs `linux`
-   and `sdist`)
+1. **Build one wheel** — `cp311`, `manylinux_2_28_x86_64` (AlmaLinux 8, glibc 2.28: it
+   installs on RHEL 8 and newer) — plus an **sdist** (jobs `linux` and `sdist`). The
+   `linux` job builds with the local action `.github/actions/linux-wheel`; the `Wheels`
+   workflow builds with the same action on every change to the build and installs the
+   wheel in Rocky Linux 8 and 9 containers (pip with binary wheels only, the suite, and
+   a counting run whose output digests must match everywhere)
 2. **Publish to PyPI** (via maturin)
 3. **Build Docker image** → push to `ghcr.io/msk-access/gbcms:X.Y.Z`
 4. **Create the GitHub Release** — title and notes from the CHANGELOG section, the
@@ -239,7 +243,8 @@ The docs are not part of this workflow: `deploy-docs.yml` publishes them (via `m
 !!! warning "One wheel, not a matrix"
     This list previously claimed Linux x86_64 + aarch64, macOS x86_64 + arm64, and Windows.
     `release.yml` has only `linux` and `sdist` jobs, and 6.2.0 published exactly
-    `gbcms-X.Y.Z-cp311-cp311-manylinux_2_34_x86_64.whl` and `gbcms-X.Y.Z.tar.gz`.
+    `gbcms-X.Y.Z-cp311-cp311-manylinux_2_34_x86_64.whl` and `gbcms-X.Y.Z.tar.gz` (the
+    wheel is `manylinux_2_28` from 6.7.0).
 
     The practical consequence, worth knowing before telling a user to `pip install gbcms`:
     **everyone not on cp311 manylinux x86_64 builds from the sdist**, which needs a Rust
