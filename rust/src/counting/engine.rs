@@ -3051,7 +3051,7 @@ fn by_bases(
 /// Smith-Waterman scoring for the read classifiers: an N in the read or the
 /// haplotype is neutral (0), evidence for neither a match nor a mismatch (as in
 /// GATK), so duplex-masked bases decide nothing.
-fn sw_score(a: u8, b: u8) -> i32 {
+pub(crate) fn sw_score(a: u8, b: u8) -> i32 {
     if a == b'N' || b == b'N' { 0 } else if a == b { 1 } else { -1 }
 }
 
