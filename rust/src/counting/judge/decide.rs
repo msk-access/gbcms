@@ -361,6 +361,9 @@ pub(crate) struct Scored {
     rows: Vec<Vec<usize>>,
     haps: std::cell::RefCell<Vec<(usize, std::rc::Rc<Hap>)>>,
     aligns: std::cell::RefCell<Vec<(usize, Aligned)>>,
+    /// Per state, its best path read base by read base ([`graph::kept_steps`]): the read's
+    /// alignment to the state's haplotype, which its call is examined on.
+    steps: Vec<Option<graph::PathSteps>>,
 }
 
 /// Per class, the best score and the first candidate (haplotype or state) reaching it.
@@ -394,6 +397,8 @@ fn judge_graph(site: &Site, read: &ReadView, min_baseq: u8, ask_anchor: bool, ke
         Verdict { call: Call::Depth, qual: 0, best: best.map(|b| b.map(|(s, _)| s)), holds_anchor: false, placed: None, confirmed: false, spells: 0, clip: None, fits, fits_none: false, neither: NeitherTrace::default(), owngap: OwnGapTrace::default() }
     } else {
         let scorer = Scorer::new(read);
+        // the alignment a candidate's call is examined on: its traced path's
+        let on_path = |k: usize, hap: &Hap| scored.steps[k].as_ref().map(|st| site.alignment_on_path(k, st, hap, &read.seq));
         let ex = Examined::new(
             site,
             &scorer,
@@ -406,6 +411,7 @@ fn judge_graph(site: &Site, read: &ReadView, min_baseq: u8, ask_anchor: bool, ke
                 h
             },
             &scored.aligns,
+            &on_path,
         );
         conclude(site, read, &ex, best, min_baseq, ask_anchor)
     };
@@ -425,16 +431,42 @@ fn score_states(site: &Site, gr: &graph::GraphRead, wss: &mut [Workspace]) -> Sc
         halves.push(half);
         raise(&mut best, st.class as usize, s, k);
     }
-    let rows = (0..site.graphs.len())
+    let (mut rows, mut steps) = (Vec::with_capacity(site.graphs.len()), Vec::with_capacity(site.graphs.len()));
+    for k in 0..site.graphs.len() {
+        let p = graph::kept_path(&ShortReads, gr, &site.graphs[k].graph, halves[k], &wss[k]);
+        if best.iter().flatten().any(|&(s, h)| h == k && s != p.score) {
+            trace!("haplotype judge: state {k}'s traced path scores {} against its score", p.score);
+        }
+        rows.push(p.rows);
+        steps.push(graph::kept_steps(&ShortReads, gr, &site.graphs[k].graph, &wss[k]));
+    }
+    Scored { best, halves, rows, haps: Default::default(), aligns: Default::default(), steps }
+}
+
+/// Tests only: per state of a graph site, the state's score, the read's alignment to the
+/// haplotype its best path spells as the call examines it, and the linear aligner's alignment
+/// to that haplotype (each with where its columns start); `free`: the linear aligner's band
+/// with its repeat forced (Some(0): the floor before the repeat-aware one).
+#[cfg(test)]
+pub(crate) fn examined_alignments(site: &Site, read: &ReadView, free: Option<i64>) -> Vec<(i32, Laid, Laid)> {
+    let gr = site.graph_read(read);
+    let scored = graph::with_workspaces(site.graphs.len(), |wss| score_states(site, &gr, wss));
+    let decided: Vec<i32> = {
+        let graphs: Vec<&graph::Graph> = site.graphs.iter().map(|st| &st.graph).collect();
+        let shares: Vec<Option<(usize, usize)>> = site.graphs.iter().map(|st| st.share).collect();
+        graph::with_workspaces(site.graphs.len(), |wss| graph::decided_states(&ShortReads, &gr, &graphs, &shares, wss)).into_iter().map(|d| d.0).collect()
+    };
+    let scorer = Scorer::new(read);
+    let on_path = |k: usize, hap: &Hap| scored.steps[k].as_ref().map(|st| site.alignment_on_path(k, st, hap, &read.seq));
+    let aligns = Default::default();
+    let ex = Examined::new(site, &scorer, |k| std::rc::Rc::new(site.hap_on_path(k, &scored.rows[k])), &aligns, &on_path);
+    (0..site.graphs.len())
         .map(|k| {
-            let p = graph::kept_path(&ShortReads, gr, &site.graphs[k].graph, halves[k], &wss[k]);
-            if best.iter().flatten().any(|&(s, h)| h == k && s != p.score) {
-                trace!("haplotype judge: state {k}'s traced path scores {} against its score", p.score);
-            }
-            p.rows
+            let hap = ex.hap(k);
+            let lin = free.map_or_else(|| scorer.align(site, &hap), |f| scorer.align_with_free(site, &hap, f));
+            (decided[k], (*ex.align(k)).clone(), lin)
         })
-        .collect();
-    Scored { best, halves, rows, haps: Default::default(), aligns: Default::default() }
+        .collect()
 }
 
 /// The candidates a read's call is examined on, each built where first asked for and kept
@@ -451,14 +483,24 @@ pub(crate) struct Examined<'h, 'a, F: Fn(usize) -> std::rc::Rc<Hap>> {
     /// The read's alignments to the candidates: the call's own, or those kept for the reads
     /// alike in bases and placement ([`Scored`]), which the alignment is fixed by.
     aligns: &'a std::cell::RefCell<Vec<(usize, Aligned)>>,
+    /// The alignment read off a candidate's traced path (the one its score came from); None
+    /// only where the path keeps no steps ([`graph::kept_steps`]: a graph not laid out in
+    /// order, which the builder never lays out, or an empty read), which the linear aligner
+    /// (`scorer`) then answers.
+    on_path: &'a OnPath<'a>,
 }
 
+/// A candidate's alignment read off its graph path ([`Examined`]).
+type OnPath<'a> = dyn Fn(usize, &Hap) -> Option<Laid> + 'a;
+
 /// A read's alignment to a candidate's haplotype, and where the haplotype's trim starts.
-type Aligned = std::rc::Rc<(Alignment, usize)>;
+type Laid = (Alignment, usize);
+/// A [`Laid`] alignment, kept for the reads alike ([`Scored`]).
+type Aligned = std::rc::Rc<Laid>;
 
 impl<'h, 'a, F: Fn(usize) -> std::rc::Rc<Hap>> Examined<'h, 'a, F> {
-    pub(crate) fn new(site: &'h Site, scorer: &'a Scorer<'a>, build: F, aligns: &'a std::cell::RefCell<Vec<(usize, Aligned)>>) -> Self {
-        Examined { site, scorer, build, haps: Default::default(), aligns }
+    pub(crate) fn new(site: &'h Site, scorer: &'a Scorer<'a>, build: F, aligns: &'a std::cell::RefCell<Vec<(usize, Aligned)>>, on_path: &'a OnPath<'a>) -> Self {
+        Examined { site, scorer, build, haps: Default::default(), aligns, on_path }
     }
 
     /// Candidate `k`'s haplotype.
@@ -477,7 +519,7 @@ impl<'h, 'a, F: Fn(usize) -> std::rc::Rc<Hap>> Examined<'h, 'a, F> {
             return a.clone();
         }
         let hap = self.hap(k);
-        let a = std::rc::Rc::new(self.scorer.align(self.site, &hap));
+        let a = std::rc::Rc::new((self.on_path)(k, &hap).unwrap_or_else(|| self.scorer.align(self.site, &hap)));
         self.aligns.borrow_mut().push((k, a.clone()));
         a
     }
