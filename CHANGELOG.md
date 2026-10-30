@@ -45,7 +45,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - **`GBCMS_JUDGE_*` environment variables are measurement switches,** not options:
     they serve the measurement rounds and are removed as their questions are decided.
     Removed as decided: `SCORER`, together with the enumerated scorer it selected (and
-    `FOUND_PROBE`, which only that scorer read); `TRIAGE`, `TRIAGE_EXACT` and
+    `FOUND_PROBE` and `OTHER`'s found rules other than `told`, which only that scorer
+    read); `TRIAGE`, `TRIAGE_EXACT` and
     `TRIAGE_UNKNOWN`, together with the k-mer triage; `DELINS`; `CONTEXTS`; and `ENDS`.
     The default counts do not change.
 

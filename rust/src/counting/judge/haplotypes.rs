@@ -580,8 +580,8 @@ pub(crate) struct Candidates {
 /// Measurement only, TEMPORARY: which of the judge's other-allele options are on
 /// (`GBCMS_JUDGE_OTHER`, comma-separated: `runs` the other lengths of X's repeat as
 /// states, `found` the indels the reads write at X's site as states (`foundK`: written by
-/// K reads, default [`FOUND_MIN_READS`]; `found3` the guard's floor), a [`FoundRule`]
-/// token for which of them stay states, `fit` the absolute-fit check, `edges` the check
+/// K reads, default [`FOUND_MIN_READS`]; `found3` the guard's floor), `told` or `toldK`
+/// for which of them stay states ([`FoundRule`]), `fit` the absolute-fit check, `edges` the check
 /// passing over indels inside a long event's own bases; `none`; `both` runs, found and
 /// fit). Default `found,fit,told,edges`.
 #[derive(Clone, Copy, Debug)]
@@ -614,8 +614,7 @@ pub(crate) const FOUND_MIN_READS: u32 = 2;
 /// X's, never another allele, while a sibling allele its few reads spell partially is
 /// another allele all the same. A read *tells* a found allele where its best haplotype
 /// holding it beats every haplotype carrying X and every one holding REF's bases by
-/// [`DELTA`]. Only `told` is weighed: the other rules read the enumerated haplotypes, which
-/// the judge no longer builds, and fall back to `told` with a warning.
+/// [`DELTA`].
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum FoundRule {
     /// Every found allele at X's site is a state (no token).
@@ -623,25 +622,6 @@ pub(crate) enum FoundRule {
     /// `told`: the found floor of reads ([`GUARD_MIN_READS`] and [`GUARD_REF_SHARE`] of the
     /// site's) tell it; `toldK`: K reads.
     Told(usize),
-    /// `spell`: dropped where no writer (a read whose alignment writes it) tells it from X,
-    /// or none from REF, by score; `spellK`: kept where K writers tell it.
-    Spell(usize),
-    /// `exact`, `exactK`: as `spell`, a writer telling it from X (REF) only where the bases
-    /// it shows of the allele's haplotype (error-free) lie in no haplotype carrying X
-    /// (holding REF's bases) as well.
-    Exact(usize),
-    /// `fragK`: K fragments tell it as `exact` does (a writer or its mate among the site's
-    /// reads) and neither mate is told from it by X or REF.
-    Frag(usize),
-    /// `cleanK` (`clean`: K = 1): the found floor tells it, or K reads show it whole
-    /// (clean): reads whose own bases are that allele's, X's and REF's haplotypes
-    /// each missing them by a confident base wherever placed. Noise rarely makes a carrier
-    /// of X (or a REF read) spell another found allele with no confident edit and no copy
-    /// in X's or REF's haplotypes, while one such read is a read carrying another allele.
-    Clean(usize),
-    /// `share`: one read or more tells it, and they are at least [`GUARD_REF_SHARE`] of the
-    /// reads telling it from X either way (those spanning where they differ).
-    Share,
 }
 
 pub(crate) fn other_option() -> OtherOption {
@@ -660,21 +640,7 @@ fn parse_other(v: &str) -> OtherOption {
     let numbered = |stem: &str| {
         tokens.iter().find_map(|t| t.strip_prefix(stem).and_then(|n| if n.is_empty() { Some(0) } else { n.parse().ok() }))
     };
-    let rule = if let Some(k) = numbered("told") {
-        FoundRule::Told(k)
-    } else if let Some(k) = numbered("spell") {
-        FoundRule::Spell(k)
-    } else if let Some(k) = numbered("exact") {
-        FoundRule::Exact(k)
-    } else if let Some(k) = numbered("frag") {
-        FoundRule::Frag(k)
-    } else if let Some(k) = numbered("clean") {
-        FoundRule::Clean(k.max(1))
-    } else if on("share") {
-        FoundRule::Share
-    } else {
-        FoundRule::All
-    };
+    let rule = numbered("told").map_or(FoundRule::All, FoundRule::Told);
     let found = numbered("found");
     let found_min = found.filter(|&k| k > 0).map_or(FOUND_MIN_READS, |k| k as u32);
     OtherOption { runs: on("runs"), found: found.is_some(), fit: on("fit"), rule, edges: on("edges"), found_min }
@@ -2871,24 +2837,12 @@ impl Site {
     /// A found allele stays a state only where the reads tell it from X and from REF by
     /// [`DELTA`], the state's graph beating REF's and X's, on the found floor of reads
     /// (`told`: [`GUARD_MIN_READS`] and [`GUARD_REF_SHARE`] of the site's; `toldK`: K reads),
-    /// those that write it first, then the rest. The other rules read the enumerated
-    /// haplotypes' bases, which the judge no longer builds: they fall back to `told`, with a
-    /// warning.
+    /// those that write it first, then the rest.
     fn drop_graph_spellings(&mut self, found: &[(Row, &[usize])], reads: &[ReadView], rule: FoundRule) {
         let floor = match rule {
             FoundRule::All => return,
             FoundRule::Told(k) if k > 0 => k as f64,
             FoundRule::Told(_) => (GUARD_REF_SHARE * reads.len() as f64).max(f64::from(GUARD_MIN_READS)),
-            other => {
-                static WARNED: std::sync::Once = std::sync::Once::new();
-                WARNED.call_once(|| {
-                    log::warn!(
-                        "sequence judge: the found-allele rule {other:?} read the enumerated haplotypes, which the \
-                         judge no longer builds; it applies told"
-                    )
-                });
-                (GUARD_REF_SHARE * reads.len() as f64).max(f64::from(GUARD_MIN_READS))
-            }
         };
         let mut ws = Workspace::default();
         let mut dropped: Vec<usize> = Vec::new();
@@ -3044,12 +2998,12 @@ pub(crate) mod tests {
     }
 
     #[test]
-    fn the_other_allele_tokens_parse() {
+    fn the_kept_other_allele_tokens_parse() {
         let o = parse_other("found,fit,told,edges");
         assert!(o.found && o.fit && o.edges && !o.runs);
         assert_eq!((o.rule, o.found_min), (FoundRule::Told(0), FOUND_MIN_READS));
-        let o = parse_other("found3,fit,clean,edges");
-        assert_eq!((o.found, o.rule, o.found_min), (true, FoundRule::Clean(1), 3));
+        let o = parse_other("found3,fit,told2,edges");
+        assert_eq!((o.found, o.rule, o.found_min), (true, FoundRule::Told(2), 3));
         let o = parse_other("none");
         assert_eq!((o.found, o.fit, o.rule), (false, false, FoundRule::All));
     }
