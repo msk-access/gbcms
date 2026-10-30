@@ -356,8 +356,10 @@ placement, bases). Cost within 2× develop. The HPC gate.
      | HG002, 8 arms | 830 (317 rows; most in SV rows the truth leaves undecided) | | |
 
      HG002 truth v2dbq20: tr SNVs +1 ALT, no wrong calls. The decided-contract suite (the
-     judge switch) is identical to develop's. Cost: CPU 3 to 10% lower on the patient arms and
-     6% on the gate subset, 9 to 33% lower on HG002 (no second alignment per examined state).
+     judge switch) is identical to develop's. Cost (Mac CPU, develop's judge path against this
+     change, timed together): 2 to 10% lower on the patient arms (panel 10%, across 4%, WES 5%,
+     normals 2%), 4% on the gate subset (3.19× to 3.07× the rules path), 11 to 28% lower on
+     HG002 (no second alignment per examined state).
    - **Worked rows (HG002, public).** tr 20:19346218 A>G: one read scores ALT 0, REF -4,
      OTHER -4 either way; the linear alignment does not place its base at X (depth only), the
      traced path does (ALT); truth ALT. c246 17:80743837 A>T: one read scores ALT -4, REF 0,
