@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed — the sequence judge holds one memory budget per thread (#304)
+
+- Under `--read-judge sequence`, a row's caches (the verdicts and programmes of reads alike)
+  and the judge's work space now share one budget of 128 MB per thread. Past it a row caches
+  nothing more and its later reads are judged afresh, with the same calls; work space past a
+  quarter of the budget is freed at a row's end. Counts are unchanged. On HPC the deepest HG002
+  arm's peak memory falls from 2.8 to 1.8 GB for 0.9% more CPU; patient data types are within
+  2% of no limit at every budget. `docs/proposals/sequence-judge.md` §10.
+
 ### Changed — the sequence judge examines a call on the alignment its score came from (#304)
 
 - Under `--read-judge sequence`, a read's call (the bases at X, the anchor, the deciding
