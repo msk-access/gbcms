@@ -228,7 +228,9 @@ The tag triggers `.github/workflows/release.yml`:
    wheel in Rocky Linux 8 and 9 containers (pip with binary wheels only, the suite, and
    a counting run whose output digests must match everywhere)
 2. **Publish to PyPI** (via maturin)
-3. **Build Docker image** → push to `ghcr.io/msk-access/gbcms:X.Y.Z`
+3. **Build the Docker image** on an amd64 and an arm64 runner (natively, no emulation), push each
+   by digest, and join them (job `docker-merge`) into one multi-arch tag, `ghcr.io/msk-access/gbcms:X.Y.Z`
+   and `latest`
 4. **Create the GitHub Release** — title and notes from the CHANGELOG section, the
    wheel and sdist attached with `SHA256SUMS`, and a build-provenance attestation for
    each artifact (verify with `gh attestation verify <file> --repo msk-access/gbcms`)
