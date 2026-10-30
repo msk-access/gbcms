@@ -394,16 +394,13 @@ caveat in gbcms's output.
   toward depth only, since it cannot show either allele; one that holds it and
   ends inside the longer allele is judged by the bases it has (RJ-23). At low
   depth, informative reads are few, so compare `alt_count + ref_count` with depth.
-- **Variants not prepared against the reference (direct API use, or a failed
-  reference fetch) (C24 #195):** when the semiglobal alignment is judged unreliable,
-  `classify_by_alignment` re-scores with a local alignment, but its tail (the REF
-  branch's nearby-evidence check and the tie branch) still reads the semiglobal
-  scores. REF and ALT calls use the local scores correctly; only
-  `has_nearby_evidence`, so `partial_alt`, can be affected. It runs only where the
-  exact-carrier rule returns nothing (no `ref_context` or `event_ref` holding the
-  event and its flank), which prepared variants have. Not reproduced end to end (it
-  needs a Rust test). Open for 6.7.0: use the fallback's own scores in the tail, or
-  retire the fallback and flag the leftover path through `SW_FALLBACK`.
+- **Variants the exact-carrier rule cannot judge (direct API use, a failed
+  reference fetch, a contig end):** their reads go to the previous complex
+  classifier, whose Smith-Waterman step can re-score a complex row with a local
+  alignment; the call, its nearby evidence (`partial_alt`) and its tie check all read
+  the scores that made the call (#195). Each such row is warned once. On every arm
+  measured on 2026-10-30 (panel, gate, ACCESS and normals, WES, germline, RNA and HG002;
+  about 4.5 million read calls under each backend) no read took this path.
 - **Purity, clonality, contamination, clonal haematopoiesis, germline vs
   somatic:** counts are evidence, not calls. A matched normal and, for cfDNA,
   [mFSD](mfsd-report.md) help interpret them.

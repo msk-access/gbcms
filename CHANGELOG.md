@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed — the Smith-Waterman local re-scoring's `partial_alt` reads the scores that made the call (#195)
+
+- Where a complex row's semiglobal scores are unreliable, the `sw` step re-scores with a local
+  alignment and calls on those scores, but its nearby-evidence check (a REF call with ALT close)
+  and its tie check still read the semiglobal ones, so `partial_alt` could follow scores that
+  did not make the call. Both now read the scores that made the call. REF, ALT and depth are
+  unchanged. Only complex rows the exact-carrier rule cannot judge reach this step; on every
+  arm (about 4.5 million read calls under each backend) none did, so no measured count changes.
+
 ### Changed — the sequence judge holds one memory budget per thread (#304)
 
 - Under `--read-judge sequence`, a row's caches (the verdicts and programmes of reads alike)
