@@ -359,9 +359,9 @@ Interactive helper for git-flow operations:
 
 | Workflow | Trigger | Purpose |
 |:---------|:--------|:--------|
-| `test.yml` | Push to develop/main, PR | Run tests: Ubuntu 3.10 (dependencies at their floors), 3.11 and 3.14, macOS 3.12; lint; Rust unit tests; build the image and run it under Docker and under Apptainer (as a RHEL cluster does) |
+| `test.yml` | Push to develop/main, PR | Run tests: Ubuntu 3.10 (dependencies at their floors), 3.11 and 3.14, macOS 3.12; lint; Rust unit tests; build the image on amd64 and arm64 runners and run it under Docker on both and under Apptainer on amd64 (as a RHEL cluster does), the two architectures' output digests compared |
 | `latest-deps.yml` | Monthly (the 1st), manual before a release | The suite on the newest dependency releases, Python 3.10–3.14, with compatible Rust updates; a failure opens or updates one `latest-deps` issue |
-| `release.yml` | Tag push `X.Y.Z` | Verify the version sources, build the wheel and sdist, publish PyPI and Docker, create the GitHub Release |
+| `release.yml` | Tag push `X.Y.Z` | Verify the version sources, build the wheel and sdist, publish PyPI and Docker (amd64 and arm64), create the GitHub Release |
 | `wheels.yml` | Push/PR touching `rust/`, `pyproject.toml`, the wheel action or the check scripts; manual | Build the Linux wheel with the release's action and install it in Rocky Linux 8 and 9 containers (`pip` with binary wheels only, the suite, and a counting run whose output digests must match everywhere); publishes nothing |
 | `nextflow-lint.yml` | Push/PR touching `nextflow/` | Strict-syntax lint; every process `nextflow inspect` resolves runs the manifest's image |
 | `deploy-docs.yml` | Push to main or develop (docs/) | Deploy versioned docs via `mike` (`stable` from main, `dev` from develop) |
