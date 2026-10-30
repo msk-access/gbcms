@@ -241,3 +241,43 @@ jobs:
           docker run --rm gbcms:test --version
           docker run --rm --entrypoint python gbcms:test -m pip check
 
+      # How a RHEL cluster runs the image (the Nextflow singularity, slurm and iris
+      # profiles): Apptainer, from a SIF built from the local image. Unlike Docker, it runs
+      # as the caller, on a read-only filesystem, with the caller's HOME and environment in
+      # the container and the data folders bound in (what Nextflow's autoMounts does).
+      - name: Install Apptainer
+        run: |
+          sudo add-apt-repository -y ppa:apptainer/ppa
+          sudo apt-get update
+          sudo apt-get install -y apptainer
+          # Ubuntu 24.04 blocks the unprivileged user namespaces Apptainer runs in
+          sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0 || true
+          apptainer --version
+
+      - name: Run the image under Docker and under Apptainer
+        run: |
+          set -euo pipefail
+          mkdir -p work/docker work/apptainer
+          # A package in the caller's HOME, which Apptainer binds into the container: a
+          # Python imports it before the image's own unless the image turns the user site
+          # off. The Docker run below does not see HOME.
+          decoy="$HOME/.local/lib/python3.11/site-packages/pydantic"
+          mkdir -p "$decoy"
+          echo 'raise ImportError("imported from the caller HOME, not from the image")' > "$decoy/__init__.py"
+
+          # Docker is the reference: a counting run on a synthetic data set, whose
+          # output digests (scripts/wheel_fixture_run.py) are printed.
+          docker run --rm -v "$PWD/scripts:/scripts:ro" -v "$PWD/work/docker:/work" \
+            --entrypoint python gbcms:test /scripts/wheel_fixture_run.py /work/fixture > work/docker.txt
+
+          apptainer build gbcms.sif docker-daemon://gbcms:test
+          # exec, through bash, in the read-only SIF with the data folders bound, as a task runs
+          apptainer exec gbcms.sif gbcms --version
+          apptainer exec gbcms.sif python -m pip check
+          apptainer exec -B "$PWD/scripts:/scripts:ro" -B "$PWD/work/apptainer:/work" gbcms.sif \
+            /bin/bash -c 'python /scripts/wheel_fixture_run.py /work/fixture' > work/apptainer.txt
+
+          cat work/docker.txt
+          diff -u work/docker.txt work/apptainer.txt
+          echo "The outputs under Apptainer equal the Docker run's."
+

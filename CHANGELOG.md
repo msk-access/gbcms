@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added — CI runs the image through Apptainer, as RHEL clusters do (#233)
+
+- The `docker-test` job installs Apptainer, builds a SIF from the image it just built
+  (`docker-daemon://gbcms:test`), and runs the CLI and a counting run on a synthetic data set
+  in it: `apptainer exec` through bash, on the read-only SIF, with the data folders bound in
+  (what Nextflow's `autoMounts` does), as the calling user. It fails unless the output digests
+  equal those of the same run under Docker. It runs on every change that builds the image.
+- Found by reading how Singularity and Apptainer differ from Docker: both bind the caller's
+  `$HOME` into the container, and a Python imports `~/.local/lib/python3.x/site-packages`
+  before its own packages. Anyone on a cluster with `pip install --user` packages in the same
+  Python version would have had them replace the image's locked ones. Checked on the base
+  image with Docker (a package in a bound HOME is imported; with `PYTHONNOUSERSITE=1` it is
+  not). The image now sets `PYTHONNOUSERSITE=1`, and the CI run puts a package that raises on
+  import in the caller's home first, so a regression fails loudly. A `PYTHONPATH` in the
+  caller's environment still reaches the container (Apptainer passes the environment on;
+  `--cleanenv` stops it): the installation page says so.
+
 ### Changed — one wheel for every Python from 3.10: the extension uses the stable ABI (`abi3-py310`) (#235)
 
 - The Linux wheel is now `cp310-abi3`: one file that installs on CPython 3.10, 3.11, 3.12, 3.13
