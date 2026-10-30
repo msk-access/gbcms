@@ -155,6 +155,11 @@ class BaseCounts:
     # POS:REF>ALT:n/m (1-based POS; n of the m ALT reads), several joined by '+'; empty
     # when none. Diagnostic only (MNV_SHARED flag).
     mnv_shared: str
+    # Under the sequence judge: per listed row that is this row's ALT with listed
+    # neighbours (a delins that is two listed deletions together), the ALT reads spelling
+    # it whole, as POS:REF>ALT:n/m (1-based POS; n of the m ALT reads), several joined by
+    # '+'; empty when none. Diagnostic only (INDEL_SHARED flag).
+    indel_shared: str
     # Under the sequence judge: DP reads whose bases fit none of the row's candidate
     # sequences (REF, ALT, the other alleles at its site, with every context) within ten
     # confident mismatches, whether or not the fit rule made them depth only; 0 under the

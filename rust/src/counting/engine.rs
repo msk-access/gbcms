@@ -1641,6 +1641,9 @@ fn count_variant_from_cache(
     // Per co-listed row holding a substitution's change (the haplotype judge counts its
     // carriers as this row's ALT), the ALT reads that spell it whole (MNV_SHARED).
     let mut spelled: [u32; 32] = [0; 32];
+    // Per listed row that is this row's ALT with listed neighbours (RJ-28's indel twin),
+    // the ALT reads that spell it whole (INDEL_SHARED), in `reach_rows` order.
+    let mut spelled_indel: [u32; 32] = [0; 32];
 
     // Create SW aligners ONCE per variant (indelpost pattern), scored by `sw_score`.
     let mut alt_aligner = Aligner::new(SW_GAP_OPEN, SW_GAP_EXTEND, &sw_score);
@@ -2003,6 +2006,9 @@ fn count_variant_from_cache(
             for (k, n) in spelled.iter_mut().enumerate() {
                 *n += result.spells_listed >> k & 1;
             }
+            for (k, n) in spelled_indel.iter_mut().enumerate() {
+                *n += result.spells_listed_indel >> k & 1;
+            }
             if is_reverse { counts.ad_rev += 1; } else { counts.ad_fwd += 1; }
 
             // ── RNA-SPECIFIC ALT TRACKING ──
@@ -2031,6 +2037,16 @@ fn count_variant_from_cache(
         counts.mnv_shared = judge::listed_holders(variant)
             .into_iter()
             .zip(spelled)
+            .filter(|&(_, n)| n > 0)
+            .map(|((p, r, a), n)| format!("{}:{r}>{a}:{n}/{}", p + 1, counts.ad))
+            .collect::<Vec<_>>()
+            .join("+");
+    }
+    if spelled_indel.iter().any(|&n| n > 0) {
+        counts.indel_shared = variant
+            .reach_rows
+            .iter()
+            .zip(spelled_indel)
             .filter(|&(_, n)| n > 0)
             .map(|((p, r, a), n)| format!("{}:{r}>{a}:{n}/{}", p + 1, counts.ad))
             .collect::<Vec<_>>()

@@ -239,10 +239,13 @@ Under `--read-judge sequence`:
 - **Contexts explain, never credit.** The other listed rows and the recurring background
   only explain a read's other differences: the judge does no linkage and no phasing, so a
   variant linked to the row elsewhere on the molecule never credits a read.
-- **Two diagnostics** can appear in `gbcms_diagnostic`: `MNV_SHARED(chrom:pos:REF>ALT:n/m)`
+- **Three diagnostics** can appear in `gbcms_diagnostic`: `MNV_SHARED(chrom:pos:REF>ALT:n/m)`
   at an SNV whose change a co-listed MNV holds (the MNV's carriers count at both rows,
-  RJ-28), and `UNEXPLAINED_READS(n/m)`, the row's depth reads that fit none of its candidate
-  sequences (RJ-29). See [QC Flags](../reference/qc-flags.md). No column is added.
+  RJ-28), its indel twin `INDEL_SHARED(chrom:pos:REF>ALT:n/m)` at a row a listed indel or
+  delins holds whole with listed neighbours (a delins that is two listed deletions together:
+  its carriers count at each), and `UNEXPLAINED_READS(n/m)`, the row's depth reads that fit
+  none of its candidate sequences (RJ-29). See [QC Flags](../reference/qc-flags.md). No
+  column is added.
 - **The Phase 3 options do not apply** to the row's counts (`--alignment-backend` and the
   PairHMM probabilities above): the judge has its own scorer.
 - **Spliced reads are not judged yet.** A read whose CIGAR splices (an `N` op) is depth

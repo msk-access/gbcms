@@ -51,6 +51,9 @@ pub(crate) struct Verdict {
     /// For an ALT call, the states holding X's change the read spells whole
     /// ([`Site::spelled_holders`]).
     pub(crate) spells: u32,
+    /// For an ALT call, the alleles that are X with listed neighbours the read spells
+    /// whole ([`Site::spelled_x_spellings`]).
+    pub(crate) spells_x: u32,
     /// Measurement only, the "fits nothing" decision package: the site states the full
     /// programme decided (the band could not), whether the rule sent the read to depth,
     /// and its fit to the local reference neighbourhood where that was computed.
@@ -380,7 +383,7 @@ fn judge_graph(site: &Site, read: &ReadView, min_baseq: u8, ask_anchor: bool, ke
     // The aligner's own tags decide before any programme runs.
     if rule == FitsRule::XsPure && read.tags.fits_elsewhere() {
         let fits = FitsTrace { states: site.graphs.len() as u8, fired: true, ..FitsTrace::default() };
-        let verdict = Verdict { call: Call::Depth, qual: 0, best: [None; 3], holds_anchor: false, placed: None, confirmed: false, spells: 0, clip: None, fits, fits_none: false, neither: NeitherTrace::default(), owngap: OwnGapTrace::default() };
+        let verdict = Verdict { call: Call::Depth, qual: 0, best: [None; 3], holds_anchor: false, placed: None, confirmed: false, spells: 0, spells_x: 0, clip: None, fits, fits_none: false, neither: NeitherTrace::default(), owngap: OwnGapTrace::default() };
         return (verdict, kept);
     }
     let gr = site.graph_read(read);
@@ -391,7 +394,7 @@ fn judge_graph(site: &Site, read: &ReadView, min_baseq: u8, ask_anchor: bool, ke
     let fits = FitsTrace { full: halves.iter().filter(|h| h.is_none()).count() as u8, states: halves.len() as u8, fired, neighbourhood };
     let verdict = if fired {
         trace!("haplotype judge: the read fits no state's graph (best {top}, {rule:?}) → depth only");
-        Verdict { call: Call::Depth, qual: 0, best: best.map(|b| b.map(|(s, _)| s)), holds_anchor: false, placed: None, confirmed: false, spells: 0, clip: None, fits, fits_none: false, neither: NeitherTrace::default(), owngap: OwnGapTrace::default() }
+        Verdict { call: Call::Depth, qual: 0, best: best.map(|b| b.map(|(s, _)| s)), holds_anchor: false, placed: None, confirmed: false, spells: 0, spells_x: 0, clip: None, fits, fits_none: false, neither: NeitherTrace::default(), owngap: OwnGapTrace::default() }
     } else {
         let scorer = Scorer::new(read);
         let ex = Examined::new(
@@ -551,7 +554,7 @@ fn conclude<'h, F: Fn(usize) -> std::rc::Rc<Hap>>(
     if kept.iter().all(Option::is_none) {
         trace!("haplotype judge: every state is reached only through an indel of the read's own → another allele");
         let scores = best.map(|b| b.map(|(s, _)| s));
-        return Verdict { call: Call::Other, qual: 0, best: scores, holds_anchor: false, placed: None, confirmed: false, spells: 0, clip: None, fits: FitsTrace::default(), fits_none: false, neither: NeitherTrace::default(), owngap: og };
+        return Verdict { call: Call::Other, qual: 0, best: scores, holds_anchor: false, placed: None, confirmed: false, spells: 0, spells_x: 0, clip: None, fits: FitsTrace::default(), fits_none: false, neither: NeitherTrace::default(), owngap: og };
     }
     trace!("haplotype judge: states reached only through an indel of the read's own dropped ({:?})", og.dropped);
     Verdict { owngap: og, ..conclude_margin(site, read, ex, kept, min_baseq, ask_anchor) }
@@ -632,10 +635,10 @@ fn conclude_margin<'h, F: Fn(usize) -> std::rc::Rc<Hap>>(
         Call::Depth => None,
     };
     let Some(won) = won else {
-        return Verdict { call, qual: 0, best: scores, holds_anchor: false, placed: None, confirmed: false, spells: 0, clip: None, fits: FitsTrace::default(), fits_none: false, neither: NeitherTrace::default(), owngap: OwnGapTrace::default() };
+        return Verdict { call, qual: 0, best: scores, holds_anchor: false, placed: None, confirmed: false, spells: 0, spells_x: 0, clip: None, fits: FitsTrace::default(), fits_none: false, neither: NeitherTrace::default(), owngap: OwnGapTrace::default() };
     };
     if call == Call::Other && !ask_anchor {
-        return Verdict { call, qual: 0, best: scores, holds_anchor: false, placed: None, confirmed: false, spells: 0, clip: None, fits: FitsTrace::default(), fits_none: false, neither: NeitherTrace::default(), owngap: OwnGapTrace::default() };
+        return Verdict { call, qual: 0, best: scores, holds_anchor: false, placed: None, confirmed: false, spells: 0, spells_x: 0, clip: None, fits: FitsTrace::default(), fits_none: false, neither: NeitherTrace::default(), owngap: OwnGapTrace::default() };
     }
     let w = fit_other.or(mixed_on).unwrap_or_else(|| best[won as usize].map_or(0, |(_, h)| h));
     let (hap_w, w_al) = (ex.hap(w), ex.align(w));
@@ -662,14 +665,14 @@ fn conclude_margin<'h, F: Fn(usize) -> std::rc::Rc<Hap>>(
         trace!("haplotype judge: a {call:?} call on a read with a telling base read as neither allele → another allele");
         call = Call::Other;
         if !ask_anchor {
-            return Verdict { call, qual: 0, best: scores, holds_anchor: false, placed: None, confirmed: false, spells: 0, clip: None, fits: FitsTrace::default(), fits_none: false, neither: nt, owngap: OwnGapTrace::default() };
+            return Verdict { call, qual: 0, best: scores, holds_anchor: false, placed: None, confirmed: false, spells: 0, spells_x: 0, clip: None, fits: FitsTrace::default(), fits_none: false, neither: nt, owngap: OwnGapTrace::default() };
         }
     }
     if matches!(call, Call::Alt | Call::Ref) && site.changed_bases() >= 2 && read_at_x(site, read, hap_w, wa, off).mixed() {
         trace!("haplotype judge: a {call:?} call on a read carrying some of X's changes → another allele");
         call = Call::Other;
         if !ask_anchor {
-            return Verdict { call, qual: 0, best: scores, holds_anchor: false, placed: None, confirmed: false, spells: 0, clip: None, fits: FitsTrace::default(), fits_none: false, neither: NeitherTrace::default(), owngap: OwnGapTrace::default() };
+            return Verdict { call, qual: 0, best: scores, holds_anchor: false, placed: None, confirmed: false, spells: 0, spells_x: 0, clip: None, fits: FitsTrace::default(), fits_none: false, neither: NeitherTrace::default(), owngap: OwnGapTrace::default() };
         }
     }
     // Measurement only (GBCMS_JUDGE_REFBASE=partial): at a delins, a REF or ALT call on a
@@ -683,7 +686,7 @@ fn conclude_margin<'h, F: Fn(usize) -> std::rc::Rc<Hap>>(
         trace!("haplotype judge: a {call:?} call on a read showing the other allele's base at a telling base → another allele");
         call = Call::Other;
         if !ask_anchor {
-            return Verdict { call, qual: 0, best: scores, holds_anchor: false, placed: None, confirmed: false, spells: 0, clip: None, fits: FitsTrace::default(), fits_none: false, neither: nt, owngap: OwnGapTrace::default() };
+            return Verdict { call, qual: 0, best: scores, holds_anchor: false, placed: None, confirmed: false, spells: 0, spells_x: 0, clip: None, fits: FitsTrace::default(), fits_none: false, neither: nt, owngap: OwnGapTrace::default() };
         }
     }
     let column = |p: &Placed| if let Placed::At(c) = *p { Some((c + off) as i64) } else { None };
@@ -694,7 +697,7 @@ fn conclude_margin<'h, F: Fn(usize) -> std::rc::Rc<Hap>>(
     let at = |p: &Placed| matches!(p, Placed::At(_));
     let placed = wa.placed.iter().position(at).zip(wa.placed.iter().rposition(at)).map(|(a, b)| (a, b + 1));
     if call == Call::Other {
-        return Verdict { call, qual: 0, best: scores, holds_anchor, placed, confirmed: false, spells: 0, clip: None, fits: FitsTrace::default(), fits_none: false, neither: nt, owngap: OwnGapTrace::default() };
+        return Verdict { call, qual: 0, best: scores, holds_anchor, placed, confirmed: false, spells: 0, spells_x: 0, clip: None, fits: FitsTrace::default(), fits_none: false, neither: nt, owngap: OwnGapTrace::default() };
     }
     // The bases that tell X from REF at its site, covered by the winning alignment: X's
     // own for an ALT call, none of them read confidently as another base; REF's for a REF
@@ -730,7 +733,7 @@ fn conclude_margin<'h, F: Fn(usize) -> std::rc::Rc<Hap>>(
     let clip = if ask_anchor && site.is_substitution() && reads_all { clip_bases(read, hap_w, wa, off, &telling_at) } else { None };
     if !reads_all {
         call = Call::Depth;
-        return Verdict { call, qual: 0, best: scores, holds_anchor: false, placed: None, confirmed: false, spells: 0, clip: None, fits: FitsTrace::default(), fits_none: false, neither: nt, owngap: OwnGapTrace::default() };
+        return Verdict { call, qual: 0, best: scores, holds_anchor: false, placed: None, confirmed: false, spells: 0, spells_x: 0, clip: None, fits: FitsTrace::default(), fits_none: false, neither: nt, owngap: OwnGapTrace::default() };
     }
     // The best losing haplotype: the best of the other classes, the first on a tie (X's,
     // for a REF call the other allele tied: the bases that beat X decided it).
@@ -745,7 +748,8 @@ fn conclude_margin<'h, F: Fn(usize) -> std::rc::Rc<Hap>>(
         deciding_quality(read, wa, &la.0).map_or(floor, |q| q.max(floor))
     });
     let spells = if call == Call::Alt { site.spelled_holders(read, hap_w, wa, off) } else { 0 };
-    Verdict { call, qual, best: scores, holds_anchor, placed, confirmed, spells, clip, fits: FitsTrace::default(), fits_none: false, neither: nt, owngap: OwnGapTrace::default() }
+    let spells_x = if call == Call::Alt { site.spelled_x_spellings(read, hap_w, wa, off) } else { 0 };
+    Verdict { call, qual, best: scores, holds_anchor, placed, confirmed, spells, spells_x, clip, fits: FitsTrace::default(), fits_none: false, neither: nt, owngap: OwnGapTrace::default() }
 }
 
 /// What a read's confident bases show at a substitution X's telling bases, on its
@@ -1011,6 +1015,9 @@ pub(crate) fn classify(record: &Record, variant: &Variant, quals: &[u8], min_bas
             if out.is_alt && verdict.spells != 0 {
                 out.spells_listed = spelled_listed(site, variant, verdict.spells);
             }
+            if out.is_alt && verdict.spells_x != 0 {
+                out.spells_listed_indel = spelled_listed_indel(site, variant, verdict.spells_x);
+            }
             // Admission off the anchor, by the alignment to the called haplotype. A clip
             // admits the read only where every base that alignment places lies inside the
             // read's fragment (RJ-13): past the fragment end a clip is adapter, and a read
@@ -1124,6 +1131,23 @@ fn spelled_listed(site: &Site, variant: &Variant, spells: u32) -> u32 {
         .filter(|&(k, _)| spells >> k & 1 == 1)
         .filter_map(|(_, h)| {
             listed.iter().position(|&(p, r, a)| *p == h.pos && r.as_bytes().eq_ignore_ascii_case(&h.ref_al) && a.as_bytes().eq_ignore_ascii_case(&h.alt_al))
+        })
+        .filter(|&j| j < 32)
+        .fold(0u32, |m, j| m | 1 << j)
+}
+
+/// The input's rows within `variant`'s reach (`Variant::reach_rows`, the first 32) among
+/// the site's alleles that are X with listed neighbours a read spells (`spells`, a bit per
+/// [`Site::x_spellings`]), as bits in `reach_rows` order (RJ-28's indel twin: one
+/// molecule counting at each row that holds it, INDEL_SHARED).
+fn spelled_listed_indel(site: &Site, variant: &Variant, spells: u32) -> u32 {
+    site.x_spelling_rows()
+        .into_iter()
+        .take(32)
+        .enumerate()
+        .filter(|&(k, _)| spells >> k & 1 == 1)
+        .filter_map(|(_, h)| {
+            variant.reach_rows.iter().position(|(p, r, a)| *p == h.pos && r.as_bytes().eq_ignore_ascii_case(&h.ref_al) && a.as_bytes().eq_ignore_ascii_case(&h.alt_al))
         })
         .filter(|&j| j < 32)
         .fold(0u32, |m, j| m | 1 << j)

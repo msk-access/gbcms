@@ -422,6 +422,11 @@ pub(crate) struct Site {
     /// The graph scorer's graphs, one per state of X's site: REF's bases, X, then the
     /// other states.
     pub(crate) graphs: Vec<StateGraph>,
+    /// The other states whose allele is X with listed neighbours ([`Site::drop_spelled_states`],
+    /// RJ-28's indel twin): each state's row, and the context rows that with X spell it.
+    /// Their carriers are X's ALT reads; the diagnostic INDEL_SHARED names how many spell
+    /// each whole ([`Site::spelled_x_spellings`]).
+    pub(crate) x_spellings: Vec<(usize, Vec<usize>)>,
     /// What a covered telling base read confidently as neither allele does to a REF or ALT
     /// call ([`neither_rule`]).
     pub(crate) neither: NeitherRule,
@@ -1460,6 +1465,11 @@ impl Site {
         x.ref_al.iter().zip(&x.alt_al).filter(|(a, b)| a != b).count()
     }
 
+    /// The alleles that are X with listed neighbours ([`Site::x_spellings`]), in order.
+    pub(crate) fn x_spelling_rows(&self) -> Vec<&Row> {
+        self.x_spellings.iter().map(|&(o, _)| &self.rows[o]).collect()
+    }
+
     /// The states holding X's change (`holds_x`), in order.
     pub(crate) fn holders(&self) -> Vec<&Row> {
         (1..=self.n_states).filter(|&r| self.holds_x[r]).map(|r| &self.rows[r]).collect()
@@ -2473,6 +2483,7 @@ impl Site {
             masked,
             site_window,
             graphs: Vec::new(),
+            x_spellings: Vec::new(),
             neither: neither_rule(),
             own_gap: own_gap_rule(),
             ref_base: ref_base_rule(),
@@ -2815,6 +2826,7 @@ impl Site {
     /// the start of the run it slides through).
     fn drop_spelled_states(&mut self, rest: &[usize]) {
         let mut dropped: Vec<usize> = Vec::new();
+        let mut spelled_x: Vec<(usize, Vec<usize>)> = Vec::new();
         for (k, st) in self.graphs.iter().enumerate() {
             let Some(o) = st.row.filter(|_| st.class == Class::Other) else { continue };
             let (ps, pe) = (self.spans[o].0.min(self.places[o].0), self.spans[o].1.max(self.places[o].1));
@@ -2831,21 +2843,50 @@ impl Site {
                 .collect();
             let own = Hap::build(self, &[o]).seq;
             let sets = self.lying_together(&inside, None, 1 << SPELL_MAX_ROWS).unwrap_or_else(|| vec![Vec::new()]);
-            let spells = sets.iter().any(|c| {
-                let with_x = c.iter().all(|&r| !self.conflict(0, r)) && {
+            let with_x = |c: &[usize]| {
+                c.iter().all(|&r| !self.conflict(0, r)) && {
                     let mut h: Vec<usize> = std::iter::once(0).chain(c.iter().copied()).collect();
                     h.sort_unstable();
                     Hap::build(self, &h).seq == own
-                };
-                with_x || Hap::build(self, c).seq == own
-            });
-            if spells {
+                }
+            };
+            if let Some(c) = sets.iter().find(|c| with_x(c)) {
+                spelled_x.push((o, c.clone()));
+                dropped.push(k);
+            } else if sets.iter().any(|c| Hap::build(self, c).seq == own) {
                 dropped.push(k);
             }
         }
         for k in dropped.into_iter().rev() {
             self.graphs.remove(k);
         }
+        self.x_spellings = spelled_x;
+    }
+
+    /// Which of [`Site::x_spellings`] (a bit each, in order, the first 32) `read` spells
+    /// whole on its alignment `al` (columns offset by `off`) to `hap`: `hap` holds X with
+    /// every context row that makes the allele, and the read places a base, read
+    /// confidently as `hap`'s, at every column from the base before the allele's REF span
+    /// to the base after it (both junctions of a deletion, every base a delins writes).
+    pub(crate) fn spelled_x_spellings(&self, read: &ReadView, hap: &Hap, al: &Alignment, off: usize) -> u32 {
+        if self.x_spellings.is_empty() || hap.rows.first() != Some(&0) {
+            return 0;
+        }
+        let at: HashMap<i64, u8> = al
+            .placed
+            .iter()
+            .enumerate()
+            .filter_map(|(i, p)| if let Placed::At(c) = *p { Some(((c + off) as i64, read.seq[i])) } else { None })
+            .collect();
+        let spells = |o: usize, c: &[usize]| {
+            if !c.iter().all(|r| hap.rows.binary_search(r).is_ok()) {
+                return false;
+            }
+            let (s, e) = self.spans[o];
+            let (a, b) = (self.column_in(hap, s - 1), self.column_in(hap, e));
+            a < b && (a..=b).all(|col| at.get(&col).is_some_and(|&x| x != WILD && Some(x) == hap.seq.get(col as usize).copied()))
+        };
+        self.x_spellings.iter().take(32).enumerate().filter(|(_, (o, c))| spells(*o, c)).fold(0u32, |m, (k, _)| m | 1 << k)
     }
 
     /// A found allele stays a state only where the reads tell it from X and from REF by

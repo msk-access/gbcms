@@ -35,10 +35,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   first such row, so a caller never silently gets the judge without those rows.
   `observe_molecules` takes `read_judge` as well (default: its alignment config's,
   `"rules"`) and passes it to both preparation and counting.
-- **Two diagnostics, under the judge only** (no new column; they change no count):
+- **Three diagnostics, under the judge only** (no new column; they change no count):
   `MNV_SHARED(chrom:pos:REF>ALT:n/m)` at an SNV whose change a co-listed MNV holds (RJ-28:
   the MNV's carriers count at both rows, so one molecule can sit in both rows' counts and
-  mFSD distributions), and `UNEXPLAINED_READS(n/m)`, the row's depth reads that fit none of
+  mFSD distributions); its indel twin `INDEL_SHARED(chrom:pos:REF>ALT:n/m)` at a row a
+  listed indel or delins holds whole with listed neighbours (a delins that is two listed
+  deletions together counts its carriers at each); and `UNEXPLAINED_READS(n/m)`, the row's depth reads that fit none of
   its candidate sequences within ten confident mismatches (RJ-29: such a read is depth
   only where its aligner also doubts its placement, XS at least AS).
 - **The alleles the reads spell enter as the bases they change** (RJ-25, amended
@@ -50,7 +52,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   An allele that is the row's ALT (or REF) with listed neighbours is the row's ALT (or REF)
   however a neighbour is written: the judge reads every neighbour whose placements meet it,
   so a molecule the input lists several ways (a delins and its two component deletions)
-  counts at each of those rows. The rules path is unchanged.
+  counts at each of those rows (RJ-28's indel twin, decided 2026-10-30), and
+  `INDEL_SHARED` names the shared molecule. The rules path is unchanged.
 - **Named limits.**
   - **Spliced reads are refused.** `gbcms rna --read-judge sequence` exits with an error,
     and the engine refuses RNA mode under the judge; in a DNA run, a read whose CIGAR
