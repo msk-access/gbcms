@@ -33,6 +33,25 @@ regenerating a section.
 
 ---
 
+## [LRN-20261030-001] rule-trigger | status tables and relayed agent reports went out as bare labels
+- **Status:** resolved (rule promoted).
+- **Cause:** rule-trigger.
+- **Summary:**
+  - The operator asked again (2026-10-30) for plain descriptions with labels in brackets. My
+    status table listed builds, HPC jobs and runs by label only (`c61hs`, `hyR`, `htM`, item A).
+  - The rule existed in `working-agreements.md`, but it stayed silent in two places. The index
+    line read each turn said only "labels in brackets", and the rule's examples covered rules and
+    phases, not build, job or run labels.
+  - Agent reports arrive full of labels, and I relayed them without a rewrite.
+  - The table also showed two memory changes the operator thought were done, with no reason given.
+- **Promotion target:**
+  - `.agents/memory/MEMORY.md` (the working-agreements line) — `DONE:` names every label kind and
+    says the rule holds in tables and relayed reports.
+  - `.agents/memory/working-agreements.md` ("Explain so the operator can follow") — `DONE:` adds
+    the bullet "Build, job and run labels are labels too": rewrite relays, ask agents for the same
+    form, and say why work is back.
+- **Related:** [[working-agreements]].
+
 ## [LRN-20261026-001] rule-body | an amended read rule was read from its superseded text
 - **Status:** open: promotion waits on the operator re-confirming RJ-20.
 - **Cause:** rule-body.

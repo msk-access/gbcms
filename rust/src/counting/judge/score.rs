@@ -63,6 +63,8 @@ pub(crate) fn overhang_cost(read_base: u8) -> i32 {
 pub(crate) struct Band {
     lo: Vec<usize>,
     hi: Vec<usize>,
+    /// The longest repeat period in the read's reach on the haplotype ([`stand_floor`]).
+    pub(crate) free: i64,
 }
 
 impl Band {
@@ -82,12 +84,12 @@ impl Band {
                 hi.push(b.max(hi[i - 1]));
             }
         }
-        Band { lo, hi }
+        Band { lo, hi, free: 0 }
     }
 
     /// Every column, every row: the full programme.
     fn full(n: usize, m: usize) -> Band {
-        Band { lo: vec![0; n + 1], hi: vec![m; n + 1] }
+        Band { lo: vec![0; n + 1], hi: vec![m; n + 1], free: 0 }
     }
 
     fn holds(&self, i: usize, j: usize) -> bool {
@@ -511,10 +513,55 @@ fn touches_edge_marked(read: &[u8], hap: &[u8], band: &Band, vals: &Values, scor
     false
 }
 
-/// The lowest score the band answers for by its edge alone: an alignment that starts
-/// near the read's own diagonal needs an indel longer than the band's slack to leave
-/// it, so one scoring below that may have been beaten off it.
-const BAND_FLOOR: i32 = -(GAP_OPEN + GAP_EXTEND * (BAND_SLACK as i32 + 1));
+/// The lowest score a band of `slack` columns each side of the read's own placement answers
+/// for by its edge alone. An alignment that leaves the band must shift off the read's
+/// placement by more than the slack. A tandem repeat of period `free` in the read's reach
+/// lets it shift that far at no cost (the read slides a unit along the repeat), so it needs
+/// an indel of only `slack - free + 1` bases: a band scoring below that indel's cost may have
+/// been beaten off it. Where the repeat's period reaches the slack, no score short of a
+/// perfect one stands on the edge alone.
+pub(crate) fn stand_floor(slack: i64, free: i64) -> i32 {
+    if free >= slack {
+        0
+    } else {
+        -(GAP_OPEN + GAP_EXTEND * ((slack - free) as i32 + 1))
+    }
+}
+
+/// The repeats a read can slide along for free: per stretch of `seq` where it repeats itself
+/// at a period of `p` bases for at least two periods and at least [`COPY_K`] bases (a stretch
+/// long enough to hold one of the copy check's pieces), its `[start, end)` and `p`; periods
+/// up to `max_p`. A stretch repeating at period `p` repeats at its multiples too where long
+/// enough, so a long repeat also lists the shifts of two or more units.
+pub(crate) fn tandem_tracts(seq: &[u8], max_p: usize) -> Vec<(usize, usize, usize)> {
+    let mut out = Vec::new();
+    let n = seq.len();
+    for p in 1..=max_p.min(n / 2) {
+        let mut i = 0;
+        while i + p < n {
+            let same = |j: usize| seq[j] == seq[j + p] && matches!(seq[j], b'A' | b'C' | b'G' | b'T');
+            if !same(i) {
+                i += 1;
+                continue;
+            }
+            let a = i;
+            while i + p < n && same(i) {
+                i += 1;
+            }
+            let len = i - a + p;
+            if len >= 2 * p && len >= COPY_K {
+                out.push((a, i + p, p));
+            }
+        }
+    }
+    out
+}
+
+/// The longest period among `tracts` that meet `[lo, hi)`: how far a read there may sit off
+/// its best alignment at no cost.
+pub(crate) fn free_shift(tracts: &[(usize, usize, usize)], lo: usize, hi: usize) -> i64 {
+    tracts.iter().filter(|t| t.0 < hi && t.1 > lo).map(|t| t.2 as i64).max().unwrap_or(0)
+}
 
 /// Whether one of the read's exact k-mers (at its start, middle and end, unmasked) lies
 /// on the haplotype off the band at its row: a copy of the read's bases elsewhere along
@@ -541,11 +588,11 @@ pub(crate) fn banded(read: &[u8], hap: &[u8], band: &Band) -> Run {
 }
 
 /// Whether a banded run stands by itself: its best path stays off the band's edge and
-/// scores at least [`BAND_FLOOR`]. One that stands short of exact also needs no copy of
-/// the read off the band ([`copy_off_band`]).
+/// scores at least [`stand_floor`] of [`BAND_SLACK`] and the band's repeat. One that stands
+/// short of exact also needs no copy of the read off the band ([`copy_off_band`]).
 #[cfg(test)]
-pub(crate) fn stands(r: &Run) -> bool {
-    !r.clipped && r.score >= BAND_FLOOR
+pub(crate) fn stands(r: &Run, band: &Band) -> bool {
+    !r.clipped && r.score >= stand_floor(BAND_SLACK, band.free)
 }
 
 /// The full programme, scores only.
@@ -566,7 +613,7 @@ pub(crate) fn score(read: &[u8], hap: &[u8], band: Option<&Band>) -> i32 {
     }
     if let Some(b) = band {
         let r = banded(read, hap, b);
-        if stands(&r) && (r.score == 0 || !copy_off_band(read, hap, b)) {
+        if stands(&r, b) && (r.score == 0 || !copy_off_band(read, hap, b)) {
             return r.score;
         }
     }
@@ -631,7 +678,7 @@ pub(crate) fn align(read: &[u8], hap: &[u8], band: Option<&Band>) -> Alignment {
         // reused across calls on this thread (taken out for the call)
         let mut vals = VALUES.with(|v| std::mem::take(&mut *v.borrow_mut()));
         let r = run_values(read, hap, b, &mut vals);
-        let stands = r.score >= BAND_FLOOR && !touches_edge(read, hap, b, &mut vals, r.score) && (r.score == 0 || !copy_off_band(read, hap, b));
+        let stands = r.score >= stand_floor(BAND_SLACK, b.free) && !touches_edge(read, hap, b, &mut vals, r.score) && (r.score == 0 || !copy_off_band(read, hap, b));
         let out = stands.then(|| traceback_values(read, hap, b, &vals, r));
         VALUES.with(|v| *v.borrow_mut() = vals);
         if let Some(a) = out {
@@ -862,7 +909,7 @@ mod tests {
         let mut r = None;
         if let Some(b) = band {
             let banded = run::<true, true>(read, hap, b, &mut trace, &matrix(b));
-            if stands(&banded) && (banded.score == 0 || !copy_off_band(read, hap, b)) {
+            if stands(&banded, b) && (banded.score == 0 || !copy_off_band(read, hap, b)) {
                 r = Some(banded);
             }
         }

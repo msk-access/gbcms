@@ -11,7 +11,7 @@ here with their home, so none is lost. Keep this index under 5 KB.
 - Read every gate exit code; CI's black; never pipe a gate (skills/qa-check). Build, venv, stale `.so` (skills/rust-python-ffi)
 - Long runs as tracked tasks; never on the HPC head node; oracles, traces, FASTA per arm, build cleanup after a merge (docs/harness/measurement-harness.md)
 - No ticket labels in code or logs (rules/code-quality.md)
-- [Working agreements](working-agreements.md) - keep the harness small; explain in STE, labels in brackets; model per task.
+- [Working agreements](working-agreements.md) - keep the harness small; explain in STE; say what each thing is, then its label in brackets (tickets, rules, branches, builds, jobs, runs), in tables and relayed agent reports too; model per task.
 - [Genotyper, not caller](genotyper-not-caller.md) - count the given allele; judge bases, not placement; rescues are opt-in; the insert band survives only in the CIGAR fallback; no new columns or flags.
 
 ## Decided behaviour and facts

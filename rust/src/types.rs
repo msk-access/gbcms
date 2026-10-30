@@ -521,6 +521,13 @@ pub struct BaseCounts {
     /// MNV_SHARED); no count changes.
     #[pyo3(get)]
     pub mnv_shared: String,
+    /// Under the haplotype judge: per listed row that is this row's ALT with listed
+    /// neighbours (a delins that is two listed deletions together, RJ-28's indel twin,
+    /// whose carriers count as this row's ALT), how many of the ALT reads spell that row
+    /// whole, as `POS:REF>ALT:n/m` (1-based POS; n of the m ALT reads), several joined by
+    /// `+`; empty when none. Diagnostic only (feeds INDEL_SHARED); no count changes.
+    #[pyo3(get)]
+    pub indel_shared: String,
     /// Under the haplotype judge: reads counted in DP whose bases fit none of the row's
     /// candidate sequences (REF, ALT, the other alleles at its site, with every context)
     /// within ten confident mismatches. The fit rule makes such a read depth only where

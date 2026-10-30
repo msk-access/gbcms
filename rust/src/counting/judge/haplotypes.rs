@@ -28,6 +28,9 @@ use super::graph::{self, Graph, GraphBuilder, GraphRead, ShortReads, Workspace};
 use super::score::{self, Alignment, Band, Placed, BAND_SLACK, DELTA, WILD};
 use crate::counting::carrier::{GUARD_MIN_READS, GUARD_REF_SHARE};
 
+/// The longest repeat period looked for in a window ([`score::tandem_tracts`]): the wide band's
+/// slack (a longer one leaves the full programme to decide, as a band's own edge would).
+pub(crate) const TRACT_MAX_PERIOD: usize = 4 * BAND_SLACK as usize;
 
 /// A listed allele the haplotypes apply: its 0-based genome position and its REF and
 /// ALT bases, upper case.
@@ -422,12 +425,23 @@ pub(crate) struct Site {
     /// The graph scorer's graphs, one per state of X's site: REF's bases, X, then the
     /// other states.
     pub(crate) graphs: Vec<StateGraph>,
+    /// The other states whose allele is X with listed neighbours ([`Site::drop_spelled_states`],
+    /// RJ-28's indel twin): each state's row, and the context rows that with X spell it.
+    /// Their carriers are X's ALT reads; the diagnostic INDEL_SHARED names how many spell
+    /// each whole ([`Site::spelled_x_spellings`]).
+    pub(crate) x_spellings: Vec<(usize, Vec<usize>)>,
     /// What a covered telling base read confidently as neither allele does to a REF or ALT
     /// call ([`neither_rule`]).
     pub(crate) neither: NeitherRule,
     /// Which states a read reaching them only through an indel of its own loses
     /// ([`own_gap_rule`]).
     pub(crate) own_gap: OwnGapRule,
+    /// The tandem repeats of the window ([`score::tandem_tracts`]): how far a read in reach
+    /// of one may sit off its best alignment at no cost ([`score::stand_floor`]).
+    tracts: Vec<(usize, usize, usize)>,
+    /// Measurement only (`GBCMS_JUDGE_BAND=full`): every read on the full programme over its
+    /// reach, no band (the yardstick of the band's rule).
+    pub(crate) band_full: bool,
     /// What a confident base of the other allele, or a third, at X's telling bases does to
     /// a call ([`ref_base_rule`]).
     pub(crate) ref_base: RefBaseRule,
@@ -1501,6 +1515,11 @@ impl Site {
         x.ref_al.iter().zip(&x.alt_al).filter(|(a, b)| a != b).count()
     }
 
+    /// The alleles that are X with listed neighbours ([`Site::x_spellings`]), in order.
+    pub(crate) fn x_spelling_rows(&self) -> Vec<&Row> {
+        self.x_spellings.iter().map(|&(o, _)| &self.rows[o]).collect()
+    }
+
     /// The states holding X's change (`holds_x`), in order.
     pub(crate) fn holders(&self) -> Vec<&Row> {
         (1..=self.n_states).filter(|&r| self.holds_x[r]).map(|r| &self.rows[r]).collect()
@@ -2502,9 +2521,12 @@ impl Site {
         } else {
             (None, None)
         };
+        let tracts = score::tandem_tracts(&reference, TRACT_MAX_PERIOD);
         let mut site = Site {
             start,
             reference,
+            tracts,
+            band_full: std::env::var("GBCMS_JUDGE_BAND").is_ok_and(|v| v == "full"),
             rows,
             n_states,
             holds_x,
@@ -2514,6 +2536,7 @@ impl Site {
             masked,
             site_window,
             graphs: Vec::new(),
+            x_spellings: Vec::new(),
             neither: neither_rule(),
             own_gap: own_gap_rule(),
             ref_base: ref_base_rule(),
@@ -2834,7 +2857,19 @@ impl Site {
         }
         let first = read.refpos.iter().copied().min().unwrap_or(read.ref_start).min(read.ref_start);
         let end = read.refpos.iter().copied().max().unwrap_or(read.ref_end).max(read.ref_end);
-        GraphRead { seq: &read.seq, rp, span: (first - self.start, end - self.start) }
+        let span = (first - self.start, end - self.start);
+        GraphRead { seq: &read.seq, rp, span, free_shift: self.free_shift(read), full: self.band_full }
+    }
+
+    /// The longest tandem-repeat period in the read's reach (its reference span, soft clips
+    /// extrapolated, widened by its length): how far its own placement may sit off its best
+    /// alignment at no cost ([`score::stand_floor`]).
+    pub(crate) fn free_shift(&self, read: &ReadView) -> i64 {
+        let first = read.refpos.iter().copied().min().unwrap_or(read.ref_start).min(read.ref_start);
+        let end = read.refpos.iter().copied().max().unwrap_or(read.ref_end).max(read.ref_end);
+        let (l, wn) = (read.seq.len() as i64, self.reference.len() as i64);
+        let (lo, hi) = ((first - self.start - l).clamp(0, wn) as usize, (end - self.start + l).clamp(0, wn) as usize);
+        score::free_shift(&self.tracts, lo, hi)
     }
 
     /// Per state graph, the first earlier one laid out alike that shares from none itself,
@@ -2847,32 +2882,82 @@ impl Site {
     }
 
     /// An other state whose allele spells X's haplotype (or REF's) with rows of the reads'
-    /// reach inside its place (an allele the reads spell over X with a listed neighbour
+    /// reach meeting its place (an allele the reads spell over X with a listed neighbour
     /// beside it) is that haplotype: X's or REF's, never another allele's. Its graph is
-    /// dropped.
+    /// dropped. A row counts where it, or one of its equivalent placements, meets the
+    /// place: an allele the guard found is written as the bases it changes (RJ-25), and a
+    /// neighbour may run on past its last (a delins over an insertion's run, beside an SNV
+    /// written with its next base) or be written before its first (an insertion written at
+    /// the start of the run it slides through).
     fn drop_spelled_states(&mut self, rest: &[usize]) {
         let mut dropped: Vec<usize> = Vec::new();
+        let mut spelled_x: Vec<(usize, Vec<usize>)> = Vec::new();
         for (k, st) in self.graphs.iter().enumerate() {
             let Some(o) = st.row.filter(|_| st.class == Class::Other) else { continue };
             let (ps, pe) = (self.spans[o].0.min(self.places[o].0), self.spans[o].1.max(self.places[o].1));
-            let inside: Vec<usize> = rest.iter().copied().filter(|&r| self.spans[r].0 >= ps && self.spans[r].1 <= pe).take(SPELL_MAX_ROWS).collect();
+            // a row's span with its equivalent placements (a length change slides over its run)
+            let reach = |r: usize| (self.spans[r].0.min(self.places[r].0), self.spans[r].1.max(self.places[r].1));
+            let inside: Vec<usize> = rest
+                .iter()
+                .copied()
+                .filter(|&r| {
+                    let (rs, re) = reach(r);
+                    rs < pe && re > ps
+                })
+                .take(SPELL_MAX_ROWS)
+                .collect();
             let own = Hap::build(self, &[o]).seq;
             let sets = self.lying_together(&inside, None, 1 << SPELL_MAX_ROWS).unwrap_or_else(|| vec![Vec::new()]);
-            let spells = sets.iter().any(|c| {
-                let with_x = c.iter().all(|&r| !self.conflict(0, r)) && {
+            let with_x = |c: &[usize]| {
+                c.iter().all(|&r| !self.conflict(0, r)) && {
                     let mut h: Vec<usize> = std::iter::once(0).chain(c.iter().copied()).collect();
                     h.sort_unstable();
                     Hap::build(self, &h).seq == own
-                };
-                with_x || Hap::build(self, c).seq == own
-            });
-            if spells {
+                }
+            };
+            if let Some(c) = sets.iter().find(|c| with_x(c)) {
+                spelled_x.push((o, c.clone()));
+                dropped.push(k);
+            } else if sets.iter().any(|c| Hap::build(self, c).seq == own) {
                 dropped.push(k);
             }
         }
         for k in dropped.into_iter().rev() {
             self.graphs.remove(k);
         }
+        if spelled_x.len() > 64 {
+            log::warn!(
+                "sequence judge: {} alleles at one site are X with listed neighbours; INDEL_SHARED names the reads of the first 64",
+                spelled_x.len()
+            );
+        }
+        self.x_spellings = spelled_x;
+    }
+
+    /// Which of [`Site::x_spellings`] (a bit each, in order, the first 64) `read` spells
+    /// whole on its alignment `al` (columns offset by `off`) to `hap`: `hap` holds X with
+    /// every context row that makes the allele, and the read places a base, read
+    /// confidently as `hap`'s, at every column from the base before the allele's REF span
+    /// to the base after it (both junctions of a deletion, every base a delins writes).
+    pub(crate) fn spelled_x_spellings(&self, read: &ReadView, hap: &Hap, al: &Alignment, off: usize) -> u64 {
+        if self.x_spellings.is_empty() || hap.rows.first() != Some(&0) {
+            return 0;
+        }
+        let at: HashMap<i64, u8> = al
+            .placed
+            .iter()
+            .enumerate()
+            .filter_map(|(i, p)| if let Placed::At(c) = *p { Some(((c + off) as i64, read.seq[i])) } else { None })
+            .collect();
+        let spells = |o: usize, c: &[usize]| {
+            if !c.iter().all(|r| hap.rows.binary_search(r).is_ok()) {
+                return false;
+            }
+            let (s, e) = self.spans[o];
+            let (a, b) = (self.column_in(hap, s - 1), self.column_in(hap, e));
+            a < b && (a..=b).all(|col| at.get(&col).is_some_and(|&x| x != WILD && Some(x) == hap.seq.get(col as usize).copied()))
+        };
+        self.x_spellings.iter().take(64).enumerate().filter(|(_, (o, c))| spells(*o, c)).fold(0u64, |m, (k, _)| m | 1 << k)
     }
 
     /// A found allele stays a state only where the reads tell it from X and from REF by
@@ -2986,7 +3071,10 @@ impl<'r> Scorer<'r> {
         centers.push(at(read.refpos[0]));
         centers.extend(read.refpos.iter().map(|&p| at(p) + 1));
         let shifts: i64 = near.iter().map(|&r| site.rows[r].ref_al.len().abs_diff(site.rows[r].alt_al.len()) as i64).sum();
-        (&hap.seq[a..b], a, Band::around(&centers, slack + shifts, b - a))
+        let mut band = Band::around(&centers, slack + shifts, b - a);
+        // the repeats the read can slide along in its reach ([`score::stand_floor`])
+        band.free = site.free_shift(read);
+        (&hap.seq[a..b], a, band)
     }
 
     /// The rows within the band's reach: its slack and every length change the site's
@@ -3000,7 +3088,18 @@ impl<'r> Scorer<'r> {
     pub(crate) fn align(&self, site: &Site, hap: &Hap) -> (Alignment, usize) {
         let near = self.near(site, hap);
         let (seq, a, band) = self.prepare(site, hap, &near);
-        (score::align(&self.read.seq, seq, Some(&band)), a)
+        // measurement only (GBCMS_JUDGE_BAND=full): no band here either
+        (score::align(&self.read.seq, seq, (!site.band_full).then_some(&band)), a)
+    }
+
+    /// Tests only: [`Scorer::align`] with the band's repeat forced to `free` (0: the floor
+    /// before the repeat-aware one).
+    #[cfg(test)]
+    pub(crate) fn align_with_free(&self, site: &Site, hap: &Hap, free: i64) -> (Alignment, usize) {
+        let near = self.near(site, hap);
+        let (seq, a, mut band) = self.prepare(site, hap, &near);
+        band.free = free;
+        (score::align(&self.read.seq, seq, (!site.band_full).then_some(&band)), a)
     }
 }
 
@@ -3080,6 +3179,55 @@ pub(crate) mod tests {
         let s = Site::build_backed(x.clone(), &candidates, window, reads, FoundRule::All, BackgroundRule::AsIs)
             .unwrap();
         assert_eq!((s.n_states, s.rows.len() - 1 - s.n_states, s.masked.len()), (3, 3, 1));
+    }
+
+    /// The chr10:12910609 A>ATTT shape (HG002 c246 arm): an insertion of TTT after the
+    /// ninth A of an A x11 run meeting a T x14 run, with a listed A>T on the next A and a
+    /// listed AT>TT on the one after (an A>T written with its next base). The guard's allele
+    /// X with both, written as the bases it changes (RJ-25), is AA>TTTTT over the run's last
+    /// two A's, which the AT>TT runs one base past: it spells X with its listed neighbours,
+    /// so it is X's, never another allele's (else every carrier ties X with it).
+    #[test]
+    fn an_other_state_that_is_x_with_neighbours_running_past_its_changes_is_dropped() {
+        let c = contig(10, 290, b"AAAAAAAAAAATTTTTTTTTTTTTT");
+        let x = Row::new(298, b"A", b"ATTT");
+        let candidates = Candidates {
+            listed: vec![Row::new(299, b"A", b"T"), Row::new(300, b"AT", b"TT")],
+            discovered: vec![Row::new(299, b"AA", b"TTTTT")],
+            background: Vec::new(),
+            masked: Vec::new(),
+            found: Vec::new(),
+            edges: (None, None),
+        };
+        let read = ReadView::new(&c[230..380], &[30; 150], 230, &[Cigar::Match(150)], (0, 150), 20).unwrap();
+        let s = Site::build_backed(x, &candidates, (0, c.clone()), std::slice::from_ref(&read), FoundRule::All, BackgroundRule::AsIs).unwrap();
+        assert_eq!(s.n_states, 1, "the allele taken as a state");
+        assert_eq!(s.graphs.len(), 2, "its graph dropped: REF's and X's alone");
+    }
+
+    /// The chr10:83775882 A>AC shape (HG002 c246 arm, at `--min-baseq` 0): an insertion of
+    /// C in an A x11 run after CAAAA units, with a listed T>TA four bases before the units
+    /// (an A inserted in the A run it slides through) and a listed A>C on the next base. The
+    /// guard's allele of REF's length, REF with both, written as the bases it changes, starts
+    /// at the units' first C: the T>TA's written base lies before it, its placements inside
+    /// it. It spells REF with its listed neighbours, so it is REF's (else every REF read
+    /// carrying them ties REF with it).
+    #[test]
+    fn an_other_state_that_is_ref_with_a_neighbour_written_before_it_is_dropped() {
+        let c = contig(11, 290, b"CCTAAAACAAAACAAAACAAAAAAAAAAACCC");
+        let x = Row::new(311, b"A", b"AC");
+        let candidates = Candidates {
+            listed: vec![Row::new(292, b"T", b"TA"), Row::new(312, b"A", b"C")],
+            discovered: vec![Row::new(297, b"CAAAACAAAACAAAAA", b"ACAAAACAAAACAAAAC")],
+            background: Vec::new(),
+            masked: Vec::new(),
+            found: Vec::new(),
+            edges: (None, None),
+        };
+        let read = ReadView::new(&c[230..380], &[30; 150], 230, &[Cigar::Match(150)], (0, 150), 20).unwrap();
+        let s = Site::build_backed(x, &candidates, (0, c.clone()), std::slice::from_ref(&read), FoundRule::All, BackgroundRule::AsIs).unwrap();
+        assert_eq!(s.n_states, 1, "the allele taken as a state");
+        assert_eq!(s.graphs.len(), 2, "its graph dropped: REF's and X's alone");
     }
 
     /// The chr5:44868216 A>AT shape (#246 arm, HG002): an insertion of T in an A run
@@ -3186,6 +3334,256 @@ pub(crate) mod tests {
         let candidates = Candidates { found: vec![(del.clone(), (0..6).collect())], ..Candidates::default() };
         let s = Site::build(x.clone(), &candidates, (0, c.clone()), &reads).unwrap();
         assert!(!s.rows.contains(&del), "no read needs the deletion: no context");
+    }
+}
+
+/// Tests of a band's floor beside the full programme (`score::stand_floor`).
+#[cfg(test)]
+mod band_tests {
+    use super::tests::random_seq;
+    use super::*;
+
+    /// A shape of a read a band may miss: a read over a tandem repeat of `unit` bases with
+    /// `flank` bases of unique sequence on one side of it (`short_at_start`) and 40 on the
+    /// other, X (an SNV) among those; its haplotype carries one unit deleted or inserted (`own`,
+    /// bases: negative deleted) in the repeat; its aligner wrote it gapless, its bases on the
+    /// long side at their own places (`anchor_long`) or those on the short side; `blind`: 0
+    /// clean, 1 every 7th base masked, 2 an error in each of the three pieces the copy check
+    /// reads; `alt`: X on the read.
+    #[derive(Debug, Clone, Copy)]
+    struct BandShape {
+        unit: usize,
+        own: i64,
+        flank: usize,
+        short_at_start: bool,
+        anchor_long: bool,
+        blind: u8,
+        alt: bool,
+    }
+
+    /// The contig, X and the read of a [`BandShape`].
+    fn band_shape(sh: BandShape, seed: u64) -> (Vec<u8>, Row, ReadView) {
+        let mut c = random_seq(600, seed);
+        let unit = random_seq(sh.unit, seed ^ 0x5eed);
+        let copies = (60 / sh.unit).max(4);
+        let (r0, r1) = (250usize, 250 + copies * sh.unit);
+        for i in r0..r1 {
+            c[i] = unit[(i - r0) % sh.unit];
+        }
+        let xp = if sh.short_at_start { r1 + 12 } else { r0 - 13 };
+        let x = Row::new(xp as i64, &c[xp..=xp], &[*b"ACGT".iter().find(|&&b| b != c[xp]).unwrap()]);
+        let mut h: Vec<u8> = c.clone();
+        if sh.alt {
+            h[xp] = x.alt_al[0];
+        }
+        let mid = r0 + (copies / 2) * sh.unit;
+        if sh.own < 0 {
+            h.drain(mid..mid + (-sh.own) as usize);
+        } else {
+            let ins: Vec<u8> = (0..sh.own as usize).map(|k| unit[k % sh.unit]).collect();
+            h.splice(mid..mid, ins);
+        }
+        let (s, e) = if sh.short_at_start { (r0 - sh.flank, (r1 as i64 + 40 + sh.own) as usize) } else { (r0 - 40, (r1 as i64 + sh.flank as i64 + sh.own) as usize) };
+        let mut seq = h[s..e].to_vec();
+        let n = seq.len();
+        let mut quals = vec![30u8; n];
+        match sh.blind {
+            1 => (0..n).step_by(7).for_each(|i| quals[i] = 2),
+            2 => {
+                for i in [5, n / 2 + 1, n - 6] {
+                    seq[i] = *b"ACGT".iter().find(|&&b| b != seq[i]).unwrap();
+                }
+            }
+            _ => {}
+        }
+        let first_at_own = sh.short_at_start != sh.anchor_long;
+        let start = if first_at_own { s as i64 } else { (e as i64 - sh.own) - n as i64 };
+        let read = ReadView::new(&seq, &quals, start, &[Cigar::Match(n as u32)], (0, n), 20).unwrap();
+        (c, x, read)
+    }
+
+    /// Per state of the site, the score its band decides and the full programme's over the
+    /// read's reach.
+    fn band_scores(site: &Site, read: &ReadView) -> Vec<(i32, i32)> {
+        let gr = site.graph_read(read);
+        let mut ws = Workspace::default();
+        site.graphs.iter().map(|g| (graph::score(&ShortReads, &gr, &g.graph, &mut ws), graph::reach_score(&ShortReads, &gr, &g.graph))).collect()
+    }
+
+    /// The seed the band shapes' contigs are drawn from.
+    const SHAPE_SEED: u64 = 701;
+
+    #[test]
+    fn a_repeat_in_reach_lowers_what_a_band_answers_for() {
+        // The band's floor is what an indel long enough to leave the band costs. A read its
+        // aligner placed a repeat unit off can leave it at no cost but a shorter indel: the
+        // repeat's period comes off the slack. Repeats are stretches repeating at a period for
+        // two periods and 20 bases at least (one of the copy check's pieces).
+        assert_eq!(score::stand_floor(16, 0), -23, "no repeat: an indel of 17");
+        assert_eq!(score::stand_floor(16, 13), -10, "period 13: an indel of 4");
+        assert_eq!((score::stand_floor(16, 16), score::stand_floor(16, 40)), (0, 0), "a period of the slack or more: no score short of a perfect one");
+        assert_eq!(score::stand_floor(64, 13), -58);
+        let mut s = random_seq(200, 9);
+        let unit = b"CAGTTAGCCATGA";
+        for i in 0..52 {
+            s[100 + i] = unit[i % 13];
+        }
+        let tracts = score::tandem_tracts(&s, 64);
+        assert!(tracts.iter().any(|&(a, b, p)| p == 13 && a <= 100 && b >= 152), "the 13-base repeat: {tracts:?}");
+        assert!(tracts.iter().any(|&(_, _, p)| p == 26), "two units: a shift of 26");
+        assert_eq!(score::free_shift(&tracts, 90, 160), 26, "four units hold a shift of two (a stretch two shifts long), not of three");
+        assert_eq!(score::free_shift(&tracts, 0, 60), tracts.iter().filter(|t| t.1 > 0 && t.0 < 60).map(|t| t.2 as i64).max().unwrap_or(0));
+        // a short accidental repeat is no repeat: under 20 bases
+        assert!(score::tandem_tracts(b"ACGTTACGTTACG", 64).is_empty());
+    }
+
+    #[test]
+    fn a_read_placed_a_repeat_unit_off_reaches_its_best_score() {
+        // The red shape. A period-13 repeat with 11 unique bases before it; the read carries one
+        // unit deleted, its aligner wrote it gapless from its first base (past the deletion its
+        // bases sit a unit off), and every 7th base is masked, so each of the three 20-base
+        // pieces the copy check reads holds a masked base and it reads none. Its best alignment
+        // (-16 on REF's state) moves its first bases a unit along (free in the repeat) and takes
+        // 10 unique bases as an insertion, its first base matching 23 off its own placement:
+        // off the band. Under the 16-base floor alone (-23) the band stood on the alignment with
+        // the unit deleted (-19). With the repeat's 13 off the slack it stands only down to -10,
+        // so the wider band decides, and on the read's best.
+        let sh = BandShape { unit: 13, own: -13, flank: 11, short_at_start: true, anchor_long: false, blind: 1, alt: false };
+        let (c, x, read) = band_shape(sh, SHAPE_SEED);
+        let site = Site::build(x.clone(), &Candidates::default(), (0, c.clone()), std::slice::from_ref(&read)).unwrap();
+        assert_eq!(band_scores(&site, &read)[0], (-16, -16), "REF's state: the band's score and the full programme's");
+        assert!(band_scores(&site, &read).iter().all(|&(d, f)| d == f));
+    }
+
+    #[test]
+    fn every_band_shape_class_reaches_the_full_programmes_score() {
+        // The classes around that shape: repeat units of 2 to 20 bases, one unit deleted or
+        // inserted, the unique bases before the repeat or past it (the read's start or end),
+        // the read placed by either side (an aligner seeds from either end, as from either
+        // strand), the copy check blind through masks, through errors (one in each of its
+        // pieces) or not, REF or X on the read. Every state's band reaches the full programme.
+        let mut missed = Vec::new();
+        let mut shapes = 0usize;
+        for unit in 2..=20usize {
+            for own in [-(unit as i64), unit as i64] {
+                for flank in [5usize, 11] {
+                    for short_at_start in [true, false] {
+                        for anchor_long in [true, false] {
+                            for blind in 0..3u8 {
+                                let sh = BandShape { unit, own, flank, short_at_start, anchor_long, blind, alt: false };
+                                let (c, x, read) = band_shape(sh, SHAPE_SEED);
+                                let site = Site::build(x.clone(), &Candidates::default(), (0, c.clone()), std::slice::from_ref(&read)).unwrap();
+                                shapes += 1;
+                                if band_scores(&site, &read).iter().any(|&(d, f)| d < f) {
+                                    missed.push(sh);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        assert!(missed.is_empty(), "{} of {shapes} shapes short: {:?}", missed.len(), &missed[..missed.len().min(6)]);
+    }
+
+    /// The band shapes of every class [`every_band_shape_class_reaches_the_full_programmes_score`]
+    /// walks, each with its contig, X and read.
+    fn band_shape_classes() -> Vec<(BandShape, Vec<u8>, Row, ReadView)> {
+        let mut out = Vec::new();
+        for unit in 2..=20usize {
+            for own in [-(unit as i64), unit as i64] {
+                for flank in [5usize, 11] {
+                    for short_at_start in [true, false] {
+                        for anchor_long in [true, false] {
+                            for blind in 0..3u8 {
+                                let sh = BandShape { unit, own, flank, short_at_start, anchor_long, blind, alt: false };
+                                let (c, x, read) = band_shape(sh, SHAPE_SEED);
+                                out.push((sh, c, x, read));
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        out
+    }
+
+    /// Per state of the site, the score the judge's batch scoring decides for `gr`
+    /// ([`graph::decided_states`], as a read's programmes run it) and the full programme's over
+    /// the read's reach.
+    fn decided_scores(site: &Site, gr: &GraphRead) -> Vec<(i32, i32)> {
+        let graphs: Vec<&Graph> = site.graphs.iter().map(|g| &g.graph).collect();
+        let shares: Vec<Option<(usize, usize)>> = site.graphs.iter().map(|g| g.share).collect();
+        let decided = graph::with_workspaces(graphs.len(), |wss| graph::decided_states(&ShortReads, gr, &graphs, &shares, wss));
+        decided.iter().zip(&graphs).map(|(&(d, _), g)| (d, graph::reach_score(&ShortReads, gr, g))).collect()
+    }
+
+    /// Per state of the site, the linear aligner's score on the state's haplotype (`align`:
+    /// [`Scorer::align`], as `Site::reaches_state` and a call's fallback run it) and the full
+    /// programme's on the same trimmed haplotype.
+    fn aligned_scores(site: &Site, read: &ReadView, align: impl Fn(&Scorer, &Hap) -> (Alignment, usize)) -> Vec<(i32, i32)> {
+        let sc = Scorer::new(read);
+        (0..site.graphs.len())
+            .map(|k| {
+                let hap = site.hap_on_path(k, &[]);
+                let near = sc.near(site, &hap);
+                let (seq, _, _) = sc.prepare(site, &hap, &near);
+                (align(&sc, &hap).0.score, score::align(&read.seq, seq, None).score)
+            })
+            .collect()
+    }
+
+    #[test]
+    fn every_band_shape_class_is_decided_at_the_full_programmes_score() {
+        // The judge's own batch scoring (decided_states, on the read the site gives the graph
+        // scorer, its repeat counted) over the same classes: every state's decided score is the
+        // full programme's.
+        let classes = band_shape_classes();
+        let missed: Vec<BandShape> = classes
+            .iter()
+            .filter(|(_, c, x, read)| {
+                let site = Site::build(x.clone(), &Candidates::default(), (0, c.clone()), std::slice::from_ref(read)).unwrap();
+                decided_scores(&site, &site.graph_read(read)).iter().any(|&(d, f)| d < f)
+            })
+            .map(|t| t.0)
+            .collect();
+        assert!(missed.is_empty(), "{} of {} shapes short: {:?}", missed.len(), classes.len(), &missed[..missed.len().min(6)]);
+    }
+
+    #[test]
+    fn every_band_shape_class_aligns_at_the_full_programmes_score() {
+        // The linear aligner (Scorer::align, its band's floor counting the repeat) over the same
+        // classes: on every state's haplotype it reaches the full programme's score.
+        let classes = band_shape_classes();
+        let missed: Vec<BandShape> = classes
+            .iter()
+            .filter(|(_, c, x, read)| {
+                let site = Site::build(x.clone(), &Candidates::default(), (0, c.clone()), std::slice::from_ref(read)).unwrap();
+                aligned_scores(&site, read, |sc, hap| sc.align(&site, hap)).iter().any(|&(a, f)| a < f)
+            })
+            .map(|t| t.0)
+            .collect();
+        assert!(missed.is_empty(), "{} of {} shapes short: {:?}", missed.len(), classes.len(), &missed[..missed.len().min(6)]);
+    }
+
+    #[test]
+    fn the_full_band_switch_scores_by_the_full_programme_in_batch_and_alignment() {
+        // GBCMS_JUDGE_BAND=full (measurement only): the site's reads carry the switch, and both
+        // the batch scoring and the linear aligner take the full programme with no band. With
+        // the site's repeats not counted (the floor before the repeat-aware one) the red shape's
+        // bands fall short; under the switch both reach the full programme.
+        let sh = BandShape { unit: 13, own: -13, flank: 11, short_at_start: true, anchor_long: false, blind: 1, alt: false };
+        let (c, x, read) = band_shape(sh, SHAPE_SEED);
+        let mut site = Site::build(x.clone(), &Candidates::default(), (0, c.clone()), std::slice::from_ref(&read)).unwrap();
+        site.tracts.clear();
+        assert_eq!(site.graph_read(&read).free_shift, 0, "no repeat counted");
+        assert_eq!(decided_scores(&site, &site.graph_read(&read))[0], (-19, -16), "batch: the band without the repeat falls short");
+        assert!(aligned_scores(&site, &read, |sc, hap| sc.align(&site, hap)).iter().any(|&(a, f)| a < f), "linear: the band without the repeat falls short");
+        site.band_full = true;
+        let gr = site.graph_read(&read);
+        assert!(gr.full, "the site's reads carry the switch");
+        assert!(decided_scores(&site, &gr).iter().all(|&(d, f)| d == f), "batch: the full programme, every state");
+        assert!(aligned_scores(&site, &read, |sc, hap| sc.align(&site, hap)).iter().all(|&(a, f)| a == f), "linear: no band");
     }
 }
 
@@ -3344,7 +3742,7 @@ mod path_tests {
             let cand = Candidates { listed: rows.clone(), ..Candidates::default() };
             let site = Site::build(x.clone(), &cand, (0, c.clone()), &reads).unwrap();
             for read in &reads {
-                for (k, (score, ex, _)) in super::super::decide::examined_alignments(&site, read).into_iter().enumerate() {
+                for (k, (score, ex, _)) in super::super::decide::examined_alignments(&site, read, None).into_iter().enumerate() {
                     assert_eq!((ex.0.score, summed(&ex.0)), (score, score), "case {case} state {k}: the examined alignment is the state's path");
                     seen += 1;
                 }
@@ -3365,7 +3763,8 @@ mod path_tests {
         let read = ReadView::new(seq, &quals, 334, &cigar, (0, seq.len()), 20).unwrap();
         let cand = Candidates { listed: vec![listed], ..Candidates::default() };
         let site = Site::build(x.clone(), &cand, (0, c.clone()), std::slice::from_ref(&read)).unwrap();
-        let both = super::super::decide::examined_alignments(&site, &read);
+        // develop's floor for the linear aligner: the repeat-aware floor closes this gap in it too
+        let both = super::super::decide::examined_alignments(&site, &read, Some(0));
         let (score, ex, lin) = &both[0];
         assert_eq!((*score, ex.0.score, lin.0.score), (-17, -17, -20), "REF's state: its score, the examined alignment's, the linear aligner's");
     }
@@ -3385,7 +3784,7 @@ mod path_tests {
             let cigar = [Cigar::Match((at - 290) as u32), Cigar::Ins(extra.len() as u32), Cigar::Match((410 - at) as u32)];
             let read = ReadView::new(&seq, &vec![30; seq.len()], 290, &cigar, (0, seq.len()), 20).unwrap();
             let site = Site::build(x.clone(), &Candidates::default(), (0, c.clone()), std::slice::from_ref(&read)).unwrap();
-            for (k, (_, ex, lin)) in super::super::decide::examined_alignments(&site, &read).into_iter().enumerate() {
+            for (k, (_, ex, lin)) in super::super::decide::examined_alignments(&site, &read, None).into_iter().enumerate() {
                 assert_eq!(laid(&ex), laid(&lin), "{name}, state {k}");
             }
         }
@@ -3415,7 +3814,8 @@ mod path_tests {
         let site = Site::build(x.clone(), &Candidates::default(), (0, c.clone()), std::slice::from_ref(&read)).unwrap();
         let v = judge(&site, &read, 20, true);
         assert_eq!((v.call, v.qual, read.quals[at_x]), (super::super::decide::Call::Alt, 25, 25), "ALT at X's own quality");
-        let both = super::super::decide::examined_alignments(&site, &read);
+        // develop's floor for the linear aligner: the repeat-aware floor closes this gap in it too
+        let both = super::super::decide::examined_alignments(&site, &read, Some(0));
         let deleted_after = |a: &Alignment| a.skipped_after.iter().position(|&k| k > 0);
         let path = (deleted_after(&both[0].1 .0), deleted_after(&both[1].1 .0));
         let lin = (deleted_after(&both[0].2 .0), deleted_after(&both[1].2 .0));

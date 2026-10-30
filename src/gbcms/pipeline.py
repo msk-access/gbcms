@@ -1053,6 +1053,12 @@ class Pipeline:
                 carriers count at both rows (a read carrying the SNV's base is its ALT,
                 whatever else is listed), so one molecule can enter both rows' AD and
                 mFSD size distributions. One flag per such MNV. Counts stand.
+            INDEL_SHARED(chrom:pos:REF>ALT:n/m): under the sequence judge, at a row with
+                a listed row that is its ALT with listed neighbours (a delins that is two
+                listed deletions together): n of the row's m ALT reads spell that row
+                whole. Those carriers count at each row that holds them (RJ-28's indel
+                twin), so one molecule can enter several rows' AD and mFSD size
+                distributions. One flag per such row. Counts stand.
             UNEXPLAINED_READS(n/m): under the sequence judge, n of the row's m DP
                 reads fit none of its candidate sequences (REF, ALT, the other alleles
                 at its site, with every context) within ten confident mismatches. The
@@ -1146,6 +1152,14 @@ class Pipeline:
         shared = getattr(counts, "mnv_shared", "")
         for entry in shared.split("+") if shared else ():
             flags.append(f"MNV_SHARED({variant.chrom}:{entry})")
+
+        # Its indel twin: a row listed beside another listed row that is its ALT with
+        # listed neighbours (a delins that is two listed deletions together) counts that
+        # row's carriers as its ALT; name how many of its ALT reads spell each such row,
+        # so one molecule counting at several rows is visible. The counts stand.
+        shared = getattr(counts, "indel_shared", "")
+        for entry in shared.split("+") if shared else ():
+            flags.append(f"INDEL_SHARED({variant.chrom}:{entry})")
 
         # Reads the sequence judge found no candidate sequence explains: depth only where
         # the aligner doubts them too (the fit rule), else judged by their bases at the
