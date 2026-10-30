@@ -3375,6 +3375,106 @@ mod band_tests {
         }
         assert!(missed.is_empty(), "{} of {shapes} shapes short: {:?}", missed.len(), &missed[..missed.len().min(6)]);
     }
+
+    /// The band shapes of every class [`every_band_shape_class_reaches_the_full_programmes_score`]
+    /// walks, each with its contig, X and read.
+    fn band_shape_classes() -> Vec<(BandShape, Vec<u8>, Row, ReadView)> {
+        let mut out = Vec::new();
+        for unit in 2..=20usize {
+            for own in [-(unit as i64), unit as i64] {
+                for flank in [5usize, 11] {
+                    for short_at_start in [true, false] {
+                        for anchor_long in [true, false] {
+                            for blind in 0..3u8 {
+                                let sh = BandShape { unit, own, flank, short_at_start, anchor_long, blind, alt: false };
+                                let (c, x, read) = band_shape(sh, SHAPE_SEED);
+                                out.push((sh, c, x, read));
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        out
+    }
+
+    /// Per state of the site, the score the judge's batch scoring decides for `gr`
+    /// ([`graph::decided_states`], as a read's programmes run it) and the full programme's over
+    /// the read's reach.
+    fn decided_scores(site: &Site, gr: &GraphRead) -> Vec<(i32, i32)> {
+        let graphs: Vec<&Graph> = site.graphs.iter().map(|g| &g.graph).collect();
+        let shares: Vec<Option<(usize, usize)>> = site.graphs.iter().map(|g| g.share).collect();
+        let decided = graph::with_workspaces(graphs.len(), |wss| graph::decided_states(&ShortReads, gr, &graphs, &shares, wss));
+        decided.iter().zip(&graphs).map(|(&(d, _), g)| (d, graph::reach_score(&ShortReads, gr, g))).collect()
+    }
+
+    /// Per state of the site, the linear aligner's score on the state's haplotype (`align`:
+    /// [`Scorer::align`], as `Site::reaches_state` and a call's fallback run it) and the full
+    /// programme's on the same trimmed haplotype.
+    fn aligned_scores(site: &Site, read: &ReadView, align: impl Fn(&Scorer, &Hap) -> (Alignment, usize)) -> Vec<(i32, i32)> {
+        let sc = Scorer::new(read);
+        (0..site.graphs.len())
+            .map(|k| {
+                let hap = site.hap_on_path(k, &[]);
+                let near = sc.near(site, &hap);
+                let (seq, _, _) = sc.prepare(site, &hap, &near);
+                (align(&sc, &hap).0.score, score::align(&read.seq, seq, None).score)
+            })
+            .collect()
+    }
+
+    #[test]
+    fn every_band_shape_class_is_decided_at_the_full_programmes_score() {
+        // The judge's own batch scoring (decided_states, on the read the site gives the graph
+        // scorer, its repeat counted) over the same classes: every state's decided score is the
+        // full programme's.
+        let classes = band_shape_classes();
+        let missed: Vec<BandShape> = classes
+            .iter()
+            .filter(|(_, c, x, read)| {
+                let site = Site::build(x.clone(), &Candidates::default(), (0, c.clone()), std::slice::from_ref(read)).unwrap();
+                decided_scores(&site, &site.graph_read(read)).iter().any(|&(d, f)| d < f)
+            })
+            .map(|t| t.0)
+            .collect();
+        assert!(missed.is_empty(), "{} of {} shapes short: {:?}", missed.len(), classes.len(), &missed[..missed.len().min(6)]);
+    }
+
+    #[test]
+    fn every_band_shape_class_aligns_at_the_full_programmes_score() {
+        // The linear aligner (Scorer::align, its band's floor counting the repeat) over the same
+        // classes: on every state's haplotype it reaches the full programme's score.
+        let classes = band_shape_classes();
+        let missed: Vec<BandShape> = classes
+            .iter()
+            .filter(|(_, c, x, read)| {
+                let site = Site::build(x.clone(), &Candidates::default(), (0, c.clone()), std::slice::from_ref(read)).unwrap();
+                aligned_scores(&site, read, |sc, hap| sc.align(&site, hap)).iter().any(|&(a, f)| a < f)
+            })
+            .map(|t| t.0)
+            .collect();
+        assert!(missed.is_empty(), "{} of {} shapes short: {:?}", missed.len(), classes.len(), &missed[..missed.len().min(6)]);
+    }
+
+    #[test]
+    fn the_full_band_switch_scores_by_the_full_programme_in_batch_and_alignment() {
+        // GBCMS_JUDGE_BAND=full (measurement only): the site's reads carry the switch, and both
+        // the batch scoring and the linear aligner take the full programme with no band. With
+        // the site's repeats not counted (the floor before the repeat-aware one) the red shape's
+        // bands fall short; under the switch both reach the full programme.
+        let sh = BandShape { unit: 13, own: -13, flank: 11, short_at_start: true, anchor_long: false, blind: 1, alt: false };
+        let (c, x, read) = band_shape(sh, SHAPE_SEED);
+        let mut site = Site::build(x.clone(), &Candidates::default(), (0, c.clone()), std::slice::from_ref(&read)).unwrap();
+        site.tracts.clear();
+        assert_eq!(site.graph_read(&read).free_shift, 0, "no repeat counted");
+        assert_eq!(decided_scores(&site, &site.graph_read(&read))[0], (-19, -16), "batch: the band without the repeat falls short");
+        assert!(aligned_scores(&site, &read, |sc, hap| sc.align(&site, hap)).iter().any(|&(a, f)| a < f), "linear: the band without the repeat falls short");
+        site.band_full = true;
+        let gr = site.graph_read(&read);
+        assert!(gr.full, "the site's reads carry the switch");
+        assert!(decided_scores(&site, &gr).iter().all(|&(d, f)| d == f), "batch: the full programme, every state");
+        assert!(aligned_scores(&site, &read, |sc, hap| sc.align(&site, hap)).iter().all(|&(a, f)| a == f), "linear: no band");
+    }
 }
 
 /// Tests of the call examined on the traced path (`graph::kept_steps`, `Site::alignment_on_path`).
