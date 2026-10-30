@@ -318,6 +318,16 @@ For a row X and each admitted read:
         INS 10-49 +5 ALT; at 30, INS 1k+ +3 ALT. Every read with a truth label moves toward it
         but one (a REF read at c246 INS 10-49 at 0, partial → depth). The two first builds'
         regressions (chr10:12910609 at 20, chr10:83775882 at 0, above) are gone.
+      - Combined check with develop's path-alignment change (#370, develop a2ca57c1) merged
+        in, at 20 (batch c61hs): on the judge path the merged head moves the same reads
+        against develop a2ca57c1 as the branch did against develop before it, read for read
+        (panel 572, the gate set 944 of its 947: of the other 3, path-alignment already makes
+        two partial evidence, as the change did, and the third stays depth only; HG002 c246 20, tr 8, ch_a1 and ch_both 8 each, sub 22 and nocl 28), and
+        one more: an HG002 read at chr11:11247039 G>GTCTC (no truth label there), partial
+        evidence → depth only. The scores and the HG002 classes are those above; the
+        shared-indel note (INDEL_SHARED) is on the same 8 panel and 10 gate-set rows. On the
+        default path the merged head is byte-identical to develop a2ca57c1 on every patient
+        arm, the gate set and the 8 HG002 arms.
       - Identity: on the default path (`--read-judge rules`) the branch head is byte-identical
         to develop 7e7ea3c7 on every patient arm, the gate set and the 8 HG002 arms (1,070
         runs); on the judge path the merge of develop changed nothing (the merged head before
@@ -340,7 +350,8 @@ For a row X and each admitted read:
       reads carrying it are partial evidence, as RJ-25 decides; the window spelling had held
       the carriers' base at the mask, so it missed them. At chr13:112014990 and chr11:11246937
       (nocl, no truth label at those rows) a few reads move between partial, depth and REF.
-    - **Open for the operator: the wider spelled-state check reaches listed siblings.** The
+    - **Decided (operator, 2026-10-30): the wider spelled-state check reaches listed siblings,
+      RJ-28's indel twin (RJ-28 amended), named by `INDEL_SHARED`.** The
       check above drops any other state that spells X (or REF) with listed neighbours, not only
       the guard's alleles: a listed delins that is X with a listed neighbour is X's too. On the
       panel it moves 4 rows in 4 runs (247 reads, 5 rows in the gate set), all inputs listing
@@ -367,9 +378,25 @@ For a row X and each admitted read:
       substitutions (RJ-28: a candidate sequence holding the row's change there, an MNV listed
       beside its component SNV, is the row's ALT, so a read carrying the MNV counts at both
       rows, `MNV_SHARED` naming the overlap) and the judge's own rule for a state spelling X
-      with listed neighbours; for indels no register entry decides it and no diagnostic names
-      the shared molecule. The narrower form (the neighbours wholly inside) would keep these
-      rows partial and would need the two HG002 regressions above fixed another way.
+      with listed neighbours. Decided as its indel twin: a listed indel or delins that holds
+      the row's whole change counts its carriers as the row's ALT, so one molecule counts at
+      each row that holds it, and the row names, per such listed row, how many of its ALT
+      reads spell it whole: `INDEL_SHARED(chrom:pos:REF>ALT:n/m)` in `gbcms_diagnostic` (no
+      count, no column; red-first tests in `tests/test_indel_shared_contract.py`: the worked
+      shape named at both deletions and not at the delins, and a listed deletion holding more
+      than the row's change not named). An ALT read spells such a row whole when its
+      haplotype holds X with the neighbours that make it and it reads every base from the
+      base before the row's span to the base after it, confidently. Measured at 20 against
+      the build without it: counts and read calls byte-identical on every arm and HG002
+      arm; the token on 8 panel rows (the four rows and their listed deletions; at the
+      worked row 118 of the 129 ALT reads spell the delins whole, at its 7-base deletion 117
+      of 130), 10 in the gate set (five such rows and their listed deletions), none in the
+      cohort, WES, normals or HG002.
+    - Notes, not changed here: the rules path counts the worked example's carriers partial
+      at 20 too ((RD, AD, partial) (308, 0, 237); RJ-25 there takes X with the listed SNV as
+      another allele); and at an SNV listed right beside a delins its carriers all carry, the
+      judge counts them partial on develop and with this change alike (seen while building
+      the class tests).
     - Community standard: a variant is written by the bases it changes, left-aligned and
       trimmed (the parsimonious representation of [vt normalize](https://pmc.ncbi.nlm.nih.gov/articles/PMC4481842)
       (Tan, Abecasis and Kang 2015, DOI 10.1093/bioinformatics/btv112); GATK
