@@ -3889,15 +3889,18 @@ impl Site {
     }
 
     /// An other state whose allele spells X's haplotype (or REF's) with rows of the reads'
-    /// reach inside its place (an allele the reads spell over X with a listed neighbour
+    /// reach meeting its place (an allele the reads spell over X with a listed neighbour
     /// beside it) is that haplotype: X's or REF's, never another allele's. Its graph is
-    /// dropped, as the enumeration drops each haplotype of it spelling one of theirs.
+    /// dropped, as the enumeration drops each haplotype of it spelling one of theirs. A
+    /// row reaching past the place counts too: an allele the guard found is written as the
+    /// bases it changes (RJ-25), and a neighbour that changes one of them may run on past
+    /// its last (a delins over an insertion's run, beside an SNV written with its next base).
     fn drop_spelled_states(&mut self, rest: &[usize]) {
         let mut dropped: Vec<usize> = Vec::new();
         for (k, st) in self.graphs.iter().enumerate() {
             let Some(o) = st.row.filter(|_| st.class == Class::Other) else { continue };
             let (ps, pe) = (self.spans[o].0.min(self.places[o].0), self.spans[o].1.max(self.places[o].1));
-            let inside: Vec<usize> = rest.iter().copied().filter(|&r| self.spans[r].0 >= ps && self.spans[r].1 <= pe).take(SPELL_MAX_ROWS).collect();
+            let inside: Vec<usize> = rest.iter().copied().filter(|&r| self.spans[r].0 < pe && self.spans[r].1 > ps).take(SPELL_MAX_ROWS).collect();
             let own = Hap::build(self, &[o]).seq;
             let sets = self.lying_together(&inside, None, 1 << SPELL_MAX_ROWS).unwrap_or_else(|| vec![Vec::new()]);
             let spells = sets.iter().any(|c| {
@@ -4400,6 +4403,40 @@ pub(crate) mod tests {
         assert_eq!(parse_contexts(""), Some(All));
         assert_eq!(parse_contexts("nofound"), Some(NoFound));
         assert_eq!(parse_contexts("Seq"), None);
+    }
+
+    /// The chr10:12910609 A>ATTT shape (HG002 c246 arm): an insertion of TTT after the
+    /// ninth A of an A x11 run meeting a T x14 run, with a listed A>T on the next A and a
+    /// listed AT>TT on the one after (an A>T written with its next base). The guard's allele
+    /// X with both, written as the bases it changes (RJ-25), is AA>TTTTT over the run's last
+    /// two A's, which the AT>TT runs one base past: it spells X with its listed neighbours,
+    /// so it is X's, never another allele's (else every carrier ties X with it).
+    #[test]
+    fn an_other_state_that_is_x_with_neighbours_running_past_its_changes_is_dropped() {
+        let c = contig(10, 290, b"AAAAAAAAAAATTTTTTTTTTTTTT");
+        let x = Row::new(298, b"A", b"ATTT");
+        let candidates = Candidates {
+            listed: vec![Row::new(299, b"A", b"T"), Row::new(300, b"AT", b"TT")],
+            discovered: vec![Row::new(299, b"AA", b"TTTTT")],
+            background: Vec::new(),
+            masked: Vec::new(),
+            found: Vec::new(),
+            edges: (None, None),
+        };
+        let read = ReadView::new(&c[230..380], &[30; 150], 230, &[Cigar::Match(150)], (0, 150), 20).unwrap();
+        let s = Site::build_backed(
+            ScorerKind::Graph,
+            x,
+            &candidates,
+            (0, c.clone()),
+            std::slice::from_ref(&read),
+            FoundRule::All,
+            ContextSources::All,
+            BackgroundRule::AsIs,
+        )
+        .unwrap();
+        assert_eq!(s.n_states, 1, "the allele taken as a state");
+        assert_eq!(s.graphs.len(), 2, "its graph dropped: REF's and X's alone");
     }
 
     /// The chr5:44868216 A>AT shape (#246 arm, HG002): an insertion of T in an A run

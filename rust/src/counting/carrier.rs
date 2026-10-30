@@ -2028,6 +2028,15 @@ pub(crate) struct Guard {
     /// The other alleles of the ALT's length at the locus (RJ-25), and of REF's.
     pub others: Vec<OtherAllele>,
     pub ref_others: Vec<OtherAllele>,
+    /// The same alleles as the sequence judge takes them, as site states: each written
+    /// as the bases it changes, past the guard's masks (the allele's own base where a
+    /// mask takes a carrier's), as RJ-25 reads a spelling. Written over the window with
+    /// its carriers' bases (as `others`, for the rules' windows), a found allele would
+    /// hold a masked base as its change, and the judge, reading that base literally for
+    /// every state, would let it take the reads carrying the masked change from X and
+    /// REF by that base alone.
+    pub judge_others: Vec<OtherAllele>,
+    pub judge_ref_others: Vec<OtherAllele>,
     /// The indels the reads' own alignments write inside the windows' span that recur
     /// as background (on [`GUARD_MIN_READS`] fragments and [`GUARD_MIN_SHARE`] of
     /// those spanning the windows: a germline indel beside the event): its genome
@@ -2053,6 +2062,8 @@ impl Guard {
             scanned,
             others: Vec::new(),
             ref_others: Vec::new(),
+            judge_others: Vec::new(),
+            judge_ref_others: Vec::new(),
             indels: Vec::new(),
             minority: None,
         }
@@ -2480,6 +2491,31 @@ pub(crate) enum Side {
     Alt,
 }
 
+/// How [`other_alleles`] writes each allele it finds: over the guard's window with its
+/// carriers' bases (`Window`, the rules' windows read it so, past their masks), or as
+/// the sequence judge takes it, a site state (`Judge`): past the masks and trimmed to the
+/// bases it changes ([`Guard::judge_others`]).
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Written {
+    Window,
+    Judge,
+}
+
+/// An allele `alt` spelled in place of `reference` from genome position `pos`, trimmed to
+/// the bases it changes: the bases both share at either end left out, one kept where
+/// either would be emptied (an indel's anchor).
+fn changed_bases(mut pos: i64, mut r: Vec<u8>, mut a: Vec<u8>) -> OtherAllele {
+    while r.len() > 1 && a.len() > 1 && r.last() == a.last() {
+        r.pop();
+        a.pop();
+    }
+    let shared = r.iter().zip(&a).take_while(|(x, y)| x == y).count().min(r.len() - 1).min(a.len() - 1);
+    r.drain(..shared);
+    a.drain(..shared);
+    pos += shared as i64;
+    OtherAllele { pos, ref_allele: r, alt_allele: a }
+}
+
 /// The other alleles of one allele's length at the locus (RJ-25), beside REF or the
 /// ALT (`side`): the spellings read in full on [`GUARD_MIN_READS`] fragments or more
 /// and on [`GUARD_REF_SHARE`] of the fragments spelling the allele they are nearest,
@@ -2498,7 +2534,8 @@ pub(crate) enum Side {
 /// allele only at `masked` positions (genome): that is the allele with a separate
 /// event, which no read could tell from it. For an event keeping the length (an MNP)
 /// none differs only beside the given allele's own bases: with nothing to place, that
-/// is the allele with a phased neighbour (named, as beside any event).
+/// is the allele with a phased neighbour (named, as beside any event). Each is written
+/// as `written` says.
 fn other_alleles(
     placed: &Placed,
     (start, reference): (i64, &[u8]),
@@ -2506,6 +2543,7 @@ fn other_alleles(
     siblings: &[Variant],
     masks: &[(i64, Bases)],
     side: Side,
+    written: Written,
 ) -> Vec<OtherAllele> {
     let lo = ev.lo - FLANK;
     let (hi, alt_hi) = (ev.hi + FLANK, (ev.hi as i64 + ev.d) as usize + FLANK);
@@ -2595,6 +2633,13 @@ fn other_alleles(
     };
     let separate =
         |b: &[u8]| b.iter().enumerate().all(|(k, &x)| same(masked_own, lo + k, x, own[lo + k]) || counter_carries(lo + k, x));
+    // the spelling with this allele's own base wherever a mask takes the spelling's
+    let past_masks = |b: &[u8]| -> Vec<u8> {
+        b.iter()
+            .enumerate()
+            .map(|(k, &x)| if x != own[lo + k] && same(masked_own, lo + k, x, own[lo + k]) { own[lo + k] } else { x })
+            .collect()
+    };
     let mut others: Vec<OtherAllele> = placed.spellings[if side == Side::Ref { 0 } else { 1 }]
         .iter()
         .filter(|(b, f)| {
@@ -2604,9 +2649,20 @@ fn other_alleles(
                 && n as f64 >= GUARD_REF_SHARE * source(b) as f64
                 && !separate(b)
         })
-        // the spelling in place of REF's window bases (either allele's window starts at lo)
-        .map(|(b, _)| OtherAllele { pos: start + lo as i64, ref_allele: reference[lo..hi].to_vec(), alt_allele: b.clone() })
+        // the spelling in place of REF's window bases (either allele's window starts at
+        // lo); for the judge past the masks and trimmed to the bases it changes, so its
+        // row covers no mask beside its change (written with its carriers' bases the
+        // judge would take a masked base there as the allele's change, for every state)
+        .map(|(b, _)| match written {
+            Written::Window => OtherAllele { pos: start + lo as i64, ref_allele: reference[lo..hi].to_vec(), alt_allele: b.clone() },
+            Written::Judge => changed_bases(start + lo as i64, reference[lo..hi].to_vec(), past_masks(b)),
+        })
         .collect();
+    if written == Written::Judge {
+        // spellings apart only at a mask are one allele past it
+        others.sort_by(|a, b| (a.pos, &a.ref_allele, &a.alt_allele).cmp(&(b.pos, &b.ref_allele, &b.alt_allele)));
+        others.dedup();
+    }
     others.retain(|o| o.on(start, reference).is_some_and(|h| tellable(&h)));
     let mut haps: Vec<Vec<u8>> = others.iter().filter_map(|o| o.on(start, reference)).collect();
     for sib in siblings {
@@ -2926,10 +2982,11 @@ pub(crate) fn guard_for(
     // The ALT's own bases shifted onto reads placed through the event spell no other
     // allele of REF's length: those reads are the ALT's.
     let apart: Vec<(i64, Bases)> = masks.iter().copied().chain(shifted.iter().map(|&p| (p, ANY))).collect();
-    let others_of = |side| {
-        placed.as_ref().map_or_else(Vec::new, |p| other_alleles(p, (start, &reference), &ev, siblings, &apart, side))
+    let others_of = |side, written| {
+        placed.as_ref().map_or_else(Vec::new, |p| other_alleles(p, (start, &reference), &ev, siblings, &apart, side, written))
     };
-    let (others, ref_others) = (others_of(Side::Alt), others_of(Side::Ref));
+    let (others, ref_others) = (others_of(Side::Alt, Written::Window), others_of(Side::Ref, Written::Window));
+    let (judge_others, judge_ref_others) = (others_of(Side::Alt, Written::Judge), others_of(Side::Ref, Written::Judge));
     // The indels the reads' own alignments write inside the windows' span, the event's
     // own aside, per fragment, against the fragments spanning the windows: those
     // recurring are background (a germline indel beside the event), every other one
@@ -2968,7 +3025,8 @@ pub(crate) fn guard_for(
             .collect();
         indels.sort_unstable();
     }
-    if masked.is_empty() && larger.is_none() && others.is_empty() && ref_others.is_empty() && indels.is_empty() && minority.is_none() {
+    let none_found = [&others, &ref_others, &judge_others, &judge_ref_others].iter().all(|o| o.is_empty());
+    if masked.is_empty() && larger.is_none() && none_found && indels.is_empty() && minority.is_none() {
         return None;
     }
     trace!(
@@ -2982,6 +3040,8 @@ pub(crate) fn guard_for(
     guard.background = background;
     guard.others = others;
     guard.ref_others = ref_others;
+    guard.judge_others = judge_others;
+    guard.judge_ref_others = judge_ref_others;
     guard.indels = indels;
     guard.minority = minority;
     Some(guard)
@@ -4789,5 +4849,73 @@ mod tests {
         let inside = &ctx[left.len()..left.len() + 12 + 8];
         let q = vec![30u8; inside.len()];
         assert!(other_fits_as_well(&w, inside.as_bytes(), &q, 20, false), "either allele: depth only");
+    }
+
+    #[test]
+    fn a_found_allele_is_trimmed_to_the_bases_it_changes() {
+        let o = changed_bases(100, b"ACGTA".to_vec(), b"ACTTA".to_vec());
+        assert_eq!((o.pos, &o.ref_allele[..], &o.alt_allele[..]), (102, &b"G"[..], &b"T"[..]));
+        let o = changed_bases(100, b"ACGTA".to_vec(), b"ACA".to_vec());
+        assert_eq!((o.pos, &o.ref_allele[..], &o.alt_allele[..]), (101, &b"CGT"[..], &b"C"[..]), "a deletion keeps an anchor");
+        let o = changed_bases(100, b"AC".to_vec(), b"ACGTC".to_vec());
+        assert_eq!((o.pos, &o.ref_allele[..], &o.alt_allele[..]), (100, &b"A"[..], &b"ACGT"[..]), "an insertion keeps an anchor");
+    }
+
+    /// A 7-to-4 delins at 30 in A/G sequence with a germline change at 28 on every read
+    /// (masked as background, inside the guard's window); REF's other allele, a G>T inside
+    /// the deleted bases, on `odd` fragments with the germline base and `odd_plain` without
+    /// it, beside 300 REF and 100 ALT fragments. The guard, the context, the germline
+    /// position and the G>T's.
+    fn masked_case(odd: usize, odd_plain: usize) -> (Option<Guard>, String, usize, usize) {
+        let ctx = ag(98, 7);
+        let v = var(&ctx, 30, &ctx[30..37], "TTCT");
+        let p = (31..36).find(|&i| ctx.as_bytes()[i] == b'G').expect("a G inside the deleted bases");
+        let g = 28;
+        let germ = |seq: &mut Vec<u8>| seq[g] = if seq[g] == b'A' { b'G' } else { b'A' };
+        let mut reference = ctx.clone().into_bytes();
+        germ(&mut reference);
+        let alt = [&reference[..30], b"TTCT", &reference[37..]].concat();
+        let (mut odd_g, mut odd_r) = (reference.clone(), ctx.clone().into_bytes());
+        odd_g[p] = b'T';
+        odd_r[p] = b'T';
+        let whole = vec![Cigar::Match(98)];
+        let carrier = vec![Cigar::Match(30), Cigar::Ins(4), Cigar::Del(7), Cigar::Match(61)];
+        let reads = [
+            fragments(&aligned(&reference, whole.clone(), 0), 300, "r"),
+            fragments(&aligned(&alt, carrier, 0), 100, "a"),
+            fragments(&aligned(&odd_g, whole.clone(), 0), odd, "o"),
+            fragments(&aligned(&odd_r, whole, 0), odd_plain, "p"),
+        ]
+        .concat();
+        (guard_for(&reads, &v, &|_| true, 20, &[]), ctx, g, p)
+    }
+
+    #[test]
+    fn the_judge_takes_a_found_allele_past_the_guards_masks_trimmed_to_its_change() {
+        // The rules' windows hold the G>T's carriers' spelling (the germline base at the
+        // mask, which they read past); the judge's allele is the G>T alone, so the mask
+        // stays on every state. Written with the carriers' germline base, the judge would
+        // take that base as the allele's change and read it for every state.
+        let (guard, ctx, g, p) = masked_case(20, 0);
+        let guard = guard.expect("a guard");
+        assert!(guard.masked.contains(&(g as i64)), "the germline change masked: {:?}", guard.masked);
+        assert_eq!(guard.ref_others.len(), 1, "one other allele of REF's length");
+        let window = spelled(&guard.ref_others[0], &ctx);
+        assert_ne!(window.as_bytes()[g], ctx.as_bytes()[g], "the rules' spelling: the carriers' germline base");
+        let mut want = ctx.clone().into_bytes();
+        want[p] = b'T';
+        assert_eq!(guard.judge_ref_others.iter().map(|o| spelled(o, &ctx)).collect::<Vec<_>>(), vec![String::from_utf8(want).unwrap()]);
+        assert_eq!(guard.judge_ref_others, vec![OtherAllele { pos: p as i64, ref_allele: b"G".to_vec(), alt_allele: b"T".to_vec() }]);
+        assert!(guard.judge_others.is_empty() && guard.others.is_empty(), "none of the ALT's length");
+    }
+
+    #[test]
+    fn spellings_apart_only_at_a_mask_are_one_allele_for_the_judge() {
+        // The G>T on 20 fragments with the germline base and 20 without: two spellings for
+        // the rules' windows (each read past the mask), one allele past it for the judge.
+        let (guard, _, _, p) = masked_case(20, 20);
+        let guard = guard.expect("a guard");
+        assert_eq!(guard.ref_others.len(), 2, "two window spellings");
+        assert_eq!(guard.judge_ref_others, vec![OtherAllele { pos: p as i64, ref_allele: b"G".to_vec(), alt_allele: b"T".to_vec() }]);
     }
 }

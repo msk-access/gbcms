@@ -212,6 +212,128 @@ For a row X and each admitted read:
     judge; a REF read with one is depth under the rules and REF under the judge; at CAGTC>GAGC
     both judges count such a carrier ALT and such a REF read REF.
     `GBCMS_JUDGE_REFBASE=partial` measured one rule for both (above).
+- **Sixth measurement round (2026-10-28/29; the `--min-baseq` sweep and two measurement
+  options, measured on `feature/c46-found-floor`, not merged; one fix adopted):**
+  - The sweep (the judge and the rules path at `--min-baseq` 0, 10, 20 and 30 on every arm,
+    each scored on oracles v2 and v3 and HG002 truth v2db built at that threshold; ACCESS XS1
+    and XS2 apart). A base below the threshold is unknown and costs nothing (decided). The
+    judge's wrong definite calls fall as the threshold rises (oracle v3: panel 696, 653, 365,
+    157; gate 2001, 1689, 1160, 519): at 0 and 10 a Q2-Q19 base counts as a confident one, so
+    one low-quality error can decide a read (gate MNVs: +532 wrong calls against the rules
+    path at 0, +135 at 20). ACCESS XS1 and XS2 read the same at 0 to 30 (their bases are Q30
+    or more, their unresolved ones N); HG002 the same at 0 and 10 (no base between Q2 and Q11).
+    At 30 far fewer reads are decidable on IMPACT (31% fewer on the panel, 45% on the gate).
+    Against the rules path the judge agrees with the oracles on far more reads at every
+    threshold (panel about +9,600, gate +14,000), with fewer wrong calls overall; the classes
+    over the bar's wrong-call limit are as at 20 (delins, MNVs, some 2-49 base indels).
+  - The quality-scaled cost (`GBCMS_JUDGE_COST`; not adopted, operator 2026-10-29): a base
+    at or above `--min-baseq` costing 4 × min(Q, C) / C, so a read whose telling base is below
+    the cap C is depth only. At 20 it fails the bar on every IMPACT, WES and normal arm and on
+    HG002 (cap 30: 39,500 agreeing reads lost on the panel, 343,000 on the gate, for 2 and 89
+    fewer wrong calls; HG002 loses true ALT and REF reads in every class); cap 40 breaks 177
+    decided contract tests. The flat cost stays.
+  - The quality-aware found floor (`GBCMS_JUDGE_FLOOR`; the tested forms `tail`, `llr` and
+    `learned` not adopted, operator 2026-10-29): a spelling is another allele when it recurs
+    on more fragments than errors at its bases' qualities allow (LoFreq's exact tail, Mutect2's
+    log odds, or change rates learned beside the event). No form passes the bar at 20. They
+    find more alleles (gate IMPACT 248 spellings at 122 rows against 159 at 90) and gain where
+    the residual lives (ACCESS XS1 delins −14 wrong calls, gate MNVs −20), but they act on
+    every recurring spelling near ALT or REF: true ALT reads become partial at IMPACT indels
+    read at Q29-Q40, and at a GC-repeat insertion multi-change spellings become alleles (gate
+    INS 2-19 repeat +18 wrong calls on v3). `llr:30` is the best of them and fails the same two
+    gate classes; the learned rates change one allele only and give back that XS1 gain. The
+    share floor (RJ-25) stays.
+  - **Decided (operator, 2026-10-29): the judge writes the alleles the reads spell past the
+    guard's masks (RJ-25, amended; class tests in
+    `tests/test_found_allele_spelling_contract.py`).** Mechanism: the guard finds the other
+    alleles the reads spell at the locus, reading each spelling past its masks (a masked
+    base, recurring background, is no difference), and wrote each over its window with its
+    carriers' bases. The judge took that row as a site state, so a masked base became the
+    allele's change, read literally for every state: a read carrying the masked change fit the
+    found allele better than X or REF by that base alone. Now the judge takes each allele as
+    the bases it changes, past the masks (the allele's own base where a mask takes a
+    carrier's), so the masks stay on every state; one that so written is a candidate the site
+    already holds (X with a listed neighbour) is that candidate, and spellings apart only at a
+    mask are one allele (`Guard::judge_others`; the rules' windows keep the window spelling,
+    which they read past the masks already). Written as its changes, such an allele can end
+    before a listed neighbour that changes one of its bases does, so the check that drops an
+    other state spelling X (or REF) with listed neighbours now reads the neighbours meeting
+    the state's place, not only those inside it: at HG002 chr10:12910609 A>ATTT (an insertion
+    where an A run meets a T run, listed A>T and AT>TT on the next two bases) the allele, X
+    with both, is AA>TTTTT, which the AT>TT runs one base past; read inside only, it stayed a
+    state and 15 carriers tied X with it (13 ALT by the truth set; c246 INS 1-9 −11 ALT
+    reads in the first build). With the wider check the row is develop's (RD, AD) (21, 15).
+    - Worked example (a patient panel tumour, the same run in the panel and twice in the gate
+      set; read by read, operator 2026-10-29): X a 17-base tandem duplication; a listed SNV
+      seven bases past the copies on every carrier (111 of 111 ALT-spelling fragments), and
+      three recurring unlisted changes just past it, masked. The guard's other allele was X
+      with that SNV, spelled with a carrier's base at a mask: under the old writing every
+      carrier fit it at least as well as X, and 293 carriers per run were partial (ALT by both
+      oracles); written past the mask it is X with the listed SNV, a candidate already, and
+      they count ALT (panel INS 2-19 repeat agreement 58.1% → 99.65%). The bar's 2 more wrong
+      calls on v3 (6 on v2) at that event are the oracles' limits: two reads carry the
+      duplication with one confident substitution inside the first copy, each on one fragment
+      (an error, RJ-26; v3's clean test allows no mismatch in the 18-base event window), and
+      four reads v3 calls ALT, as the judge does, while v2 ties them with a sibling (it holds
+      no ALT haplotype with the listed neighbours). Those four (and 93 more per run both
+      oracles call ALT) do not read through the duplicated tract, so they cannot tell two
+      copies from three: the spanning question, #371 (under #332), not this rule's.
+    - Class tests (red-first; each fails on develop): every read carries a germline change one
+      base before a 7>4 delins (masked). X's carriers all carry a listed SNV beside the event:
+      (RD, AD, partial) (60, 0, 30) → (60, 30, 0). REF's other allele beside the mask:
+      (0, 100, 300) → (280, 100, 20). X's other allele beside the mask: (300, 0, 100) →
+      (300, 80, 20). Unit tests: the allele trimmed to its change, past the mask; two spellings
+      apart only at the mask one allele; the HG002 shape above, an other state that is X with
+      neighbours running past its changes dropped (3 state graphs under the inside-only check,
+      2 now).
+    - Contracts: the judge-switch suite (`GBCMS_TEST_READ_JUDGE=sequence`) keeps develop's 139
+      baseline failures with identical assertion values; the default suite passes.
+    - Measured against develop (dc16364c) at `--min-baseq` 20 on every arm (ACCESS XS1 and
+      XS2 apart), both oracles at the run's threshold and HG002 truth v2db:
+      - The writing alone moves one event: the worked example's carriers, partial → ALT (panel
+        +240 agreeing reads on v3, INS 2-19 repeat 58.1% → 99.65%; the gate set, which holds
+        the run twice, +480), the row's (RD, AD, partial, VAF) (375, 0, 250, 0) → (375, 247, 3,
+        0.40), fragments (306, 0) → (306, 199). Elsewhere it moves under 20 reads per arm
+        (gate MNVs 9 reads at 5 rows, 6 of them REF reads made partial). Cohort IMPACT, ACCESS
+        XS1 and XS2, WES and the normals are unchanged.
+      - The wider spelled-state check moves 4 rows in the panel's runs (5 in the gate set), all
+        where the input lists one molecule several ways (a 14-base deletion beside a listed
+        7-base deletion and a 24>3 delins that is the two together; a 3-base deletion beside a
+        listed 19-base deletion and a 28>6 delins): 247 panel reads partial → ALT, ALT by v3
+        (X with a listed neighbour is X's, the decided rule), a listed sibling or "either" by
+        v2, which holds no ALT haplotype with the listed neighbours.
+      - The bar as registered (>2 more wrong definite calls, or >0.5 points and >2 reads
+        fewer agreeing): v3 fails only the worked example's event (gate INS 2-19 repeat +4
+        wrong calls, 2 per run: the two one-substitution reads); v2 fails it (+6 per run) and
+        DEL 2-19 unique (the 4-5 rows above, −1.24 points on the panel, −0.97 on the gate's
+        IMPACT runs), each read read above as the oracle's limit. Every other class on every
+        arm passes on both oracles.
+      - HG002 (v2dbq20 and v2db) passes: c246 INS 1-9 +2 ALT reads, INS 1k+ +1 ALT and +1 wrong
+        call (nocl, sub). The first build, without the wider check, lost 11 ALT reads at c246
+        INS 1-9 (chr10:12910609, above).
+      - The rules path keeps develop's counts at the worked example's row too: (RD, AD,
+        partial) (308, 0, 237), its carriers partial because RJ-25 there takes X with the
+        listed SNV as another allele; not this change (the rules' windows are unchanged).
+      - At `--min-baseq` 0, 10 and 30: measured on HPC; the results follow in this record.
+    - Community standard: a variant is written by the bases it changes, left-aligned and
+      trimmed (the parsimonious representation of [vt normalize](https://pmc.ncbi.nlm.nih.gov/articles/PMC4481842)
+      (Tan, Abecasis and Kang 2015, DOI 10.1093/bioinformatics/btv112); GATK
+      [LeftAlignAndTrimVariants](https://gatk.broadinstitute.org/hc/en-us/articles/360036350152-LeftAlignAndTrimVariants)
+      trims the bases common to all alleles; `bcftools norm`); freebayes writes haplotype
+      alleles over a window and its authors point to decomposing them into allelic
+      primitives ([vcfallelicprimitives](https://manpages.debian.org/bookworm/libvcflib-tools/vcfallelicprimitives.1))
+      where pointwise alleles are wanted. A neighbouring change is its own record in every
+      such tool; none documents a masked background base, which is gbcms's guard's own.
+    - Effects: changes only under `--read-judge sequence` (the rules' windows read the window
+      spelling as before, `Guard::others`; the rules path's outputs are byte-identical to
+      develop's on every patient arm, the gate set and the HG002 arms, 1,070 runs and 8 arms).
+      Under the judge every path builds a row's site through `judge::site_for` (the main and
+      per-transcript counts and ASJD alike; the decomposed form and the MNP-rescue recount
+      build theirs the same way), so all follow: the per-transcript counts and ASJD reuse the
+      read's verdict (the judge refuses RNA, so RNA is unchanged), mFSD and the observations
+      export (`count_bam_binned_observations`, the same core) take the calls, merge and the
+      writers carry the counts (no column changes), and `UNEXPLAINED_READS` follows the depth
+      reads. Nextflow and the CLI are unchanged (no new flag).
 - **The background refinement (measured 2026-10-26, not adopted; `GBCMS_JUDGE_BACKGROUND`,
   default `asis`):** `respell` leaves out a context item of the guard's background or the
   found alleles that respells the site's own candidate sequences: one that turns one

@@ -225,8 +225,10 @@ pub(crate) fn read_views<'r>(
 pub(crate) fn site_for(v: &Variant, guard: Option<&Guard>, reference: &CachedFasta, reads: &[ReadView]) -> Option<Site> {
     let target = Row::new(v.pos, v.ref_allele.as_bytes(), v.alt_allele.as_bytes());
     let listed: Vec<Row> = v.reach_rows.iter().map(|(p, r, a)| Row::new(*p, r.as_bytes(), a.as_bytes())).collect();
+    // the guard's other alleles as the judge takes them: past its masks, trimmed to the
+    // bases each changes (`Guard::judge_others`, RJ-25)
     let discovered: Vec<Row> = guard
-        .map(|g| g.others.iter().chain(&g.ref_others).map(|o| Row::new(o.pos, &o.ref_allele, &o.alt_allele)).collect())
+        .map(|g| g.judge_others.iter().chain(&g.judge_ref_others).map(|o| Row::new(o.pos, &o.ref_allele, &o.alt_allele)).collect())
         .unwrap_or_default();
     let ends = || std::iter::once(&target).chain(&listed).chain(&discovered);
     let want_lo = ends().map(|r| r.pos).min().unwrap_or(v.pos) - READ_REACH;
