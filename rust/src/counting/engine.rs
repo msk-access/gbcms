@@ -1262,6 +1262,9 @@ fn count_bin_shared(
                 let counted = |r: &Record| counted_read(r, v, mode, enforce_strandedness, strandedness, min_mapq);
                 if junction::judges(v) {
                     junction::guard_for(cache, v, &counted, min_baseq)
+                } else if read_judge == judge::ReadJudge::Haplotype {
+                    // the sequence judge also takes the alleles written past the masks
+                    carrier::guard_for_judge(cache, v, &counted, min_baseq, siblings)
                 } else {
                     carrier::guard_for(cache, v, &counted, min_baseq, siblings)
                 }
@@ -1641,6 +1644,9 @@ fn count_variant_from_cache(
     // Per co-listed row holding a substitution's change (the haplotype judge counts its
     // carriers as this row's ALT), the ALT reads that spell it whole (MNV_SHARED).
     let mut spelled: [u32; 32] = [0; 32];
+    // Per allele at the row's site that is this row's ALT with listed neighbours (RJ-28's
+    // indel twin), the ALT reads that spell it whole (INDEL_SHARED), in the site's order.
+    let mut spelled_indel: [u32; 64] = [0; 64];
 
     // Create SW aligners ONCE per variant (indelpost pattern), scored by `sw_score`.
     let mut alt_aligner = Aligner::new(SW_GAP_OPEN, SW_GAP_EXTEND, &sw_score);
@@ -2003,6 +2009,9 @@ fn count_variant_from_cache(
             for (k, n) in spelled.iter_mut().enumerate() {
                 *n += result.spells_listed >> k & 1;
             }
+            for (k, n) in spelled_indel.iter_mut().enumerate() {
+                *n += u32::from(result.spells_listed_indel >> k & 1 == 1);
+            }
             if is_reverse { counts.ad_rev += 1; } else { counts.ad_fwd += 1; }
 
             // ── RNA-SPECIFIC ALT TRACKING ──
@@ -2033,6 +2042,31 @@ fn count_variant_from_cache(
             .zip(spelled)
             .filter(|&(_, n)| n > 0)
             .map(|((p, r, a), n)| format!("{}:{r}>{a}:{n}/{}", p + 1, counts.ad))
+            .collect::<Vec<_>>()
+            .join("+");
+    }
+    if spelled_indel.iter().any(|&n| n > 0) {
+        // the site's alleles the reads spell, named where the input lists them, in
+        // `reach_rows` order (the site's states are distinct: one allele per listed row)
+        let shared = rules.haplotypes.and_then(|h| h.get(variant, rules)).map(|site| site.x_spelling_rows()).unwrap_or_default();
+        let mut named: Vec<(usize, u32)> = shared
+            .into_iter()
+            .zip(spelled_indel)
+            .filter(|&(_, n)| n > 0)
+            .filter_map(|(h, n)| {
+                let j = variant.reach_rows.iter().position(|(p, r, a)| {
+                    *p == h.pos && r.as_bytes().eq_ignore_ascii_case(&h.ref_al) && a.as_bytes().eq_ignore_ascii_case(&h.alt_al)
+                })?;
+                Some((j, n))
+            })
+            .collect();
+        named.sort_unstable();
+        counts.indel_shared = named
+            .into_iter()
+            .map(|(j, n)| {
+                let (p, r, a) = &variant.reach_rows[j];
+                format!("{}:{r}>{a}:{n}/{}", p + 1, counts.ad)
+            })
             .collect::<Vec<_>>()
             .join("+");
     }

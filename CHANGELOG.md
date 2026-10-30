@@ -16,6 +16,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   arm's peak memory falls from 2.8 to 1.8 GB for 0.9% more CPU; patient data types are within
   2% of no limit at every budget. `docs/proposals/sequence-judge.md` §10.
 
+### Fixed — the sequence judge's band no longer stands on a worse score in a tandem repeat (#369)
+
+- Under `--read-judge sequence`, the band around a read's own placement stood on its edge
+  alone for any score down to −23, what an indel leaving its 16 columns costs. A read its
+  aligner placed a repeat unit off slides along the repeat at no cost and leaves the band on a
+  short gap, so the band could stand on a worse score than the read's best. The floor now
+  takes the longest tandem-repeat period in the read's reach off the band's slack, and asks
+  for a perfect score once the period reaches it. Measured on every arm, with path-align: on
+  the patient arms 2 reads change (gate subset, both agreeing with the oracles); on HG002 666,
+  truth +4 ALT on the tandem-repeat arm and no wrong calls (without path-align, 90% of them
+  move to the full programme's call). CPU +2 to +12% on the patient arms, +16 to +38% on
+  HG002. `docs/proposals/sequence-judge.md` §10.
+
 ### Changed — the sequence judge examines a call on the alignment its score came from (#304)
 
 - Under `--read-judge sequence`, a read's call (the bases at X, the anchor, the deciding
@@ -53,12 +66,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   first such row, so a caller never silently gets the judge without those rows.
   `observe_molecules` takes `read_judge` as well (default: its alignment config's,
   `"rules"`) and passes it to both preparation and counting.
-- **Two diagnostics, under the judge only** (no new column; they change no count):
+- **Three diagnostics, under the judge only** (no new column; they change no count):
   `MNV_SHARED(chrom:pos:REF>ALT:n/m)` at an SNV whose change a co-listed MNV holds (RJ-28:
   the MNV's carriers count at both rows, so one molecule can sit in both rows' counts and
-  mFSD distributions), and `UNEXPLAINED_READS(n/m)`, the row's depth reads that fit none of
+  mFSD distributions); its indel twin `INDEL_SHARED(chrom:pos:REF>ALT:n/m)` at a row a
+  listed indel or delins holds whole with listed neighbours (a delins that is two listed
+  deletions together counts its carriers at each); and `UNEXPLAINED_READS(n/m)`, the row's depth reads that fit none of
   its candidate sequences within ten confident mismatches (RJ-29: such a read is depth
   only where its aligner also doubts its placement, XS at least AS).
+- **The alleles the reads spell enter as the bases they change** (RJ-25, amended
+  2026-10-29). An allele the reads spell at the locus is a candidate written past the carrier
+  guard's masks and trimmed to its change, so a masked background base is never part of it.
+  Written with its carriers' bases over the guard's window, such an allele took from the
+  row every read carrying the masked change: at a 17-base duplication whose carriers all
+  carry a listed SNV beside it, 293 carriers per run were partial evidence instead of ALT.
+  An allele that is the row's ALT (or REF) with listed neighbours is the row's ALT (or REF)
+  however a neighbour is written: the judge reads every neighbour whose placements meet it,
+  so a molecule the input lists several ways (a delins and its two component deletions)
+  counts at each of those rows (RJ-28's indel twin, decided 2026-10-30), and
+  `INDEL_SHARED` names the shared molecule. The rules path is unchanged.
 - **Named limits.**
   - **Spliced reads are refused.** `gbcms rna --read-judge sequence` exits with an error,
     and the engine refuses RNA mode under the judge; in a DNA run, a read whose CIGAR

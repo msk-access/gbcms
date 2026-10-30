@@ -190,6 +190,12 @@ pub struct ClassifyResult {
     /// a co-listed row holding the row's change (an MNV beside its component SNV): one
     /// bit per such row, in `judge::listed_holders` order. Diagnostic only (MNV_SHARED).
     pub spells_listed: u32,
+    /// The haplotype judge's ALT call on a read that also spells whole an allele at the
+    /// row's site that is the row's ALT with listed neighbours (a delins that is two
+    /// listed deletions together, RJ-28's indel twin): one bit per such allele, in the
+    /// site's order (`judge::Site::x_spellings`, the first 64); the engine names the
+    /// listed ones. Diagnostic only (INDEL_SHARED).
+    pub spells_listed_indel: u64,
     /// The haplotype judge found the read's bases fit none of the row's candidate
     /// sequences (REF, ALT, the other alleles at its site, with every context) within ten
     /// confident mismatches, whether or not the fit rule made it depth only. Diagnostic
@@ -231,6 +237,7 @@ impl ClassifyResult {
             carrier_judged: false,
             junction_judged: false,
             spells_listed: 0,
+            spells_listed_indel: 0,
             fits_none: false,
         }
     }
