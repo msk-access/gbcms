@@ -20190,6 +20190,15 @@ count-affecting merge since the previous release, run on the changed rows only.<
 <p>The format is based on <a href="https://keepachangelog.com/en/1.0.0/">Keep a Changelog</a>,
 and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semantic Versioning</a>.</p>
 <h2 id="development-changelog-unreleased">[Unreleased]<a class="headerlink" href="#development-changelog-unreleased" title="Permanent link">¶</a></h2>
+<h3 id="development-changelog-changed-the-sequence-judge-examines-a-call-on-the-alignment-its-score-came-from-304">Changed — the sequence judge examines a call on the alignment its score came from (#304)<a class="headerlink" href="#development-changelog-changed-the-sequence-judge-examines-a-call-on-the-alignment-its-score-came-from-304" title="Permanent link">¶</a></h3>
+<ul>
+<li>Under <code>--read-judge sequence</code>, a read's call (the bases at X, the anchor, the deciding
+  quality) is read off the path the graph programme traced, not a second, linear alignment.
+  Tied placements in a run are as before; where the two differed (a band missing the graph's
+  path, a deletion tied across repeat units) the call now rests on its score's own alignment.
+  Measured on every arm: both oracles pass everywhere, HG002 truth +1 ALT; the judge takes 2 to
+  28% less CPU. <code>docs/proposals/sequence-judge.md</code> §10.4.</li>
+</ul>
 <h3 id="development-changelog-added-the-sequence-judge-opt-in-read-judge-sequence-304">Added — the sequence judge, opt-in (<code>--read-judge sequence</code>, #304)<a class="headerlink" href="#development-changelog-added-the-sequence-judge-opt-in-read-judge-sequence-304" title="Permanent link">¶</a></h3>
 <ul>
 <li><strong>A second read judgment for small-variant rows, behind a flag.</strong> With
