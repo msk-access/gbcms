@@ -2901,15 +2901,21 @@ impl Site {
         for k in dropped.into_iter().rev() {
             self.graphs.remove(k);
         }
+        if spelled_x.len() > 64 {
+            log::warn!(
+                "sequence judge: {} alleles at one site are X with listed neighbours; INDEL_SHARED names the reads of the first 64",
+                spelled_x.len()
+            );
+        }
         self.x_spellings = spelled_x;
     }
 
-    /// Which of [`Site::x_spellings`] (a bit each, in order, the first 32) `read` spells
+    /// Which of [`Site::x_spellings`] (a bit each, in order, the first 64) `read` spells
     /// whole on its alignment `al` (columns offset by `off`) to `hap`: `hap` holds X with
     /// every context row that makes the allele, and the read places a base, read
     /// confidently as `hap`'s, at every column from the base before the allele's REF span
     /// to the base after it (both junctions of a deletion, every base a delins writes).
-    pub(crate) fn spelled_x_spellings(&self, read: &ReadView, hap: &Hap, al: &Alignment, off: usize) -> u32 {
+    pub(crate) fn spelled_x_spellings(&self, read: &ReadView, hap: &Hap, al: &Alignment, off: usize) -> u64 {
         if self.x_spellings.is_empty() || hap.rows.first() != Some(&0) {
             return 0;
         }
@@ -2927,7 +2933,7 @@ impl Site {
             let (a, b) = (self.column_in(hap, s - 1), self.column_in(hap, e));
             a < b && (a..=b).all(|col| at.get(&col).is_some_and(|&x| x != WILD && Some(x) == hap.seq.get(col as usize).copied()))
         };
-        self.x_spellings.iter().take(32).enumerate().filter(|(_, (o, c))| spells(*o, c)).fold(0u32, |m, (k, _)| m | 1 << k)
+        self.x_spellings.iter().take(64).enumerate().filter(|(_, (o, c))| spells(*o, c)).fold(0u64, |m, (k, _)| m | 1 << k)
     }
 
     /// A found allele stays a state only where the reads tell it from X and from REF by

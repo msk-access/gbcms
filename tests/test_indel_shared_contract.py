@@ -86,6 +86,12 @@ def _run(tmp_path, ref, rows, reads):
     for r in got:
         dp, rd, ad = int(r["total_count"]), int(r["ref_count"]), int(r["alt_count"])
         assert dp >= rd + ad
+        dpf, rdf, adf = (
+            int(r["total_count_fragment"]),
+            int(r["ref_count_fragment"]),
+            int(r["alt_count_fragment"]),
+        )
+        assert dpf >= rdf + adf
         assert rd == int(r["ref_count_forward"]) + int(r["ref_count_reverse"])
         assert ad == int(r["alt_count_forward"]) + int(r["alt_count_reverse"])
     return got
@@ -173,3 +179,37 @@ def test_a_listed_deletion_holding_more_than_the_rows_change_is_not_named(tmp_pa
     rx = next(r for k, r in got.items() if len(k[0]) - len(k[1].strip("-")) == 3)
     assert _counts(rx)[1:] == (15, 10)
     assert _tokens(rx, "INDEL_SHARED") == []
+
+
+def test_a_shared_delins_is_named_past_thirty_two_nearby_rows(tmp_path):
+    """The worked shape with 36 listed SNVs before it, every read REF there: the delins
+    sits past the 32nd of the row's nearby rows, and X and Y still name it, 20 of 20 (the
+    note indexes the alleles shared, not the nearby rows)."""
+    ref, (y0, y1, x0, x1), x, y, delins = _worked()
+    snvs = []
+    for i in range(36):
+        p = y0 - 290 + 7 * i  # 0-based, all before Y and within a read's reach of X
+        snvs.append((p + 1, ref[p], "A" if ref[p] != "A" else "C"))
+    reads = [_deleting(f"c{i}", ref, y0 - 60 + i, [(y0, y1), (x0, x1)]) for i in range(20)]
+    reads += [
+        make_read(f"r{i}", ref[y0 - 50 + i : y0 + 50 + i], y0 - 50 + i, ((0, READ_LEN),))
+        for i in range(30)
+    ]
+    got = {
+        (r["Reference_Allele"], r["Tumor_Seq_Allele2"]): r
+        for r in _run(tmp_path, ref, snvs + [x, y, delins], reads)
+    }
+    rx = next(
+        r
+        for k, r in got.items()
+        if k[0].endswith(x[1][1:]) and len(k[0]) - len(k[1].strip("-")) == 14
+    )
+    ry = next(
+        r
+        for k, r in got.items()
+        if k[0].endswith(y[1][1:]) and len(k[0]) - len(k[1].strip("-")) == 7
+    )
+    want = f"INDEL_SHARED(1:{delins[0]}:{delins[1]}>{delins[2]}:20/20)"
+    assert _counts(rx)[1:] == (20, 0)
+    assert _tokens(rx, "INDEL_SHARED") == [want]
+    assert _tokens(ry, "INDEL_SHARED") == [want]

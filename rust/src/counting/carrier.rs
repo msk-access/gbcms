@@ -2724,13 +2724,38 @@ fn tally(bases: &mut [[u32; 4]], cover: &mut [u32], n: usize, read: &dyn Fn(usiz
 /// scan lets it fit) and the other
 /// alleles of the ALT's and of REF's length at the locus ([`other_alleles`], RJ-25).
 /// None when nothing is masked, named or found, or the variant is not judged by this
-/// rule.
+/// rule. The rules' guard: the alleles the sequence judge takes ([`Guard::judge_others`])
+/// are not written (the rules never read them); [`guard_for_judge`] writes them.
 pub(crate) fn guard_for(
     read_cache: &[Record],
     v: &Variant,
     counted: &dyn Fn(&Record) -> bool,
     min_baseq: u8,
     siblings: &[Variant],
+) -> Option<Guard> {
+    guard_built(read_cache, v, counted, min_baseq, siblings, false)
+}
+
+/// [`guard_for`] for the sequence judge: the other alleles also written as the judge
+/// takes them, past the masks ([`Guard::judge_others`]).
+pub(crate) fn guard_for_judge(
+    read_cache: &[Record],
+    v: &Variant,
+    counted: &dyn Fn(&Record) -> bool,
+    min_baseq: u8,
+    siblings: &[Variant],
+) -> Option<Guard> {
+    guard_built(read_cache, v, counted, min_baseq, siblings, true)
+}
+
+/// [`guard_for`], writing the judge's alleles where `for_judge`.
+fn guard_built(
+    read_cache: &[Record],
+    v: &Variant,
+    counted: &dyn Fn(&Record) -> bool,
+    min_baseq: u8,
+    siblings: &[Variant],
+    for_judge: bool,
 ) -> Option<Guard> {
     if !judges(v) {
         return None;
@@ -2986,7 +3011,12 @@ pub(crate) fn guard_for(
         placed.as_ref().map_or_else(Vec::new, |p| other_alleles(p, (start, &reference), &ev, siblings, &apart, side, written))
     };
     let (others, ref_others) = (others_of(Side::Alt, Written::Window), others_of(Side::Ref, Written::Window));
-    let (judge_others, judge_ref_others) = (others_of(Side::Alt, Written::Judge), others_of(Side::Ref, Written::Judge));
+    // the judge's (only where the sequence judge counts: the rules never read them)
+    let (judge_others, judge_ref_others) = if for_judge {
+        (others_of(Side::Alt, Written::Judge), others_of(Side::Ref, Written::Judge))
+    } else {
+        (Vec::new(), Vec::new())
+    };
     // The indels the reads' own alignments write inside the windows' span, the event's
     // own aside, per fragment, against the fragments spanning the windows: those
     // recurring are background (a germline indel beside the event), every other one
@@ -4887,7 +4917,7 @@ mod tests {
             fragments(&aligned(&odd_r, whole, 0), odd_plain, "p"),
         ]
         .concat();
-        (guard_for(&reads, &v, &|_| true, 20, &[]), ctx, g, p)
+        (guard_for_judge(&reads, &v, &|_| true, 20, &[]), ctx, g, p)
     }
 
     #[test]
@@ -4907,6 +4937,33 @@ mod tests {
         assert_eq!(guard.judge_ref_others.iter().map(|o| spelled(o, &ctx)).collect::<Vec<_>>(), vec![String::from_utf8(want).unwrap()]);
         assert_eq!(guard.judge_ref_others, vec![OtherAllele { pos: p as i64, ref_allele: b"G".to_vec(), alt_allele: b"T".to_vec() }]);
         assert!(guard.judge_others.is_empty() && guard.others.is_empty(), "none of the ALT's length");
+    }
+
+    #[test]
+    fn the_rules_guard_does_not_write_the_judges_alleles() {
+        // The same reads: the rules' guard finds REF's other allele for its windows and
+        // leaves the judge's writing out (output-aware: only the judge reads it).
+        let ctx = ag(98, 7);
+        let v = var(&ctx, 30, &ctx[30..37], "TTCT");
+        let (judge, ..) = masked_case(20, 0);
+        let judge = judge.expect("a guard");
+        let p = (31..36).find(|&i| ctx.as_bytes()[i] == b'G').expect("a G inside the deleted bases");
+        let g = 28;
+        let mut reference = ctx.clone().into_bytes();
+        reference[g] = if reference[g] == b'A' { b'G' } else { b'A' };
+        let alt = [&reference[..30], b"TTCT", &reference[37..]].concat();
+        let mut odd = reference.clone();
+        odd[p] = b'T';
+        let reads = [
+            fragments(&aligned(&reference, vec![Cigar::Match(98)], 0), 300, "r"),
+            fragments(&aligned(&alt, vec![Cigar::Match(30), Cigar::Ins(4), Cigar::Del(7), Cigar::Match(61)], 0), 100, "a"),
+            fragments(&aligned(&odd, vec![Cigar::Match(98)], 0), 20, "o"),
+        ]
+        .concat();
+        let rules = guard_for(&reads, &v, &|_| true, 20, &[]).expect("a guard");
+        assert_eq!(rules.ref_others, judge.ref_others, "the same alleles for the rules' windows");
+        assert!(!judge.judge_ref_others.is_empty(), "the judge's guard writes them");
+        assert!(rules.judge_others.is_empty() && rules.judge_ref_others.is_empty(), "the rules' guard does not");
     }
 
     #[test]

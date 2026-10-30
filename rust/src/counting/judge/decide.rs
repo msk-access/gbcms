@@ -52,8 +52,8 @@ pub(crate) struct Verdict {
     /// ([`Site::spelled_holders`]).
     pub(crate) spells: u32,
     /// For an ALT call, the alleles that are X with listed neighbours the read spells
-    /// whole ([`Site::spelled_x_spellings`]).
-    pub(crate) spells_x: u32,
+    /// whole ([`Site::spelled_x_spellings`]), a bit per [`Site::x_spellings`].
+    pub(crate) spells_x: u64,
     /// Measurement only, the "fits nothing" decision package: the site states the full
     /// programme decided (the band could not), whether the rule sent the read to depth,
     /// and its fit to the local reference neighbourhood where that was computed.
@@ -1055,8 +1055,8 @@ pub(crate) fn classify(record: &Record, variant: &Variant, quals: &[u8], min_bas
             if out.is_alt && verdict.spells != 0 {
                 out.spells_listed = spelled_listed(site, variant, verdict.spells);
             }
-            if out.is_alt && verdict.spells_x != 0 {
-                out.spells_listed_indel = spelled_listed_indel(site, variant, verdict.spells_x);
+            if out.is_alt {
+                out.spells_listed_indel = verdict.spells_x;
             }
             // Admission off the anchor, by the alignment to the called haplotype. A clip
             // admits the read only where every base that alignment places lies inside the
@@ -1171,23 +1171,6 @@ fn spelled_listed(site: &Site, variant: &Variant, spells: u32) -> u32 {
         .filter(|&(k, _)| spells >> k & 1 == 1)
         .filter_map(|(_, h)| {
             listed.iter().position(|&(p, r, a)| *p == h.pos && r.as_bytes().eq_ignore_ascii_case(&h.ref_al) && a.as_bytes().eq_ignore_ascii_case(&h.alt_al))
-        })
-        .filter(|&j| j < 32)
-        .fold(0u32, |m, j| m | 1 << j)
-}
-
-/// The input's rows within `variant`'s reach (`Variant::reach_rows`, the first 32) among
-/// the site's alleles that are X with listed neighbours a read spells (`spells`, a bit per
-/// [`Site::x_spellings`]), as bits in `reach_rows` order (RJ-28's indel twin: one
-/// molecule counting at each row that holds it, INDEL_SHARED).
-fn spelled_listed_indel(site: &Site, variant: &Variant, spells: u32) -> u32 {
-    site.x_spelling_rows()
-        .into_iter()
-        .take(32)
-        .enumerate()
-        .filter(|&(k, _)| spells >> k & 1 == 1)
-        .filter_map(|(_, h)| {
-            variant.reach_rows.iter().position(|(p, r, a)| *p == h.pos && r.as_bytes().eq_ignore_ascii_case(&h.ref_al) && a.as_bytes().eq_ignore_ascii_case(&h.alt_al))
         })
         .filter(|&j| j < 32)
         .fold(0u32, |m, j| m | 1 << j)
