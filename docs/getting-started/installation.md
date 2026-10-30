@@ -9,9 +9,9 @@
     ```
 
     !!! info "One prebuilt wheel"
-        A release publishes one wheel, for **CPython 3.11 on Linux x86_64 with glibc
-        2.28+** (RHEL 8 and 9, Ubuntu 20.04+, Debian 10+), and the source distribution.
-        On any other platform or Python, `pip install gbcms` compiles the source
+        A release publishes one wheel, for **every CPython from 3.10 on Linux x86_64 with
+        glibc 2.28+** (RHEL 8 and 9, Ubuntu 20.04+, Debian 10+), and the source
+        distribution. On any other platform, `pip install gbcms` compiles the source
         distribution on your machine, which needs a Rust toolchain and a C compiler.
         The wheel needs pip 20.3 or newer; on RHEL 8, install it into a virtual
         environment of a newer Python (see [RHEL 8](#legacy-linux-rhel-8-hpc)).
@@ -55,15 +55,15 @@
 ## Platform support
 
 What a release builds is exactly what `.github/workflows/release.yml` builds: the
-`linux` job (`ubuntu-latest`, `--release -i python3.11`, in the `manylinux_2_28`
-image, which is AlmaLinux 8) and the `sdist` job. The `Wheels` workflow installs that
-wheel in Rocky Linux 8 and 9 containers and runs the test suite there. So `pip install
-gbcms` gives:
+`linux` job (`ubuntu-latest`, `--release`, in the `manylinux_2_28` image, which is
+AlmaLinux 8) and the `sdist` job. The extension uses Python's stable ABI (`abi3-py310`),
+so the `linux` job builds one wheel, `cp310-abi3`, that every CPython from 3.10 installs.
+The `Wheels` workflow installs that wheel in Rocky Linux 8 and 9 containers with Python
+3.10 to 3.14 and runs the test suite there. So `pip install gbcms` gives:
 
 | Your platform | What `pip install gbcms` does |
 |:--------------|:------------------------------|
-| Linux x86_64, glibc 2.28+ (RHEL 8 and newer), Python 3.11 | Installs the prebuilt wheel (`cp311`, `manylinux_2_28_x86_64`) |
-| Linux x86_64, glibc 2.28+, another Python (3.10, 3.12 to 3.14) | Builds the source distribution |
+| Linux x86_64, glibc 2.28+ (RHEL 8 and newer), Python 3.10 to 3.14 | Installs the prebuilt wheel (`cp310-abi3`, `manylinux_2_28_x86_64`) |
 | Linux with glibc below 2.28 (RHEL 7, CentOS 7), or Linux aarch64 | Builds the source distribution; see [Legacy Linux](#legacy-linux-rhel-8-hpc) |
 | macOS, Intel or Apple Silicon | Builds the source distribution (CI builds and tests it on macOS with Python 3.12) |
 | Windows (native) | Not built or tested; use WSL2, which is the Linux row |
@@ -91,8 +91,9 @@ jobs install `htslib`, `autoconf` and `automake` with Homebrew before building.
 
 ## Legacy Linux (RHEL 8 / HPC)
 
-RHEL 8 (glibc 2.28) installs the prebuilt wheel with pip. RHEL 8's own Python is 3.6,
-so use a newer one, in a virtual environment (the wheel needs pip 20.3 or newer):
+RHEL 8 (glibc 2.28) installs the prebuilt wheel with pip, on any Python from 3.10 to
+3.14. RHEL 8's own Python is 3.6, so use a newer one, in a virtual environment (the
+wheel needs pip 20.3 or newer):
 
 ```bash
 sudo dnf install python3.11            # or: module load python/3.11, or conda
@@ -103,7 +104,7 @@ pip install gbcms
 gbcms --version
 ```
 
-The other tabs are for Pythons without a wheel, for glibc older than 2.28, and for
+The other tabs are for glibc older than 2.28, for platforms without a wheel, and for
 clusters that run containers.
 
 === "Micromamba (Recommended)"
@@ -151,9 +152,10 @@ clusters that run containers.
     ```
 
 !!! note "When pip builds from source"
-    The one prebuilt wheel is for CPython 3.11 and glibc 2.28+. On any other Python, or
-    on glibc older than 2.28, pip falls back to source compilation, which requires
-    Rust and clang headers. The conda environments above provide these dependencies.
+    The one prebuilt wheel is for CPython 3.10 and newer and glibc 2.28+. On glibc
+    older than 2.28, or on another platform, pip falls back to source compilation,
+    which requires Rust and clang headers. The conda environments above provide these
+    dependencies.
 
 ---
 

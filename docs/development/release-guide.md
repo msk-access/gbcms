@@ -220,8 +220,9 @@ After PR approval:
 The tag triggers `.github/workflows/release.yml`:
 
 0. **Verify** — `scripts/release.py check --tag X.Y.Z`; every other job waits for it
-1. **Build one wheel** — `cp311`, `manylinux_2_28_x86_64` (AlmaLinux 8, glibc 2.28: it
-   installs on RHEL 8 and newer) — plus an **sdist** (jobs `linux` and `sdist`). The
+1. **Build one wheel** — `cp310-abi3`, `manylinux_2_28_x86_64` (the stable ABI, so one
+   wheel serves every CPython from 3.10; AlmaLinux 8, glibc 2.28: it installs on RHEL 8
+   and newer) — plus an **sdist** (jobs `linux` and `sdist`). The
    `linux` job builds with the local action `.github/actions/linux-wheel`; the `Wheels`
    workflow builds with the same action on every change to the build and installs the
    wheel in Rocky Linux 8 and 9 containers (pip with binary wheels only, the suite, and
@@ -247,10 +248,11 @@ The docs are not part of this workflow: `deploy-docs.yml` publishes them (via `m
     wheel is `manylinux_2_28` from 6.7.0).
 
     The practical consequence, worth knowing before telling a user to `pip install gbcms`:
-    **everyone not on cp311 manylinux x86_64 builds from the sdist**, which needs a Rust
-    toolchain. That includes macOS (Intel and Apple Silicon) and every Python other than
-    3.11. Broadening the matrix is a real change to `release.yml`, not a docs fix — until
-    then, this list should describe what actually ships.
+    **everyone not on manylinux x86_64 builds from the sdist**, which needs a Rust
+    toolchain. That includes macOS (Intel and Apple Silicon). Broadening the matrix is a
+    real change to `release.yml`, not a docs fix — until then, this list should describe
+    what actually ships. (Until 6.6.0 the wheel was `cp311` only, so every other Python
+    built from the sdist.)
 
 ### 9. Check the GitHub Release
 
