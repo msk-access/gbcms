@@ -166,7 +166,9 @@ test = [
 # The site build (deploy-docs.yml installs this group).
 docs = [
     # MkDocs 2.0 is incompatible with Material and this site's config (anchor
-    # validation, exclude_docs, snippets); the migration is D3 #138.
+    # validation, exclude_docs, snippets), so mkdocs stays below 2. Material 9.7.2
+    # and later print a MkDocs 2.0 notice on every build anyway; the docs workflow
+    # turns it off with NO_MKDOCS_2_WARNING=1 (developer guide, "Building the docs").
     "mkdocs>=1.6,<2",
     "mkdocs-material>=9.5,<10",
     "mkdocs-mermaid2-plugin",
