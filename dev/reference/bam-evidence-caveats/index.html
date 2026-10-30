@@ -2955,16 +2955,13 @@ caveat in gbcms's output.</p>
   toward depth only, since it cannot show either allele; one that holds it and
   ends inside the longer allele is judged by the bases it has (RJ-23). At low
   depth, informative reads are few, so compare <code>alt_count + ref_count</code> with depth.</li>
-<li><strong>Variants not prepared against the reference (direct API use, or a failed
-  reference fetch) (C24 #195):</strong> when the semiglobal alignment is judged unreliable,
-  <code>classify_by_alignment</code> re-scores with a local alignment, but its tail (the REF
-  branch's nearby-evidence check and the tie branch) still reads the semiglobal
-  scores. REF and ALT calls use the local scores correctly; only
-  <code>has_nearby_evidence</code>, so <code>partial_alt</code>, can be affected. It runs only where the
-  exact-carrier rule returns nothing (no <code>ref_context</code> or <code>event_ref</code> holding the
-  event and its flank), which prepared variants have. Not reproduced end to end (it
-  needs a Rust test). Open for 6.7.0: use the fallback's own scores in the tail, or
-  retire the fallback and flag the leftover path through <code>SW_FALLBACK</code>.</li>
+<li><strong>Variants the exact-carrier rule cannot judge (direct API use, a failed
+  reference fetch, a contig end):</strong> their reads go to the previous complex
+  classifier, whose Smith-Waterman step can re-score a complex row with a local
+  alignment; the call, its nearby evidence (<code>partial_alt</code>) and its tie check all read
+  the scores that made the call (#195). Each such row is warned once. On every arm
+  measured on 2026-10-30 (panel, gate, ACCESS and normals, WES, germline, RNA and HG002;
+  about 4.5 million read calls under each backend) no read took this path.</li>
 <li><strong>Purity, clonality, contamination, clonal haematopoiesis, germline vs
   somatic:</strong> counts are evidence, not calls. A matched normal and, for <abbr title="Cell-free DNA - Circulating DNA fragments in blood plasma">cfDNA</abbr>,
   <a href="../mfsd-report/"><abbr title="Mutant Fragment Size Distribution - Insert-size analysis for REF vs ALT fragments">mFSD</abbr></a> help interpret them.</li>
@@ -2994,7 +2991,7 @@ caveat in gbcms's output.</p>
     <span class="md-icon" title="Last update">
       <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M21 13.1c-.1 0-.3.1-.4.2l-1 1 2.1 2.1 1-1c.2-.2.2-.6 0-.8l-1.3-1.3c-.1-.1-.2-.2-.4-.2m-1.9 1.8-6.1 6V23h2.1l6.1-6.1zM12.5 7v5.2l4 2.4-1 1L11 13V7zM11 21.9c-5.1-.5-9-4.8-9-9.9C2 6.5 6.5 2 12 2c5.3 0 9.6 4.1 10 9.3-.3-.1-.6-.2-1-.2s-.7.1-1 .2C19.6 7.2 16.2 4 12 4c-4.4 0-8 3.6-8 8 0 4.1 3.1 7.5 7.1 7.9l-.1.2z"></path></svg>
     </span>
-    <span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-timeago" title="October 28, 2026 23:17:12 UTC"><span class="timeago" datetime="2026-10-28T23:17:12+00:00" locale="en"></span></span><span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-iso_date" title="October 28, 2026 23:17:12 UTC">2026-10-28</span>
+    <span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-timeago" title="October 30, 2026 20:50:54 UTC"><span class="timeago" datetime="2026-10-30T20:50:54+00:00" locale="en"></span></span><span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-iso_date" title="October 30, 2026 20:50:54 UTC">2026-10-30</span>
   </span>
 
     

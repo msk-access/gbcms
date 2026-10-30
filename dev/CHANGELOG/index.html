@@ -770,6 +770,15 @@
 <nav aria-label="[Unreleased]" class="md-nav">
 <ul class="md-nav__list">
 <li class="md-nav__item">
+<a class="md-nav__link" href="#fixed-the-smith-waterman-local-re-scorings-partial_alt-reads-the-scores-that-made-the-call-195">
+<span class="md-ellipsis">
+      
+        Fixed — the Smith-Waterman local re-scoring's partial_alt reads the scores that made the call (#195)
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
 <a class="md-nav__link" href="#changed-the-sequence-judge-holds-one-memory-budget-per-thread-304">
 <span class="md-ellipsis">
       
@@ -3026,6 +3035,15 @@
 <p>The format is based on <a href="https://keepachangelog.com/en/1.0.0/">Keep a Changelog</a>,
 and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semantic Versioning</a>.</p>
 <h2 id="unreleased">[Unreleased]<a class="headerlink" href="#unreleased" title="Permanent link">¶</a></h2>
+<h3 id="fixed-the-smith-waterman-local-re-scorings-partial_alt-reads-the-scores-that-made-the-call-195">Fixed — the Smith-Waterman local re-scoring's <code>partial_alt</code> reads the scores that made the call (#195)<a class="headerlink" href="#fixed-the-smith-waterman-local-re-scorings-partial_alt-reads-the-scores-that-made-the-call-195" title="Permanent link">¶</a></h3>
+<ul>
+<li>Where a complex row's semiglobal scores are unreliable, the <code>sw</code> step re-scores with a local
+  alignment and calls on those scores, but its nearby-evidence check (a REF call with ALT close)
+  and its tie check still read the semiglobal ones, so <code>partial_alt</code> could follow scores that
+  did not make the call. Both now read the scores that made the call. REF, ALT and depth are
+  unchanged. Only complex rows the exact-carrier rule cannot judge reach this step; on every
+  arm (about 4.5 million read calls under each backend) none did, so no measured count changes.</li>
+</ul>
 <h3 id="changed-the-sequence-judge-holds-one-memory-budget-per-thread-304">Changed — the sequence judge holds one memory budget per thread (#304)<a class="headerlink" href="#changed-the-sequence-judge-holds-one-memory-budget-per-thread-304" title="Permanent link">¶</a></h3>
 <ul>
 <li>Under <code>--read-judge sequence</code>, a row's caches (the verdicts and programmes of reads alike)

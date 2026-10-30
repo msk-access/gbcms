@@ -14094,7 +14094,8 @@ The dual-trigger only applies to <strong>complex</strong> variants (e.g., <code>
 </tr>
 </tbody>
 </table>
-<p>When <strong>either</strong> trigger fires, the engine retries with <strong>local alignment</strong> (<code>Aligner::local()</code>), which soft-clips the bad flank and finds the best matching substring without penalizing overhangs on either side.</p>
+<p>When <strong>either</strong> trigger fires, the engine retries with <strong>local alignment</strong> (<code>Aligner::local()</code>), which soft-clips the bad flank and finds the best matching substring without penalizing overhangs on either side. The call then rests on the local scores, and so do the checks after it: a REF call's nearby evidence (ALT within twice the margin: <code>partial_alt</code>) and a tie's (the best score reaching half the read) (#195).</p>
+<p>Only complex rows the exact-carrier rule cannot judge reach this step (direct API use, a failed reference fetch, a contig end). On every arm measured on 2026-10-30 (about 4.5 million read calls under each backend) none did.</p>
 <div class="admonition tip">
 <p class="admonition-title">Performance: Aligner Reuse</p>
 <p><abbr title="Smith-Waterman - Edit-distance based local sequence alignment algorithm">SW</abbr> aligners are created <strong>once per variant</strong> (in every counting path) and reused for all of its reads. The <code>bio::alignment::pairwise::Aligner</code> reuses internal <abbr title="Total Depth - All mapped reads overlapping the variant position">DP</abbr> buffers, avoiding repeated heap allocation.</p>
@@ -18126,16 +18127,13 @@ caveat in gbcms's output.</p>
   toward depth only, since it cannot show either allele; one that holds it and
   ends inside the longer allele is judged by the bases it has (RJ-23). At low
   depth, informative reads are few, so compare <code>alt_count + ref_count</code> with depth.</li>
-<li><strong>Variants not prepared against the reference (direct API use, or a failed
-  reference fetch) (C24 #195):</strong> when the semiglobal alignment is judged unreliable,
-  <code>classify_by_alignment</code> re-scores with a local alignment, but its tail (the REF
-  branch's nearby-evidence check and the tie branch) still reads the semiglobal
-  scores. REF and ALT calls use the local scores correctly; only
-  <code>has_nearby_evidence</code>, so <code>partial_alt</code>, can be affected. It runs only where the
-  exact-carrier rule returns nothing (no <code>ref_context</code> or <code>event_ref</code> holding the
-  event and its flank), which prepared variants have. Not reproduced end to end (it
-  needs a Rust test). Open for 6.7.0: use the fallback's own scores in the tail, or
-  retire the fallback and flag the leftover path through <code>SW_FALLBACK</code>.</li>
+<li><strong>Variants the exact-carrier rule cannot judge (direct API use, a failed
+  reference fetch, a contig end):</strong> their reads go to the previous complex
+  classifier, whose Smith-Waterman step can re-score a complex row with a local
+  alignment; the call, its nearby evidence (<code>partial_alt</code>) and its tie check all read
+  the scores that made the call (#195). Each such row is warned once. On every arm
+  measured on 2026-10-30 (panel, gate, ACCESS and normals, WES, germline, RNA and HG002;
+  about 4.5 million read calls under each backend) no read took this path.</li>
 <li><strong>Purity, clonality, contamination, clonal haematopoiesis, germline vs
   somatic:</strong> counts are evidence, not calls. A matched normal and, for <abbr title="Cell-free DNA - Circulating DNA fragments in blood plasma">cfDNA</abbr>,
   <a href="#reference-mfsd-report"><abbr title="Mutant Fragment Size Distribution - Insert-size analysis for REF vs ALT fragments">mFSD</abbr></a> help interpret them.</li>
@@ -20212,6 +20210,15 @@ count-affecting merge since the previous release, run on the changed rows only.<
 <p>The format is based on <a href="https://keepachangelog.com/en/1.0.0/">Keep a Changelog</a>,
 and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semantic Versioning</a>.</p>
 <h2 id="development-changelog-unreleased">[Unreleased]<a class="headerlink" href="#development-changelog-unreleased" title="Permanent link">¶</a></h2>
+<h3 id="development-changelog-fixed-the-smith-waterman-local-re-scorings-partial_alt-reads-the-scores-that-made-the-call-195">Fixed — the Smith-Waterman local re-scoring's <code>partial_alt</code> reads the scores that made the call (#195)<a class="headerlink" href="#development-changelog-fixed-the-smith-waterman-local-re-scorings-partial_alt-reads-the-scores-that-made-the-call-195" title="Permanent link">¶</a></h3>
+<ul>
+<li>Where a complex row's semiglobal scores are unreliable, the <code>sw</code> step re-scores with a local
+  alignment and calls on those scores, but its nearby-evidence check (a REF call with ALT close)
+  and its tie check still read the semiglobal ones, so <code>partial_alt</code> could follow scores that
+  did not make the call. Both now read the scores that made the call. REF, ALT and depth are
+  unchanged. Only complex rows the exact-carrier rule cannot judge reach this step; on every
+  arm (about 4.5 million read calls under each backend) none did, so no measured count changes.</li>
+</ul>
 <h3 id="development-changelog-changed-the-sequence-judge-holds-one-memory-budget-per-thread-304">Changed — the sequence judge holds one memory budget per thread (#304)<a class="headerlink" href="#development-changelog-changed-the-sequence-judge-holds-one-memory-budget-per-thread-304" title="Permanent link">¶</a></h3>
 <ul>
 <li>Under <code>--read-judge sequence</code>, a row's caches (the verdicts and programmes of reads alike)
