@@ -252,6 +252,11 @@ impl Graph {
         &self.segments[self.seg_of[v] as usize]
     }
 
+    /// Base `v`'s place in its segment (0 for its first base).
+    pub(crate) fn offset_in_segment(&self, v: usize) -> usize {
+        v - self.segment_of(v).first as usize
+    }
+
     /// The bases `[v0, v1)` of the segments meeting the reference span `trim`.
     fn range(&self, trim: (i64, i64)) -> (usize, usize) {
         let k0 = self.end_max.partition_point(|&e| e <= trim.0);
@@ -1390,6 +1395,84 @@ fn traceback<M: ErrorModel>(m: &M, read: &[u8], g: &Graph, band: &GraphBand, ws:
     rows.sort_unstable();
     rows.dedup();
     GraphPath { score: r.score, rows }
+}
+
+/// What a read's best path does with each of its bases: aligned to a graph base, inserted, or
+/// left over at an end; and the graph bases it skips right after each (a deletion). The
+/// read's call is examined on this alignment ([`Site::alignment_on_path`]).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct PathSteps {
+    pub(crate) score: i32,
+    pub(crate) steps: Vec<Step>,
+    pub(crate) skipped_after: Vec<u32>,
+}
+
+/// One read base's step on a path.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum Step {
+    At(u32),
+    Inserted,
+    LeftOver,
+}
+
+/// [`kept_path`] as steps per read base ([`PathSteps`]): the same traceback, read base by
+/// read base. None where `ws` keeps no run (an empty read, a graph not laid out in order).
+pub(crate) fn kept_steps<M: ErrorModel>(m: &M, read: &GraphRead, g: &Graph, ws: &Workspace) -> Option<PathSteps> {
+    let (band, r) = ws.last.as_ref()?;
+    let (open, ext) = (m.gap_open(), m.gap_extend());
+    let n = read.seq.len();
+    let mut steps = vec![Step::LeftOver; n];
+    let mut skipped_after = vec![0u32; n];
+    if let Some((mut i, mut v)) = r.end {
+        // states: 0 D, 1 A, 2 E, 3 F (as [`traceback`])
+        let mut state = 0u8;
+        while i > 0 {
+            if band.cell(v as usize, i).is_none() {
+                break;
+            }
+            let c = sources(m, read.seq, g, band, ws, v as usize, i);
+            match state {
+                0 => {
+                    steps[i as usize - 1] = Step::At(v);
+                    if !c.from_a || i == 1 {
+                        break;
+                    }
+                    let first = g.preds(v as usize).iter().copied().find(|&u| band.cell(u as usize, i - 1).is_some_and(|x| ws.a[x] == c.diag));
+                    let Some(u) = first else { break };
+                    v = u;
+                    i -= 1;
+                    state = 1;
+                }
+                1 => {
+                    state = if c.d == c.a {
+                        0
+                    } else if c.en == c.a {
+                        2
+                    } else {
+                        3
+                    }
+                }
+                2 => {
+                    // graph base v skipped after read base i - 1
+                    skipped_after[i as usize - 1] += 1;
+                    let first = g.preds(v as usize).iter().copied().find_map(|u| {
+                        let x = band.cell(u as usize, i)?;
+                        let (eo, ee) = (ws.a[x] - open, ws.e[x] - ext);
+                        (eo.max(ee) == c.en).then_some((u, ee > eo))
+                    });
+                    let Some((u, extends)) = first else { break };
+                    state = if extends { 2 } else { 1 };
+                    v = u;
+                }
+                _ => {
+                    steps[i as usize - 1] = Step::Inserted;
+                    state = if c.fe > c.fo { 3 } else { 1 };
+                    i -= 1;
+                }
+            }
+        }
+    }
+    Some(PathSteps { score: r.score, steps, skipped_after })
 }
 
 /// The traceback over the reference programme's directions.
