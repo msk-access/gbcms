@@ -673,6 +673,64 @@ placement, bases). Cost within 2× develop. The HPC gate.
      matrix, so it has no band to stand on; htslib's BAQ uses a fixed band of 10 (realn.c). The
      repeat-aware floor is the judge's own rule for when its band may stand in for the full
      programme.
+7. **Decided (operator, 2026-10-29): one memory budget per thread, 128 MB.**
+   - **Mechanism.** A row's caches (the verdicts of reads alike, the programmes of reads alike
+     in bases and placement with their path steps, and the call each read got) grow with its
+     reads, and deep rows hold many. The judge's work space (the graph programmes' score
+     tables and the aligner's values) grows only to the band a read needs and is kept on the
+     thread. The two now share one budget per thread (`THREAD_BUDGET`, 128 MB): the work space
+     takes what the reads need, and the caches of the rows alive on the thread the rest. Once
+     they reach it, a row adds no more entries and its later reads are judged afresh (the same
+     calls; the time a cache saves forgone). A read that alone needs more work space than the
+     budget still gets it. A row's caches are freed at its end, and so is work space past a
+     quarter of the budget. The bytes counted are those held: the work space's arrays and
+     the band each workspace keeps for its path (a band states share, once); each cache's hash
+     table whole (its buckets are allocated as it grows); and a kept programme as later reads
+     alike grow it. `GBCMS_JUDGE_BUDGET_MB` sets the budget for measurement only
+     (`none`: no limit); `GBCMS_JUDGE_CACHE_TRACE=1` traces each row's cache at its end.
+   - **Count-neutral.** A test judges a deletion's reads with no limit, with nothing cached and
+     with budgets that close the caches part way: every call is the same. On every arm the
+     build at its budget and at 0 (nothing cached) gives byte-identical MAFs and read calls to
+     the judge without the budget: on HPC (8 HG002 arms, 1,070 patient runs) and on the Mac
+     (every arm), first on the judge branch and again on develop a2ca57c1 (HPC runs hzS at the
+     budget and hz0 with nothing cached, against develop's judge path c62tS; the default path,
+     run hzR, against develop's c62uR).
+   - **The knee** (HPC, Linux, whole nodes, Xeon Gold 6348 and Xeon 6747P; CPU against no limit,
+     runs compared on one node model; the Mac is the check):
+
+     | Data type | CPU at 32 / 64 / 128 / 256 / 512 MB (no limit 1.000) | Peak RSS, no limit → 128 MB | Knee (CPU within 2%) |
+     |:--|:--|:--|:--|
+     | IMPACT tumour, IMPACT normal, germline normals, WES, ACCESS XS1 and XS2, gate subset | within 2% at every budget (the shortest ACCESS runs, under 2 s of CPU, vary by up to 2.4% at any budget) | 85 to 250 MB, unchanged | 32 MB |
+     | HG002 c246 | 1.020 / 1.013 / 1.008 / 1.005 / 1.002 | 586 → 382 MB | 64 MB |
+     | HG002 tr | 1.026 / 1.016 / 1.003 / 0.992 / 0.998 | 476 → 345 MB | 64 MB |
+     | HG002 sub | 1.036 / 1.036 / 1.015 / 1.003 / 0.995 | 1,219 → 739 MB | 128 MB |
+     | HG002 nocl | 1.041 / 1.027 / 1.014 / 1.005 / 1.000 | 2,808 → 1,645 MB | 128 MB |
+     | HG002 delins and compound hets | within 3% at every budget | 123 to 134 MB, unchanged | 32 to 128 MB |
+
+     128 MB is the smallest budget within 2% of no limit's CPU on every data type. The Mac
+     agrees: patient types flat, HG002 nocl's knee 128 MB (CPU 1.011; peak 2,653 → 2,067 MB),
+     sub 64 MB, the others 32 MB. Measured again on develop a2ca57c1, with path-align's path
+     steps in the caches (HPC; 64, 128 and 256 MB and none): 128 MB stays within 2% of no
+     limit's CPU on every data type (HG002 nocl 1.009, sub 1.013, tr 1.012, c246 1.002; the
+     patient types within 1%, the shortest ACCESS runs, under 1 s of CPU, within 2.1%), and
+     cuts HG002 peaks from 2,805 to 1,788 MB (nocl), 1,121 to 748 (sub), 545 to 397 (c246) and
+     460 to 329 MB (tr). With the bytes counted as held (the bands, the tables whole, a kept
+     programme's growth; Greptile's findings on #379) and on develop dc215a60 (HPC, HG002, runs
+     haK128 against haKnone): nocl 1.018 (2,833 to 1,657 MB), sub 1.009 (1,111 to 733), c246
+     1.008 (513 to 390), tr 1.005 (458 to 340), delins 1.009; the compound-het arms, about 4 s
+     of CPU, vary by up to 5% as at every budget before. Calls are byte-identical at 128 MB and
+     with nothing cached on every arm (runs haS and ha0).
+   - **Out of memory on HPC, from the harness.** Two gate-subset runs at one thread went over the
+     4 GB their task asked for. gbcms itself peaks at about 250 MB there; the harness's runner
+     held the traced output in its Python parent. The HPC kit's runner now streams it.
+   - **Cache hit rates** (Mac, traced; verdict cache / programme cache): ACCESS duplex 42 to 53%
+     / 41 to 66%; IMPACT 2 to 9% / 32 to 41%; WES 2% / 26%; HG002 about 0% / 0.6 to 2.7%. The
+     budget closed rows' caches only on HG002 (nocl 33 of 13,367 rows, sub 24 of 5,630).
+     On develop a2ca57c1 the caches also hold the path steps: 500 to 670 KB a row on HG002 and
+     1,000 to 8,500 KB on the gate subset, the hit rates unchanged; the budget closes rows on
+     HG002 nocl (29) and sub (21) only.
+   - **Effects.** Speed and memory only: no output changes. RNA mode refuses the sequence judge,
+     and the default rules path does not run it. Nextflow's per-task memory is unchanged in code.
 
 ## 11. Open tickets the judge resolves (measured 2026-10-28)
 On the merged branch (develop 6efeb5bb merged in), against its own default path, which gives

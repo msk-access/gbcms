@@ -247,6 +247,25 @@ fn run<const TRACK: bool, const TRACE: bool>(read: &[u8], hap: &[u8], band: &Ban
     Run { score, end, clipped }
 }
 
+thread_local! {
+    /// [`align`]'s banded values, kept on the thread across calls.
+    static VALUES: std::cell::RefCell<Values> = std::cell::RefCell::new(Values::default());
+}
+
+/// Frees this thread's kept [`align`] values (they grow again as reads need them).
+pub(crate) fn free_values() {
+    VALUES.with(|v| *v.borrow_mut() = Values::default());
+}
+
+/// The bytes this thread's kept [`align`] values hold (their capacities), for the row
+/// caches' budget.
+pub(crate) fn values_bytes() -> usize {
+    VALUES.with(|v| {
+        let v = v.borrow();
+        v.starts.capacity() * 8 + (v.a.capacity() + v.e.capacity() + v.f.capacity() + v.lead.capacity() + v.marks.capacity()) * 4 + v.rows.capacity() * 16
+    })
+}
+
 /// A banded programme's values, per cell of the band (row `i`'s column `j` at
 /// `starts[i] + j - lo[i]`): A, E and F; and per row its best D and the first column
 /// reaching it (rows `1..=n`; the read left over before them, no row 0 is computed).
@@ -644,6 +663,11 @@ pub(crate) struct Alignment {
 }
 
 impl Alignment {
+    /// The bytes it holds on the heap (its capacities), for the row caches' budget.
+    pub(crate) fn heap_bytes(&self) -> usize {
+        self.placed.capacity() * std::mem::size_of::<Placed>() + self.skipped_after.capacity() * 4 + self.costs.capacity() * 4
+    }
+
     /// The first and last haplotype columns the read's aligned bases cover.
     pub(crate) fn covers(&self) -> Option<(usize, usize)> {
         let at = |p: &Placed| if let Placed::At(c) = *p { Some(c) } else { None };
@@ -672,9 +696,6 @@ pub(crate) fn align(read: &[u8], hap: &[u8], band: Option<&Band>) -> Alignment {
     // The band's values are kept (the edge and the traceback are read back from them); the
     // full programme's directions (a cell off the band reads as none, as it holds none).
     if let Some(b) = band {
-        thread_local! {
-            static VALUES: std::cell::RefCell<Values> = std::cell::RefCell::new(Values::default());
-        }
         // reused across calls on this thread (taken out for the call)
         let mut vals = VALUES.with(|v| std::mem::take(&mut *v.borrow_mut()));
         let r = run_values(read, hap, b, &mut vals);

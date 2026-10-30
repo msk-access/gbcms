@@ -86,6 +86,66 @@ pub(crate) fn listed_holders(v: &Variant) -> Vec<&(i64, String, String)> {
 /// A record's identity at one row: its name, flags, position, and CIGAR and bases.
 pub(crate) type ReadKey = (Vec<u8>, u16, i64, Vec<u8>);
 
+/// The bytes a thread's row caches and the judge's work space may hold together. The work
+/// space (the per-state score tables and the aligner's) takes what the thread's reads need;
+/// the caches of the rows the thread is counting get the rest: once work space and caches
+/// reach it, a row adds no more entries and its later reads are judged afresh (the same
+/// calls, the time a cache saves forgone). A read needing more work space than this alone
+/// gets it, and its row caches nothing more; at the row's end work space past a quarter of
+/// the budget is freed ([`release_work`]). 128 MB is the knee measured on Linux (HPC, whole
+/// nodes, 2026-10-29): the smallest budget whose CPU time is within 2% of no limit on every
+/// data type (IMPACT, ACCESS, WES and HG002; the patient types do not reach 32 MB), with
+/// HG002's structural arms' peak memory some 40% below no limit's.
+const THREAD_BUDGET: usize = 128 << 20;
+
+/// The budget in force: [`THREAD_BUDGET`], or (measurement only) `GBCMS_JUDGE_BUDGET_MB`'s,
+/// `none` for no limit. Read once.
+fn thread_budget() -> Option<usize> {
+    #[cfg(test)]
+    if let Some(b) = BUDGET_FOR_TESTS.with(std::cell::Cell::get) {
+        return b;
+    }
+    static BUDGET: std::sync::OnceLock<Option<usize>> = std::sync::OnceLock::new();
+    *BUDGET.get_or_init(|| match std::env::var("GBCMS_JUDGE_BUDGET_MB").as_deref() {
+        Ok("none") => None,
+        Ok(v) => Some(v.parse::<usize>().map_or(THREAD_BUDGET, |mb| mb << 20)),
+        Err(_) => Some(THREAD_BUDGET),
+    })
+}
+
+#[cfg(test)]
+thread_local! {
+    /// Tests only: the budget this thread's rows take in place of [`thread_budget`]'s.
+    pub(crate) static BUDGET_FOR_TESTS: std::cell::Cell<Option<Option<usize>>> = const { std::cell::Cell::new(None) };
+}
+
+thread_local! {
+    /// The bytes the row caches alive on this thread hold.
+    static CACHED: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
+}
+
+/// The bytes a hash table's buckets take: its capacity's entries, each with its control byte.
+fn table_bytes<K, V, S>(m: &HashMap<K, V, S>) -> usize {
+    m.capacity() * (std::mem::size_of::<(K, V)>() + 1)
+}
+
+/// The bytes the judge's work space holds on this thread.
+fn work_bytes() -> usize {
+    graph::pool_bytes() + score::values_bytes()
+}
+
+/// At a row's end, the work space a thread keeps for the next row: tables grown past a
+/// quarter of the budget (a long structural row's reads) are freed, so one row's largest
+/// read does not hold the budget for every row after it.
+fn release_work() {
+    if let Some(budget) = thread_budget() {
+        if work_bytes() > budget / 4 {
+            graph::free_pool();
+            score::free_values();
+        }
+    }
+}
+
 /// A row's haplotypes, built on first use from its reads (the main counts, the
 /// per-transcript counts and ASJD read the same ones, whichever asks first), and the
 /// call each read got, which they share.
@@ -104,6 +164,35 @@ pub(crate) struct Haplotypes<'a> {
     /// qualities, tags and name), with what its programmes gave: a read alike there has
     /// the same scores, paths and alignments, its call its own.
     scored: RefCell<HashMap<ReadView, std::rc::Rc<decide::Scored>, std::hash::BuildHasherDefault<ViewHasher>>>,
+    /// The bytes this row's caches hold ([`THREAD_BUDGET`]), and whether they are closed to
+    /// more entries.
+    bytes: std::cell::Cell<usize>,
+    closed: std::cell::Cell<bool>,
+    /// Measurement only (`GBCMS_JUDGE_CACHE_TRACE=1`): the judged and scored caches' lookups
+    /// and hits.
+    lookups: std::cell::Cell<[u32; 4]>,
+}
+
+/// Measurement only: whether a row's caches are traced at its end (`GBCMS_JUDGE_CACHE_TRACE=1`).
+fn cache_trace() -> bool {
+    static ON: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+    *ON.get_or_init(|| std::env::var("GBCMS_JUDGE_CACHE_TRACE").is_ok_and(|v| v == "1"))
+}
+
+impl Drop for Haplotypes<'_> {
+    fn drop(&mut self) {
+        CACHED.with(|c| c.set(c.get().saturating_sub(self.bytes.get())));
+        release_work();
+        if cache_trace() {
+            let [jl, jh, sl, sh] = self.lookups.get();
+            let (pos, r, a) = &self.key;
+            log::trace!(
+                "judge cache {}:{}>{} bytes={} closed={} judged={}/{} scored={}/{} entries={}/{}/{} work={}",
+                pos + 1, r, a, self.bytes.get(), self.closed.get(), jh, jl, sh, sl,
+                self.judged.borrow().len(), self.scored.borrow().len(), self.verdicts.borrow().len(), work_bytes(),
+            );
+        }
+    }
 }
 
 /// The judged views' hasher: keys are compared whole on a hit, so the hash need only
@@ -165,25 +254,115 @@ impl<'a> Haplotypes<'a> {
             verdicts: RefCell::new(HashMap::new()),
             judged: RefCell::new(HashMap::default()),
             scored: RefCell::new(HashMap::default()),
+            bytes: std::cell::Cell::new(0),
+            closed: std::cell::Cell::new(false),
+            lookups: std::cell::Cell::new([0; 4]),
         }
+    }
+
+    /// Measurement only: counts a lookup of the judged (`at` 0) or scored (2) cache, and its hit.
+    fn looked(&self, at: usize, hit: bool) {
+        if cache_trace() {
+            let mut l = self.lookups.get();
+            l[at] += 1;
+            l[at + 1] += u32::from(hit);
+            self.lookups.set(l);
+        }
+    }
+
+    /// Whether an entry of `add` bytes fits the thread's budget beside the work space and
+    /// the caches alive ([`THREAD_BUDGET`]); taken where it fits. A row that once finds no
+    /// room adds nothing more.
+    fn room(&self, add: usize) -> bool {
+        if self.closed.get() {
+            return false;
+        }
+        if let Some(budget) = thread_budget() {
+            if CACHED.with(std::cell::Cell::get) + work_bytes() + add > budget {
+                self.closed.set(true);
+                return false;
+            }
+        }
+        CACHED.with(|c| c.set(c.get() + add));
+        self.bytes.set(self.bytes.get() + add);
+        true
+    }
+
+    /// Tests only: the bytes this row's caches hold, and whether they are closed to more
+    /// entries (the budget reached).
+    #[cfg(test)]
+    pub(crate) fn cache_state(&self) -> (usize, bool) {
+        (self.bytes.get(), self.closed.get())
+    }
+
+    /// Tests only: the bytes this row's caches hold as they stand: their tables whole
+    /// ([`table_bytes`]) and each entry's heap, a kept programme as it has grown since.
+    #[cfg(test)]
+    pub(crate) fn held_bytes(&self) -> usize {
+        let (j, s, v) = (self.judged.borrow(), self.scored.borrow(), self.verdicts.borrow());
+        table_bytes(&j)
+            + table_bytes(&s)
+            + table_bytes(&v)
+            + j.keys().map(|k| k.0.heap_bytes()).sum::<usize>()
+            + s.iter().map(|(k, sc)| k.heap_bytes() + sc.heap_bytes()).sum::<usize>()
+            + v.keys().map(|k| k.0.capacity() + k.3.capacity()).sum::<usize>()
     }
 
     /// The verdict a read alike to `view`'s got at this row ([`Haplotypes::judged`]'s key).
     pub(crate) fn judged(&self, view: &JudgedKey) -> Option<decide::Verdict> {
-        self.judged.borrow().get(view).copied()
+        let got = self.judged.borrow().get(view).copied();
+        self.looked(0, got.is_some());
+        got
+    }
+
+    /// Inserts `k`, `v` into `map` where it fits the thread's budget: charged its heap
+    /// bytes (`heap`) and what the table grows by to hold it ([`table_bytes`]: a table's
+    /// buckets are allocated whole as it grows). Where it does not fit, the table is given back
+    /// its earlier size and the row adds nothing more.
+    fn insert<K: Eq + std::hash::Hash, V, S: std::hash::BuildHasher>(&self, map: &RefCell<HashMap<K, V, S>>, k: K, v: V, heap: usize) {
+        if self.closed.get() {
+            return;
+        }
+        let mut m = map.borrow_mut();
+        let (before, cap) = (table_bytes(&m), m.capacity());
+        m.reserve(1);
+        let grown = table_bytes(&m) - before;
+        if self.room(heap + grown) {
+            m.insert(k, v);
+        } else if grown > 0 {
+            m.shrink_to(cap);
+        }
+    }
+
+    /// Charges what a kept entry grew by since it was kept (a later read alike building more
+    /// of a kept programme's haplotypes and alignments): held whether or not it fits, it is
+    /// counted either way, and a row past the budget adds no more entries.
+    pub(crate) fn grew(&self, add: usize) {
+        if add == 0 {
+            return;
+        }
+        CACHED.with(|c| c.set(c.get() + add));
+        self.bytes.set(self.bytes.get() + add);
+        if thread_budget().is_some_and(|budget| CACHED.with(std::cell::Cell::get) + work_bytes() > budget) {
+            self.closed.set(true);
+        }
     }
 
     pub(crate) fn keep_judged(&self, view: JudgedKey, verdict: decide::Verdict) {
-        self.judged.borrow_mut().insert(view, verdict);
+        let heap = view.0.heap_bytes();
+        self.insert(&self.judged, view, verdict, heap);
     }
 
     /// What the programmes gave a read alike to `placed` (bases and placement) at this row.
     pub(crate) fn scored(&self, placed: &ReadView) -> Option<std::rc::Rc<decide::Scored>> {
-        self.scored.borrow().get(placed).cloned()
+        let got = self.scored.borrow().get(placed).cloned();
+        self.looked(2, got.is_some());
+        got
     }
 
     pub(crate) fn keep_scored(&self, placed: ReadView, scored: std::rc::Rc<decide::Scored>) {
-        self.scored.borrow_mut().insert(placed, scored);
+        let heap = placed.heap_bytes() + scored.heap_bytes();
+        self.insert(&self.scored, placed, scored, heap);
     }
 
     /// The call a read already got at this row.
@@ -192,7 +371,8 @@ impl<'a> Haplotypes<'a> {
     }
 
     pub(crate) fn keep_verdict(&self, key: ReadKey, result: ClassifyResult) {
-        self.verdicts.borrow_mut().insert(key, result);
+        let heap = key.0.capacity() + key.3.capacity();
+        self.insert(&self.verdicts, key, result, heap);
     }
 
     /// The haplotypes when they were found for `v` (the dual-counted decomposed form of

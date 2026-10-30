@@ -372,6 +372,19 @@ pub(crate) struct Scored {
     steps: Vec<Option<graph::PathSteps>>,
 }
 
+impl Scored {
+    /// The bytes it holds (its capacities, the path steps, and the haplotypes and alignments
+    /// built so far), for the row caches' budget.
+    pub(crate) fn heap_bytes(&self) -> usize {
+        let rows: usize = self.rows.iter().map(|r| r.capacity() * 8).sum::<usize>() + self.rows.capacity() * 24;
+        let steps: usize = self.steps.iter().flatten().map(|p| p.steps.capacity() * std::mem::size_of::<graph::Step>() + p.skipped_after.capacity() * 4).sum::<usize>()
+            + self.steps.capacity() * std::mem::size_of::<Option<graph::PathSteps>>();
+        let haps: usize = self.haps.borrow().iter().map(|(_, h)| h.heap_bytes() + std::mem::size_of::<Hap>() + 16).sum();
+        let aligns: usize = self.aligns.borrow().iter().map(|(_, a)| a.0.heap_bytes() + std::mem::size_of::<Laid>() + 16).sum();
+        std::mem::size_of::<Scored>() + self.halves.capacity() * 16 + rows + steps + haps + aligns
+    }
+}
+
 /// Per class, the best score and the first candidate (haplotype or state) reaching it.
 fn raise(best: &mut [Option<(i32, usize)>; 3], class: usize, s: i32, h: usize) {
     let slot = &mut best[class];
@@ -1035,10 +1048,13 @@ pub(crate) fn classify(record: &Record, variant: &Variant, quals: &[u8], min_bas
                 // what a read alike in bases (masked) and placement left: its programmes
                 let placed = view.0.placed_alone();
                 let kept = haplotypes.scored(&placed);
-                let fresh = kept.is_none();
+                // what a kept programme holds before this read (which may build more of it)
+                let before = kept.as_ref().map(|s| s.heap_bytes());
                 let (verdict, scored) = judge_kept(site, &view.0, min_baseq, !overlaps_anchor, kept);
-                if let Some(s) = scored.filter(|_| fresh) {
-                    haplotypes.keep_scored(placed, s);
+                match (scored, before) {
+                    (Some(s), None) => haplotypes.keep_scored(placed, s),
+                    (Some(s), Some(b)) => haplotypes.grew(s.heap_bytes().saturating_sub(b)),
+                    (None, _) => {}
                 }
                 verdict
             });
@@ -1253,6 +1269,121 @@ mod tests {
         let haps = Haplotypes::new(&v, move |_| Some(s.clone()));
         let rules = ReadRules { judge: ReadJudge::Haplotype, haplotypes: Some(&haps), ..ReadRules::DNA };
         f(&v, &rules);
+    }
+
+    #[test]
+    fn a_row_whose_caches_the_budget_closes_calls_every_read_as_an_uncapped_one() {
+        // The thread's budget closes a row's caches once work space and caches reach it, and
+        // the row's later reads are judged afresh. A 5-base deletion's reads: carriers and
+        // REF's, at seven starts, three quality patterns, each under its own name (so reads
+        // alike in all but the name meet the verdict cache, and alike in bases and placement
+        // the scored one). With no limit, with nothing cached (0 bytes) and with budgets that
+        // close the caches part way, every read's call is the same.
+        use super::super::BUDGET_FOR_TESTS;
+        let c = random_seq(600, 41);
+        let x = row(301, std::str::from_utf8(&c[300..306]).unwrap(), &(c[300] as char).to_string());
+        let h = applied(&c, &x);
+        let quals = |i: usize| -> Vec<u8> { (0..100).map(|k| [30u8, 37, 25][(i + k * (i % 3 + 1)) % 3]).collect() };
+        let records: Vec<Record> = (0..150)
+            .map(|i| {
+                let start = 240 + (i % 7) * 3;
+                let (seq, cigar) = if i % 3 == 0 {
+                    (c[start..start + 100].to_vec(), vec![Cigar::Match(100)])
+                } else {
+                    let k = 301 - start;
+                    (h[start..start + 100].to_vec(), vec![Cigar::Match(k as u32), Cigar::Del(5), Cigar::Match((100 - k) as u32)])
+                };
+                let mut rec = Record::new();
+                rec.set(format!("r{i}").as_bytes(), Some(&CigarString(cigar)), &seq, &quals(i / 7));
+                rec.set_pos(start as i64);
+                rec
+            })
+            .collect();
+        let s = site(&c, &x, &[], 100);
+        let v = variant(&x);
+        let calls = |budget: Option<usize>| {
+            BUDGET_FOR_TESTS.with(|b| b.set(Some(budget)));
+            let haps = Haplotypes::new(&v, |_| Some(s.clone()));
+            let rules = ReadRules { judge: ReadJudge::Haplotype, haplotypes: Some(&haps), ..ReadRules::DNA };
+            let out: Vec<String> = records.iter().map(|r| format!("{:?}", classify(r, &v, r.qual(), 20, &rules))).collect();
+            let state = haps.cache_state();
+            BUDGET_FOR_TESTS.with(|b| b.set(None));
+            (out, state)
+        };
+        let (uncapped, (bytes, closed)) = calls(None);
+        assert!(bytes > 0 && !closed, "no limit: the caches fill ({bytes} bytes)");
+        let mut part_way = 0;
+        for budget in [0, 64 << 10, 256 << 10, 1 << 20, 4 << 20] {
+            let (capped, (bytes, closed)) = calls(Some(super::super::work_bytes() + budget));
+            assert_eq!(capped, uncapped, "budget {budget} bytes past the work space");
+            part_way += usize::from(closed && bytes > 0);
+        }
+        assert!(part_way > 0, "some budget closes the caches part way");
+        let (capped, (bytes, closed)) = calls(Some(0));
+        assert_eq!((capped == uncapped, bytes, closed), (true, 0, true), "nothing cached");
+    }
+
+    /// A record of `seq` at `pos` (all matches), named `name`, with the aligner's MAPQ and AS,
+    /// XS and NM tags.
+    fn tagged_record(seq: &[u8], pos: i64, name: &str, tags: (u8, i32, i32, i32)) -> Record {
+        use rust_htslib::bam::record::Aux;
+        let mut rec = Record::new();
+        rec.set(name.as_bytes(), Some(&CigarString(vec![Cigar::Match(seq.len() as u32)])), seq, &vec![30; seq.len()]);
+        rec.set_pos(pos);
+        rec.set_mapq(tags.0);
+        rec.push_aux(b"AS", Aux::I32(tags.1)).unwrap();
+        rec.push_aux(b"XS", Aux::I32(tags.2)).unwrap();
+        rec.push_aux(b"NM", Aux::I32(tags.3)).unwrap();
+        rec
+    }
+
+    #[test]
+    fn a_rows_caches_are_charged_their_tables_whole() {
+        // A row's caches are hash tables: their buckets (entries and control bytes, empty or
+        // not) are allocated whole as they grow. The bytes the budget counts for a row are
+        // what its tables and entries hold: every bucket, not only those in use.
+        let c = random_seq(600, 61);
+        let other = |b: u8| if b == b'A' { b'C' } else { b'A' };
+        let x = row(301, &(c[300] as char).to_string(), &(other(c[300]) as char).to_string());
+        let h = applied(&c, &x);
+        let s = site(&c, &x, &[], 100);
+        let v = variant(&x);
+        let haps = Haplotypes::new(&v, |_| Some(s.clone()));
+        let rules = ReadRules { judge: ReadJudge::Haplotype, haplotypes: Some(&haps), ..ReadRules::DNA };
+        for i in 0..21usize {
+            let start = 230 + i * 2;
+            let src = if i % 2 == 0 { &h } else { &c };
+            let rec = tagged_record(&src[start..start + 100], start as i64, &format!("r{i}"), (60, 100, 20, 1));
+            classify(&rec, &v, rec.qual(), 20, &rules);
+        }
+        assert_eq!(haps.cache_state(), (haps.held_bytes(), false), "the bytes counted, against those the tables and entries hold");
+    }
+
+    #[test]
+    fn a_kept_programme_grown_by_a_later_read_alike_is_charged() {
+        // Two reads alike in bases and placement share their programmes. The first, which its
+        // aligner doubts and no candidate fits, is depth only and examines no candidate; the
+        // second, placed here alone, is examined on the kept programmes, which build the
+        // haplotypes and alignments it asks for. The row counts what that adds.
+        let c = random_seq(600, 23);
+        let other = |b: u8| if b == b'A' { b'C' } else { b'A' };
+        let x = row(301, &(c[300] as char).to_string(), &(other(c[300]) as char).to_string());
+        let h = applied(&c, &x);
+        let mut noisy = h[250..350].to_vec();
+        for i in (0..100).step_by(8).take(12) {
+            noisy[i] = other(noisy[i]);
+        }
+        let s = site(&c, &x, &[], 100);
+        let v = variant(&x);
+        let haps = Haplotypes::new(&v, |_| Some(s.clone()));
+        let rules = ReadRules { judge: ReadJudge::Haplotype, haplotypes: Some(&haps), ..ReadRules::DNA };
+        let doubted = tagged_record(&noisy, 250, "first", (0, 52, 52, 13));
+        let sure = tagged_record(&noisy, 250, "second", (60, 52, 20, 13));
+        classify(&doubted, &v, doubted.qual(), 20, &rules);
+        let after_first = haps.held_bytes();
+        classify(&sure, &v, sure.qual(), 20, &rules);
+        assert!(haps.held_bytes() > after_first, "the second read's examination grows the kept programmes");
+        assert_eq!(haps.cache_state(), (haps.held_bytes(), false), "the bytes counted, against those the caches hold");
     }
 
     #[test]
