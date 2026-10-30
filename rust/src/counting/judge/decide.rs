@@ -364,8 +364,11 @@ pub(crate) struct Scored {
     rows: Vec<Vec<usize>>,
     haps: std::cell::RefCell<Vec<(usize, std::rc::Rc<Hap>)>>,
     aligns: std::cell::RefCell<Vec<(usize, Aligned)>>,
-    /// Per state, its best path read base by read base ([`graph::kept_steps`]): the read's
-    /// alignment to the state's haplotype, which its call is examined on.
+    /// Per state a call can be examined on (each class's best, and state 0), its best path read
+    /// base by read base ([`graph::kept_steps`]): the read's alignment to the state's
+    /// haplotype, which its call is examined on. None for the other states: kept with the
+    /// read's programmes for every read alike, their two read-length arrays would only hold
+    /// memory.
     steps: Vec<Option<graph::PathSteps>>,
 }
 
@@ -434,6 +437,9 @@ fn score_states(site: &Site, gr: &graph::GraphRead, wss: &mut [Workspace]) -> Sc
         halves.push(half);
         raise(&mut best, st.class as usize, s, k);
     }
+    // The states a call can be examined on: each class's best ([`conclude`] asks for no
+    // other), and state 0, which it falls back to where the class it names has none.
+    let examined = |k: usize| k == 0 || best.iter().flatten().any(|&(_, h)| h == k);
     let (mut rows, mut steps) = (Vec::with_capacity(site.graphs.len()), Vec::with_capacity(site.graphs.len()));
     for k in 0..site.graphs.len() {
         let p = graph::kept_path(&ShortReads, gr, &site.graphs[k].graph, halves[k], &wss[k]);
@@ -441,7 +447,7 @@ fn score_states(site: &Site, gr: &graph::GraphRead, wss: &mut [Workspace]) -> Sc
             trace!("haplotype judge: state {k}'s traced path scores {} against its score", p.score);
         }
         rows.push(p.rows);
-        steps.push(graph::kept_steps(&ShortReads, gr, &site.graphs[k].graph, &wss[k]));
+        steps.push(if examined(k) { graph::kept_steps(&ShortReads, gr, &site.graphs[k].graph, &wss[k]) } else { None });
     }
     Scored { best, halves, rows, haps: Default::default(), aligns: Default::default(), steps }
 }
@@ -454,13 +460,18 @@ fn score_states(site: &Site, gr: &graph::GraphRead, wss: &mut [Workspace]) -> Sc
 pub(crate) fn examined_alignments(site: &Site, read: &ReadView, free: Option<i64>) -> Vec<(i32, Laid, Laid)> {
     let gr = site.graph_read(read);
     let scored = graph::with_workspaces(site.graphs.len(), |wss| score_states(site, &gr, wss));
-    let decided: Vec<i32> = {
+    // every state's score and steps (a call keeps the steps of those it can examine only)
+    let (decided, steps): (Vec<i32>, Vec<Option<graph::PathSteps>>) = {
         let graphs: Vec<&graph::Graph> = site.graphs.iter().map(|st| &st.graph).collect();
         let shares: Vec<Option<(usize, usize)>> = site.graphs.iter().map(|st| st.share).collect();
-        graph::with_workspaces(site.graphs.len(), |wss| graph::decided_states(&ShortReads, &gr, &graphs, &shares, wss)).into_iter().map(|d| d.0).collect()
+        graph::with_workspaces(site.graphs.len(), |wss| {
+            let d = graph::decided_states(&ShortReads, &gr, &graphs, &shares, wss);
+            let st = (0..site.graphs.len()).map(|k| graph::kept_steps(&ShortReads, &gr, &site.graphs[k].graph, &wss[k])).collect();
+            (d.into_iter().map(|x| x.0).collect(), st)
+        })
     };
     let scorer = Scorer::new(read);
-    let on_path = |k: usize, hap: &Hap| scored.steps[k].as_ref().map(|st| site.alignment_on_path(k, st, hap, &read.seq));
+    let on_path = |k: usize, hap: &Hap| steps[k].as_ref().map(|st| site.alignment_on_path(k, st, hap, &read.seq));
     let aligns = Default::default();
     let ex = Examined::new(site, &scorer, |k| std::rc::Rc::new(site.hap_on_path(k, &scored.rows[k])), &aligns, &on_path);
     (0..site.graphs.len())
@@ -1331,6 +1342,31 @@ mod tests {
         // No XS written: MAPQ 0 stands for the aligner's doubt.
         let no_xs = AlnTags { mapq: 0, best: Some(52), elsewhere: None, nm: Some(13) };
         assert_eq!(got(&noisy, no_xs), (Call::Depth, true));
+    }
+
+    #[test]
+    fn a_read_keeps_the_path_steps_of_the_states_its_call_can_examine_only() {
+        // An SNV site holds four states (REF, X and the two other bases); a read's
+        // programmes, kept for every read alike, keep the steps of each class's best and of
+        // state 0 only, and its call is the one examined on them.
+        let c = random_seq(600, 41);
+        let other = |b: u8| if b == b'A' { b'C' } else { b'A' };
+        let x = row(301, &(c[300] as char).to_string(), &(other(c[300]) as char).to_string());
+        let h = applied(&c, &x);
+        let s = site(&c, &x, &[], 100);
+        assert!(s.graphs.len() >= 4, "{} states", s.graphs.len());
+        for (seq, want) in [(&h[250..350], Call::Alt), (&c[250..350], Call::Ref)] {
+            let read = ReadView::new(seq, &[30; 100], 250, &[Cigar::Match(100)], (0, 100), 20).unwrap();
+            let gr = s.graph_read(&read);
+            let scored = graph::with_workspaces(s.graphs.len(), |wss| score_states(&s, &gr, wss));
+            let kept: Vec<usize> = (0..s.graphs.len()).filter(|&k| scored.steps[k].is_some()).collect();
+            let mut want_kept: Vec<usize> = scored.best.iter().flatten().map(|&(_, h)| h).chain([0]).collect();
+            want_kept.sort_unstable();
+            want_kept.dedup();
+            assert_eq!(kept, want_kept, "steps kept for each class's best and state 0");
+            assert!(kept.len() < s.graphs.len(), "some state's steps dropped");
+            assert_eq!(judge(&s, &read, 20, true).call, want);
+        }
     }
 
     #[test]

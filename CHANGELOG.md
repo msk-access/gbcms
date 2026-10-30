@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed — the sequence judge keeps a read's path steps only for the states its call can examine (#304)
+
+- Under `--read-judge sequence`, a read's best path, base by base, was kept for every state of
+  the site with the read's programmes, which the row keeps for every read alike, so at sites of
+  many alleles it grew with reads × states × read length. It is now kept only for each class's
+  best state and state 0, the only ones a call is examined on. Counts are unchanged. The row
+  caches are 6 to 7% smaller; with the 128 MB cache limit, HG002 peak memory falls 3 to 9%.
+
 ### Fixed — the sequence judge's band no longer stands on a worse score in a tandem repeat (#369)
 
 - Under `--read-judge sequence`, the band around a read's own placement stood on its edge
