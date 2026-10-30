@@ -390,6 +390,20 @@ gbcms dna --trace ...     # per-read classification diagnostics (slow)
 
 ---
 
+## Building the docs
+
+The site's tools are pyproject's `docs` dependency group (the `dev` group includes it).
+MkDocs stays below 2.0, which is incompatible with Material and this site's config.
+Material for MkDocs 9.7.2 and later still print a notice about MkDocs 2.0 (from 9.8.0, about
+Material's own end of life) on every `mkdocs` run; the docs workflow turns it off, and so can
+you:
+
+```bash
+NO_MKDOCS_2_WARNING=1 mkdocs build --strict
+```
+
+---
+
 ## Generating a PDF
 
 The docs include a combined print page (via `mkdocs-print-site-plugin`) that can be printed to PDF directly from Chrome — no extra tools required.

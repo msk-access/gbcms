@@ -1179,3 +1179,13 @@ def test_the_docs_toolchain_is_pinned_below_mkdocs_2():
     deploy = (ROOT / ".github" / "workflows" / "deploy-docs.yml").read_text()
     assert "--group docs" in deploy
     assert not re.search(r"pip install[^\n]*mkdocs", deploy)
+
+
+def test_the_docs_build_turns_off_materials_mkdocs_2_notice():
+    """Material 9.7.2 and later print a MkDocs 2.0 notice on every `mkdocs` run; with
+    mkdocs pinned below 2 it says nothing new, so the docs job sets Material's switch
+    for every step (the PR's `mkdocs build --strict` included)."""
+    import yaml
+
+    deploy = yaml.safe_load((ROOT / ".github" / "workflows" / "deploy-docs.yml").read_text())
+    assert deploy["jobs"]["build"]["env"]["NO_MKDOCS_2_WARNING"] == "1"
