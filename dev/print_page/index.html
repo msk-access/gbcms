@@ -18948,13 +18948,22 @@ DEBUG (Python and Rust — Rust records are forwarded through <code>pyo3-log</co
 <a id="__codelineno-12-2" name="__codelineno-12-2" href="#development-developer-guide-__codelineno-12-2"></a>gbcms<span class="w"> </span>dna<span class="w"> </span>--trace<span class="w"> </span>...<span class="w">     </span><span class="c1"># per-read classification diagnostics (slow)</span>
 </code></pre></div>
 <hr>
+<h2 id="development-developer-guide-building-the-docs">Building the docs<a class="headerlink" href="#development-developer-guide-building-the-docs" title="Permanent link">¶</a></h2>
+<p>The site's tools are pyproject's <code>docs</code> dependency group (the <code>dev</code> group includes it).
+MkDocs stays below 2.0, which is incompatible with Material and this site's config.
+Material for MkDocs 9.7.2 and later still print a notice about MkDocs 2.0 (from 9.8.0, about
+Material's own end of life) on every <code>mkdocs</code> run; the docs workflow turns it off, and so can
+you:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-13-1" name="__codelineno-13-1" href="#development-developer-guide-__codelineno-13-1"></a><span class="nv">NO_MKDOCS_2_WARNING</span><span class="o">=</span><span class="m">1</span><span class="w"> </span>mkdocs<span class="w"> </span>build<span class="w"> </span>--strict
+</code></pre></div>
+<hr>
 <h2 id="development-developer-guide-generating-a-pdf">Generating a PDF<a class="headerlink" href="#development-developer-guide-generating-a-pdf" title="Permanent link">¶</a></h2>
 <p>The docs include a combined print page (via <code>mkdocs-print-site-plugin</code>) that can be printed to PDF directly from Chrome — no extra tools required.</p>
 <p><strong>Steps:</strong></p>
 <ol>
 <li>
 <p>Start the docs server:
-   </p><div class="highlight"><pre><span></span><code><a id="__codelineno-13-1" name="__codelineno-13-1" href="#development-developer-guide-__codelineno-13-1"></a>mkdocs<span class="w"> </span>serve
+   </p><div class="highlight"><pre><span></span><code><a id="__codelineno-14-1" name="__codelineno-14-1" href="#development-developer-guide-__codelineno-14-1"></a>mkdocs<span class="w"> </span>serve
 </code></pre></div>
 </li>
 <li>
@@ -18962,12 +18971,12 @@ DEBUG (Python and Rust — Rust records are forwarded through <code>pyo3-log</co
 </li>
 <li>
 <p>Open the DevTools console (<code>F12</code> → Console tab) and paste:
-   </p><div class="highlight"><pre><span></span><code><a id="__codelineno-14-1" name="__codelineno-14-1" href="#development-developer-guide-__codelineno-14-1"></a><span class="nb">document</span><span class="p">.</span><span class="nx">querySelectorAll</span><span class="p">(</span>
-<a id="__codelineno-14-2" name="__codelineno-14-2" href="#development-developer-guide-__codelineno-14-2"></a><span class="w">  </span><span class="s1">'.md-sidebar,.md-header,.md-footer,.md-tabs,.md-source-file'</span>
-<a id="__codelineno-14-3" name="__codelineno-14-3" href="#development-developer-guide-__codelineno-14-3"></a><span class="p">).</span><span class="nx">forEach</span><span class="p">(</span><span class="nx">e</span><span class="w"> </span><span class="p">=&gt;</span><span class="w"> </span><span class="nx">e</span><span class="p">.</span><span class="nx">remove</span><span class="p">());</span>
-<a id="__codelineno-14-4" name="__codelineno-14-4" href="#development-developer-guide-__codelineno-14-4"></a><span class="nb">document</span><span class="p">.</span><span class="nx">querySelectorAll</span><span class="p">(</span><span class="s1">'.md-content'</span><span class="p">).</span><span class="nx">forEach</span><span class="p">(</span><span class="nx">e</span><span class="w"> </span><span class="p">=&gt;</span><span class="w"> </span><span class="p">{</span>
-<a id="__codelineno-14-5" name="__codelineno-14-5" href="#development-developer-guide-__codelineno-14-5"></a><span class="w">  </span><span class="nx">e</span><span class="p">.</span><span class="nx">style</span><span class="p">.</span><span class="nx">maxWidth</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s1">'100%'</span><span class="p">;</span><span class="w"> </span><span class="nx">e</span><span class="p">.</span><span class="nx">style</span><span class="p">.</span><span class="nx">padding</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s1">'0 1cm'</span><span class="p">;</span>
-<a id="__codelineno-14-6" name="__codelineno-14-6" href="#development-developer-guide-__codelineno-14-6"></a><span class="p">});</span>
+   </p><div class="highlight"><pre><span></span><code><a id="__codelineno-15-1" name="__codelineno-15-1" href="#development-developer-guide-__codelineno-15-1"></a><span class="nb">document</span><span class="p">.</span><span class="nx">querySelectorAll</span><span class="p">(</span>
+<a id="__codelineno-15-2" name="__codelineno-15-2" href="#development-developer-guide-__codelineno-15-2"></a><span class="w">  </span><span class="s1">'.md-sidebar,.md-header,.md-footer,.md-tabs,.md-source-file'</span>
+<a id="__codelineno-15-3" name="__codelineno-15-3" href="#development-developer-guide-__codelineno-15-3"></a><span class="p">).</span><span class="nx">forEach</span><span class="p">(</span><span class="nx">e</span><span class="w"> </span><span class="p">=&gt;</span><span class="w"> </span><span class="nx">e</span><span class="p">.</span><span class="nx">remove</span><span class="p">());</span>
+<a id="__codelineno-15-4" name="__codelineno-15-4" href="#development-developer-guide-__codelineno-15-4"></a><span class="nb">document</span><span class="p">.</span><span class="nx">querySelectorAll</span><span class="p">(</span><span class="s1">'.md-content'</span><span class="p">).</span><span class="nx">forEach</span><span class="p">(</span><span class="nx">e</span><span class="w"> </span><span class="p">=&gt;</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-15-5" name="__codelineno-15-5" href="#development-developer-guide-__codelineno-15-5"></a><span class="w">  </span><span class="nx">e</span><span class="p">.</span><span class="nx">style</span><span class="p">.</span><span class="nx">maxWidth</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s1">'100%'</span><span class="p">;</span><span class="w"> </span><span class="nx">e</span><span class="p">.</span><span class="nx">style</span><span class="p">.</span><span class="nx">padding</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s1">'0 1cm'</span><span class="p">;</span>
+<a id="__codelineno-15-6" name="__codelineno-15-6" href="#development-developer-guide-__codelineno-15-6"></a><span class="p">});</span>
 </code></pre></div>
 </li>
 <li>
