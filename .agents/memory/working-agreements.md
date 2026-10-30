@@ -64,3 +64,7 @@ suggest switching the session model. `CLAUDE.md` carries the short form.
 
 - Comments and log strings never cite ticket labels (`.agents/rules/code-quality.md`).
 - A failing test's expectation is never edited without telling the operator first (`AGENTS.md`).
+- **Every failed task is reported** (2026-10-30: "when i see failed task should i probe you"). When a
+  background task, HPC job or agent run fails, the next message says what failed and what follows:
+  fixed and rerun, stopped on purpose, a red-first test failing as intended, or still open. The
+  operator should never need to ask.
