@@ -13,7 +13,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   and the judge's work space now share one budget of 128 MB per thread. Past it a row caches
   nothing more and its later reads are judged afresh, with the same calls; work space past a
   quarter of the budget is freed at a row's end. Counts are unchanged. On HPC the deepest HG002
-  arm's peak memory falls from 2.8 to 1.8 GB for 0.9% more CPU; patient data types are within
+  arm's peak memory falls from 2.8 to 1.7 GB for 1.8% more CPU; patient data types are within
   2% of no limit at every budget. `docs/proposals/sequence-judge.md` §10.
 
 ### Fixed — the sequence judge keeps a read's path steps only for the states its call can examine (#304)

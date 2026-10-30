@@ -683,7 +683,10 @@ placement, bases). Cost within 2× develop. The HPC gate.
      they reach it, a row adds no more entries and its later reads are judged afresh (the same
      calls; the time a cache saves forgone). A read that alone needs more work space than the
      budget still gets it. A row's caches are freed at its end, and so is work space past a
-     quarter of the budget. `GBCMS_JUDGE_BUDGET_MB` sets the budget for measurement only
+     quarter of the budget. The bytes counted are those held: the work space's arrays and
+     the band each workspace keeps for its path (a band states share, once); each cache's hash
+     table whole (its buckets are allocated as it grows); and a kept programme as later reads
+     alike grow it. `GBCMS_JUDGE_BUDGET_MB` sets the budget for measurement only
      (`none`: no limit); `GBCMS_JUDGE_CACHE_TRACE=1` traces each row's cache at its end.
    - **Count-neutral.** A test judges a deletion's reads with no limit, with nothing cached and
      with budgets that close the caches part way: every call is the same. On every arm the
@@ -711,7 +714,12 @@ placement, bases). Cost within 2× develop. The HPC gate.
      limit's CPU on every data type (HG002 nocl 1.009, sub 1.013, tr 1.012, c246 1.002; the
      patient types within 1%, the shortest ACCESS runs, under 1 s of CPU, within 2.1%), and
      cuts HG002 peaks from 2,805 to 1,788 MB (nocl), 1,121 to 748 (sub), 545 to 397 (c246) and
-     460 to 329 MB (tr).
+     460 to 329 MB (tr). With the bytes counted as held (the bands, the tables whole, a kept
+     programme's growth; Greptile's findings on #379) and on develop dc215a60 (HPC, HG002, runs
+     haK128 against haKnone): nocl 1.018 (2,833 to 1,657 MB), sub 1.009 (1,111 to 733), c246
+     1.008 (513 to 390), tr 1.005 (458 to 340), delins 1.009; the compound-het arms, about 4 s
+     of CPU, vary by up to 5% as at every budget before. Calls are byte-identical at 128 MB and
+     with nothing cached on every arm (runs haS and ha0).
    - **Out of memory on HPC, from the harness.** Two gate-subset runs at one thread went over the
      4 GB their task asked for. gbcms itself peaks at about 250 MB there; the harness's runner
      held the traced output in its Python parent. The HPC kit's runner now streams it.
