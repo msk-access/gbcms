@@ -187,14 +187,15 @@ impl GraphBuilder {
             }
         }
         // each row's length change once, for the band's half-width
-        let mut shifts: Vec<(i64, i64, i64)> = Vec::new();
+        let (mut shifts, mut grows): (Vec<(i64, i64, i64)>, Vec<bool>) = (Vec::new(), Vec::new());
         let mut seen = std::collections::BTreeSet::new();
         for seg in &segments {
             if let Some(r) = seg.row {
                 if seen.insert(r) {
-                    let d = ((seg.after - seg.first) as i64 - (seg.span.1 - seg.span.0)).abs();
-                    if d > 0 {
-                        shifts.push((seg.span.0, seg.span.1, d));
+                    let d = (seg.after - seg.first) as i64 - (seg.span.1 - seg.span.0);
+                    if d != 0 {
+                        shifts.push((seg.span.0, seg.span.1, d.abs()));
+                        grows.push(d > 0);
                     }
                 }
             }
@@ -206,7 +207,7 @@ impl GraphBuilder {
         }
         // every predecessor laid out before its base (edges run forward)
         let topological = (0..n).all(|v| preds[pred_off[v] as usize..pred_off[v + 1] as usize].iter().all(|&u| (u as usize) < v));
-        Graph { segments, bases, coord, seg_of, pred_off, preds, succ_off: succ_count, succs, shifts, end_max, topological }
+        Graph { segments, bases, coord, seg_of, pred_off, preds, succ_off: succ_count, succs, shifts, grows, end_max, topological }
     }
 }
 
@@ -224,6 +225,8 @@ pub(crate) struct Graph {
     succs: Vec<u32>,
     /// Per row the graph holds (once), its REF span and the bases it changes the length by.
     shifts: Vec<(i64, i64, i64)>,
+    /// Per entry of `shifts`, whether the row lengthens the haplotype (an insertion).
+    grows: Vec<bool>,
     /// Per segment (in order), the furthest end of it and those before it.
     end_max: Vec<i64>,
     /// Whether every base's predecessors lie before it: [`run`] fills a column from the
@@ -299,6 +302,7 @@ impl Graph {
             && self.succ_off == other.succ_off
             && self.succs == other.succs
             && self.shifts == other.shifts
+            && self.grows == other.grows
             && self.end_max == other.end_max;
         alike.then(|| self.bases.iter().zip(&other.bases).position(|(a, b)| a != b).unwrap_or(self.bases.len()))
     }
@@ -1040,10 +1044,9 @@ fn edge_cell(g: &Graph, band: &GraphBand, v: usize, i: u32, lo: u32, hi: u32, n:
 }
 
 /// The lowest score a band of `slack` answers for by its edge alone, for `read` (as the linear
-/// scorer's: [`score::stand_floor`], the read's free shift along a repeat counted; under
-/// [`LongRule::Floor`] the larger of it and `far`, [`floor_shift`]).
-fn floor_for(slack: i64, read: &GraphRead, far: i64) -> i32 {
-    score::stand_floor(slack, read.free_shift.max(far))
+/// scorer's: [`score::stand_floor`], the read's free shift along a repeat counted).
+fn floor_for(slack: i64, read: &GraphRead) -> i32 {
+    score::stand_floor(slack, read.free_shift)
 }
 
 /// Whether one of the read's exact k-mers (at its start, middle and end, unmasked) lies
@@ -1192,26 +1195,35 @@ pub(crate) struct GraphRead<'r> {
     /// The longest tandem-repeat period in its reach: how far its own placement may sit off its
     /// best alignment at no cost, which lowers what a band answers for ([`score::stand_floor`]).
     pub(crate) free_shift: i64,
-    /// Measurement only (`GBCMS_JUDGE_BAND=full`): no band; the full programme over its reach.
+    /// Measurement only (`GBCMS_JUDGE_BAND=full`, or `longinsall` where a state skips its bands):
+    /// no band; the full programme over its reach.
     pub(crate) full: bool,
-    /// Measurement only (`GBCMS_JUDGE_BAND=longfull` or `longfloor`): what a row's length change
-    /// inside the read's reach but outside the band's widening window does ([`LongRule`]).
+    /// Measurement only (`GBCMS_JUDGE_BAND=longfull`, `longins` or `longinsall`): what a long
+    /// listed length change inside the read's reach but outside the band's widening window does
+    /// ([`LongRule`]).
     pub(crate) long: LongRule,
 }
 
-/// Measurement only (#369): a row's length change (a listed long insertion, the class's case; a
-/// deletion alike) inside a read's reach (its span and its length each side) but outside the
-/// window its band widens for (the slack and two bases each side) can hold the read's best path,
-/// which the band then misses.
+/// Measurement only (#369): a listed long insertion inside a read's reach (its span and its
+/// length each side) but outside the window its band widens for (the slack and two bases each
+/// side) can hold the read's best path, which the band then misses: a read whose body lies in a
+/// copy of its own sequence inside the insertion (an expanded repeat, a duplication). All of an
+/// insertion's bases stand at its anchor's coordinate, so a near one widens the band already, and
+/// a path to a far deletion pays the gap to it and gains nothing.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub(crate) enum LongRule {
     /// As before: the band ignores it.
     #[default]
     Off,
-    /// Option 2: a state with one longer than the band's slack goes straight to the full programme.
+    /// `longfull` (option 2 as first measured): a state with a length change past the band's
+    /// window longer than its slack, an insertion or a deletion, goes straight to the full programme.
     Full,
-    /// Option 3: the floor counts it as a free shift, as it counts a repeat's period.
-    Floor,
+    /// `longins` (option 2 on insertions): a state with such an insertion goes straight to the full
+    /// programme.
+    Ins,
+    /// `longinsall` (the whole read): where any state of the site has one, every state of the
+    /// read runs the full programme ([`GraphRead::full`], set by the site).
+    InsAll,
 }
 
 /// Half-width of the wider band tried before the full programme (past the length changes).
@@ -1240,35 +1252,35 @@ fn near_shift(g: &Graph, read: &GraphRead) -> i64 {
     }
 }
 
-/// Measurement only (#369, [`LongRule`]): the longest length change of a row in the read's
-/// reach ([`bands`]) but outside the window its band widens for ([`near_shift`]); 0 under
-/// [`LongRule::Off`].
-fn far_shift(g: &Graph, read: &GraphRead) -> i64 {
-    if read.long == LongRule::Off || g.shifts.is_empty() {
-        return 0;
+/// Measurement only (#369): the rows' length changes in the read's reach ([`bands`]) but
+/// outside the window its band widens for ([`near_shift`]): per row its REF span and its change
+/// (positive: an insertion; negative: a deletion).
+pub(crate) fn far_changes(g: &Graph, read: &GraphRead) -> Vec<(i64, i64, i64)> {
+    if g.shifts.is_empty() {
+        return Vec::new();
     }
     let l = read.seq.len() as i64;
     let shifts = near_shift(g, read);
     let by = BAND_SLACK + 2 + 2 * shifts;
     let trim = (read.span.0 - l - shifts, read.span.1 + l + shifts);
     let near = |s: i64, e: i64| s < read.span.1 + by && e > read.span.0 - by;
-    g.shifts.iter().filter(|&&(s, e, _)| s < trim.1 && e > trim.0 && !near(s, e)).map(|x| x.2).max().unwrap_or(0)
+    g.shifts
+        .iter()
+        .zip(&g.grows)
+        .filter(|(&(s, e, _), _)| s < trim.1 && e > trim.0 && !near(s, e))
+        .map(|(&(s, e, d), &grows)| (s, e, if grows { d } else { -d }))
+        .collect()
 }
 
-/// Measurement only (#369, option 2): whether the read goes straight to the full programme in
-/// `g`, a length change past its band's window longer than the band's slack.
-fn skips_bands(g: &Graph, read: &GraphRead) -> bool {
-    read.long == LongRule::Full && far_shift(g, read) > BAND_SLACK
-}
-
-/// Measurement only (#369, option 3): the length change past the read's band's window that its
-/// floor counts as a free shift in `g` (0 but under [`LongRule::Floor`]).
-fn floor_shift(g: &Graph, read: &GraphRead) -> i64 {
-    if read.long == LongRule::Floor {
-        far_shift(g, read)
-    } else {
-        0
+/// Measurement only (#369): whether the read goes straight to the full programme in `g` under
+/// its [`LongRule`]: a length change past its band's window longer than the band's slack (an
+/// insertion; under [`LongRule::Full`] a deletion too).
+pub(crate) fn skips_bands(g: &Graph, read: &GraphRead) -> bool {
+    if read.long == LongRule::Off || g.shifts.is_empty() {
+        return false;
     }
+    let deletions = read.long == LongRule::Full;
+    far_changes(g, read).iter().any(|&(_, _, d)| d > BAND_SLACK || (deletions && -d > BAND_SLACK))
 }
 
 /// The read's best score in `g`: in the band where it stands, else the wider band where
@@ -1345,7 +1357,7 @@ pub(crate) fn decided_states<M: ErrorModel>(m: &M, read: &GraphRead, graphs: &[&
             };
             let stands = match step {
                 0 | 1 => {
-                    let floor = floor_for([BAND_SLACK, WIDE_SLACK][step], read, floor_shift(g, read));
+                    let floor = floor_for([BAND_SLACK, WIDE_SLACK][step], read);
                     let clipped = if g.topological { r.score >= floor && touches_edge(m, read.seq, g, &band, ws) } else { r.clipped };
                     !clipped && r.score >= floor && (r.score == 0 || !copy_off_band(read.seq, g, &band))
                 }
@@ -1371,10 +1383,9 @@ pub(crate) fn decided<M: ErrorModel>(m: &M, read: &GraphRead, g: &Graph, ws: &mu
     }
     let (trim, halves) = bands(g, read);
     let steps = if read.full || skips_bands(g, read) { 0 } else { 2 };
-    let far = floor_shift(g, read);
     for (half, slack) in halves.into_iter().zip([BAND_SLACK, WIDE_SLACK]).take(steps) {
         let band = GraphBand::new(g, &read.rp, Some(half), trim);
-        let floor = floor_for(slack, read, far);
+        let floor = floor_for(slack, read);
         let r = if g.topological { run_tracked(m, read.seq, g, &band, ws, floor) } else { run_reference::<M, true, false>(m, read.seq, g, &band, ws) };
         if !r.clipped && r.score >= floor && (r.score == 0 || !copy_off_band(read.seq, g, &band)) {
             if g.topological {
@@ -1889,7 +1900,7 @@ mod tests {
         for (half, slack) in halves.into_iter().zip([BAND_SLACK, WIDE_SLACK]).take(steps) {
             let band = GraphBand::new(g, &read.rp, Some(half), trim);
             let r = run_reference::<ShortReads, true, true>(&ShortReads, read.seq, g, &band, &mut ws);
-            if !r.clipped && r.score >= floor_for(slack, read, floor_shift(g, read)) && (r.score == 0 || !copy_off_band(read.seq, g, &band)) {
+            if !r.clipped && r.score >= floor_for(slack, read) && (r.score == 0 || !copy_off_band(read.seq, g, &band)) {
                 return (r.score, Some(half), traceback_reference(g, &band, &ws, r));
             }
         }

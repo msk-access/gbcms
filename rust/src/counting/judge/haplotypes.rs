@@ -453,8 +453,8 @@ pub(crate) struct Site {
     /// Measurement only (`GBCMS_JUDGE_BAND=full`): every read on the full programme over its
     /// reach, no band (the yardstick of the band's rule).
     pub(crate) band_full: bool,
-    /// Measurement only (`GBCMS_JUDGE_BAND=longfull` or `longfloor`, #369): a row's length change
-    /// in a read's reach past its band's window ([`graph::LongRule`]).
+    /// Measurement only (`GBCMS_JUDGE_BAND=longfull`, `longins` or `longinsall`, #369): a long
+    /// listed length change in a read's reach past its band's window ([`graph::LongRule`]).
     pub(crate) long_rule: graph::LongRule,
     /// What a confident base of the other allele, or a third, at X's telling bases does to
     /// a call ([`ref_base_rule`]).
@@ -2543,7 +2543,8 @@ impl Site {
             band_full: std::env::var("GBCMS_JUDGE_BAND").is_ok_and(|v| v == "full"),
             long_rule: match std::env::var("GBCMS_JUDGE_BAND").as_deref() {
                 Ok("longfull") => graph::LongRule::Full,
-                Ok("longfloor") => graph::LongRule::Floor,
+                Ok("longins") => graph::LongRule::Ins,
+                Ok("longinsall") => graph::LongRule::InsAll,
                 _ => graph::LongRule::Off,
             },
             rows,
@@ -2877,7 +2878,78 @@ impl Site {
         let first = read.refpos.iter().copied().min().unwrap_or(read.ref_start).min(read.ref_start);
         let end = read.refpos.iter().copied().max().unwrap_or(read.ref_end).max(read.ref_end);
         let span = (first - self.start, end - self.start);
-        GraphRead { seq: &read.seq, rp, span, free_shift: self.free_shift(read), full: self.band_full, long: self.long_rule }
+        let mut gr = GraphRead { seq: &read.seq, rp, span, free_shift: self.free_shift(read), full: self.band_full, long: self.long_rule };
+        // measurement only (#369, the whole read): where any state's graph skips its bands, all do
+        if self.long_rule == graph::LongRule::InsAll && !gr.full {
+            gr.full = self.graphs.iter().any(|g| graph::skips_bands(&g.graph, &gr));
+        }
+        gr
+    }
+
+    /// Measurement only (#369): per state whose graph holds a length change in the read's reach past
+    /// its band's window, those changes (1-based REF span, the change: + an insertion, - a deletion)
+    /// and whether the state skips its bands; X by its position and allele lengths, the read by its
+    /// name and REF span.
+    pub(crate) fn trace_far(&self, read: &ReadView, gr: &GraphRead) {
+        let x = &self.rows[0];
+        for (k, st) in self.graphs.iter().enumerate() {
+            let far = graph::far_changes(&st.graph, gr);
+            if far.is_empty() {
+                continue;
+            }
+            let list: Vec<String> = far.iter().map(|&(s, e, d)| format!("{}-{}:{:+}", self.start + s + 1, self.start + e, d)).collect();
+            log::trace!(
+                "judge far {} {}/{} read={} span={}-{} state={k} class={:?} skips={} whole={} far={}",
+                x.pos + 1,
+                x.ref_al.len(),
+                x.alt_al.len(),
+                String::from_utf8_lossy(&read.name),
+                self.start + gr.span.0 + 1,
+                self.start + gr.span.1,
+                st.class,
+                graph::skips_bands(&st.graph, gr),
+                gr.full,
+                list.join(","),
+            );
+        }
+    }
+
+    /// Measurement only (#369): whether the linear aligner aligns `read` with no band under the
+    /// site's [`graph::LongRule`], as the graph scorer skips its bands: a listed insertion longer
+    /// than the band's slack (a deletion too under [`graph::LongRule::Full`]) among `rows` (every
+    /// row of the site for the whole read) inside the read's reach (its span and its length each
+    /// side) but outside the window its band widens for (the slack and two bases, and twice the
+    /// rows' length changes there, each side).
+    pub(crate) fn long_skips(&self, read: &ReadView, rows: &[usize]) -> bool {
+        if self.long_rule == graph::LongRule::Off {
+            return false;
+        }
+        let all: Vec<usize>;
+        let rows = if self.long_rule == graph::LongRule::InsAll {
+            all = (0..self.rows.len()).collect();
+            &all[..]
+        } else {
+            rows
+        };
+        let change = |r: usize| self.rows[r].alt_al.len() as i64 - self.rows[r].ref_al.len() as i64;
+        let first = read.refpos.iter().copied().min().unwrap_or(read.ref_start).min(read.ref_start) - self.start;
+        let end = read.refpos.iter().copied().max().unwrap_or(read.ref_end).max(read.ref_end) - self.start;
+        let near = |r: usize, by: i64| self.spans[r].0 < end + by && self.spans[r].1 > first - by;
+        let mut shifts = 0;
+        loop {
+            let more: i64 = rows.iter().filter(|&&r| near(r, BAND_SLACK + 2 + 2 * shifts)).map(|&r| change(r).abs()).sum();
+            if more == shifts {
+                break;
+            }
+            shifts = more;
+        }
+        let l = read.seq.len() as i64;
+        let deletions = self.long_rule == graph::LongRule::Full;
+        rows.iter().any(|&r| {
+            let (s, e, d) = (self.spans[r].0, self.spans[r].1, change(r));
+            let in_reach = s < end + l + shifts && e > first - l - shifts;
+            in_reach && !near(r, BAND_SLACK + 2 + 2 * shifts) && (d > BAND_SLACK || (deletions && -d > BAND_SLACK))
+        })
     }
 
     /// The longest tandem-repeat period in the read's reach (its reference span, soft clips
@@ -3107,8 +3179,9 @@ impl<'r> Scorer<'r> {
     pub(crate) fn align(&self, site: &Site, hap: &Hap) -> (Alignment, usize) {
         let near = self.near(site, hap);
         let (seq, a, band) = self.prepare(site, hap, &near);
-        // measurement only (GBCMS_JUDGE_BAND=full): no band here either
-        (score::align(&self.read.seq, seq, (!site.band_full).then_some(&band)), a)
+        // measurement only (GBCMS_JUDGE_BAND=full, or a long insertion past the band, #369): no band
+        let banded = !site.band_full && !site.long_skips(self.read, &hap.rows);
+        (score::align(&self.read.seq, seq, banded.then_some(&band)), a)
     }
 
     /// Tests only: [`Scorer::align`] with the band's repeat forced to `free` (0: the floor
@@ -3605,46 +3678,277 @@ mod band_tests {
         assert!(aligned_scores(&site, &read, |sc, hap| sc.align(&site, hap)).iter().all(|&(a, f)| a == f), "linear: no band");
     }
 
-    #[test]
-    fn a_read_from_a_long_listed_insertion_past_its_band_reaches_its_best_score() {
-        // The class of HG002 3:38084467 (a VNTR; listed insertions of 2,178 and 4,071 bases 112
-        // bases on; one read ALT 0 and REF -56 in its band, REF 0 with none): a read whose bases
-        // are a copy of a stretch inside a long listed insertion (but for a base in each of the
-        // copy check's three pieces, so that check finds no copy), placed by its aligner on the
-        // stretch's reference copy with that copy's two gaps, ends short of the insertion by
-        // more than the window its band widens for (the slack and two bases each side), within
-        // its own length. The band, not widened for the insertion, stands on the reference
-        // copy's alignment; the full programme over the read's reach runs it through the
-        // insertion. Develop's rule stands on the worse score; under either option every
-        // state's score is the full programme's.
-        let other = |b: u8| if b == b'A' { b'C' } else { b'A' };
-        let c = random_seq(700, 7101);
-        let r: Vec<u8> = c[200..320].to_vec();
-        // the read's stretch: the reference copy with 3 bases deleted twice
-        let copy: Vec<u8> = [&r[..40], &r[43..80], &r[83..]].concat();
-        let seq: Vec<u8> = copy[10..110].to_vec();
-        // the insertion's copy: the read's stretch, a base changed in each copy-check piece
-        let mut held = copy.clone();
-        for i in [10 + 5, 10 + 50, 10 + 95] {
-            held[i] = other(held[i]);
+    /// A read of #369's class: its 100 bases written by its aligner on a planted copy of them in
+    /// the reference (three bases more at two places: 30M3D37M3D33M, `clip` bases of it
+    /// soft-clipped at its start and end), while the haplotype with a listed insertion of `len`
+    /// bases holds them `inside` bases into the insertion (100: a copy inside it; fewer: the
+    /// insertion's first or last bases, the rest on the reference beside its anchor). The
+    /// insertion's segment starts `gap` bases past the end of the read's REF span as the band
+    /// reads it (`before`: ends `gap` bases ahead of its start): 17 is inside the window the band
+    /// widens for, 18 past it; 99 inside the read's reach, 100 past it. `blind`: 0 the insertion's
+    /// copy is the read's bases (the copy check sees it); 1 every 7th of the read's bases masked
+    /// (from its 4th); 2 a base changed in each of the copy check's three pieces in the
+    /// insertion's copy. X: an SNV on the read's aligned base nearest the insertion (within a
+    /// read's length of it, a context row).
+    #[derive(Debug, Clone, Copy)]
+    struct LongShape {
+        before: bool,
+        gap: i64,
+        len: usize,
+        inside: usize,
+        clip: (u32, u32),
+        blind: u8,
+    }
+
+    const LONG_Q: usize = 400;
+
+    /// The contig, X, the listed insertion and the read of a [`LongShape`].
+    fn long_shape(sh: LongShape, seed: u64) -> (Vec<u8>, Row, Row, ReadView) {
+        let other = |b: u8| *b"ACGT".iter().find(|&&x| x != b).unwrap();
+        let mut c = random_seq(1200, seed);
+        let s = random_seq(100, seed ^ 0x5eed);
+        let mut held = s.clone();
+        if sh.blind == 2 {
+            for i in [5, 50, 95] {
+                held[i] = other(held[i]);
+            }
         }
-        let ins: Vec<u8> = [&held[..], &held[..]].concat();
-        let p = 345usize;
+        // the decoy: the read's bases with three more after its 30th and 67th
+        let q = LONG_Q;
+        let decoy: Vec<u8> = [&s[..30], &random_seq(3, seed ^ 1)[..], &s[30..67], &random_seq(3, seed ^ 2)[..], &s[67..]].concat();
+        c[q..q + 106].copy_from_slice(&decoy);
+        let (c0, c1) = sh.clip;
+        let mut cigar = Vec::new();
+        if c0 > 0 {
+            cigar.push(Cigar::SoftClip(c0));
+        }
+        cigar.extend([Cigar::Match(30 - c0), Cigar::Del(3), Cigar::Match(37), Cigar::Del(3), Cigar::Match(33 - c1)]);
+        if c1 > 0 {
+            cigar.push(Cigar::SoftClip(c1));
+        }
+        let mut quals = vec![30u8; 100];
+        if sh.blind == 1 {
+            // from its 4th base (X's bases stay readable); each copy-check piece holds some
+            (3..100).step_by(7).for_each(|i| quals[i] = 2);
+        }
+        // the read's REF span as the band reads it (soft clips extrapolated): [q, q + 106)
+        let (lo, hi) = (q as i64, q as i64 + 106);
+        let m = sh.inside.min(sh.len);
+        let filler = random_seq(sh.len.max(m) - m + 20, seed ^ 3);
+        let (p, ins) = if !sh.before {
+            // the insertion after the anchor p (its segment's span starts there)
+            let p = (hi + sh.gap) as usize;
+            let ins: Vec<u8> = if m == 100 {
+                [&filler[..10], &held[..], &filler[10..10 + sh.len - 110]].concat()
+            } else {
+                // the read's first 100 - m bases on the reference up to the anchor, the rest
+                // the insertion's first bases
+                c[p + 1 - (100 - m)..=p].copy_from_slice(&held[..100 - m]);
+                [&held[100 - m..], &filler[..sh.len - m]].concat()
+            };
+            (p, ins)
+        } else {
+            // the insertion's segment ends at p + 1, `gap` bases ahead of the read's span
+            let p = (lo - sh.gap - 1) as usize;
+            let ins: Vec<u8> = if m == 100 {
+                [&filler[..10], &held[..], &filler[10..10 + sh.len - 110]].concat()
+            } else {
+                // the insertion's last m bases the read's first, the rest on the reference after
+                c[p + 1..p + 1 + (100 - m)].copy_from_slice(&held[m..]);
+                [&filler[..sh.len - m], &held[..m]].concat()
+            };
+            (p, ins)
+        };
         let listed = Row::new(p as i64, &c[p..=p], &[&c[p..=p], &ins[..]].concat());
-        let x = Row::new(300, &c[300..301], &[other(c[300])]);
-        let cigar = [Cigar::Match(30), Cigar::Del(3), Cigar::Match(37), Cigar::Del(3), Cigar::Match(33)];
-        let read = ReadView::new(&seq, &[30; 100], 210, &cigar, (0, 100), 20).unwrap();
+        let xp = if sh.before { q + c0 as usize } else { q + 105 - c1 as usize };
+        let x = Row::new(xp as i64, &c[xp..=xp], &[other(c[xp])]);
+        let read = ReadView::new(&s, &quals, (q + c0 as usize) as i64, &cigar, (0, 100), 20).unwrap();
+        (c, x, listed, read)
+    }
+
+    /// The read's call from per-state scores (the best per class, [`super::super::decide::decide`]).
+    fn call_of(site: &Site, scores: &[i32]) -> super::super::decide::Call {
+        let mut best: [Option<i32>; 3] = [None; 3];
+        for (g, &s) in site.graphs.iter().zip(scores) {
+            let b = &mut best[g.class as usize];
+            *b = Some(b.map_or(s, |v| v.max(s)));
+        }
+        super::super::decide::decide(best)
+    }
+
+    /// Per rule, every state's decided score against its full programme's, whether any state
+    /// skips its bands, and the decided and full calls.
+    #[allow(clippy::type_complexity)]
+    fn long_outcome(sh: LongShape, seed: u64, rule: graph::LongRule) -> (Vec<(i32, i32)>, Vec<(i32, i32)>, bool, super::super::decide::Call, super::super::decide::Call, Vec<Vec<(i64, i64, i64)>>) {
+        let (c, x, listed, read) = long_shape(sh, seed);
         let cand = Candidates { listed: vec![listed.clone()], ..Candidates::default() };
-        let mut site = Site::build(x.clone(), &cand, (0, c.clone()), std::slice::from_ref(&read)).unwrap();
-        assert!(site.rows.contains(&listed), "the insertion is a context row");
-        let before = band_scores(&site, &read);
-        assert!(before.iter().any(|&(d, f)| d < f), "develop's rule: a state's band stands short: {before:?}");
-        for rule in [graph::LongRule::Full, graph::LongRule::Floor] {
+        let mut site = Site::build(x, &cand, (0, c), std::slice::from_ref(&read)).unwrap();
+        assert!(site.rows.contains(&listed), "{sh:?}: the insertion is a context row");
+        site.long_rule = rule;
+        let gr = site.graph_read(&read);
+        let single = band_scores(&site, &read);
+        let batch = decided_scores(&site, &gr);
+        let skips = site.graphs.iter().any(|g| graph::skips_bands(&g.graph, &gr));
+        let far = site.graphs.iter().map(|g| graph::far_changes(&g.graph, &gr)).collect();
+        let decided: Vec<i32> = batch.iter().map(|b| b.0).collect();
+        let full: Vec<i32> = batch.iter().map(|b| b.1).collect();
+        (single, batch, skips, call_of(&site, &decided), call_of(&site, &full), far)
+    }
+
+    /// The class's checks on one shape: under develop's rule a state's band stands short of its
+    /// full programme where `miss` (and the call differs from the full programme's); under each
+    /// option it skips its bands where `fires`, and then every state's decided score and the call
+    /// are the full programme's.
+    fn check_long(sh: LongShape, fires: bool, miss: bool) {
+        use graph::LongRule::{InsAll, Ins, Off};
+        let (single, batch, skips, call, full_call, far) = long_outcome(sh, 7101, Off);
+        assert!(!skips, "{sh:?}: develop never skips");
+        assert_eq!(single, batch, "{sh:?}: single and batch scoring agree");
+        let short = batch.iter().any(|&(d, f)| d < f);
+        assert_eq!(short, miss, "{sh:?}: develop's band stands short: {batch:?} (far {far:?})");
+        assert_eq!(call != full_call, miss, "{sh:?}: develop's call {call:?} against the full programme's {full_call:?}");
+        for rule in [Ins, InsAll] {
+            let (single, batch, skips, call, full_call, far) = long_outcome(sh, 7101, rule);
+            assert_eq!(skips, fires, "{sh:?} {rule:?}: skips (far {far:?})");
+            assert_eq!(single, batch, "{sh:?} {rule:?}: single and batch scoring agree");
+            if fires {
+                assert!(batch.iter().all(|&(d, f)| d == f), "{sh:?} {rule:?}: {batch:?}");
+                assert_eq!(call, full_call, "{sh:?} {rule:?}: the call");
+            } else {
+                assert_eq!(batch.iter().any(|&(d, f)| d < f), miss, "{sh:?} {rule:?}: unchanged where it does not fire: {batch:?}");
+            }
+        }
+    }
+
+    const LONG: LongShape = LongShape { before: false, gap: 40, len: 228, inside: 100, clip: (0, 0), blind: 2 };
+
+    #[test]
+    fn a_read_inside_a_long_listed_insertion_past_its_band_gets_the_full_programmes_score_and_call() {
+        // The class of HG002 3:38084467 (a VNTR; listed insertions of 2,178 and 4,071 bases 112
+        // bases on; one read ALT 0 and REF -56 in its band, both 0 with none): a read whose body
+        // is a copy of a stretch inside a long listed insertion, written by its aligner on a
+        // reference copy with that copy's two gaps. Its band, not widened for an insertion past
+        // its window, stands on the reference copy's alignment (REF -18, ALT -22: called REF); the
+        // full programme runs it through the insertion (every state -12: depth only).
+        for before in [false, true] {
+            check_long(LongShape { before, ..LONG }, true, true);
+        }
+    }
+
+    #[test]
+    fn the_rule_fires_exactly_past_the_bands_window_and_within_the_reads_reach() {
+        for before in [false, true] {
+            // 17 bases on: the band widens for it already; 18: past its window
+            check_long(LongShape { before, gap: 17, ..LONG }, false, false);
+            check_long(LongShape { before, gap: 18, ..LONG }, true, true);
+            // the read's length less one: in its reach; its length: past it, out of the full
+            // programme's reach too, so nothing is missed and nothing fires
+            check_long(LongShape { before, gap: 99, ..LONG }, true, true);
+            check_long(LongShape { before, gap: 100, ..LONG }, false, false);
+        }
+    }
+
+    #[test]
+    fn the_rule_fires_whether_the_copy_check_sees_the_copy_or_not() {
+        for before in [false, true] {
+            // the insertion holds the read's own bases: the copy check sends develop to the full
+            // programme already; the rule fires, to the same scores
+            check_long(LongShape { before, blind: 0, ..LONG }, true, false);
+            // every 7th base masked, or an error in each of the copy check's pieces: blind
+            check_long(LongShape { before, blind: 1, ..LONG }, true, true);
+            check_long(LongShape { before, blind: 2, ..LONG }, true, true);
+        }
+    }
+
+    #[test]
+    fn a_read_partly_inside_a_long_listed_insertion_gets_the_full_programmes_call() {
+        // 20 to 60 of its bases the insertion's first (after the read) or last (before it), the
+        // rest the reference beside the insertion's anchor
+        for before in [false, true] {
+            for inside in [20, 40, 60] {
+                check_long(LongShape { before, inside, gap: 105 - inside as i64, ..LONG }, true, true);
+            }
+        }
+    }
+
+    #[test]
+    fn the_rule_takes_insertions_longer_than_the_bands_slack() {
+        for before in [false, true] {
+            // 16 bases: no longer than the slack, the rule does not fire and the band stays short
+            // (a read can hold at most 16 bases of it; the rest lies on the reference beside it)
+            check_long(LongShape { before, len: 16, inside: 16, gap: 89, ..LONG }, false, true);
+            check_long(LongShape { before, len: 17, inside: 17, gap: 88, ..LONG }, true, true);
+            check_long(LongShape { before, len: 64, inside: 60, gap: 45, ..LONG }, true, true);
+            check_long(LongShape { before, len: 65, inside: 60, gap: 45, ..LONG }, true, true);
+        }
+    }
+
+    #[test]
+    fn soft_clips_extend_the_reads_span_and_the_rule_still_fires() {
+        for before in [false, true] {
+            for clip in [(10, 0), (0, 10), (10, 10)] {
+                check_long(LongShape { before, clip, ..LONG }, true, true);
+            }
+        }
+    }
+
+    #[test]
+    fn the_whole_read_variant_runs_every_state_in_full_and_the_linear_aligner_drops_its_band() {
+        let (c, x, listed, read) = long_shape(LONG, 7101);
+        let cand = Candidates { listed: vec![listed.clone()], ..Candidates::default() };
+        let mut site = Site::build(x, &cand, (0, c), std::slice::from_ref(&read)).unwrap();
+        let li = site.rows.iter().position(|r| *r == listed).unwrap();
+        for rule in [graph::LongRule::Off, graph::LongRule::Ins, graph::LongRule::InsAll] {
             site.long_rule = rule;
-            let got = band_scores(&site, &read);
-            assert!(got.iter().all(|&(d, f)| d == f), "{rule:?}: {got:?}");
-            let batch = decided_scores(&site, &site.graph_read(&read));
-            assert!(batch.iter().all(|&(d, f)| d == f), "{rule:?}, batch scoring: {batch:?}");
+            assert_eq!(site.graph_read(&read).full, rule == graph::LongRule::InsAll, "{rule:?}: the read runs whole");
+            // the linear aligner on each state's haplotype holding the insertion: no band where
+            // the graph scorer skips its bands
+            let sc = Scorer::new(&read);
+            for k in 0..site.graphs.len() {
+                let hap = site.hap_on_path(k, &[li]);
+                let near = sc.near(&site, &hap);
+                let (seq, _, _) = sc.prepare(&site, &hap, &near);
+                let (got, full) = (sc.align(&site, &hap).0.score, score::align(&read.seq, seq, None).score);
+                assert_eq!(site.long_skips(&read, &hap.rows), rule != graph::LongRule::Off, "{rule:?} state {k}");
+                if rule != graph::LongRule::Off {
+                    assert_eq!(got, full, "{rule:?} state {k}: the linear aligner's score");
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn a_long_listed_deletion_past_the_band_holds_no_better_path_and_does_not_fire() {
+        // The mirror: a read at its own place, a listed deletion past its band's window within its
+        // reach. A path to the deletion pays the gap to it (the window's 18 bases at least: -24 or
+        // worse) and gains nothing, so the band's score is the full programme's; the rule on
+        // insertions does not fire (the first measured rule, deletions too, does, to the same scores).
+        let other = |b: u8| *b"ACGT".iter().find(|&&x| x != b).unwrap();
+        for before in [false, true] {
+            for len in [17usize, 65, 150] {
+                for gap in [18i64, 60, 99] {
+                    let c = random_seq(1200, 7103);
+                    let q = LONG_Q;
+                    let (lo, hi) = (q as i64, q as i64 + 100);
+                    // the deletion's REF span [p, p + len + 1), its anchor p
+                    let p = if before { (lo - gap - len as i64 - 1) as usize } else { (hi + gap) as usize };
+                    let listed = Row::new(p as i64, &c[p..=p + len], &c[p..=p]);
+                    let xp = if before { q } else { q + 99 };
+                    let x = Row::new(xp as i64, &c[xp..=xp], &[other(c[xp])]);
+                    let read = ReadView::new(&c[q..q + 100], &[30; 100], q as i64, &[Cigar::Match(100)], (0, 100), 20).unwrap();
+                    let cand = Candidates { listed: vec![listed.clone()], ..Candidates::default() };
+                    let mut site = Site::build(x, &cand, (0, c.clone()), std::slice::from_ref(&read)).unwrap();
+                    assert!(site.rows.contains(&listed), "before {before} len {len} gap {gap}: a context row");
+                    for rule in [graph::LongRule::Off, graph::LongRule::Ins, graph::LongRule::Full] {
+                        site.long_rule = rule;
+                        let gr = site.graph_read(&read);
+                        let skips = site.graphs.iter().any(|g| graph::skips_bands(&g.graph, &gr));
+                        assert_eq!(skips, rule == graph::LongRule::Full, "before {before} len {len} gap {gap} {rule:?}: skips");
+                        let batch = decided_scores(&site, &gr);
+                        assert!(batch.iter().all(|&(d, f)| d == f), "before {before} len {len} gap {gap} {rule:?}: {batch:?}");
+                    }
+                }
+            }
         }
     }
 }

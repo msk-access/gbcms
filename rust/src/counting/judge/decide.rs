@@ -407,6 +407,9 @@ fn judge_graph(site: &Site, read: &ReadView, min_baseq: u8, ask_anchor: bool, ke
     }
     let gr = site.graph_read(read);
     let scored = kept.unwrap_or_else(|| std::rc::Rc::new(graph::with_workspaces(site.graphs.len(), |wss| score_states(site, &gr, wss))));
+    if site.long_rule != graph::LongRule::Off && log::log_enabled!(log::Level::Trace) {
+        site.trace_far(read, &gr);
+    }
     let (best, halves) = (scored.best, &scored.halves);
     let top = best.iter().flatten().map(|b| b.0).max().unwrap_or(i32::MIN);
     let (fired, neighbourhood) = fits_nothing(rule, site, read, top);
