@@ -29,7 +29,7 @@
             body[data-md-color-scheme="slate"] .gslide-title { color: var(--md-default-fg-color); }
             body[data-md-color-scheme="slate"] .gslide-desc { color: var(--md-default-fg-color); }
         </style><meta name="panzoom-theme" content="material">
-<meta name="panzoom-data" content='{"selectors": [".d2", ".mermaid"], "initial_zoom_level": 1.0}'> </head>
+<meta name="panzoom-data" content='{"selectors": [".mermaid", ".d2"], "initial_zoom_level": 1.0}'> </head>
 <body data-md-color-accent="custom" data-md-color-primary="custom" data-md-color-scheme="default" dir="ltr">
 <input autocomplete="off" class="md-toggle" data-md-toggle="drawer" id="__drawer" type="checkbox">
 <input autocomplete="off" class="md-toggle" data-md-toggle="search" id="__search" type="checkbox">
@@ -3011,6 +3011,13 @@ and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semant
   parameter (DNA only) defaults to <code>rules</code>. <code>haplotype</code>, the judge's name during
   development, is taken as <code>sequence</code> with a warning. Making the judge the default is
   6.8.0's work (#331).</li>
+<li><strong>Preparation and counting are told the same read judgment.</strong> <code>prepare_variants</code> takes
+  <code>read_judge</code> (<code>"rules"</code>, the default, or <code>"sequence"</code>). It records each row's rows within
+  a read's reach only for the sequence judge, the only one that reads them. Counting
+  under the judge refuses rows prepared for the rules, with an error that names the
+  first such row, so a caller never silently gets the judge without those rows.
+  <code>observe_molecules</code> takes <code>read_judge</code> as well (default: its alignment config's,
+  <code>"rules"</code>) and passes it to both preparation and counting.</li>
 <li><strong>Two diagnostics, under the judge only</strong> (no new column; they change no count):
   <code>MNV_SHARED(chrom:pos:REF&gt;ALT:n/m)</code> at an SNV whose change a co-listed MNV holds (RJ-28:
   the MNV's carriers count at both rows, so one molecule can sit in both rows' counts and
@@ -3026,7 +3033,12 @@ and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semant
     reads each row's candidate sequences from the reference <abbr title="FASTA format - Reference genome sequence file">FASTA</abbr>.</li>
 <li><strong>It is slower than the rules;</strong> the speed work is #335.</li>
 <li><strong><code>GBCMS_JUDGE_*</code> environment variables are measurement switches,</strong> not options:
-    they serve the measurement rounds and are removed as their questions are decided.</li>
+    they serve the measurement rounds and are removed as their questions are decided.
+    Removed as decided: <code>SCORER</code>, together with the enumerated scorer it selected (and
+    <code>FOUND_PROBE</code> and <code>OTHER</code>'s found rules other than <code>told</code>, which only that scorer
+    read); <code>TRIAGE</code>, <code>TRIAGE_EXACT</code> and
+    <code>TRIAGE_UNKNOWN</code>, together with the k-mer triage; <code>DELINS</code>; <code>CONTEXTS</code>; and <code>ENDS</code>.
+    The default counts do not change.</li>
 </ul>
 <h3 id="fixed-an-unchecked-sample-no-longer-reads-as-a-clean-one-227">Fixed — an unchecked sample no longer reads as a clean one (#227)<a class="headerlink" href="#fixed-an-unchecked-sample-no-longer-reads-as-a-clean-one-227" title="Permanent link">¶</a></h3>
 <ul>
