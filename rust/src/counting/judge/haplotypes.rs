@@ -453,6 +453,9 @@ pub(crate) struct Site {
     /// Measurement only (`GBCMS_JUDGE_BAND=full`): every read on the full programme over its
     /// reach, no band (the yardstick of the band's rule).
     pub(crate) band_full: bool,
+    /// Measurement only (`GBCMS_JUDGE_BAND=longfull` or `longfloor`, #369): a row's length change
+    /// in a read's reach past its band's window ([`graph::LongRule`]).
+    pub(crate) long_rule: graph::LongRule,
     /// What a confident base of the other allele, or a third, at X's telling bases does to
     /// a call ([`ref_base_rule`]).
     pub(crate) ref_base: RefBaseRule,
@@ -2538,6 +2541,11 @@ impl Site {
             reference,
             tracts,
             band_full: std::env::var("GBCMS_JUDGE_BAND").is_ok_and(|v| v == "full"),
+            long_rule: match std::env::var("GBCMS_JUDGE_BAND").as_deref() {
+                Ok("longfull") => graph::LongRule::Full,
+                Ok("longfloor") => graph::LongRule::Floor,
+                _ => graph::LongRule::Off,
+            },
             rows,
             n_states,
             holds_x,
@@ -2869,7 +2877,7 @@ impl Site {
         let first = read.refpos.iter().copied().min().unwrap_or(read.ref_start).min(read.ref_start);
         let end = read.refpos.iter().copied().max().unwrap_or(read.ref_end).max(read.ref_end);
         let span = (first - self.start, end - self.start);
-        GraphRead { seq: &read.seq, rp, span, free_shift: self.free_shift(read), full: self.band_full }
+        GraphRead { seq: &read.seq, rp, span, free_shift: self.free_shift(read), full: self.band_full, long: self.long_rule }
     }
 
     /// The longest tandem-repeat period in the read's reach (its reference span, soft clips
@@ -3595,6 +3603,49 @@ mod band_tests {
         assert!(gr.full, "the site's reads carry the switch");
         assert!(decided_scores(&site, &gr).iter().all(|&(d, f)| d == f), "batch: the full programme, every state");
         assert!(aligned_scores(&site, &read, |sc, hap| sc.align(&site, hap)).iter().all(|&(a, f)| a == f), "linear: no band");
+    }
+
+    #[test]
+    fn a_read_from_a_long_listed_insertion_past_its_band_reaches_its_best_score() {
+        // The class of HG002 3:38084467 (a VNTR; listed insertions of 2,178 and 4,071 bases 112
+        // bases on; one read ALT 0 and REF -56 in its band, REF 0 with none): a read whose bases
+        // are a copy of a stretch inside a long listed insertion (but for a base in each of the
+        // copy check's three pieces, so that check finds no copy), placed by its aligner on the
+        // stretch's reference copy with that copy's two gaps, ends short of the insertion by
+        // more than the window its band widens for (the slack and two bases each side), within
+        // its own length. The band, not widened for the insertion, stands on the reference
+        // copy's alignment; the full programme over the read's reach runs it through the
+        // insertion. Develop's rule stands on the worse score; under either option every
+        // state's score is the full programme's.
+        let other = |b: u8| if b == b'A' { b'C' } else { b'A' };
+        let c = random_seq(700, 7101);
+        let r: Vec<u8> = c[200..320].to_vec();
+        // the read's stretch: the reference copy with 3 bases deleted twice
+        let copy: Vec<u8> = [&r[..40], &r[43..80], &r[83..]].concat();
+        let seq: Vec<u8> = copy[10..110].to_vec();
+        // the insertion's copy: the read's stretch, a base changed in each copy-check piece
+        let mut held = copy.clone();
+        for i in [10 + 5, 10 + 50, 10 + 95] {
+            held[i] = other(held[i]);
+        }
+        let ins: Vec<u8> = [&held[..], &held[..]].concat();
+        let p = 345usize;
+        let listed = Row::new(p as i64, &c[p..=p], &[&c[p..=p], &ins[..]].concat());
+        let x = Row::new(300, &c[300..301], &[other(c[300])]);
+        let cigar = [Cigar::Match(30), Cigar::Del(3), Cigar::Match(37), Cigar::Del(3), Cigar::Match(33)];
+        let read = ReadView::new(&seq, &[30; 100], 210, &cigar, (0, 100), 20).unwrap();
+        let cand = Candidates { listed: vec![listed.clone()], ..Candidates::default() };
+        let mut site = Site::build(x.clone(), &cand, (0, c.clone()), std::slice::from_ref(&read)).unwrap();
+        assert!(site.rows.contains(&listed), "the insertion is a context row");
+        let before = band_scores(&site, &read);
+        assert!(before.iter().any(|&(d, f)| d < f), "develop's rule: a state's band stands short: {before:?}");
+        for rule in [graph::LongRule::Full, graph::LongRule::Floor] {
+            site.long_rule = rule;
+            let got = band_scores(&site, &read);
+            assert!(got.iter().all(|&(d, f)| d == f), "{rule:?}: {got:?}");
+            let batch = decided_scores(&site, &site.graph_read(&read));
+            assert!(batch.iter().all(|&(d, f)| d == f), "{rule:?}, batch scoring: {batch:?}");
+        }
     }
 }
 
