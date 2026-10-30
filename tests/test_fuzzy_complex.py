@@ -380,3 +380,67 @@ class TestTrailingInsertion:
         counts = _count_one(bam, TRAILING_INS_VARIANT)
         assert counts.rd == 1, f"no-insertion read should be REF, got rd={counts.rd}"
         assert counts.ad == 0
+
+
+# ==========================================================================
+# The Smith-Waterman local re-scoring: partial_alt follows the scores that called
+# ==========================================================================
+
+# 25 reference bases each side of the event; the reads below are the shapes of the
+# unit tests in rust/src/counting/alignment.rs.
+_LEFT = "TGCAGTCCATGACCTGAGTACGGTA"
+_RIGHT = "CTTGAAGCGTCAATGGCATTCAGAC"
+_CTX_START = 100
+
+
+def _unjudgeable_delins(ref_allele, alt_allele):
+    """A delins whose context holds both flanks but N where the REF allele belongs:
+    the exact-carrier rule cannot judge it, so its reads go to the previous complex
+    classifier (counted and warned as a fallback)."""
+    return Variant(
+        chrom="chr1",
+        pos=_CTX_START + len(_LEFT),
+        ref_allele=ref_allele,
+        alt_allele=alt_allele,
+        variant_type="COMPLEX",
+        ref_context=_LEFT + "N" * len(ref_allele) + _RIGHT,
+        ref_context_start=_CTX_START,
+    )
+
+
+class TestLocalFallbackScores:
+    """A read inside the context with an insertion in the window goes to
+    Smith-Waterman (Phase 0, raw bases: the whole read). Its junk ends make the
+    semiglobal scores low, so the local re-scoring makes the call; the nearby-evidence
+    and tie checks after it must read the same local scores (partial_alt)."""
+
+    def _count(self, tmp_path, ref_allele, alt_allele, seq):
+        read = _make_read("r1", seq, _CTX_START + 2, ((0, 10), (1, 1), (0, len(seq) - 11)))
+        bam = _build_bam(tmp_path, [read])
+        c = _count_one(
+            bam,
+            _unjudgeable_delins(ref_allele, alt_allele),
+            alignment_backend="sw",
+            read_judge="rules",
+        )
+        assert c.dp >= c.rd + c.ad
+        assert c.dpf >= c.rdf + c.adf
+        assert c.rd == c.rd_fwd + c.rd_rev
+        assert c.ad == c.ad_fwd + c.ad_rev
+        return c
+
+    def test_ref_with_local_alt_close_is_partial_alt(self, tmp_path):
+        # local (ALT 17, REF 21): REF, ALT within 4 → partial_alt (semiglobal 6, 12 would deny it)
+        c = self._count(tmp_path, "GC", "GATC", "AAGCCCGCGCTGCGTAGCCTTGAAGCGTCAATGGTTCAT")
+        assert (c.dp, c.rd, c.ad, c.partial_alt) == (1, 1, 0, 1)
+
+    def test_ref_with_local_alt_far_is_not_partial_alt(self, tmp_path):
+        # local (ALT 10, REF 15): REF, ALT more than 4 below (semiglobal 2, 3 would call it close)
+        c = self._count(tmp_path, "GC", "GATC", "ATTAATGGGTAGCCTTGAAGCGGTAGGGCTGATA")
+        assert (c.dp, c.rd, c.ad, c.partial_alt) == (1, 1, 0, 0)
+
+    def test_local_tie_over_half_the_read_is_partial_alt(self, tmp_path):
+        # local (21, 21) on 31 bases: a scored tie with ALT support (semiglobal 10, 10 would
+        # make it a bare neither)
+        c = self._count(tmp_path, "AT", "GCA", "TGGCTCCACAAGTCCATGACCTGAGTACGGT")
+        assert (c.dp, c.rd, c.ad, c.partial_alt) == (1, 0, 0, 1)

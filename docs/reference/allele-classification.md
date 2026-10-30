@@ -1058,7 +1058,9 @@ Two conditions detect low-confidence semiglobal results:
 | **Borderline** | `abs(alt_score - ref_score) ≤ margin + 1` | Score difference barely decisive |
 | **Poor quality** | `max(scores) < read_len / 2` | Both haplotypes heavily penalized |
 
-When **either** trigger fires, the engine retries with **local alignment** (`Aligner::local()`), which soft-clips the bad flank and finds the best matching substring without penalizing overhangs on either side.
+When **either** trigger fires, the engine retries with **local alignment** (`Aligner::local()`), which soft-clips the bad flank and finds the best matching substring without penalizing overhangs on either side. The call then rests on the local scores, and so do the checks after it: a REF call's nearby evidence (ALT within twice the margin: `partial_alt`) and a tie's (the best score reaching half the read) (#195).
+
+Only complex rows the exact-carrier rule cannot judge reach this step (direct API use, a failed reference fetch, a contig end). On every arm measured on 2026-10-30 (about 4.5 million read calls under each backend) none did.
 
 !!! tip "Performance: Aligner Reuse"
     SW aligners are created **once per variant** (in every counting path) and reused for all of its reads. The `bio::alignment::pairwise::Aligner` reuses internal DP buffers, avoiding repeated heap allocation.
