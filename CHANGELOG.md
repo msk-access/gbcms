@@ -7,6 +7,46 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed — the sequence judge reads an insertion of 50 bp or more over equal windows from its anchor (#264)
+
+- Under `--read-judge sequence`, a REF or ALT call at a pure insertion of 50 bp or more now
+  holds RJ-23's equal windows from the anchor, as the rules read it: the anchor and as many
+  bases on as REF's window holds (the run the insert slides over and the base past it). The ALT
+  is read over the insert's first bases, never the whole insert. A read lying inside the insert,
+  or holding only its far junction, is depth only, as a REF read starting inside the run is.
+  Before this the judge counted reads inside a long insert ALT, giving the ALT read starts REF
+  cannot have.
+- Where the guard's masks hide the base telling the two windows apart (a change past the run,
+  which on the ALT's sequence lies past the insert, so it told REF's molecules apart and never
+  the ALT's), both windows read on to the next base telling them apart, and a read short of it
+  is depth only, REF and ALT alike (RJ-27's read-on). At HG002's 98 bp duplication at
+  chr22:39653046 this makes 11 REF reads depth (RD 21 → 10, AD 6).
+- Both windows are counted in bases of the called allele's sequence, so a listed change inside them
+  lengthens neither; the window check runs before another allele's call, so a read inside the
+  insert tying the ALT and another allele is depth only, not partial evidence; and the guard's
+  masks are laid by offset from the anchor on every candidate haplotype (REF's, the ALT's and
+  each other allele's), so a masked offset weighs on none of them. Where no base within reach tells the windows apart, every read is depth only and the
+  row is named `NO_TELLING_BASE` in `gbcms_diagnostic` (no column added).
+- Among the reads that hold the windows, the calls now follow the truth's allele shares on HG002
+  (per-read symmetry bar); the VAF of long insertions stays below 0.5 because fewer reads over
+  the anchor come from ALT molecules than from REF ones in the BAM itself.
+- Two measurement options, temporary and retired when the sequence judge becomes the default
+  (#331): `GBCMS_JUDGE_LONG_INS=window` keeps the windows without the read-on, and `off`
+  restores the judge before them. Reading a masked change on REF's haplotypes as the
+  reference's where REF's molecules show they lack it was measured with a third option and is not
+  adopted (it credits a read on other fragments' evidence, REJ-20261023-001); that option is
+  removed. The rules path is unchanged; RNA does not take the sequence judge.
+- Decided 2026-10-31 (operator): the masks laid on both windows by offset are accepted and laid
+  on every candidate haplotype, so a listed allele of the ALT's length that differs from it at a
+  masked offset is told from it by no base there (the ALT's carriers and a read with a third base
+  at that offset are partial evidence of either, never ALT); the `cis` option is removed; the
+  anchor is taken from the insertion's run, wherever the row is written; the rule stays for pure
+  insertions of 50 bp or more (a delins with a longer side over 50 bp is a separate decision).
+  On HG002 this moves 4 reads in 2 rows on tr and 4 in 2 rows on nocl and sub, each from
+  partial evidence to REF (3 of the 4 on nocl and sub are true REF, none a true ALT), and no
+  other row of the four truth arms; the merge with develop's band rule (#369) moves only reads
+  on its `judge far` lines; the rules path is unchanged byte for byte.
+
 ### Added — a macOS wheel for Apple silicon (arm64) (#237)
 
 - The release builds `cp310-abi3-macosx_11_0_arm64` on `macos-14` with the new local action

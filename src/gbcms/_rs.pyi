@@ -165,6 +165,10 @@ class BaseCounts:
     # confident mismatches, whether or not the fit rule made them depth only; 0 under the
     # rules. Diagnostic only (UNEXPLAINED_READS flag).
     unexplained_reads: int
+    # Under the sequence judge, at a pure insertion of 50 bp or more: no base within the
+    # haplotypes the judge reads tells REF's equal window from the ALT's once the guard's
+    # masks are read, so every read is depth only. Diagnostic only (NO_TELLING_BASE flag).
+    untold_windows: bool
     # GTF-informed annotation (None when no GTF)
     exon_boundary_dist: int | None
     # Per-transcript counts (empty string when no GTF or no overlap)

@@ -337,13 +337,37 @@ impl Hap {
         self.seq.get(c).copied().unwrap_or(WILD)
     }
 
+    /// The haplotype of `rows`, every mask taking any base (as the states' spellings are
+    /// compared).
     fn build(site: &Site, rows: &[usize]) -> Hap {
+        Self::build_with(site, rows, false)
+    }
+
+    /// The haplotype of `rows`; with `mirrored`, the guard's masks laid on every candidate
+    /// haplotype by offset from the anchor too ([`Site::mirror_masks`]), as a read is scored on it.
+    fn build_with(site: &Site, rows: &[usize], mirrored: bool) -> Hap {
+        let class = if rows.contains(&0) || rows.iter().any(|&r| site.holds_x[r]) {
+            Class::Alt
+        } else if rows.iter().any(|&r| site.is_state(r)) {
+            Class::Other
+        } else {
+            Class::Ref
+        };
         let mut order: Vec<usize> = rows.to_vec();
         order.sort_by_key(|&r| site.spans[r].0);
         let mut seq = site.reference.clone();
         // A masked base takes any base where no applied row covers it.
+        let covered = |m: i64| order.iter().any(|&r| site.spans[r].0 <= m && m < site.spans[r].1);
         for &m in &site.masked {
-            if !order.iter().any(|&r| site.spans[r].0 <= m && m < site.spans[r].1) {
+            if !covered(m) {
+                seq[m as usize] = WILD;
+            }
+        }
+        // the masks laid on the candidate haplotype by offset from the anchor, as a read is scored
+        let key = site.mirror_key(rows);
+        let mirror = if mirrored { site.mirror_of(key) } else { None };
+        for &m in mirror.map_or(&[][..], |m| &m.positions) {
+            if !covered(m) {
                 seq[m as usize] = WILD;
             }
         }
@@ -364,13 +388,17 @@ impl Hap {
                 x_seg = Some((hs, he));
             }
         }
-        let class = if rows.contains(&0) || rows.iter().any(|&r| site.holds_x[r]) {
-            Class::Alt
-        } else if rows.iter().any(|&r| site.is_state(r)) {
-            Class::Other
-        } else {
-            Class::Ref
-        };
+        // and the candidate's own bases they hide
+        if let (Some(m), Some(r)) = (mirror, key) {
+            if let Some(&(_, _, hs, he)) = order.iter().position(|&o| o == r).map(|k| &segs[k]) {
+                for &i in &m.alt_bases {
+                    let c = hs + i as i64;
+                    if c < he {
+                        seq[c as usize] = WILD;
+                    }
+                }
+            }
+        }
         let mut rows = rows.to_vec();
         rows.sort_unstable();
         Hap { rows, class, seq, segs, x_seg }
@@ -409,6 +437,15 @@ impl Hap {
     }
 }
 
+/// The guard's masks a candidate haplotype takes by offset from the anchor, besides the guard's
+/// own ([`Site::mirror_masks`]): window positions of its reference bases, and indices into its
+/// row's ALT bases, it takes any base at. Both sorted.
+#[derive(Debug, Clone, Default)]
+struct Mirror {
+    positions: Vec<i64>,
+    alt_bases: Vec<usize>,
+}
+
 /// X's haplotypes over its window.
 #[derive(Debug, Clone)]
 pub(crate) struct Site {
@@ -430,6 +467,19 @@ pub(crate) struct Site {
     max_shift: i64,
     /// Window positions every haplotype takes any base at (the guard's masks), sorted.
     masked: Vec<i64>,
+    /// At a long insertion, the guard's masks laid on every candidate haplotype by offset from
+    /// the anchor ([`Site::mirror_masks`]): per candidate, REF's first (slot 0) and then each
+    /// row's of X and the other states (slot 1 + row), the masks it takes besides the guard's.
+    /// Empty elsewhere.
+    mirrors: Vec<Mirror>,
+    /// At a long insertion, whether no base within the haplotypes tells the equal windows
+    /// apart once the guard's masks are read (every read is depth only).
+    untold: bool,
+    /// Where X is a pure insertion of [`LONG_EVENT`] bases or more: the first base of its run
+    /// (genome; the anchor is the base before it) and the length of RJ-23's equal windows
+    /// from the anchor, the anchor included ([`Site::equal_window`]): the run and the base
+    /// past it, read on where the guard's masks hide that base ([`Site::read_on`]).
+    long_ins: Option<(i64, i64)>,
     /// X's site, `[s, e)` window coordinates: the bases it changes and, for a length
     /// change, every place it can sit and the repeat it changes, a base each side.
     site_window: (i64, i64),
@@ -522,6 +572,31 @@ pub(crate) enum OwnGapRule {
     Tie,
     All,
     Others,
+}
+
+/// RJ-23's equal windows at a long insertion (`GBCMS_JUDGE_LONG_INS`, read when a site is
+/// built): `ReadOn`, the default (a REF or ALT call holds its allele's window from the anchor,
+/// [`Site::equal_window`], read on for both alleles where the guard's masks hide the base
+/// telling them apart, [`Site::read_on`]). Measurement only, TEMPORARY: `window` (the windows,
+/// never read on: the first build of the windows); `off` (none of them: the judge before the
+/// windows). The switch is retired when the sequence judge becomes the default (planned for
+/// 6.8.0): `ReadOn`'s behaviour stays, and this enum, the switch and the tests of its other
+/// values go.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum LongInsRule {
+    ReadOn,
+    Window,
+    Off,
+}
+
+/// The long-insertion rule `GBCMS_JUDGE_LONG_INS` names (TEMPORARY, measurement only: see
+/// [`LongInsRule`]); the default when unset or not one of `window` and `off`.
+pub(crate) fn long_ins_rule() -> LongInsRule {
+    match std::env::var("GBCMS_JUDGE_LONG_INS").as_deref() {
+        Ok("window") => LongInsRule::Window,
+        Ok("off") => LongInsRule::Off,
+        _ => LongInsRule::ReadOn,
+    }
 }
 
 pub(crate) fn own_gap_rule() -> OwnGapRule {
@@ -1353,6 +1428,145 @@ impl Site {
         !self.rows[0].changes_length()
     }
 
+    /// Whether X is a pure insertion of [`LONG_EVENT`] bases or more read over equal windows.
+    pub(crate) fn long_insertion(&self) -> bool {
+        self.long_ins.is_some()
+    }
+
+    /// Where X is a pure insertion of [`LONG_EVENT`] bases or more: the columns `[a, b]`
+    /// (inclusive) of `hap` a REF or ALT call on it must cover (RJ-23's equal windows, read
+    /// from the anchor): the base before X's run and as many columns on as REF's window holds
+    /// (the run and the base past it, read on where masks hide that base). On REF's
+    /// haplotype that is the run read through; on X's, the insert's first bases, never the
+    /// whole insert, which a read is not expected to hold. Both are counted in columns of
+    /// the called haplotype, so a listed change the haplotype takes inside the windows (an
+    /// insertion beside X's run) lengthens neither allele's window: equal windows hold as many
+    /// bases of each read.
+    pub(crate) fn equal_window(&self, hap: &Hap) -> Option<(i64, i64)> {
+        let (lo, w) = self.long_ins?;
+        let a = self.column_in(hap, lo - 1 - self.start);
+        Some((a, a + w - 1))
+    }
+
+    /// The candidate a haplotype of `rows` is: the row of X or of the other state it applies (X
+    /// first, then a state holding X's change, then any other state), None for REF's.
+    fn mirror_key(&self, rows: &[usize]) -> Option<usize> {
+        rows.iter()
+            .copied()
+            .find(|&r| r == 0)
+            .or_else(|| rows.iter().copied().find(|&r| self.holds_x[r]))
+            .or_else(|| rows.iter().copied().find(|&r| self.is_state(r)))
+    }
+
+    /// The masks laid by offset on the candidate `key` (None: REF's), where they are laid.
+    fn mirror_of(&self, key: Option<usize>) -> Option<&Mirror> {
+        self.mirrors.get(key.map_or(0, |r| r + 1))
+    }
+
+    /// Lays the guard's masks on every candidate haplotype by offset from the anchor (RJ-23:
+    /// "masked in both windows"; RJ-27: the masks are read on every haplotype alike), over the
+    /// reach of a read `l` bases long holding them. A change past X's run masked at genome `g`
+    /// sits at offset `g − anchor` on REF's haplotype and, past X's insert, at `g − anchor + n`
+    /// on X's: read as the guard has it, REF's reads over it were weighed against X's base at
+    /// that offset while no ALT read was against REF's (and a mask X's haplotype takes inside
+    /// its window, where X's run is longer than its insert, the other way round). Each offset
+    /// either haplotype masks is now masked at that offset on every candidate: an inserted base
+    /// or a reference base of its own, wherever its row puts them. A listed allele of X's
+    /// length differing from X at a masked offset is then told from X by no base there, as REF
+    /// is not; a read with a third base at that offset weighs on none of them. The anchor is
+    /// the base before X's run, wherever X is written in it: a row that was not left-aligned
+    /// still takes the masks.
+    fn mirror_masks(&mut self, l: i64) {
+        let Some((lo, _)) = self.long_ins else { return };
+        let (anchor, wn) = (lo - 1 - self.start, self.reference.len() as i64);
+        // the candidates, REF's haplotype first and then X's and each other state's, each with
+        // the column of its anchor
+        let keys: Vec<Option<usize>> = std::iter::once(None).chain((0..=self.n_states).map(Some)).collect();
+        let haps: Vec<Hap> = keys.iter().map(|k| Hap::build(self, k.as_slice())).collect();
+        let at: Vec<i64> = haps.iter().map(|h| self.column_in(h, anchor)).collect();
+        // the offsets from the anchor, within a read's reach, that REF's haplotype or X's masks
+        let mut offsets: BTreeSet<i64> = BTreeSet::new();
+        for &m in self.masked.iter().filter(|&&m| m > anchor) {
+            for w in [0, 1] {
+                let covered = haps[w].rows.iter().any(|&r| self.spans[r].0 <= m && m < self.spans[r].1);
+                let k = self.column_in(&haps[w], m) - at[w];
+                if !covered && 0 < k && k < l {
+                    offsets.insert(k);
+                }
+            }
+        }
+        // per candidate, what sits at those offsets: a reference base, or one of its row's own
+        let mut mirrors = vec![Mirror::default(); keys.len()];
+        for (w, hap) in haps.iter().enumerate() {
+            for &k in &offsets {
+                let col = at[w] + k;
+                if !(0..hap.seq.len() as i64).contains(&col) {
+                    continue;
+                }
+                match hap.segs.first() {
+                    Some(&(_, _, hs, he)) if hs <= col && col < he => mirrors[w].alt_bases.push((col - hs) as usize),
+                    seg => {
+                        let pos = match seg {
+                            Some(&(_, re, _, he)) if col >= he => col - (he - re),
+                            _ => col,
+                        };
+                        if (0..wn).contains(&pos) && self.masked.binary_search(&pos).is_err() {
+                            mirrors[w].positions.push(pos);
+                        }
+                    }
+                }
+            }
+            mirrors[w].positions.sort_unstable();
+            mirrors[w].positions.dedup();
+            mirrors[w].alt_bases.sort_unstable();
+            mirrors[w].alt_bases.dedup();
+        }
+        if mirrors.iter().any(|m| !m.positions.is_empty() || !m.alt_bases.is_empty()) {
+            let x = &self.rows[0];
+            log::debug!(
+                "haplotype judge {}>{} at {}: the guard's masks laid on every candidate haplotype by offset: {}",
+                String::from_utf8_lossy(&x.ref_al),
+                String::from_utf8_lossy(&x.alt_al),
+                x.pos + 1,
+                mirrors
+                    .iter()
+                    .zip(&keys)
+                    .map(|(m, k)| format!("{} {}+{}", k.map_or("REF".to_string(), |r| format!("row {r}")), m.positions.len(), m.alt_bases.len()))
+                    .collect::<Vec<_>>()
+                    .join(", "),
+            );
+        }
+        self.mirrors = mirrors;
+    }
+
+    /// The equal windows' length `w` from the anchor (the base before `lo`), read on where
+    /// the guard's masks hide every base telling REF's window from X's (RJ-27's read-on,
+    /// 2026-10-20, for REF and ALT alike): to the first base past them where REF's haplotype
+    /// and X's, read from the anchor, differ with neither masked. A read short of it holds no
+    /// window and is depth only, whichever allele its bases fit: a mask on REF's haplotype
+    /// alone (a change past an insertion's run lies, on X's, past the insert) would let REF's
+    /// molecules be told by that base while X's are not. None where no base within the
+    /// haplotypes tells them apart: no read holds the windows.
+    fn read_on(&self, lo: i64, w: i64) -> Option<i64> {
+        let (r, x) = (Hap::build(self, &[]), Hap::build(self, &[0]));
+        let (ar, ax) = (self.column_in(&r, lo - 1 - self.start), self.column_in(&x, lo - 1 - self.start));
+        let n = (r.seq.len() as i64 - ar).min(x.seq.len() as i64 - ax);
+        let tells = |k: i64| {
+            let (a, b) = (r.base((ar + k) as usize), x.base((ax + k) as usize));
+            a != WILD && b != WILD && a != b
+        };
+        if (0..w.min(n)).any(tells) {
+            return Some(w);
+        }
+        (w..n).find(|&k| tells(k)).map(|k| k + 1)
+    }
+
+    /// At a long insertion, whether no base within the haplotypes tells the equal windows
+    /// apart, so every read is depth only (the row's `NO_TELLING_BASE` diagnostic).
+    pub(crate) fn windows_untold(&self) -> bool {
+        self.untold
+    }
+
     /// X's anchor (its first REF base) in `hap`: X's own first base where X is applied.
     pub(crate) fn anchor_in(&self, hap: &Hap) -> i64 {
         hap.x_seg.map_or_else(|| self.column_in(hap, self.spans[0].0), |(hs, _)| hs)
@@ -1764,6 +1978,18 @@ impl Site {
         Site::build_backed(target, candidates, window, reads, other_option().rule, background_rule())
     }
 
+    /// [`Site::build`] under the long-insertion rule `ins_rule` (the tests' options).
+    #[cfg(test)]
+    pub(crate) fn build_ins(
+        target: Row,
+        candidates: &Candidates,
+        window: (i64, Vec<u8>),
+        reads: &[ReadView],
+        ins_rule: LongInsRule,
+    ) -> Option<Site> {
+        Site::build_core(target, candidates, window, reads, other_option().rule, background_rule(), ins_rule, None)
+    }
+
     /// [`Site::build`] with the found alleles kept as states by `rule` and the guard's
     /// background kept by `bg_rule`.
     pub(crate) fn build_backed(
@@ -1774,7 +2000,7 @@ impl Site {
         rule: FoundRule,
         bg_rule: BackgroundRule,
     ) -> Option<Site> {
-        Site::build_core(target, candidates, window, reads, rule, bg_rule, None)
+        Site::build_core(target, candidates, window, reads, rule, bg_rule, long_ins_rule(), None)
     }
 
     /// [`Site::build_backed`], the context items in `dropped` left out where given (the
@@ -1787,6 +2013,7 @@ impl Site {
         reads: &[ReadView],
         rule: FoundRule,
         bg_rule: BackgroundRule,
+        ins_rule: LongInsRule,
         dropped: Option<&Dropped>,
     ) -> Option<Site> {
         let wn = reference.len() as i64;
@@ -2214,7 +2441,7 @@ impl Site {
                 return whole;
             }
             let build = |d: &Dropped| {
-                Site::build_core(target.clone(), candidates, (start, reference.clone()), reads, rule, bg_rule, Some(d))
+                Site::build_core(target.clone(), candidates, (start, reference.clone()), reads, rule, bg_rule, ins_rule, Some(d))
             };
             let Some(kept) = build(&whole) else { return whole };
             let mut out = whole.clone();
@@ -2486,6 +2713,12 @@ impl Site {
             hi - lo + 1
         };
         let masked: Vec<i64> = (0..masked.len()).filter(|&i| run_at(i) < MASK_RUN).map(|i| masked[i]).collect();
+        // RJ-23's equal windows at a long insertion: the windows' first base past the anchor,
+        // and their length (the run and the base past it)
+        let x = &rows[0];
+        let long_ins = (ins_rule != LongInsRule::Off && pure(x) && x.alt_al.len() >= x.ref_al.len() + LONG_EVENT as usize)
+            .then(|| run(x))
+            .map(|(lo, hi)| (lo, hi - lo + 2));
         let site_window = x_site(&rows[0], start, &reference, place(&rows[0]));
         // Per position and base over the window, the reads whose own alignments read it there:
         // a neither base's recurrence, and a mismatch's elsewhere (measurement only).
@@ -2545,6 +2778,9 @@ impl Site {
             places,
             max_shift,
             masked,
+            mirrors: Vec::new(),
+            untold: false,
+            long_ins,
             site_window,
             graphs: Vec::new(),
             x_spellings: Vec::new(),
@@ -2566,6 +2802,24 @@ impl Site {
             .filter(|&r| site.spans[r].1 > xs - l && site.spans[r].0 < xe + l)
             .collect();
         // Every context at once: one graph per state, no enumeration.
+        if let Some((lo, w)) = site.long_ins.filter(|_| ins_rule != LongInsRule::Window) {
+            match site.read_on(lo, w) {
+                Some(read) => {
+                    if read != w {
+                        log::debug!("haplotype judge: the guard's masks hide the base telling a long insertion's windows apart; both read on, {w} -> {read} bases from the anchor");
+                    }
+                    site.long_ins = Some((lo, read));
+                }
+                None => {
+                    log::debug!("haplotype judge: no base within reach tells a long insertion's windows apart; every read is depth only");
+                    site.untold = true;
+                    site.long_ins = Some((lo, i64::MAX / 4));
+                }
+            }
+        }
+        if site.long_ins.is_some() && ins_rule != LongInsRule::Window {
+            site.mirror_masks(l);
+        }
         site.graphs = site.state_graphs(&rest);
         site.drop_spelled_states(&rest);
         site.drop_graph_spellings(&found_states, reads, rule);
@@ -2727,7 +2981,7 @@ impl Site {
             if pos < *lo {
                 let f: Vec<usize> = forced.into_iter().filter(|&r| inside(r, (pos, *lo))).collect();
                 let o: Vec<usize> = all.iter().copied().filter(|&r| Some(r) != forced && inside(r, (pos, *lo))).collect();
-                let (entry, exit) = self.region(&mut gb, (pos, *lo), &f, &o);
+                let (entry, exit) = self.region(&mut gb, (pos, *lo), &f, &o, forced);
                 join(&mut gb, &mut prev, entry, exit);
             }
             let zone_rows: Vec<usize> = all.iter().copied().filter(|&r| inside(r, (*lo, *hi))).collect();
@@ -2744,7 +2998,7 @@ impl Site {
                     .filter(|&r| !f.contains(&r) && !alts.iter().flatten().any(|&c| c == r))
                     .filter(|&r| f.iter().all(|&c| !self.conflict(c, r)))
                     .collect();
-                let (entry, exit) = self.region(&mut gb, (*lo, *hi), &f, &o);
+                let (entry, exit) = self.region(&mut gb, (*lo, *hi), &f, &o, forced);
                 entries.extend(entry);
                 exits.extend(exit);
             }
@@ -2754,7 +3008,7 @@ impl Site {
         if pos < wn {
             let f: Vec<usize> = forced.into_iter().filter(|&r| inside(r, (pos, wn))).collect();
             let o: Vec<usize> = all.iter().copied().filter(|&r| Some(r) != forced && inside(r, (pos, wn))).collect();
-            let (entry, exit) = self.region(&mut gb, (pos, wn), &f, &o);
+            let (entry, exit) = self.region(&mut gb, (pos, wn), &f, &o, forced);
             join(&mut gb, &mut prev, entry, exit);
         }
         gb.finish()
@@ -2797,8 +3051,11 @@ impl Site {
 
     /// The window `[a, b)` as reference segments with `forced` applied (the reference cut
     /// under them) and `optional` as bubbles (those meeting a forced row left out). Its
-    /// entry segments (starting at `a`) and exit segments (ending at `b`).
-    fn region(&self, gb: &mut GraphBuilder, (a, b): (i64, i64), forced: &[usize], optional: &[usize]) -> (Vec<usize>, Vec<usize>) {
+    /// entry segments (starting at `a`) and exit segments (ending at `b`). `state` is the
+    /// candidate the graph is of (its row, None for REF's), which takes the masks laid on it
+    /// by offset ([`Site::mirror_masks`]).
+    fn region(&self, gb: &mut GraphBuilder, (a, b): (i64, i64), forced: &[usize], optional: &[usize], state: Option<usize>) -> (Vec<usize>, Vec<usize>) {
+        let mirror = self.mirror_of(state);
         let rows: Vec<usize> = forced
             .iter()
             .copied()
@@ -2818,7 +3075,10 @@ impl Site {
                 continue;
             }
             let bases: Vec<u8> = (p..q)
-                .map(|c| if self.masked.binary_search(&c).is_ok() { WILD } else { self.reference[c as usize] })
+                .map(|c| {
+                    let hidden = self.masked.binary_search(&c).is_ok() || mirror.is_some_and(|m| m.positions.binary_search(&c).is_ok());
+                    if hidden { WILD } else { self.reference[c as usize] }
+                })
                 .collect();
             let id = gb.segment(None, (p, q), bases);
             starting.entry(p).or_default().push(id);
@@ -2829,7 +3089,15 @@ impl Site {
             if self.rows[r].alt_al.is_empty() {
                 continue;
             }
-            let id = gb.segment(Some(r), (s, e), self.row_bases(r));
+            let mut bases = self.row_bases(r);
+            if let Some(m) = mirror.filter(|_| state == Some(r)) {
+                for &i in &m.alt_bases {
+                    if let Some(b) = bases.get_mut(i) {
+                        *b = WILD;
+                    }
+                }
+            }
+            let id = gb.segment(Some(r), (s, e), bases);
             starting.entry(s).or_default().push(id);
             ending.entry(e).or_default().push(id);
         }
@@ -2854,7 +3122,7 @@ impl Site {
         let mut all: Vec<usize> = self.graphs[state].row.into_iter().chain(rows.iter().copied()).collect();
         all.sort_unstable();
         all.dedup();
-        Hap::build(self, &all)
+        Hap::build_with(self, &all, true)
     }
 
     /// The read as the graph scorer reads it: its aligned positions in window coordinates,
