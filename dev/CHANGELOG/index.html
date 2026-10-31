@@ -779,6 +779,15 @@
 </a>
 </li>
 <li class="md-nav__item">
+<a class="md-nav__link" href="#fixed-the-docs-say-what-the-originals-filter_non_primary-removes-and-list-the-measured-differences-from-125">
+<span class="md-ellipsis">
+      
+        Fixed — the docs say what the original's --filter_non_primary removes, and list the measured differences from 1.2.5
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
 <a class="md-nav__link" href="#fixed-the-smith-waterman-local-re-scorings-partial_alt-reads-the-scores-that-made-the-call-195">
 <span class="md-ellipsis">
       
@@ -3064,6 +3073,16 @@ and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semant
   Rocky 8, Rocky 9 and the <code>manylinux_2_34</code> wheel that earlier releases shipped. The same
   steps run on any RHEL machine with <code>scripts/check_wheel.sh</code>. <code>checkpoint-wheels.yml</code> is
   unchanged: it builds older commits, which still link libcurl, so it keeps <code>manylinux_2_34</code>.</li>
+</ul>
+<h3 id="fixed-the-docs-say-what-the-originals-filter_non_primary-removes-and-list-the-measured-differences-from-125">Fixed — the docs say what the original's <code>--filter_non_primary</code> removes, and list the measured differences from 1.2.5<a class="headerlink" href="#fixed-the-docs-say-what-the-originals-filter_non_primary-removes-and-list-the-measured-differences-from-125" title="Permanent link">¶</a></h3>
+<ul>
+<li><code>docs/reference/read-filters.md</code> implied that the original GetBaseCountsMultiSample's single
+  <code>--filter_non_primary</code> flag covers supplementary alignments. It removes secondary alignments
+  only (flag <code>0x100</code>); a read's supplementary records stay in its depth, <code>REF</code> and <code>ALT</code>. The
+  comparison now says so.</li>
+<li><code>docs/reference/architecture.md</code> has a new list, "Known differences from
+  GetBaseCountsMultiSample 1.2.5": one line per difference with its cause, the HG002 reads and
+  rows it moves, and the rule that explains it. Docs only; no count changes.</li>
 </ul>
 <h3 id="fixed-the-smith-waterman-local-re-scorings-partial_alt-reads-the-scores-that-made-the-call-195">Fixed — the Smith-Waterman local re-scoring's <code>partial_alt</code> reads the scores that made the call (#195)<a class="headerlink" href="#fixed-the-smith-waterman-local-re-scorings-partial_alt-reads-the-scores-that-made-the-call-195" title="Permanent link">¶</a></h3>
 <ul>

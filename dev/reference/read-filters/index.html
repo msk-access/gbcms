@@ -1373,7 +1373,7 @@ keeps such a read in depth.</p>
 <h2 id="comparison-with-original-gbcms">Comparison with Original <abbr title="Get Base Count Multi Sample - Multi-BAM variant counting tool">GBCMS</abbr><a class="headerlink" href="#comparison-with-original-gbcms" title="Permanent link">¶</a></h2>
 <div class="admonition note">
 <p class="admonition-title">Filter Non-Primary</p>
-<p>The original <abbr title="Get Base Count Multi Sample - Multi-BAM variant counting tool">GBCMS</abbr> has a single <code>--filter_non_primary</code> flag. gbcms splits this into <code>--filter-secondary</code> and <code>--filter-supplementary</code> for finer control. Both default to <strong>on</strong> in gbcms (stricter than the original behavior, which was off).</p>
+<p>The original <abbr title="Get Base Count Multi Sample - Multi-BAM variant counting tool">GBCMS</abbr> has a single <code>--filter_non_primary</code> flag (default off), and it removes <strong>secondary</strong> alignments only (SAM flag <code>0x100</code>, tested with BamTools' <code>IsPrimaryAlignment</code>). It never removes a supplementary alignment (<code>0x800</code>): with the flag on or off, a read's supplementary records stay and are counted in depth, <code>REF</code> and <code>ALT</code> like any other read that passes the original's other filters, so one physical read can count twice. gbcms splits the filter into <code>--filter-secondary</code> and <code>--filter-supplementary</code>, both <strong>on</strong> by default, and a secondary or supplementary record is never a read-level observation (see <a href="#filter-options">Filter Options</a>). For the counts this changes, see the <a href="../architecture/#known-differences-from-getbasecountsmultisample-125">known differences from 1.2.5</a>.</p>
 </div>
 <table>
 <thead>
@@ -1396,8 +1396,8 @@ keeps such a read in depth.</p>
 </tr>
 <tr>
 <td style="text-align: left;">Non-primary filter</td>
-<td style="text-align: left;">Single flag (default off)</td>
-<td style="text-align: left;">Split: secondary + supplementary (<strong>both On</strong>)</td>
+<td style="text-align: left;">Single flag, secondary (<code>0x100</code>) only; supplementary always kept (default off)</td>
+<td style="text-align: left;">Split: secondary + supplementary (<strong>both On</strong>), neither a read-level observation</td>
 </tr>
 <tr>
 <td style="text-align: left;">QC-failed filter</td>
@@ -1422,7 +1422,7 @@ keeps such a read in depth.</p>
 </code></pre></div>
 <div class="admonition important">
 <p class="admonition-title">Anchor Overlap Gate</p>
-<p>Although reads are fetched from the wider window, <strong>only reads that overlap the variant's anchor position</strong> (or are classified as REF/ALT via shifted indel matching) contribute to the <abbr title="Total Depth - All mapped reads overlapping the variant position">DP</abbr> count. This prevents <abbr title="Total Depth - All mapped reads overlapping the variant position">DP</abbr> inflation from reads that were brought in by the window padding but don't actually cover the variant.</p>
+<p>Although reads are fetched from the wider window, <strong>only reads that overlap the variant's anchor position</strong> (or are classified as REF/ALT via shifted indel matching) contribute to the <abbr title="Total Depth - All mapped reads overlapping the variant position">DP</abbr> count. This prevents <abbr title="Total Depth - All mapped reads overlapping the variant position">DP</abbr> inflation from reads that were brought in by the window padding but don't actually cover the variant. Two kinds of read count although they miss the anchor, both decided from their own bases: a read whose allele lies in soft-clipped bases (DNA) and a read decided from windows read from the right flank (see <a href="../architecture/#known-differences-from-getbasecountsmultisample-125">Known differences from 1.2.5</a>).</p>
 <div class="highlight"><pre><span></span><code><a href="#__codelineno-1-1" id="__codelineno-1-1" name="__codelineno-1-1"></a>Read A: [90─────100]        → overlaps anchor at 100 → counted in DP ✅
 <a href="#__codelineno-1-2" id="__codelineno-1-2" name="__codelineno-1-2"></a>Read B: [92──97]            → doesn't overlap 100, not classified → skipped ❌
 <a href="#__codelineno-1-3" id="__codelineno-1-3" name="__codelineno-1-3"></a>Read C: [95──99] + shifted  → doesn't overlap 100, but windowed scan found ALT → counted ✅
@@ -1715,7 +1715,7 @@ single gene, reverse-stranded <abbr title="Deoxyuridine Triphosphate - Used in s
 <span class="md-icon" title="Last update">
 <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M21 13.1c-.1 0-.3.1-.4.2l-1 1 2.1 2.1 1-1c.2-.2.2-.6 0-.8l-1.3-1.3c-.1-.1-.2-.2-.4-.2m-1.9 1.8-6.1 6V23h2.1l6.1-6.1zM12.5 7v5.2l4 2.4-1 1L11 13V7zM11 21.9c-5.1-.5-9-4.8-9-9.9C2 6.5 6.5 2 12 2c5.3 0 9.6 4.1 10 9.3-.3-.1-.6-.2-1-.2s-.7.1-1 .2C19.6 7.2 16.2 4 12 4c-4.4 0-8 3.6-8 8 0 4.1 3.1 7.5 7.1 7.9l-.1.2z"></path></svg>
 </span>
-<span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-timeago" title="October 27, 2026 18:31:32 UTC"><span class="timeago" datetime="2026-10-27T18:31:32+00:00" locale="en"></span></span><span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-iso_date" title="October 27, 2026 18:31:32 UTC">2026-10-27</span>
+<span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-timeago" title="October 31, 2026 00:58:30 UTC"><span class="timeago" datetime="2026-10-31T00:58:30+00:00" locale="en"></span></span><span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-iso_date" title="October 31, 2026 00:58:30 UTC">2026-10-31</span>
 </span>
 <span class="md-source-file__fact">
 <span class="md-icon" title="Created">
