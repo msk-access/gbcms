@@ -26,6 +26,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   up to twice the given); an expansion at the breakpoint is not (a REF read inside its copy
   fits it as well). The count that holds a row's ALT calls is named in `gbcms_diagnostic`,
   `OBSERVED_ALLELE` or `COEXISTING_ALLELE` at the deletion's anchor (`BaseCounts.unit_count_allele`).
+- `UNIT_COUNT_UNSPANNED` weighs the nearest unit count on each side (one that reads like the
+  given deletion for its shift and 12 bases more), not any count past reach.
 - Where no read at the site can reach the first difference (the run longer than the longest
   read), nothing is held, the counts stand, and `gbcms_diagnostic` names the row:
   `UNIT_COUNT_UNSPANNED(change:bases/longest)`, a new `BaseCounts.unit_count_unspanned`

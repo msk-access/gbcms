@@ -104,8 +104,11 @@ Per class, setting, input form, alignment and path:
    larger gap is a defect, not the limit. The operator decides whether the predicted bias
    itself is acceptable, by class.
 5. RD against develop: must be equal (the rule changes no REF call).
-6. The diagnostics: `UNIT_COUNT_UNSPANNED` on every class-U row and on no row of T1 to T3
-   (2×150); the other count named (`OBSERVED_ALLELE` or `COEXISTING_ALLELE` at the deletion's
+6. The diagnostics: `UNIT_COUNT_UNSPANNED` on every row where the nearest count on either
+   side needs more bases than the longest read: every class-U row, and a row whose given
+   deletion removes two or more units where one fewer unit deleted reads alike a unit longer
+   than the planted one more (D + unit + 4 above the read length: 5 T3 rows at 2×151); on no
+   other row of T1 to T3; the other count named (`OBSERVED_ALLELE` or `COEXISTING_ALLELE` at the deletion's
    anchor) on every row where it is present (listed, or found) and on no S1 row, nor on an S6
    row of the found form.
 7. S1 and S6 rows, and class C: counts equal to develop's.

@@ -348,6 +348,22 @@ pub(crate) fn hidden_alleles(v: &Variant, siblings: &[Variant], reach: usize) ->
     Some((alt, out))
 }
 
+/// The diagnostic's unit counts among `hidden` (nearest length first): on each side of the
+/// given deletion (`given`, its length change), more bases deleted and fewer, the nearest
+/// allele that reads like the ALT past the junction for the bases it shifts the reference by
+/// and [`REJOIN`] more (a copy of that length at least twice over: a unit count of a run, not
+/// a shift a few bases read alike by chance, nor a far count a repeat whose copies differ
+/// lets read alike).
+fn nearest_counts(hidden: &[Hidden], given: i64) -> Vec<&Hidden> {
+    let unit = |h: &Hidden| (h.change - given).unsigned_abs() as usize;
+    let count = |h: &&Hidden| h.first_diff.saturating_sub(K) >= unit(h) + REJOIN;
+    let more = hidden.iter().filter(|h| h.change < given).filter(count).min_by_key(|h| unit(h));
+    let fewer = hidden.iter().filter(|h| h.change > given).filter(count).min_by_key(|h| unit(h));
+    let mut out: Vec<&Hidden> = more.into_iter().chain(fewer).collect();
+    out.sort_by_key(|h| (unit(h), h.change));
+    out
+}
+
 /// The ALT's bases from the windows' first base (`alt`) with each listed row past the junction
 /// applied, one at a time (`Variant::listed_neighbours` and `listed_indels`): the given
 /// deletion with a neighbour the input names.
@@ -964,7 +980,10 @@ fn present_hidden(
         return PresentHidden::default();
     };
     // (no read at the site reads nothing, past any reach: nothing to name)
-    let unspanned = hidden.iter().find(|h| longest > 0 && h.need() > longest).map(|h| (h.change, h.need(), longest));
+    let unspanned = nearest_counts(&hidden, -(j.len as i64))
+        .into_iter()
+        .find(|h| longest > 0 && h.need() > longest)
+        .map(|h| (h.change, h.need(), longest));
     let reach: Vec<Hidden> = hidden.into_iter().filter(|h| h.need() <= longest).collect();
     if reach.is_empty() {
         return PresentHidden { unspanned, ..PresentHidden::default() };
@@ -1370,6 +1389,18 @@ mod tests {
         let listed = Variant { listed_indels: vec![row], ..v.clone() };
         let (_, hidden) = hidden_alleles(&listed, &[], 151).unwrap();
         assert!(hidden.iter().all(|h| h.change != -72), "the ALT with its listed neighbour");
+    }
+
+    #[test]
+    fn the_diagnostic_weighs_the_nearest_unit_count_on_each_side() {
+        // Given a 60-bp deletion: a 2-bp shift reading alike for 6 bases by chance, one unit
+        // (-120 and 0) each side, and a far count reading alike for 160 bases.
+        let h = |change: i64, agree: usize| Hidden { change, bases: Vec::new(), first_diff: K + agree, listed: false, row: (0, Vec::new(), Vec::new()), spelled: 0, told: 0, held: 0 };
+        let all = [h(-62, 6), h(-120, 100), h(-58, 5), h(-30, 180), h(-240, 160)];
+        let near: Vec<i64> = nearest_counts(&all, -60).iter().map(|h| h.change).collect();
+        assert_eq!(near, vec![-30, -120], "fewer by 30 (180 >= 30 + 12) and more by 60, not the chance shifts or the far count");
+        let short = [h(-120, 60)];
+        assert!(nearest_counts(&short, -60).is_empty(), "60 bases alike for a 60-base shift: no copy twice over");
     }
 
     #[test]
