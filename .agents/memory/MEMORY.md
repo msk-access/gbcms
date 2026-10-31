@@ -18,6 +18,7 @@ here with their home, so none is lost. Keep this index under 5 KB.
 - [Decided counting rules](decided-counting-rules.md) - wrong-length indels are `partial_alt`; complex events and 50+ bp deletions are judged by bases; RNA `--min-mapq` 1; pseudogene loci at 0; `vaf` = AD/(RD+AD).
 - [mFSD is graded evidence](mfsd-graded-evidence.md) - leans somatic or says nothing; never an origin call; the buffy coat decides CH.
 - [Universal haplotype judge](universal-haplotype-judge.md) - DECIDED 2026-10-23: one per-haplotype read judge; opt-in in 6.7.0, default in 6.8.0 (#331); SV and fusions 6.9.0 (#322-#327).
+- [Speed floor](speed-floor.md) - faster than the original C++ GetBaseCountsMultiSample as a minimum; the judge meets it before it is the default.
 - [MSK assay facts](msk-assay-facts.md) - ABRA2 realigns IMPACT and ACCESS (ACCESS twice); XS1 Marianas against XS2 fgbio qualities; production aligner flags; no QC-fail flags.
 - [References](references.md) - Lancet2 (borrow its gap model, not its best match); downstream org repos (never propose the switch; the operator starts it).
 

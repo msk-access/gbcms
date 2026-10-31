@@ -60,6 +60,12 @@ thinking we can use fable and opus depending on which is suitable"):
 When the session's work changes character (for example from measurement plumbing to rule design),
 suggest switching the session model. `CLAUDE.md` carries the short form.
 
+The rule holds for follow-up work too (2026-10-30: "Are we still delegating properly to different
+models depending on the task complexity"). Do not hand routine aggregation, tables or scans to a
+long-lived Opus agent because it is already there: start a Sonnet (or Haiku) agent with a full brief.
+Before a count-changing option goes to the operator, a fresh Fable or Opus agent reviews it
+adversarially, from the code and the numbers, not from the author's conclusion.
+
 ## Also standing
 
 - Comments and log strings never cite ticket labels (`.agents/rules/code-quality.md`).

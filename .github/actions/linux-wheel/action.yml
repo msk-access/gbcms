@@ -1,0 +1,56 @@
+name: Build the Linux wheel
+description: >
+  The recipe for the Linux x86_64 wheel (maturin inside a manylinux container). The
+  release workflow and the wheel checks both use it, so what the checks install is what
+  a release publishes. Run actions/checkout first.
+
+inputs:
+  manylinux:
+    description: >
+      The manylinux image, which sets the wheel's glibc floor (manylinux_2_28 is
+      AlmaLinux 8, glibc 2.28: RHEL 8 and newer).
+    required: false
+    default: manylinux_2_28
+  interpreter:
+    description: The Python the wheel is built for (maturin -i).
+    required: false
+    default: python3.11
+  commit:
+    description: >
+      The commit the wheel is built from, recorded in output provenance (rust/build.rs);
+      the container may not see the checkout's .git.
+    required: true
+  out:
+    description: The folder the wheel is written to.
+    required: false
+    default: dist
+
+runs:
+  using: composite
+  steps:
+    - name: Build the wheel
+      uses: PyO3/maturin-action@v1
+      with:
+        command: build
+        # Don't pass --manifest-path here; it's in pyproject.toml [tool.maturin]
+        # Passing it on CLI causes maturin to use Cargo package name instead of pyproject.toml name
+        args: --release --out ${{ inputs.out }} -i ${{ inputs.interpreter }}
+        manylinux: ${{ inputs.manylinux }}
+        # docker-options passes the variable into the container, where the cargo
+        # build reads it (a before-script export does not reach that phase).
+        docker-options: -e GBCMS_BUILD_COMMIT=${{ inputs.commit }}
+        # htslib is built from the bundled C source with zlib, bzip2 and xz; bindgen needs
+        # libclang. There is no OpenSSL or libcurl in the build (rust/Cargo.toml).
+        before-script-linux: |
+          SUDO=""
+          if [ "$(id -u)" -ne 0 ] && command -v sudo &> /dev/null; then
+            SUDO="sudo"
+          fi
+
+          if command -v dnf &> /dev/null; then
+            $SUDO dnf install -y zlib-devel bzip2-devel xz-devel clang llvm-devel
+          elif command -v yum &> /dev/null; then
+            $SUDO yum install -y zlib-devel bzip2-devel xz-devel clang llvm-devel
+          elif command -v apt-get &> /dev/null; then
+            $SUDO apt-get update && $SUDO apt-get install -y zlib1g-dev libbz2-dev liblzma-dev clang libclang-dev
+          fi
