@@ -1200,7 +1200,7 @@ pub(crate) struct GraphRead<'r> {
     /// measurement under `GBCMS_JUDGE_BAND=full`.
     pub(crate) full: bool,
     /// A listed insertion longer than the band's slack in the read's reach but past the window
-    /// its band widens for sends the read to the full programme ([`skips_bands`], #369). On for
+    /// its band widens for sends the read to the full programme ([`skips_bands`]). On for
     /// every read a site scores; off only in tests, to show what the band misses without it.
     pub(crate) long: bool,
 }
@@ -1252,7 +1252,7 @@ pub(crate) fn far_changes(g: &Graph, read: &GraphRead) -> Vec<(i64, i64, i64)> {
         .collect()
 }
 
-/// Whether `g` sends the read straight to the full programme (#369): a listed insertion longer
+/// Whether `g` sends the read straight to the full programme: a listed insertion longer
 /// than the band's slack in the read's reach but past the window its band widens for. All of an
 /// insertion's bases stand at its anchor's coordinate, so a near one widens the band already; a
 /// far one can hold the read's best path where the read's body is a copy of a stretch inside it

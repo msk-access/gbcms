@@ -2871,7 +2871,7 @@ impl Site {
         let span = (first - self.start, end - self.start);
         let mut gr = GraphRead { seq: &read.seq, rp, span, free_shift: self.free_shift(read), full: self.band_full, long: true };
         // where any state's graph holds a long insertion past the read's band, every state runs
-        // the full programme (#369): one exactness for the read's call, the found-allele check
+        // the full programme: one exactness for the read's call, the found-allele check
         // and `needed_by` alike
         if !gr.full {
             gr.full = self.graphs.iter().any(|g| graph::skips_bands(&g.graph, &gr));
@@ -2879,13 +2879,14 @@ impl Site {
         gr
     }
 
-    /// Tests only: [`Site::graph_read`] without #369's rule (the band as it stood before it).
+    /// Tests only: [`Site::graph_read`] without the long-insertion rule (the band as it stood
+    /// before it).
     #[cfg(test)]
     pub(crate) fn graph_read_banded<'r>(&self, read: &'r ReadView) -> GraphRead<'r> {
         GraphRead { long: false, full: self.band_full, ..self.graph_read(read) }
     }
 
-    /// Trace (#369): per state whose graph sends the read to the full programme, the length
+    /// Trace: per state whose graph sends the read to the full programme, the length
     /// changes in the read's reach past its band's window (1-based REF span, the change: + an
     /// insertion, - a deletion); X by its position and allele lengths, the read by its name and
     /// mate (`name`, `mate`: the view itself is unnamed) and REF span.
@@ -2912,7 +2913,7 @@ impl Site {
     }
 
     /// Whether the linear aligner aligns `read` with no band, as the graph scorer runs the read's
-    /// states in full (#369): a listed insertion of the site longer than the band's slack inside
+    /// states in full: a listed insertion of the site longer than the band's slack inside
     /// the read's reach (its span and its length each side) but outside the window its band widens
     /// for (the slack and two bases, and twice the rows' length changes there, each side).
     pub(crate) fn long_skips(&self, read: &ReadView) -> bool {
@@ -3166,7 +3167,7 @@ impl<'r> Scorer<'r> {
     pub(crate) fn align(&self, site: &Site, hap: &Hap) -> (Alignment, usize) {
         let near = self.near(site, hap);
         let (seq, a, band) = self.prepare(site, hap, &near);
-        // no band where a long insertion lies past the read's band (#369), and for measurement
+        // no band where a long insertion lies past the read's band, and for measurement
         // (GBCMS_JUDGE_BAND=full)
         let banded = !site.band_full && !site.long_skips(self.read);
         (score::align(&self.read.seq, seq, banded.then_some(&band)), a)
@@ -3666,9 +3667,9 @@ mod band_tests {
         assert!(aligned_scores(&site, &read, |sc, hap| sc.align(&site, hap)).iter().all(|&(a, f)| a == f), "linear: no band");
     }
 
-    /// A read of #369's class: its 100 bases written by its aligner on a planted copy of them in
-    /// the reference (three bases more at two places: 30M3D37M3D33M, `clip` bases of it
-    /// soft-clipped at its start and end), while the haplotype with a listed insertion of `len`
+    /// A read the long-insertion rule is for: its 100 bases written by its aligner on a planted
+    /// copy of them in the reference (three bases more at two places: 30M3D37M3D33M, `clip` bases
+    /// of it soft-clipped at its start and end), while the haplotype with a listed insertion of `len`
     /// bases holds them `inside` bases into the insertion (100: a copy inside it; fewer: the
     /// insertion's first or last bases, the rest on the reference beside its anchor). The
     /// insertion's segment starts `gap` bases past the end of the read's REF span as the band
@@ -3764,9 +3765,9 @@ mod band_tests {
         super::super::decide::decide(best)
     }
 
-    /// With #369's rule (`on`) or the band as it stood before it: every state's decided score
-    /// against its full programme's (one graph at a time, and the batch), whether any state skips
-    /// its bands, the decided and full calls, and each state's far length changes.
+    /// With the long-insertion rule (`on`) or the band as it stood before it: every state's
+    /// decided score against its full programme's (one graph at a time, and the batch), whether
+    /// any state skips its bands, the decided and full calls, and each state's far length changes.
     #[allow(clippy::type_complexity)]
     fn long_outcome(sh: LongShape, seed: u64, on: bool) -> (Vec<(i32, i32)>, Vec<(i32, i32)>, bool, super::super::decide::Call, super::super::decide::Call, Vec<Vec<(i64, i64, i64)>>) {
         let (c, x, listed, read) = long_shape(sh, seed);
