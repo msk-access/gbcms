@@ -1611,4 +1611,85 @@ mod tests {
         let deep: Vec<ReadView> = [writer(220), writer(230)].into_iter().chain((0..60).map(|i| plain(200 + i))).collect();
         assert!(found(&deep).is_empty(), "2 of 62 is below the share");
     }
+
+    /// A 60 bp duplication after the anchor at 0-based 299: a copy of the 60 bases after it
+    /// but its last, so its run (the bases it slides over) is 300-358 and the base past it,
+    /// 359, tells the alleles apart. RJ-23's equal windows from the anchor hold 61 bases:
+    /// REF's 299-359, X's anchor and its first 60 bases. The contig, X, and X's base at 359.
+    fn long_duplication() -> (Vec<u8>, Row, u8) {
+        let c = random_seq(700, 264);
+        let last = *b"ACGT".iter().find(|&&b| b != c[359] && b != c[299]).unwrap();
+        let mut ins = c[300..360].to_vec();
+        ins[59] = last;
+        let x = Row::new(299, &c[299..300], &[&c[299..300], &ins[..]].concat());
+        (c, x, last)
+    }
+
+    /// Calls on `x`'s site built from `reads` under the long-insertion rule `ins`, with the
+    /// guard's masks `masked` (genome).
+    fn calls_masked(c: &[u8], x: &Row, masked: Vec<i64>, reads: &[ReadView], ins: haplotypes::LongInsRule) -> Vec<Call> {
+        let candidates = Candidates { masked, ..Candidates::default() };
+        let s = haplotypes::Site::build_ins(x.clone(), &candidates, (0, c.to_vec()), reads, ins).unwrap();
+        reads.iter().map(|r| judge(&s, r, MIN_BQ, false).call).collect()
+    }
+
+    #[test]
+    fn long_insertion_reads_hold_the_equal_windows_from_the_anchor() {
+        use haplotypes::LongInsRule::Window;
+        use Call::*;
+        // RJ-23: a read holding the anchor and as many of X's bases as REF's window holds
+        // counts ALT, not the whole insert; a read inside the insert (or holding only its far
+        // junction) holds no window and is depth only, as a REF read starting inside the run.
+        let (c, x, _) = long_duplication();
+        let h = haplotype(&c, &[&x]);
+        let reads = vec![
+            read(&h, 280, 100, 280, "20M60I20M"), // over the anchor, through the insert
+            read(&h, 260, 100, 260, "100M"),      // the anchor and X's window, ending at its last base
+            read(&h, 241, 100, 241, "100M"),      // the anchor, ending inside the window: the run alone
+            read(&h, 330, 100, 330, "100M"),      // inside the insert, through its far junction
+            read(&h, 320, 40, 320, "40M"),        // inside the insert only
+            read(&c, 260, 100, 260, "100M"),      // REF: the anchor, the run and the base past it
+            read(&c, 241, 100, 241, "100M"),      // REF ending inside the run
+            read(&c, 330, 100, 330, "100M"),      // REF starting inside the run
+        ];
+        assert_eq!(calls_masked(&c, &x, Vec::new(), &reads, Window), vec![Alt, Alt, Depth, Depth, Depth, Ref, Depth, Depth]);
+    }
+
+    #[test]
+    fn a_masked_change_past_a_long_insertions_run_leaves_a_carrier_ending_there_depth_only() {
+        use haplotypes::LongInsRule::{Cis, Window};
+        use Call::*;
+        // The guard masks 359, where X's own base sits on reads written straight through it
+        // (a haplotype it found holds the change: here X's, a change in cis with it, as at
+        // HG002's chr21:41865095 and chr22:39653046). A carrier holding X's window and ending
+        // at 359 reads as either allele there, so it is depth only (decided: RJ-27, #294).
+        // The `cis` option (measurement only, not adopted: REJ-20261023-001) reads 359 on
+        // REF's haplotypes as the reference's where the REF molecules over the anchor and past
+        // 359 show they do not carry the change: then that carrier is ALT.
+        let (c, x, _) = long_duplication();
+        let h = haplotype(&c, &[&x]);
+        let mut reads: Vec<ReadView> = (0..3).map(|i| read(&c, 250 + i, 150, 250 + i as i64, "150M").named(format!("r{i}").as_bytes())).collect();
+        reads.push(read(&h, 260, 100, 260, "100M").named(b"c0")); // X's window, ending at 359
+        reads.push(read(&c, 260, 100, 260, "100M").named(b"r9")); // REF's window, ending at 359
+        assert_eq!(calls_masked(&c, &x, vec![359], &reads, Window), vec![Ref, Ref, Ref, Depth, Ref]);
+        assert_eq!(calls_masked(&c, &x, vec![359], &reads, Cis), vec![Ref, Ref, Ref, Alt, Ref]);
+    }
+
+    #[test]
+    fn under_the_cis_option_a_change_a_ref_molecule_carries_stays_masked_on_ref() {
+        use haplotypes::LongInsRule::Cis;
+        use Call::*;
+        // As above, with one REF molecule over the anchor and past 359 carrying X's base
+        // there (a germline change on REF's haplotype): the mask stays on REF's haplotypes, so
+        // the carrier ending at 359 reads as either allele and is depth only.
+        let (c, x, last) = long_duplication();
+        let h = haplotype(&c, &[&x]);
+        let mut germ = c.clone();
+        germ[359] = last;
+        let mut reads: Vec<ReadView> = (0..3).map(|i| read(&c, 250 + i, 150, 250 + i as i64, "150M").named(format!("r{i}").as_bytes())).collect();
+        reads.push(read(&germ, 255, 150, 255, "150M").named(b"g0"));
+        reads.push(read(&h, 260, 100, 260, "100M").named(b"c0"));
+        reads.push(read(&c, 260, 100, 260, "100M").named(b"r9"));
+        assert_eq!(calls_masked(&c, &x, vec![359], &reads, Cis), vec![Ref, Ref, Ref, Ref, Depth, Ref]);
+    }
 }

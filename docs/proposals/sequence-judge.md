@@ -163,6 +163,16 @@ For a row X and each admitted read:
     #219 test asserts. Decided by design (operator, 2026-10-29), as the two delins
     germline-change tests: the test stays as it is, its expectation changing at the default
     flip (#331).
+  - *A pure insertion of 50 bp or more* (RJ-23, operator 2026-10-30, #264) is read over
+    equal windows from the anchor, as the rules read it: a REF or ALT call holds, on its
+    allele's sequence as the read aligns to it, the anchor and as many bases on as REF's
+    window holds (the run the insert slides over and the base past it); a read inside the
+    insert, or holding only its far junction, holds none and is depth only. A change the
+    guard masks past the run stays masked on every haplotype, so a carrier ending at it is
+    depth only where the change is in cis with the insertion (RJ-27's named limit); the
+    `GBCMS_JUDGE_LONG_INS=cis` option (measurement only, not adopted: REJ-20261023-001) reads
+    it on REF's haplotypes as the reference's where REF's molecules show they lack it, and
+    `off` restores the judge before the windows.
   - *An indel the reads write beside X's site* (two reads and 5%, every placement clear of
     the site, the repeat X changes included) is a context, a separate event (RJ-8), however
     a read's aligner wrote it, where the reads need it for their calls (as a respelling

@@ -7,6 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed — the sequence judge reads an insertion of 50 bp or more over equal windows from its anchor (#264)
+
+- Under `--read-judge sequence`, a REF or ALT call at a pure insertion of 50 bp or more now
+  holds RJ-23's equal windows from the anchor, as the rules read it: the anchor and as many
+  bases on as REF's window holds (the run the insert slides over and the base past it). The ALT
+  is read over the insert's first bases, never the whole insert. A read lying inside the insert,
+  or holding only its far junction, is depth only, as a REF read starting inside the run is.
+  Before this the judge counted reads inside a long insert ALT, giving the ALT read starts REF
+  cannot have. On HG002's insertion arm, het rows of 50 bp or more whose other haplotype is REF
+  over the window: median VAF 0.483 → 0.434, 60% in 0.35–0.65 under both, rows at 0.8 or more
+  5 → 1 (80 of 88 rows keep 10 or more informative reads).
+- A change the guard masks past the run stays masked on every haplotype, so a carrier ending at
+  it is depth only where the change is in cis with the insertion (RJ-27's named limit). A
+  measurement option, `GBCMS_JUDGE_LONG_INS=cis`, reads it on REF's haplotypes as the
+  reference's where REF's molecules show they lack it; it is not adopted (it credits a read on
+  other fragments' evidence, REJ-20261023-001). `GBCMS_JUDGE_LONG_INS=off` restores the judge
+  before the windows. The rules path is unchanged; RNA does not take the sequence judge.
+
 ### Fixed — the Smith-Waterman local re-scoring's `partial_alt` reads the scores that made the call (#195)
 
 - Where a complex row's semiglobal scores are unreliable, the `sw` step re-scores with a local
