@@ -30,14 +30,14 @@ Common issues and solutions for gbcms. Issues are grouped by phase — work top-
     The Rust backend compiles htslib statically. Ensure compression library headers are present:
 
     ```bash
-    apt-get install zlib1g-dev libbz2-dev liblzma-dev libcurl4-openssl-dev
+    apt-get install zlib1g-dev libbz2-dev liblzma-dev
     ```
 
-??? question "`GLIBC_2.34 not found` when installing via pip"
+??? question "pip builds from source, or `GLIBC_2.28 not found`"
 
-    Your system has an older glibc (RHEL 8 / CentOS 8 / HPC). The one prebuilt wheel (CPython 3.11, Linux x86_64) requires glibc 2.34+; other platforms build from source ([Platform support](../getting-started/installation.md#platform-support)).
-    Use the [Legacy Linux](../getting-started/installation.md#legacy-linux-rhel-8-hpc) install path
-    (micromamba + clangdev + source install).
+    The one prebuilt wheel (any CPython from 3.10, Linux x86_64) needs glibc 2.28 or newer (RHEL 8 and newer) and pip 20.3 or newer. With an older glibc or an older pip, pip builds the source distribution instead ([Platform support](../getting-started/installation.md#platform-support)).
+    On RHEL 8, install a Python from 3.10 on and use a virtual environment (`python3.11 -m venv`, then `pip install --upgrade pip`); see the
+    [Legacy Linux](../getting-started/installation.md#legacy-linux-rhel-8-hpc) install path. For glibc older than 2.28, use that page's micromamba + clangdev source install.
 
 ??? question "`LIBCLANG_PATH` not set error during build"
 

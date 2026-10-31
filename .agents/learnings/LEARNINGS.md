@@ -33,6 +33,74 @@ regenerating a section.
 
 ---
 
+## [LRN-20261031-002] rule-trigger | review fixes went back to the builder round after round, each a row-level condition
+- **Status:** resolved (rule promoted); the #297 re-frame waits for the operator.
+- **Cause:** rule-trigger.
+- **Summary:**
+  - On #297 (the narrow unit-run rule) I sent each adversarial review's findings to the builder as a
+    fix list, four rounds in two days. The rule gained about ten conditions: the narrow run, deletions
+    only, the placement test, the nearest-count diagnostic, option (b)'s presence test, a 3-fragment
+    floor, a placement test on both sides of the 5% share, a depth rule, a new diagnostic name. Each
+    was justified by named rows (10:11885357, p1b_022 and others). The spike-in then found the next
+    boundary row (soft-clipped deciders).
+  - `decision-protocol.md` §3 already said "a narrowing made to pass a bar is a signal that the
+    mechanism was wrong", but nothing triggered it: it was not part of the step where I forward
+    review findings, and the reviewer briefs did not ask "instance or mechanism?".
+  - Option (b) also decided that a listed input allele was absent, against invariant 7 ("input
+    alleles are taken as correct"). I presented it without saying so. The operator saw the drift
+    (2026-10-31: "i feel we regressed and made certain row level decisions vs category level").
+- **Promotion target:** `.agents/rules/decision-protocol.md` §3 — `DONE:` count the conditions before
+  a second fix round; a condition only named rows justify stops the loop and goes to the operator
+  as a class question with one class-level option; reviewers are asked "instance or mechanism?";
+  options are tested against invariant 7 before they reach the operator.
+- **Related:** `working-agreements` ("Also standing"); `genotyper-not-caller`.
+
+## [LRN-20261031-001] rule-body | a gate result read and a commit made in one command
+- **Status:** resolved (rule promoted).
+- **Cause:** rule-body.
+- **Summary:**
+  - The gate ran in the background. I then ran one command that printed its output and committed
+    and pushed the record branch. The output showed `pytest=1` (a stale `_rs.cpython-310-darwin.so`
+    in the main checkout shadowed the new abi3 build, which #235's test catches), but the commit had
+    already run. No PR was open; the branch was fixed and gated again before any PR.
+  - The qa-check rule said "read every exit code; never gate on a pipe", but not that reading and
+    committing must be separate steps.
+- **Promotion target:** `.agents/skills/qa-check/SKILL.md` ("Read every exit code") — `DONE:` read a
+  background gate's result in its own step; commit only in the next step.
+- **Related:** the pipe-masks-gate-exit note (now in the qa-check skill).
+
+## [LRN-20261030-003] rule-body | the PHI sanitizer filtered stdout but not library warnings on stderr
+- **Status:** resolved (rule promoted).
+- **Cause:** rule-body.
+- **Summary:**
+  - An agent comparing gbcms with the C++ tool wrote its sanitizer first, as the rule says, but
+    passed only stdout through it. htslib's "index older than data" warning on stderr printed WES
+    patient BAM file names (sample IDs) into two tool outputs: one name, then twelve. No position or
+    read name was shown. The agent reported it, masked its log and silenced the warnings.
+  - The rule said "every printed line" but named no stderr, and library warnings are easy to miss.
+- **Promotion target:** `.agents/rules/security.md` (patient BAM slices, the sanitizer bullet) —
+  `DONE:` the sanitizer covers stderr; library warnings print file names; merge stderr into the
+  filtered stream or keep it in a file that never prints.
+- **Second slip, same day:** another agent's masking command did not mask and printed five DMP BAM
+  stems from a region list. `DONE:` the sanitizer is tested on a made-up line holding each kind of
+  identifier before it sees patient data.
+- **Related:** the 2026-10-29 sanitizer-first rule (#372).
+
+## [LRN-20261030-002] rule-trigger | follow-up work went to the agent at hand, not the model the task needs
+- **Status:** resolved (rule promoted).
+- **Cause:** rule-trigger.
+- **Summary:**
+  - The operator asked (2026-10-30) whether delegation still follows the model-per-task rule.
+  - New agents got explicit models. But follow-up work went to the two long-lived agents because
+    they were already running: an Opus agent was given the C++ timing tables (Sonnet work).
+  - No fresh adversarial review was planned before count decisions; Greptile was the only outside read.
+  - The rule fired when an agent was spawned, and stayed silent when work was handed to an agent
+    already running.
+- **Promotion target:** `.agents/memory/working-agreements.md` ("Model per task") — `DONE:` the rule
+  holds for follow-up work; routine aggregation goes to a new Sonnet or Haiku agent; a fresh Fable or
+  Opus agent reviews each count-changing option before it goes to the operator.
+- **Related:** [[working-agreements]].
+
 ## [LRN-20261030-001] rule-trigger | status tables and relayed agent reports went out as bare labels
 - **Status:** resolved (rule promoted).
 - **Cause:** rule-trigger.

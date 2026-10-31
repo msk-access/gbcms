@@ -60,10 +60,19 @@ thinking we can use fable and opus depending on which is suitable"):
 When the session's work changes character (for example from measurement plumbing to rule design),
 suggest switching the session model. `CLAUDE.md` carries the short form.
 
+The rule holds for follow-up work too (2026-10-30: "Are we still delegating properly to different
+models depending on the task complexity"). Do not hand routine aggregation, tables or scans to a
+long-lived Opus agent because it is already there: start a Sonnet (or Haiku) agent with a full brief.
+Before a count-changing option goes to the operator, a fresh Fable or Opus agent reviews it
+adversarially, from the code and the numbers, not from the author's conclusion.
+
 ## Also standing
 
 - Comments and log strings never cite ticket labels (`.agents/rules/code-quality.md`).
 - A failing test's expectation is never edited without telling the operator first (`AGENTS.md`).
+- **Decide by class, not by row** (2026-10-31: "i feel we regressed and made certain row level
+  decisions vs category level"). Review findings do not go back to a builder as a fix list after the
+  first round until the rule's conditions are counted (`.agents/rules/decision-protocol.md` §3).
 - **Every failed task is reported** (2026-10-30: "when i see failed task should i probe you"). When a
   background task, HPC job or agent run fails, the next message says what failed and what follows:
   fixed and rerun, stopped on purpose, a red-first test failing as intended, or still open. The

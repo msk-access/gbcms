@@ -1,0 +1,215 @@
+name: Wheels
+
+# Builds the Linux wheel with the release recipe (.github/actions/linux-wheel) and
+# installs it where users do: Rocky Linux 8 (glibc 2.28, as RHEL 8) and 9 (glibc 2.34),
+# with Python 3.10 to 3.14. The wheel is one file for every Python (stable ABI, cp310-abi3).
+# In each environment pip must take the wheel (never the source distribution) and a
+# counting run on a synthetic data set must write the same bytes in every environment.
+# The suite runs in RHEL's own Python 3.11 (on 8 and 9) and at both ends of the range.
+# The macOS wheel (Apple silicon, arm64) is built with .github/actions/macos-wheel and
+# installed on a macOS runner with Python 3.10 and 3.14: the suite runs, and its counting
+# run must write the same bytes as the Linux ones. Nothing is published.
+#
+# The "reference" wheel is the one earlier releases shipped (manylinux_2_34). Its
+# outputs on Rocky 9 are the baseline the manylinux_2_28 wheel must match, byte for byte.
+# Delete the reference once a release has shipped the manylinux_2_28 wheel.
+
+on:
+  pull_request:
+    branches: [ main, develop ]
+    paths:
+      - 'rust/**'
+      - 'pyproject.toml'
+      - 'scripts/check_wheel.sh'
+      - 'scripts/wheel_fixture_run.py'
+      - '.github/actions/linux-wheel/**'
+      - '.github/actions/macos-wheel/**'
+      - '.github/workflows/wheels.yml'
+  push:
+    branches: [ main, develop ]
+    paths:
+      - 'rust/**'
+      - 'pyproject.toml'
+      - 'scripts/check_wheel.sh'
+      - 'scripts/wheel_fixture_run.py'
+      - '.github/actions/linux-wheel/**'
+      - '.github/actions/macos-wheel/**'
+      - '.github/workflows/wheels.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Build (${{ matrix.manylinux }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        manylinux: [ manylinux_2_28, manylinux_2_34 ]
+    steps:
+      - uses: actions/checkout@v5
+      - name: Build the wheel
+        uses: ./.github/actions/linux-wheel
+        with:
+          manylinux: ${{ matrix.manylinux }}
+          commit: ${{ github.sha }}
+      - name: The wheel
+        env:
+          MANYLINUX: ${{ matrix.manylinux }}
+        run: |
+          ls -l dist
+          python3 - <<'PY'
+          import glob, os, re
+          (wheel,) = glob.glob("dist/*.whl")  # one wheel for every Python
+          python_tag, abi_tag, platform = wheel[: -len(".whl")].split("-")[-3:]
+          assert (python_tag, abi_tag) == ("cp310", "abi3"), (python_tag, abi_tag)
+          floors = [tuple(map(int, m.groups())) for m in re.finditer(r"manylinux_(\d+)_(\d+)", platform)]
+          if "manylinux2014" in platform:
+              floors.append((2, 17))
+          # a wheel that tags itself for a newer glibc than its container's would not
+          # install on RHEL 8; an older tag is fine
+          limit = tuple(map(int, os.environ["MANYLINUX"].split("_")[1:]))
+          print(wheel, "->", platform, "glibc floors", floors, "limit", limit)
+          assert floors and min(floors) <= limit, (platform, limit)
+          PY
+      - name: Upload the wheel
+        uses: actions/upload-artifact@v4
+        with:
+          name: wheel-${{ matrix.manylinux }}
+          path: dist
+          if-no-files-found: error
+
+  rocky:
+    name: Rocky ${{ matrix.rocky }}, Python ${{ matrix.python }}, ${{ matrix.manylinux || 'manylinux_2_28' }}
+    needs: build
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # python: `system` is the RPM python3.11; a version is python-build-standalone
+        # (uv), which is how a user gets a Python that RHEL 8 does not package.
+        include:
+          - { rocky: '8', python: system, suite: '1' }
+          - { rocky: '9', python: system, suite: '1' }
+          - { rocky: '8', python: '3.10', suite: '1' }
+          - { rocky: '8', python: '3.14', suite: '1' }
+          - { rocky: '8', python: '3.12', suite: '0' }
+          - { rocky: '8', python: '3.13', suite: '0' }
+          # the reference: earlier releases' wheel; only its outputs are compared
+          - { rocky: '9', python: system, suite: '0', manylinux: manylinux_2_34 }
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/download-artifact@v4
+        with:
+          name: wheel-${{ matrix.manylinux || 'manylinux_2_28' }}
+          path: dist
+      - name: Install and test the wheel
+        env:
+          ROCKY: ${{ matrix.rocky }}
+          PY: ${{ matrix.python }}
+          MANYLINUX: ${{ matrix.manylinux || 'manylinux_2_28' }}
+          RUN_SUITE: ${{ matrix.suite }}
+        run: |
+          mkdir -p digests
+          docker run --rm \
+            -v "$PWD:/repo" -w /repo \
+            -e RUN_SUITE -e ROCKY -e PY -e MANYLINUX \
+            "quay.io/rockylinux/rockylinux:$ROCKY" \
+            bash -euo pipefail -c '
+              # git, xargs, awk and gzip are what the hook tests of the suite run; the
+              # minimal image does not guarantee findutils, gawk or gzip
+              dnf install -y --setopt=install_weak_deps=False python3.11 python3.11-pip git-core findutils gawk gzip
+              # the checkout belongs to the runner user, not to root
+              git config --global --add safe.directory /repo
+              if [ "$PY" = system ]; then
+                python=python3.11
+              else
+                python3.11 -m venv /opt/uv
+                /opt/uv/bin/pip install --quiet uv
+                /opt/uv/bin/uv python install "$PY"
+                python=$(/opt/uv/bin/uv python find --managed-python "$PY")
+              fi
+              bash scripts/check_wheel.sh dist "$python" "digests/${MANYLINUX}-rocky${ROCKY}-py${PY}.txt"
+            '
+      - name: Upload the output digests
+        uses: actions/upload-artifact@v4
+        with:
+          name: digests-${{ matrix.manylinux || 'manylinux_2_28' }}-rocky${{ matrix.rocky }}-py${{ matrix.python }}
+          path: digests
+          if-no-files-found: error
+
+  macos-build:
+    name: Build (macOS arm64)
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.10'
+      - name: Install build tools
+        run: brew install autoconf automake
+      - name: Build the wheel
+        uses: ./.github/actions/macos-wheel
+        with:
+          commit: ${{ github.sha }}
+      - name: The wheel
+        run: |
+          ls -l dist
+          # one wheel for every Python, for Apple silicon
+          test "$(ls dist | wc -l)" -eq 1
+          ls dist | grep -E -- '-cp310-abi3-macosx_[0-9]+_[0-9]+_arm64\.whl$'
+      - name: Upload the wheel
+        uses: actions/upload-artifact@v4
+        with:
+          name: wheel-macos-arm64
+          path: dist
+          if-no-files-found: error
+
+  macos-test:
+    name: macOS arm64, Python ${{ matrix.python }}
+    needs: macos-build
+    runs-on: macos-14
+    strategy:
+      fail-fast: false
+      matrix:
+        python: [ '3.10', '3.14' ]
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/download-artifact@v4
+        with:
+          name: wheel-macos-arm64
+          path: dist
+      - uses: actions/setup-python@v6
+        with:
+          python-version: ${{ matrix.python }}
+      - name: Install and test the wheel
+        run: |
+          mkdir -p digests
+          bash scripts/check_wheel.sh dist "$(command -v python)" "digests/macos-arm64-py${{ matrix.python }}.txt"
+      - name: Upload the output digests
+        uses: actions/upload-artifact@v4
+        with:
+          name: digests-macos-arm64-py${{ matrix.python }}
+          path: digests
+          if-no-files-found: error
+
+  compare:
+    name: The outputs are the same everywhere
+    needs: [rocky, macos-test]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: digests-*
+          merge-multiple: true
+          path: digests
+      - name: Compare
+        run: |
+          cd digests
+          ls -l
+          test "$(ls | wc -l)" -ge 3
+          for f in *.txt; do echo "== $f"; cat "$f"; done
+          for f in *.txt; do diff -u manylinux_2_34-rocky9-pysystem.txt "$f"; done
+          echo "All outputs are byte-identical."

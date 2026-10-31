@@ -37,6 +37,133 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   adopted (it credits a read on other fragments' evidence, REJ-20261023-001); that option is
   removed. The rules path is unchanged; RNA does not take the sequence judge.
 
+### Added — a macOS wheel for Apple silicon (arm64) (#237)
+
+- The release builds `cp310-abi3-macosx_11_0_arm64` on `macos-14` with the new local action
+  `.github/actions/macos-wheel`, and publishes it to PyPI and the release page (with its
+  checksum and build-provenance attestation) beside the Linux wheel. `pip install gbcms` on
+  an Apple silicon Mac with macOS 11 or newer, on any Python from 3.10, now installs a wheel;
+  before, it built the source distribution (Rust, clang and htslib's C source).
+- The `Wheels` workflow builds that wheel on a macOS runner on every change to the build, and
+  installs it on Python 3.10 and 3.14 with `pip install --only-binary=:all:`. The suite runs
+  there, and the counting run's output digests must equal the Linux ones. The same steps run
+  on a Mac with `scripts/check_wheel.sh`.
+- Intel Macs (x86_64) still build the source distribution: nothing in CI uses an Intel Mac,
+  and a wheel for one would be a second entry in the same two jobs (or a cross build on the
+  arm64 runner) if a user asks for it.
+- Checked locally on macOS arm64, with the wheel of the stable-ABI change: the wheel is
+  3.2 MB, installs on Python 3.10 to 3.14, and the suite passes on all five.
+
+### Added — a native arm64 Docker image, joined with amd64 into one multi-arch tag (#236)
+
+- The release builds the image on an amd64 runner and on GitHub's arm64 runner (no QEMU),
+  pushes each by digest, and a new job `docker-merge` joins the two into one tag
+  (`X.Y.Z` and `latest`). Pulling the tag on Apple silicon gets an arm64 image that runs
+  natively; before, Docker Desktop ran the amd64 image under emulation. The image lock's
+  hashes cover every platform's wheels, so both architectures install the same versions.
+- The `docker-test` job runs on both architectures. In each it builds the image on the
+  runner, checks that the image is the runner's architecture, runs `--version` and
+  `pip check`, and runs the counting run on a synthetic data set. The new job
+  `docker-compare` fails unless amd64 and arm64 write the same bytes.
+- The Nextflow `docker` profile still forces `--platform linux/amd64`. Dropping it would let
+  Apple silicon run the native image; that waits for `docker-compare` to pass on real CI
+  runs, and it changes what a pipeline run on a Mac uses.
+- Publishing: a manual run of the release workflow builds both images and pushes nothing. A tag
+  push pushes two untagged images and joins them; the first tagged release is the first
+  time the join runs.
+
+### Added — CI runs the image through Apptainer, as RHEL clusters do (#233)
+
+- The `docker-test` job installs Apptainer, builds a SIF from the image it just built
+  (`docker-daemon://gbcms:test`), and runs the CLI and a counting run on a synthetic data set
+  in it: `apptainer exec` through bash, on the read-only SIF, with the data folders bound in
+  (what Nextflow's `autoMounts` does), as the calling user. It fails unless the output digests
+  equal those of the same run under Docker. It runs on every change that builds the image.
+- Found by reading how Singularity and Apptainer differ from Docker: both bind the caller's
+  `$HOME` into the container, and a Python imports `~/.local/lib/python3.x/site-packages`
+  before its own packages. Anyone on a cluster with `pip install --user` packages in the same
+  Python version would have had them replace the image's locked ones. Checked on the base
+  image with Docker (a package in a bound HOME is imported; with `PYTHONNOUSERSITE=1` it is
+  not). The image now sets `PYTHONNOUSERSITE=1`, and the CI run puts a package that raises on
+  import in the caller's home first, in the folder the image's own Python reads (it asks that
+  Python, so a Python upgrade moves the trap with it), and shows that Python reads it once
+  the setting is undone. A regression, or a trap in the wrong folder, fails loudly. A `PYTHONPATH` in the
+  caller's environment still reaches the container (Apptainer passes the environment on;
+  `--cleanenv` stops it): the installation page says so.
+
+### Fixed — the sequence judge no longer misses a read's path through a long listed insertion (#369)
+
+- Under `--read-judge sequence`, the band around a read's own placement widened only for the rows
+  within its slack and two bases of the read. A listed insertion further on but within the read's
+  length could hold the read's best path (a read copied from inside an expanded repeat or a
+  duplication), and the band stood on a worse score. A listed insertion longer than 16 bases in a
+  read's reach but past its band now sends every state of the read to the full programme, and the
+  linear aligner drops its band for the read. Deletions do not trigger it. Measured on every arm:
+  no patient read changes; on HG002 622 reads change, every one to the call the full programme
+  gives (537 to depth only: through the insertion they fit each state alike); truth and both
+  oracles unchanged. CPU +0 to +4% on HG002; on the patient arms within 1% of the build
+  without the rule.
+  `docs/proposals/sequence-judge.md` §10.
+
+### Changed — one wheel for every Python from 3.10: the extension uses the stable ABI (`abi3-py310`) (#235)
+
+- The Linux wheel is now `cp310-abi3`: one file that installs on CPython 3.10, 3.11, 3.12, 3.13
+  and 3.14, and on later ones. Before, the one wheel was `cp311`, and every other Python built
+  the source distribution (a Rust toolchain and a C compiler). A release builds one wheel per
+  platform, not one per Python.
+- Why one wheel and not five. PyO3 builds under `abi3-py310` only if every Python API the
+  bindings use is in the stable ABI; it builds, and these bindings (`#[pyfunction]`,
+  `#[pyclass]` with `#[pyo3(get)]` fields, `Vec` and `Option` conversions, `py.detach`,
+  `pyo3-log`) use nothing else. The price is small. Measured on macOS arm64, Python 3.11 and
+  3.14, against a per-version wheel of the same commit: making 300,000 `Variant` objects and reading or
+  writing their fields is within 6% (the 3.11 run +4%, the 3.14 run -2%); building the small
+  tuples of a `Variant` (30,000 objects, three getters) is 15% slower (12.0 to 13.7 ms on 3.11);
+  one counting call on 4,000 SNVs takes 496 ms at best with either wheel (the median varies
+  by ±5% with machine load). The wheel is 4 KB larger (0.1%).
+- What the stable ABI cannot do: a free-threaded Python (3.13t, 3.14t) takes no `abi3` wheel.
+  gbcms is not built or tested free-threaded (`gil_used = true` in the module), so nothing is
+  lost today. If a binding ever needs an API outside the stable ABI, remove the feature and
+  build one wheel per Python.
+- Checks. The full suite passes on 3.10, 3.11, 3.12, 3.13 and 3.14 with the one wheel, and a
+  counting run on a synthetic data set writes byte-identical output on all five and with a
+  per-version wheel of the same commit. The
+  `Wheels` workflow installs the wheel in Rocky Linux 8 and 9 with Python 3.10 to 3.14.
+- For developers: the built file is `src/gbcms/_rs.abi3.so` now. Python tries a
+  version-specific suffix first, so a leftover `src/gbcms/_rs.cpython-3xx-*.so` from an earlier
+  build wins over it and runs the old engine. Move it to the Trash and run `maturin develop
+  --release` again; a new test fails when the loaded extension is not the `.abi3.so`.
+
+### Changed — the Linux wheel installs on RHEL 8 (manylinux_2_28), and the extension links no OpenSSL or libcurl (#234)
+
+- The release builds its Linux wheel in the `manylinux_2_28` image (AlmaLinux 8, glibc 2.28),
+  not `manylinux_2_34`. The wheel now installs on RHEL 8 and newer; before, `pip install` on
+  RHEL 8 built the source distribution.
+- Why the build image had to change: the curl that rust-htslib builds in refuses OpenSSL older
+  than 3.0, and RHEL 8 ships 1.1.1. The fix is not a newer OpenSSL but none: rust-htslib is
+  built without its default `curl` feature, which only serves remote files (http, https, s3,
+  gcs), and gbcms opens only paths that exist. `curl-sys`, `openssl-sys` and `openssl-src` leave
+  `rust/Cargo.lock`, and with them the OpenSSL license question of a wheel that carries
+  OpenSSL. Counts are unchanged: a counting run on a synthetic data set (SNV, MNV, insertion,
+  deletion; two paired-end BAMs; mFSD on) writes byte-identical output with and without the
+  feature. On macOS arm64 the wheel falls from 5.77 to 3.20 MB.
+- New `Wheels` workflow and local action `.github/actions/linux-wheel` (the recipe the
+  release also uses): on a change to the build, it builds the wheel and installs it in Rocky
+  Linux 8 and 9 containers with `pip install --only-binary=:all:`, runs the test suite there,
+  and compares the output digests of a counting run (`scripts/wheel_fixture_run.py`) between
+  Rocky 8, Rocky 9 and the `manylinux_2_34` wheel that earlier releases shipped. The same
+  steps run on any RHEL machine with `scripts/check_wheel.sh`. `checkpoint-wheels.yml` is
+  unchanged: it builds older commits, which still link libcurl, so it keeps `manylinux_2_34`.
+
+### Fixed — the docs say what the original's `--filter_non_primary` removes, and list the measured differences from 1.2.5
+
+- `docs/reference/read-filters.md` implied that the original GetBaseCountsMultiSample's single
+  `--filter_non_primary` flag covers supplementary alignments. It removes secondary alignments
+  only (flag `0x100`); a read's supplementary records stay in its depth, `REF` and `ALT`. The
+  comparison now says so.
+- `docs/reference/architecture.md` has a new list, "Known differences from
+  GetBaseCountsMultiSample 1.2.5": one line per difference with its cause, the HG002 reads and
+  rows it moves, and the rule that explains it. Docs only; no count changes.
+
 ### Fixed — the Smith-Waterman local re-scoring's `partial_alt` reads the scores that made the call (#195)
 
 - Where a complex row's semiglobal scores are unreliable, the `sw` step re-scores with a local
