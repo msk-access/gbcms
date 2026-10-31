@@ -21,11 +21,39 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   without the rule.
   `docs/proposals/sequence-judge.md` §10.
 
+### Changed — one wheel for every Python from 3.10: the extension uses the stable ABI (`abi3-py310`) (#235)
+
+- The Linux wheel is now `cp310-abi3`: one file that installs on CPython 3.10, 3.11, 3.12, 3.13
+  and 3.14, and on later ones. Before, the one wheel was `cp311`, and every other Python built
+  the source distribution (a Rust toolchain and a C compiler). A release builds one wheel per
+  platform, not one per Python.
+- Why one wheel and not five. PyO3 builds under `abi3-py310` only if every Python API the
+  bindings use is in the stable ABI; it builds, and these bindings (`#[pyfunction]`,
+  `#[pyclass]` with `#[pyo3(get)]` fields, `Vec` and `Option` conversions, `py.detach`,
+  `pyo3-log`) use nothing else. The price is small. Measured on macOS arm64, Python 3.11 and
+  3.14, against a per-version wheel of the same commit: making 300,000 `Variant` objects and reading or
+  writing their fields is within 6% (the 3.11 run +4%, the 3.14 run -2%); building the small
+  tuples of a `Variant` (30,000 objects, three getters) is 15% slower (12.0 to 13.7 ms on 3.11);
+  one counting call on 4,000 SNVs takes 496 ms at best with either wheel (the median varies
+  by ±5% with machine load). The wheel is 4 KB larger (0.1%).
+- What the stable ABI cannot do: a free-threaded Python (3.13t, 3.14t) takes no `abi3` wheel.
+  gbcms is not built or tested free-threaded (`gil_used = true` in the module), so nothing is
+  lost today. If a binding ever needs an API outside the stable ABI, remove the feature and
+  build one wheel per Python.
+- Checks. The full suite passes on 3.10, 3.11, 3.12, 3.13 and 3.14 with the one wheel, and a
+  counting run on a synthetic data set writes byte-identical output on all five and with a
+  per-version wheel of the same commit. The
+  `Wheels` workflow installs the wheel in Rocky Linux 8 and 9 with Python 3.10 to 3.14.
+- For developers: the built file is `src/gbcms/_rs.abi3.so` now. Python tries a
+  version-specific suffix first, so a leftover `src/gbcms/_rs.cpython-3xx-*.so` from an earlier
+  build wins over it and runs the old engine. Move it to the Trash and run `maturin develop
+  --release` again; a new test fails when the loaded extension is not the `.abi3.so`.
+
 ### Changed — the Linux wheel installs on RHEL 8 (manylinux_2_28), and the extension links no OpenSSL or libcurl (#234)
 
 - The release builds its Linux wheel in the `manylinux_2_28` image (AlmaLinux 8, glibc 2.28),
   not `manylinux_2_34`. The wheel now installs on RHEL 8 and newer; before, `pip install` on
-  RHEL 8 built the source distribution. (Python 3.11 only until the wheels of other Pythons.)
+  RHEL 8 built the source distribution.
 - Why the build image had to change: the curl that rust-htslib builds in refuses OpenSSL older
   than 3.0, and RHEL 8 ships 1.1.1. The fix is not a newer OpenSSL but none: rust-htslib is
   built without its default `curl` feature, which only serves remote files (http, https, s3,
@@ -41,6 +69,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Rocky 8, Rocky 9 and the `manylinux_2_34` wheel that earlier releases shipped. The same
   steps run on any RHEL machine with `scripts/check_wheel.sh`. `checkpoint-wheels.yml` is
   unchanged: it builds older commits, which still link libcurl, so it keeps `manylinux_2_34`.
+
+### Fixed — the docs say what the original's `--filter_non_primary` removes, and list the measured differences from 1.2.5
+
+- `docs/reference/read-filters.md` implied that the original GetBaseCountsMultiSample's single
+  `--filter_non_primary` flag covers supplementary alignments. It removes secondary alignments
+  only (flag `0x100`); a read's supplementary records stay in its depth, `REF` and `ALT`. The
+  comparison now says so.
+- `docs/reference/architecture.md` has a new list, "Known differences from
+  GetBaseCountsMultiSample 1.2.5": one line per difference with its cause, the HG002 reads and
+  rows it moves, and the rule that explains it. Docs only; no count changes.
 
 ### Fixed — the Smith-Waterman local re-scoring's `partial_alt` reads the scores that made the call (#195)
 

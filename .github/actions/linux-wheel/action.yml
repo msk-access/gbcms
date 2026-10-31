@@ -12,9 +12,13 @@ inputs:
     required: false
     default: manylinux_2_28
   interpreter:
-    description: The Python the wheel is built for (maturin -i).
+    description: >
+      A Python for maturin to read its settings from (maturin -i). The extension uses
+      Python's stable ABI (abi3-py310), so the wheel is tagged cp310-abi3 and installs on
+      every CPython from 3.10 on, whichever interpreter this is. 3.10 is the oldest one
+      maturin accepts for it.
     required: false
-    default: python3.11
+    default: python3.10
   commit:
     description: >
       The commit the wheel is built from, recorded in output provenance (rust/build.rs);

@@ -35,9 +35,9 @@ Common issues and solutions for gbcms. Issues are grouped by phase — work top-
 
 ??? question "pip builds from source, or `GLIBC_2.28 not found`"
 
-    The one prebuilt wheel (CPython 3.11, Linux x86_64) needs glibc 2.28 or newer (RHEL 8 and newer) and pip 20.3 or newer. With another Python, an older glibc or an older pip, pip builds the source distribution instead ([Platform support](../getting-started/installation.md#platform-support)).
-    On RHEL 8, install Python 3.11 and use a virtual environment (`python3.11 -m venv`, then `pip install --upgrade pip`); see the
-    [Legacy Linux](../getting-started/installation.md#legacy-linux-rhel-8-hpc) install path. For a Python without a wheel, or glibc older than 2.28, use that page's micromamba + clangdev source install.
+    The one prebuilt wheel (any CPython from 3.10, Linux x86_64) needs glibc 2.28 or newer (RHEL 8 and newer) and pip 20.3 or newer. With an older glibc or an older pip, pip builds the source distribution instead ([Platform support](../getting-started/installation.md#platform-support)).
+    On RHEL 8, install a Python from 3.10 on and use a virtual environment (`python3.11 -m venv`, then `pip install --upgrade pip`); see the
+    [Legacy Linux](../getting-started/installation.md#legacy-linux-rhel-8-hpc) install path. For glibc older than 2.28, use that page's micromamba + clangdev source install.
 
 ??? question "`LIBCLANG_PATH` not set error during build"
 
