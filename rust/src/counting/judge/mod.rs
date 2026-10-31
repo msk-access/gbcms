@@ -1728,6 +1728,28 @@ mod tests {
         assert_eq!(got, vec![Depth, Depth, Depth, Depth, Alt, Other]);
     }
 
+    /// Reads over the anchor to 361 of `long_duplication`'s alleles (`c` REF, `h` the ALT's
+    /// haplotype), three REF reads behind them: with the base at 360 unreadable or a third
+    /// base (no allele's), and clean.
+    fn reads_with_the_base_at_360_unreadable_or_a_third(c: &[u8], h: &[u8]) -> Vec<ReadView> {
+        let third = *b"ACGT".iter().find(|&&b| b != c[360] && b != h[360]).unwrap();
+        let mut lowq = vec![Q; 100];
+        lowq[98] = 5; // the base at 360
+        let with = |hap: &[u8], base: u8| {
+            let mut s = hap[262..362].to_vec();
+            s[98] = base;
+            s
+        };
+        let mut reads: Vec<ReadView> = (0..3).map(|i| read(c, 250 + i, 150, 250 + i as i64, "150M").named(format!("r{i}").as_bytes())).collect();
+        reads.push(read_q(&c[262..362], lowq.clone(), 262, "100M").named(b"refLowQ"));
+        reads.push(read_q(&h[262..362], lowq.clone(), 262, "100M").named(b"altLowQ"));
+        reads.push(read_q(&with(c, third), vec![Q; 100], 262, "100M").named(b"refThird"));
+        reads.push(read_q(&with(h, third), vec![Q; 100], 262, "100M").named(b"altThird"));
+        reads.push(read(c, 262, 100, 262, "100M").named(b"refClean"));
+        reads.push(read(h, 262, 100, 262, "100M").named(b"altClean"));
+        reads
+    }
+
     #[test]
     fn masks_past_a_long_insertions_run_weigh_on_both_windows_alike() {
         use haplotypes::LongInsRule::ReadOn;
@@ -1739,22 +1761,28 @@ mod tests {
         // was depth. Laid on both windows by offset, the two are alike: depth only.
         let (c, x, _) = long_duplication();
         let h = haplotype(&c, &[&x]);
-        let third = *b"ACGT".iter().find(|&&b| b != c[360] && b != h[360]).unwrap();
-        let mut lowq = vec![Q; 100];
-        lowq[98] = 5; // the base at 360
-        let with = |hap: &[u8], base: u8| {
-            let mut s = hap[262..362].to_vec();
-            s[98] = base;
-            s
-        };
-        let mut reads: Vec<ReadView> = (0..3).map(|i| read(&c, 250 + i, 150, 250 + i as i64, "150M").named(format!("r{i}").as_bytes())).collect();
-        reads.push(read_q(&c[262..362], lowq.clone(), 262, "100M").named(b"refLowQ"));
-        reads.push(read_q(&h[262..362], lowq.clone(), 262, "100M").named(b"altLowQ"));
-        reads.push(read_q(&with(&c, third), vec![Q; 100], 262, "100M").named(b"refThird"));
-        reads.push(read_q(&with(&h, third), vec![Q; 100], 262, "100M").named(b"altThird"));
-        reads.push(read(&c, 262, 100, 262, "100M").named(b"refClean"));
-        reads.push(read(&h, 262, 100, 262, "100M").named(b"altClean"));
+        let reads = reads_with_the_base_at_360_unreadable_or_a_third(&c, &h);
         assert_eq!(calls_masked(&c, &x, vec![359, 361], &reads, ReadOn), vec![Ref, Ref, Ref, Depth, Depth, Depth, Depth, Ref, Alt]);
+    }
+
+    #[test]
+    fn an_insertion_written_right_of_its_runs_anchor_takes_the_masks_by_offset_too() {
+        use haplotypes::LongInsRule::ReadOn;
+        use Call::*;
+        // The same haplotype as above, with X written three bases right of its run's anchor
+        // (its insert rotated by three): a row normalization could not left-align, though none
+        // reaches this today. The anchor is the run's, not X's position, so the masks are laid
+        // by offset from it as for the left-aligned row, and the calls are the same.
+        let (c, x, _) = long_duplication();
+        let ins = &x.alt_al[1..];
+        let rotated = [&ins[3..], &ins[..3]].concat();
+        let right = Row::new(302, &c[302..303], &[&c[302..303], &rotated[..]].concat());
+        let h = haplotype(&c, &[&x]);
+        assert_eq!(haplotype(&c, &[&right]), h, "the same haplotype");
+        let reads = reads_with_the_base_at_360_unreadable_or_a_third(&c, &h);
+        let want = vec![Ref, Ref, Ref, Depth, Depth, Depth, Depth, Ref, Alt];
+        assert_eq!(calls_masked(&c, &x, vec![359, 361], &reads, ReadOn), want, "left-aligned");
+        assert_eq!(calls_masked(&c, &right, vec![359, 361], &reads, ReadOn), want, "written three bases right");
     }
 
     #[test]

@@ -1469,16 +1469,12 @@ impl Site {
     /// either haplotype masks is now masked at that offset on every candidate: an inserted base
     /// or a reference base of its own, wherever its row puts them. A listed allele of X's
     /// length differing from X at a masked offset is then told from X by no base there, as REF
-    /// is not; a read with a third base at that offset weighs on none of them.
+    /// is not; a read with a third base at that offset weighs on none of them. The anchor is
+    /// the base before X's run, wherever X is written in it: a row that was not left-aligned
+    /// still takes the masks.
     fn mirror_masks(&mut self, l: i64) {
         let Some((lo, _)) = self.long_ins else { return };
-        let x = &self.rows[0];
-        let anchor = lo - 1;
-        // a left-aligned insertion after its anchor, X written as the anchor and its insert
-        if x.pos != anchor || x.ref_al.len() != 1 {
-            return;
-        }
-        let (anchor, wn) = (anchor - self.start, self.reference.len() as i64);
+        let (anchor, wn) = (lo - 1 - self.start, self.reference.len() as i64);
         // the candidates, REF's haplotype first and then X's and each other state's, each with
         // the column of its anchor
         let keys: Vec<Option<usize>> = std::iter::once(None).chain((0..=self.n_states).map(Some)).collect();
@@ -1522,8 +1518,12 @@ impl Site {
             mirrors[w].alt_bases.dedup();
         }
         if mirrors.iter().any(|m| !m.positions.is_empty() || !m.alt_bases.is_empty()) {
+            let x = &self.rows[0];
             log::debug!(
-                "haplotype judge: the guard's masks laid on every candidate haplotype by offset: {}",
+                "haplotype judge {}>{} at {}: the guard's masks laid on every candidate haplotype by offset: {}",
+                String::from_utf8_lossy(&x.ref_al),
+                String::from_utf8_lossy(&x.alt_al),
+                x.pos + 1,
                 mirrors
                     .iter()
                     .zip(&keys)
