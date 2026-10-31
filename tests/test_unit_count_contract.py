@@ -808,3 +808,35 @@ def test_an_unlisted_count_no_read_can_spell_in_full_is_named(tmp_path, judge, c
     ref, a, h, rows = _shape(35, copies, own=2)
     reads = _reads(a, "REF", h["REF"], LONG, size=0) + _reads(a, "one", h["one"], LONG, size=70)
     assert _count(tmp_path, ref, [rows["one"]], reads, judge) == [((6, 6, 0, 12), named)]
+
+
+def _with_mates(reads):
+    """The reads and a second read of each fragment: the same name, reverse, the same bases and
+    place."""
+    mates = []
+    for r in reads:
+        m = make_read(r.query_name, r.query_sequence, r.reference_start, r.cigartuples)
+        m.flag = 0x1 | 0x2 | 0x10 | 0x80
+        m.next_reference_id, m.next_reference_start, m.template_length = 0, r.reference_start, 300
+        mates.append(m)
+    return reads + mates
+
+
+@pytest.mark.parametrize("judge", JUDGES)
+@pytest.mark.parametrize("fragments", [2, 3])
+def test_the_presence_floor_counts_fragments_not_reads(tmp_path, judge, fragments):
+    """C1a (RJ-25: 3 fragments). The two-unit deletion's carriers holding the run, both mates
+    of each fragment, written by their alignments as the deletion. Two fragments are four
+    reads: under RJ-25's floor of 3 fragments the count is not at the site, so the 12 short
+    carriers stay ALT, (RD, AD) = (6, 12), on both paths (the 4 reads that spell it are partial
+    evidence on the rules path, depth only under the judge). The sequence judge counted reads,
+    4 of which met its floor of 3, and kept the count as a state: (6, 0). Three fragments find
+    it: (6, 0, 18) on both paths."""
+    ref, a, h, rows, reads = _ticket()
+    reads += _with_mates(_reads(a, "two", h["two"], HOLDING, size=120, k=fragments, tag="h"))
+    (((rd, ad, partial, _), _),) = _count(tmp_path, ref, [rows["one"]], reads, judge)
+    if fragments == 3:
+        assert (rd, ad, partial) == (6, 0, 18)
+    else:
+        assert (rd, ad) == (6, 12)
+        assert partial == (4 if judge == "rules" else 0)
