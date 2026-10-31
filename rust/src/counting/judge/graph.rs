@@ -1195,36 +1195,16 @@ pub(crate) struct GraphRead<'r> {
     /// The longest tandem-repeat period in its reach: how far its own placement may sit off its
     /// best alignment at no cost, which lowers what a band answers for ([`score::stand_floor`]).
     pub(crate) free_shift: i64,
-    /// Measurement only (`GBCMS_JUDGE_BAND=full`, or `longinsall` where a state skips its bands):
-    /// no band; the full programme over its reach.
+    /// No band; the full programme over its reach: where any state of the read's site holds a
+    /// long insertion past its band ([`skips_bands`], set by `Site::graph_read`), and for
+    /// measurement under `GBCMS_JUDGE_BAND=full`.
     pub(crate) full: bool,
-    /// Measurement only (`GBCMS_JUDGE_BAND=longfull`, `longins` or `longinsall`): what a long
-    /// listed length change inside the read's reach but outside the band's widening window does
-    /// ([`LongRule`]).
-    pub(crate) long: LongRule,
+    /// A listed insertion longer than the band's slack in the read's reach but past the window
+    /// its band widens for sends the read to the full programme ([`skips_bands`], #369). On for
+    /// every read a site scores; off only in tests, to show what the band misses without it.
+    pub(crate) long: bool,
 }
 
-/// Measurement only (#369): a listed long insertion inside a read's reach (its span and its
-/// length each side) but outside the window its band widens for (the slack and two bases each
-/// side) can hold the read's best path, which the band then misses: a read whose body lies in a
-/// copy of its own sequence inside the insertion (an expanded repeat, a duplication). All of an
-/// insertion's bases stand at its anchor's coordinate, so a near one widens the band already, and
-/// a path to a far deletion pays the gap to it and gains nothing.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub(crate) enum LongRule {
-    /// As before: the band ignores it.
-    #[default]
-    Off,
-    /// `longfull` (option 2 as first measured): a state with a length change past the band's
-    /// window longer than its slack, an insertion or a deletion, goes straight to the full programme.
-    Full,
-    /// `longins` (option 2 on insertions): a state with such an insertion goes straight to the full
-    /// programme.
-    Ins,
-    /// `longinsall` (the whole read): where any state of the site has one, every state of the
-    /// read runs the full programme ([`GraphRead::full`], set by the site).
-    InsAll,
-}
 
 /// Half-width of the wider band tried before the full programme (past the length changes).
 const WIDE_SLACK: i64 = 4 * BAND_SLACK;
@@ -1252,9 +1232,9 @@ fn near_shift(g: &Graph, read: &GraphRead) -> i64 {
     }
 }
 
-/// Measurement only (#369): the rows' length changes in the read's reach ([`bands`]) but
-/// outside the window its band widens for ([`near_shift`]): per row its REF span and its change
-/// (positive: an insertion; negative: a deletion).
+/// The rows' length changes in the read's reach ([`bands`]) but outside the window its band
+/// widens for ([`near_shift`]): per row its REF span and its change (positive: an insertion;
+/// negative: a deletion).
 pub(crate) fn far_changes(g: &Graph, read: &GraphRead) -> Vec<(i64, i64, i64)> {
     if g.shifts.is_empty() {
         return Vec::new();
@@ -1272,15 +1252,14 @@ pub(crate) fn far_changes(g: &Graph, read: &GraphRead) -> Vec<(i64, i64, i64)> {
         .collect()
 }
 
-/// Measurement only (#369): whether the read goes straight to the full programme in `g` under
-/// its [`LongRule`]: a length change past its band's window longer than the band's slack (an
-/// insertion; under [`LongRule::Full`] a deletion too).
+/// Whether `g` sends the read straight to the full programme (#369): a listed insertion longer
+/// than the band's slack in the read's reach but past the window its band widens for. All of an
+/// insertion's bases stand at its anchor's coordinate, so a near one widens the band already; a
+/// far one can hold the read's best path where the read's body is a copy of a stretch inside it
+/// (an expanded repeat, a duplication), which no band around the read's own placement reaches.
+/// A path to a far deletion pays the gap to it, so a deletion never sends the read on.
 pub(crate) fn skips_bands(g: &Graph, read: &GraphRead) -> bool {
-    if read.long == LongRule::Off || g.shifts.is_empty() {
-        return false;
-    }
-    let deletions = read.long == LongRule::Full;
-    far_changes(g, read).iter().any(|&(_, _, d)| d > BAND_SLACK || (deletions && -d > BAND_SLACK))
+    read.long && !g.shifts.is_empty() && far_changes(g, read).iter().any(|&(_, _, d)| d > BAND_SLACK)
 }
 
 /// The read's best score in `g`: in the band where it stands, else the wider band where
@@ -1318,7 +1297,7 @@ pub(crate) fn decided_states<M: ErrorModel>(m: &M, read: &GraphRead, graphs: &[&
     }
     let planned: Vec<((i64, i64), [i64; 2])> = graphs.iter().map(|g| bands(g, read)).collect();
     for step in (if read.full { 2 } else { 0 })..3 {
-        // a state that skips the bands (measurement only, option 2) runs the full programme alone
+        // a state that skips its bands runs the full programme alone
         let runs: Vec<bool> = out.iter().enumerate().map(|(i, o)| o.is_none() && !(step < 2 && skips_bands(graphs[i], read))).collect();
         // this step's band per state; a state laid out as the one it shares from has its band
         let mut stepped: Vec<Option<std::rc::Rc<GraphBand>>> = vec![None; k];
@@ -1949,7 +1928,7 @@ mod tests {
             assert_eq!(copy_off_band_lanes(&read, &g, &band), copy, "copy off the band, case {case}");
             copies += usize::from(copy);
             // and the scores, bands and paths the judge reads
-            let gr = GraphRead { seq: &read, rp: rp.clone(), span: (lo, hi + 1), free_shift: 0, full: false, long: LongRule::Off };
+            let gr = GraphRead { seq: &read, rp: rp.clone(), span: (lo, hi + 1), free_shift: 0, full: false, long: true };
             let (s0, h0, p0) = decided_reference(&gr, &g);
             let (s1, h1) = decided(&ShortReads, &gr, &g, &mut ws);
             assert_eq!((s0, h0), (s1, h1), "decided, case {case}");
@@ -1976,7 +1955,7 @@ mod tests {
                 let band = GraphBand::new(&g, &rp, half, (lo - 170, hi + 170));
                 same_run(&read, &g, &band, &mut ws, case);
             }
-            let gr = GraphRead { seq: &read, rp: rp.clone(), span: (lo, hi + 1), free_shift: 0, full: false, long: LongRule::Off };
+            let gr = GraphRead { seq: &read, rp: rp.clone(), span: (lo, hi + 1), free_shift: 0, full: false, long: true };
             let (s0, h0, p0) = decided_reference(&gr, &g);
             let (s1, h1) = decided(&ShortReads, &gr, &g, &mut ws);
             assert_eq!((s0, h0), (s1, h1), "decided, case {case}");
@@ -2040,7 +2019,7 @@ mod tests {
             let base = &graphs[shares.iter().position(|s| s.is_some()).map_or(0, |k| shares[k].unwrap().0)];
             let (read, rp) = random_read_of(base, &mut st, 100);
             let (lo, hi) = (rp[0], *rp.last().unwrap());
-            let gr = GraphRead { seq: &read, rp: rp.clone(), span: (lo, hi + 1), free_shift: 0, full: false, long: LongRule::Off };
+            let gr = GraphRead { seq: &read, rp: rp.clone(), span: (lo, hi + 1), free_shift: 0, full: false, long: true };
             let refs: Vec<&Graph> = graphs.iter().collect();
             let mut wss: Vec<Workspace> = (0..graphs.len()).map(|_| Workspace::default()).collect();
             let all = decided_states(&ShortReads, &gr, &refs, &shares, &mut wss);
@@ -2068,7 +2047,7 @@ mod tests {
         g.pred_off = vec![0, 1, 2, 3, 4, 5, 6];
         g.preds = vec![4, 0, 1, 2, 3, 4];
         g.topological = false;
-        let gr = GraphRead { seq: b"ACGTA", rp: (0..5).collect(), span: (0, 5), free_shift: 0, full: false, long: LongRule::Off };
+        let gr = GraphRead { seq: b"ACGTA", rp: (0..5).collect(), span: (0, 5), free_shift: 0, full: false, long: true };
         let mut ws = Workspace::default();
         let (s0, h0, p0) = decided_reference(&gr, &g);
         let (s1, h1) = decided(&ShortReads, &gr, &g, &mut ws);

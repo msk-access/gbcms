@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed — the sequence judge no longer misses a read's path through a long listed insertion (#369)
+
+- Under `--read-judge sequence`, the band around a read's own placement widened only for the rows
+  within its slack and two bases of the read. A listed insertion further on but within the read's
+  length could hold the read's best path (a read copied from inside an expanded repeat or a
+  duplication), and the band stood on a worse score. A listed insertion longer than 16 bases in a
+  read's reach but past its band now sends every state of the read to the full programme, and the
+  linear aligner drops its band for the read. Deletions do not trigger it. Measured on every arm:
+  no patient read changes; on HG002 622 reads change, every one to the call the full programme
+  gives (537 to depth only: through the insertion they fit each state alike); truth and both
+  oracles unchanged. CPU +0 to +4% on HG002; on the patient arms within 1% of the build
+  without the rule.
+  `docs/proposals/sequence-judge.md` §10.
+
 ### Changed — the sequence judge holds one memory budget per thread (#304)
 
 - Under `--read-judge sequence`, a row's caches (the verdicts and programmes of reads alike)

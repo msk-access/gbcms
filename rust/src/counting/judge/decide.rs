@@ -407,9 +407,6 @@ fn judge_graph(site: &Site, read: &ReadView, min_baseq: u8, ask_anchor: bool, ke
     }
     let gr = site.graph_read(read);
     let scored = kept.unwrap_or_else(|| std::rc::Rc::new(graph::with_workspaces(site.graphs.len(), |wss| score_states(site, &gr, wss))));
-    if site.long_rule != graph::LongRule::Off && log::log_enabled!(log::Level::Trace) {
-        site.trace_far(read, &gr);
-    }
     let (best, halves) = (scored.best, &scored.halves);
     let top = best.iter().flatten().map(|b| b.0).max().unwrap_or(i32::MIN);
     let (fired, neighbourhood) = fits_nothing(rule, site, read, top);
@@ -1044,6 +1041,13 @@ pub(crate) fn classify(record: &Record, variant: &Variant, quals: &[u8], min_bas
             read.name.clear();
             // the per-read trace lines' arguments are built only where they are written
             let tracing = log::log_enabled!(log::Level::Trace);
+            if tracing {
+                // the long insertions past the read's band that send it to the full programme
+                // (#369), every read (a verdict kept for a read alike included), named as the fits
+                // line names it
+                let mate = if record.is_first_in_template() { 1 } else { 2 };
+                site.trace_far(&String::from_utf8_lossy(record.qname()), mate, &site.graph_read(&read));
+            }
             let view = (read, !overlaps_anchor, min_baseq);
             let clock = std::time::Instant::now();
             let judged = haplotypes.judged(&view);
