@@ -503,11 +503,24 @@ column and the VCF `GR`/`GD` values carry identical content.
 ### Known differences from GetBaseCountsMultiSample 1.2.5
 
 The table above is the design. The list below is what the counts show. Each difference was
-found by tracing every read that moves a count, with 1.2.5 built from its tag (MAPQ 20, base
-quality 20, and the duplicate, QC-failed and non-primary filters on) against gbcms's default
-rules path, on the eight HG002 benchmark arms (GIAB HG002, NovaSeq 35x, GRCh38; 400 to 14,949
-rows each). The numbers are HG002 reads and rows. Of the 53,469 reads that move a count, 2 have
-no reason yet.
+found by tracing every read that moves a count, on the eight HG002 benchmark arms (GIAB HG002,
+NovaSeq 35x, GRCh38; 400 to 14,949 rows each; the arms are described in
+`docs/harness/measurement-harness.md`). The numbers are HG002 reads and rows. Of the 53,469
+reads that move a count, 2 have no reason yet.
+
+The run behind the numbers, so it can be repeated:
+
+- **The original:** GetBaseCountsMultiSample built from its tag `v1.2.5`, with a per-read trace
+  added in a scratch copy (its output equals the release build's on every row checked), run as
+  `--maq 20 --baq 20 --filter_duplicate 1 --filter_qc_failed 1 --filter_non_primary 1`, once with
+  its default counting and once with `--generic_counting`.
+- **gbcms:** the `develop` commit `fe34f443` (the 6.7.0 development build `c62fd`), the default
+  rules path, with `--trace`, at its defaults (MAPQ 20, base quality 20, the duplicate,
+  QC-failed, secondary and supplementary filters on).
+- **When:** 2026-10-30, on the HPC cluster, one run per arm and tool.
+
+The numbers describe that commit. A later change to a counting rule can move them, so repeat the
+comparison on the build you use before relying on a figure.
 
 - **Supplementary alignments.** 1.2.5's `--filter_non_primary` removes secondary alignments only
   (`0x100`), so a read with a supplementary segment counts twice in depth, `REF` and `ALT`; gbcms
@@ -540,9 +553,22 @@ no reason yet.
   [Informative Reads for Indels](allele-classification.md#informative-reads-for-indels).
 - **The window opens one base right of the anchor.** 1.2.5 counts a read that starts at
   anchor+1 in the depth of an insertion or deletion; gbcms counts depth over reads that cover the
-  anchor. HG002: 9,989 reads in 2,008 insertion rows, 620 in 320 deletion rows, 16 in 10 complex
-  rows. This is most of the lower gbcms depth at insertions. See
-  [Fetch Window](read-filters.md#fetch-window).
+  anchor, with two exceptions, both for a read whose allele its own bases decide:
+    - A read whose allele lies in its soft-clipped bases counts although its aligned span stops
+      short of the anchor. DNA only, and only when every base read lies inside a well-defined
+      fragment ([RJ-13](read-judgment.md#decided): soft-clipped bases are the read's own).
+    - A read decided from windows read from the right flank counts although it starts past the
+      variant position, as the other allele's molecule starting there would (both modes;
+      [RJ-23](read-judgment.md#decided)).
+
+    Both apply wherever a read is judged from its own bases: the
+    [exact-carrier rule](allele-classification.md#the-exact-carrier-rule), the
+    [junction judge for deletions of 50 bp or more](allele-classification.md#deletions-of-50-bp-or-more)
+    and `--read-judge sequence`. The HG002 numbers are reads that 1.2.5 puts in depth and gbcms does
+    not, so reads admitted this way are not among them. HG002: 9,989 reads in 2,008 insertion rows,
+    620 in 320 deletion rows, 16 in 10 complex rows. This is most of the lower gbcms depth at
+    insertions. See [Fetch Window](read-filters.md#fetch-window).
+
 - **MNV.** 1.2.5 drops a read from depth when any base of the block is under the limit, needs the
   whole block to equal `REF` or `ALT`, needs one aligned block, and counts a read that starts inside
   the block in depth. gbcms masks each differing position on its own, ignores positions the alleles

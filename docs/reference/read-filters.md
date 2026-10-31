@@ -205,7 +205,7 @@ BAM fetch window: [183, 206)   ← ±17bp (repeat_span + 2)
 ```
 
 !!! important "Anchor Overlap Gate"
-    Although reads are fetched from the wider window, **only reads that overlap the variant's anchor position** (or are classified as REF/ALT via shifted indel matching) contribute to the DP count. This prevents DP inflation from reads that were brought in by the window padding but don't actually cover the variant.
+    Although reads are fetched from the wider window, **only reads that overlap the variant's anchor position** (or are classified as REF/ALT via shifted indel matching) contribute to the DP count. This prevents DP inflation from reads that were brought in by the window padding but don't actually cover the variant. Two kinds of read count although they miss the anchor, both decided from their own bases: a read whose allele lies in soft-clipped bases (DNA) and a read decided from windows read from the right flank (see [Known differences from 1.2.5](architecture.md#known-differences-from-getbasecountsmultisample-125)).
 
     ```
     Read A: [90─────100]        → overlaps anchor at 100 → counted in DP ✅
