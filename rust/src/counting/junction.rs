@@ -1012,7 +1012,9 @@ fn present_hidden(
         .into_iter()
         .find(|h| longest > 0 && h.need() > longest)
         .map(|h| (h.change, h.need(), longest));
-    let reach: Vec<Hidden> = hidden.into_iter().filter(|h| h.need() <= longest).collect();
+    // a listed count is held wherever it first differs: the reads that cannot reach the
+    // difference cannot tell it from the ALT (invariant 7: the input is taken as correct)
+    let reach: Vec<Hidden> = hidden.into_iter().filter(|h| h.listed || h.need() <= longest).collect();
     if reach.is_empty() {
         return PresentHidden { unspanned, ..PresentHidden::default() };
     }

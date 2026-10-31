@@ -282,19 +282,16 @@ def test_a_run_longer_than_the_read_keeps_the_counts_and_names_the_row(tmp_path,
 
 
 @pytest.mark.parametrize("judge", JUDGES)
-def test_a_listed_count_past_the_read_keeps_the_counts_and_names_the_rows(tmp_path, judge):
-    """The two-unit deletion listed too, past what a read holds: the counts stand as
-    before on each path and both rows are named, each with the other's count. Before: the
-    rules count every carrier ALT at the one-unit row, and at the two-unit row the aligned
-    sibling test (RJ-5) leaves the one-unit carriers, which its aligned slice reads as REF
-    as well as ALT, partial; the sequence judge weighs the listed rows as states."""
+def test_a_listed_count_past_the_read_holds_the_reads_and_names_the_rows(tmp_path, judge):
+    """The two-unit deletion listed too, past what a read holds: no read can tell the given
+    count from the listed one, so each carrier of either is partial evidence at each row, on
+    both paths, and both rows are named, each with the other's count (F2: the input is taken
+    as correct, whatever the reads reach). Before, the rules path counted every carrier ALT
+    at the one-unit row, (6, 12, 0), and at the two-unit row left the one-unit carriers
+    partial, (6, 6, 6); the sequence judge held both rows, (6, 0, 12)."""
     ref, rows, reads = _long_run(True)
     got = _count(tmp_path, ref, rows, reads, judge, listed=True)
-    if judge == "rules":
-        want = [((6, 12, 0, 18), "-120:188/150"), ((6, 6, 6, 18), "-60:188/150")]
-    else:
-        want = [((6, 0, 12, 18), "-120:188/150"), ((6, 0, 12, 18), "-60:188/150")]
-    assert got == want
+    assert got == [((6, 0, 12, 18), "-120:188/150"), ((6, 0, 12, 18), "-60:188/150")]
 
 
 # ── The sibling claim keeps REF's window ───────────────────────────────────────────
