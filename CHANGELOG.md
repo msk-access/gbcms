@@ -9,7 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added — a macOS wheel for Apple silicon (arm64) (#237)
 
-- The release builds `cp310-abi3-macosx_11_0_arm64` on `macos-14` with the new local action
+- The release builds `cp310-abi3-macosx_11_0_arm64` on `macos-latest` with the new local action
   `.github/actions/macos-wheel`, and publishes it to PyPI and the release page (with its
   checksum and build-provenance attestation) beside the Linux wheel. `pip install gbcms` on
   an Apple silicon Mac with macOS 11 or newer, on any Python from 3.10, now installs a wheel;
