@@ -94,6 +94,14 @@ pub struct Variant {
     /// more, as many bases again past it as it deletes: its other alleles at its breakpoint
     /// are read past where they first differ from it (#297). Prep's; None otherwise.
     pub whole_ref: Option<(i64, String)>,
+
+    /// The input's other insertion, deletion and delins rows (PASS) inside the reference
+    /// prep holds for a deletion of 50 bp or more (`whole_ref`, else `event_ref`): 0-based
+    /// POS, REF, ALT, upper case. Another allele at the deletion's breakpoint whose bases are
+    /// the ALT's with one of them applied is the deletion with that listed neighbour, never
+    /// another allele (#297; `listed_neighbours` holds the substitution rows). Empty for any
+    /// other variant. Prep's; not exposed to Python.
+    pub listed_indels: Vec<(i64, String, String)>,
 }
 
 #[pymethods]
@@ -132,6 +140,7 @@ impl Variant {
             reach_rows: Vec::new(),
             reach_unrecorded: false,
             whole_ref: None,
+            listed_indels: Vec::new(),
         }
     }
 }

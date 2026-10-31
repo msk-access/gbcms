@@ -378,3 +378,69 @@ def test_errors_over_the_held_run(tmp_path, judge, error, alt):
     reads += _reads(a, "one", hap, HOLDING, size=60, k=4, tag="h")
     (((rd, ad, _, _), _),) = _count(tmp_path, ref, [rows["one"]], reads, judge)
     assert (rd, ad) == (6, alt)
+
+
+# ── A listed neighbour is no other count ───────────────────────────────────────────
+
+
+def _neighbour_shape(seed=5):
+    """The ALT continues T: 12-base units for 52 bases, an A, then 13-base units. One more
+    unit deleted reads T from its 12th base, which from T's 40th base on is the ALT with an A
+    inserted after its 39th: the carriers of the deletion with that phased insertion read as
+    one more unit deleted (HG002 4:3610329's shape)."""
+    rng = random.Random(seed)
+    cgt = lambda n: "".join(rng.choice("CGT") for _ in range(n))  # noqa: E731
+    left, right = cgt(400), cgt(400)
+    deleted = "A" + cgt(59)
+    if left[-1] == deleted[-1]:
+        left = left[:-1] + ("C" if deleted[-1] != "C" else "G")
+    t = list(cgt(12))
+    while len(t) < 240:
+        i = len(t)
+        t.append(t[i - 12] if i < 52 else "A" if i == 52 else t[i - 13])
+    t = "".join(t)
+    a = len(left)
+    ref = left + deleted + t + right
+    carrier = left + t[:40] + "A" + t[40:] + right
+    deletion = (a - 1, ref[a - 1 : a + 60], ref[a - 1])
+    g = a + 60 + 39  # the insertion's anchor, on REF past the deleted bases
+    insertion = (g, ref[g], ref[g] + "A")
+    return ref, a, carrier, deletion, insertion
+
+
+@pytest.mark.parametrize("judge", JUDGES)
+@pytest.mark.parametrize("listed", [True, False], ids=["insertion-listed", "not-listed"])
+def test_a_listed_neighbour_makes_no_other_count(tmp_path, judge, listed):
+    """Carriers of the deletion with a phased 1-bp insertion past the junction, which the
+    input lists: they are the deletion with a listed neighbour (RJ-24), never one more unit
+    deleted, so they count ALT. Not listed, their bases are one more unit deleted's over most
+    of what they hold: that allele is found on them and held (on the rules path every carrier
+    is partial evidence; the sequence judge, weighing each read whole with its own insertion,
+    counts ALT the 3 that read on past where the two part, near the run's end)."""
+    ref, a, carrier, deletion, insertion = _neighbour_shape()
+    reads = []
+    for i in range(6):
+        s = a - 20 - i
+        r = make_read(f"REF{i}", ref[s : s + 251], s, ((0, 251),))
+        c = make_read(
+            f"alt{i}",
+            carrier[s : s + 251],
+            s,
+            ((0, 20 + i), (2, 60), (0, 40), (1, 1), (0, 190 - i)),
+        )
+        for x in (r, c):
+            x.flag = 0x1 | 0x2 | 0x20 | 0x40
+            x.next_reference_id, x.next_reference_start, x.template_length = (
+                0,
+                x.reference_start + 250,
+                450,
+            )
+        reads += [r, c]
+    fa, bam = write_contig(tmp_path, ref, reads, "c")
+    kinds = [("DEL", deletion)] + ([("INS", insertion)] if listed else [])
+    vs = [_rs.Variant("1", p, r, al, kind) for kind, (p, r, al) in kinds]
+    pvs = _rs.prepare_variants(vs, fa, 5, False, 1, True, read_judge=judge)
+    kw = {"reference_fasta": fa} if judge == "sequence" else {}
+    got = count_checked(bam, [pv.variant for pv in pvs], read_judge=judge, **kw)[0]
+    assert got.dp >= got.rd + got.ad and got.rd == got.rd_fwd + got.rd_rev
+    assert (got.rd, got.ad) == ((6, 6) if listed else (6, 0) if judge == "rules" else (6, 3))

@@ -220,8 +220,10 @@ impl Hidden {
 /// The ALT's bases from the windows' first base over the reference held for reads (prep's
 /// `whole_ref`, else the prepared reference), and every other allele at the deletion's
 /// breakpoint, or listed among `siblings`, whose bases read like the ALT's through the
-/// windows ([`Hidden`]), nearest length first. None where the deletion is not judged here.
-pub(crate) fn hidden_alleles(v: &Variant, siblings: &[Variant]) -> Option<(Vec<u8>, Vec<Hidden>)> {
+/// windows ([`Hidden`]), nearest length first, but for those that are the ALT with a listed
+/// row applied over every base a read of `reach` bases holds from the windows' first base.
+/// None where the deletion is not judged here.
+pub(crate) fn hidden_alleles(v: &Variant, siblings: &[Variant], reach: usize) -> Option<(Vec<u8>, Vec<Hidden>)> {
     let j = junction(v)?;
     let (ws, seq) = v.whole_ref.as_ref().or(v.event_ref.as_ref())?;
     let w: Vec<u8> = seq.bytes().map(|b| b.to_ascii_uppercase()).collect();
@@ -287,6 +289,20 @@ pub(crate) fn hidden_alleles(v: &Variant, siblings: &[Variant]) -> Option<(Vec<u
             None => out.push(Hidden { change, bases, first_diff: d, listed: true, row: (sib.pos, r, a) }),
         }
     }
+    // An allele whose bases, past where it and the ALT first differ, are the ALT's with a
+    // listed row applied past the junction (a phased neighbour the input names: a 1-bp
+    // insertion that shifts the carriers' bases past a run onto one more unit deleted) is the
+    // given deletion with that neighbour: the input is taken as correct (RJ-24), so it is
+    // never another allele. Compared over the bases a read of `reach` bases holds: past them
+    // no read can tell the two apart.
+    let neighbours = with_listed_rows(v, &j, &alt);
+    let spells_neighbour = |h: &Hidden| {
+        neighbours.iter().any(|x| {
+            let to = h.bases.len().min(x.len()).min(reach);
+            to > h.first_diff + K && h.bases[h.first_diff..to] == x[h.first_diff..to]
+        })
+    };
+    out.retain(|h| h.listed || !spells_neighbour(h));
     let given = -(len as i64);
     out.sort_by_key(|h| ((h.change - given).abs(), h.change));
     let mut alt = alt;
@@ -312,6 +328,52 @@ pub(crate) fn hidden_alleles(v: &Variant, siblings: &[Variant]) -> Option<(Vec<u
         }
     }
     Some((alt, out))
+}
+
+/// The ALT's bases from the windows' first base (`alt`) with each listed row past the junction
+/// applied, one at a time (`Variant::listed_neighbours` and `listed_indels`): the given
+/// deletion with a neighbour the input names.
+pub(crate) fn with_listed_rows(v: &Variant, j: &Junction, alt: &[u8]) -> Vec<Vec<u8>> {
+    v.listed_neighbours
+        .iter()
+        .chain(&v.listed_indels)
+        .filter_map(|(p, r, a)| {
+            let k = usize::try_from(p - (j.lo + j.len as i64) + K as i64).ok().filter(|&k| k >= K)?;
+            let (r, a) = (r.to_ascii_uppercase().into_bytes(), a.to_ascii_uppercase().into_bytes());
+            let held = alt.get(k..k + r.len())?;
+            let fits = held.iter().zip(&r).all(|(&x, &y)| x == y || x == WILD);
+            fits.then(|| [&alt[..k], &a[..], &alt[k + r.len()..]].concat())
+        })
+        .collect()
+}
+
+/// The read's confident mismatches against `hap` (bases from the windows' first base, read
+/// from query position `s`) over offsets `from` up to query position `end`; None where it reads
+/// none of them.
+fn misses_over(seq: &[u8], quals: &[u8], min_baseq: u8, s: usize, hap: &[u8], from: usize, end: usize) -> Option<usize> {
+    let (mut seen, mut misses) = (0usize, 0usize);
+    for (k, &y) in hap.iter().enumerate().skip(from) {
+        let q = s + k;
+        if q >= end || q >= seq.len() || q >= quals.len() {
+            break;
+        }
+        let (base, bq) = (seq[q].to_ascii_uppercase(), quals[q]);
+        if base == WILD || bq < min_baseq || !matches!(y, b'A' | b'C' | b'G' | b'T') {
+            continue;
+        }
+        seen += 1;
+        misses += usize::from(base != y);
+    }
+    (seen > 0).then_some(misses)
+}
+
+/// Whether the read fits the given deletion with a listed neighbour (`neighbours`, from
+/// [`with_listed_rows`]) over offsets `from` up to query position `end` as well as allele `b`,
+/// and but for one base: it is that, the input taken as correct (RJ-24), never `b`.
+#[allow(clippy::too_many_arguments)]
+fn a_listed_neighbour(seq: &[u8], quals: &[u8], min_baseq: u8, s: usize, b: &[u8], neighbours: &[Vec<u8>], from: usize, end: usize) -> bool {
+    let own = misses_over(seq, quals, min_baseq, s, b, from, end).unwrap_or(0);
+    neighbours.iter().any(|x| misses_over(seq, quals, min_baseq, s, x, from, end).is_some_and(|m| m <= 1 && m <= own))
 }
 
 /// The row of the haplotype that, from the deletion's first base `lo` (offset in `w`,
@@ -523,6 +585,7 @@ pub(crate) fn classify(
             let end = splice_after(record, hi).unwrap_or(seq.len()).min(readable.1);
             let untold = g.unit_others.iter().find(|h| {
                 tells(&seq, quals, min_baseq, lo as i64, (&g.unit_alt, &h.bases), h.first_diff, end) != Some(true)
+                    && !a_listed_neighbour(&seq, quals, min_baseq, lo, &h.bases, &g.unit_neighbours, h.first_diff, end)
             });
             if let Some(h) = untold {
                 trace!(
@@ -819,8 +882,8 @@ pub(crate) fn guard_for(
     // Other alleles at the breakpoint that read like the ALT past the windows (#297): those
     // present at the site within a read's reach hold an ALT call to their first difference;
     // one past the longest read at the site names the row.
-    let (unit_alt, unit_others, unit_unspanned) = present_hidden(read_cache, v, counted, min_baseq, &j, &masked, siblings);
-    if masked.is_empty() && larger.is_none() && unit_others.is_empty() && unit_unspanned.is_none() {
+    let found = present_hidden(read_cache, v, counted, min_baseq, &j, &masked, siblings);
+    if masked.is_empty() && larger.is_none() && found.others.is_empty() && found.unspanned.is_none() {
         return None;
     }
     trace!(
@@ -830,12 +893,14 @@ pub(crate) fn guard_for(
     );
     let mut guard = Guard::new(v, masked, larger, scanned);
     // the found ones are site states for the sequence judge (the listed ones are its rows)
-    guard.judge_others = unit_others
+    guard.judge_others = found
+        .others
         .iter()
         .filter(|h| !h.listed)
         .map(|h| OtherAllele { pos: h.row.0, ref_allele: h.row.1.clone(), alt_allele: h.row.2.clone() })
         .collect();
-    (guard.unit_alt, guard.unit_others, guard.unit_unspanned) = (unit_alt, unit_others, unit_unspanned);
+    (guard.unit_alt, guard.unit_others, guard.unit_neighbours, guard.unit_unspanned) =
+        (found.alt, found.others, found.neighbours, found.unspanned);
     Some(guard)
 }
 
@@ -859,24 +924,25 @@ fn present_hidden(
     j: &Junction,
     masked: &[i64],
     siblings: &[Variant],
-) -> (Vec<u8>, Vec<Hidden>, Option<Unspanned>) {
-    let Some((alt, hidden)) = hidden_alleles(v, siblings).filter(|(_, h)| !h.is_empty()) else {
-        return (Vec::new(), Vec::new(), None);
-    };
+) -> PresentHidden {
     let (first, last) = (j.first(), j.last(true));
     let at_site = |r: &&Record| counted(r) && r.pos() <= last && crate::shared::bam_utils::ref_end(r) > first;
     let longest = read_cache.iter().filter(at_site).map(Record::seq_len).max().unwrap_or(0);
+    let Some((alt, hidden)) = hidden_alleles(v, siblings, longest).filter(|(_, h)| !h.is_empty()) else {
+        return PresentHidden::default();
+    };
     // (no read at the site reads nothing, past any reach: nothing to name)
     let unspanned = hidden.iter().find(|h| longest > 0 && h.need() > longest).map(|h| (h.change, h.need(), longest));
     let reach: Vec<Hidden> = hidden.into_iter().filter(|h| h.need() <= longest).collect();
     if reach.is_empty() {
-        return (Vec::new(), Vec::new(), unspanned);
+        return PresentHidden { unspanned, ..PresentHidden::default() };
     }
     let window = |is_alt: bool, w: &[u8]| -> Vec<u8> {
         w.iter().enumerate().map(|(o, &b)| if masked.contains(&j.genome(is_alt, o)) { WILD } else { b }).collect()
     };
     let (ref_w, alt_w) = (window(false, &j.ref_w), window(true, &j.alt_w));
     let n = ref_w.len();
+    let neighbours = with_listed_rows(v, j, &alt);
     // REF's bases from the windows' first base, as far as the ALT's are held
     let reference: Vec<u8> = v
         .whole_ref
@@ -913,7 +979,10 @@ fn present_hidden(
             // of the bases where the two differ and the ALT's at none. A read of a third allele
             // (in a repeat whose copies differ, the sample's own copy changes) is not taken for
             // it.
-            if !told && !spells(&seq, quals, min_baseq, q, (&alt, &h.bases, &reference), n, end) {
+            if !told
+                && (!spells(&seq, quals, min_baseq, q, (&alt, &h.bases, &reference), n, end)
+                    || a_listed_neighbour(&seq, quals, min_baseq, q, &h.bases, &neighbours, n, end))
+            {
                 continue;
             }
             trace!(
@@ -943,9 +1012,20 @@ fn present_hidden(
         })
         .collect();
     if present.is_empty() {
-        return (Vec::new(), Vec::new(), unspanned);
+        return PresentHidden { unspanned, ..PresentHidden::default() };
     }
-    (alt, present, unspanned)
+    PresentHidden { alt, others: present, neighbours, unspanned }
+}
+
+/// [`present_hidden`]'s finding: the ALT's bases and the present other alleles' (from the
+/// windows' first base), the ALT with each listed row applied, and the allele past the longest
+/// read's reach.
+#[derive(Default)]
+struct PresentHidden {
+    alt: Vec<u8>,
+    others: Vec<Hidden>,
+    neighbours: Vec<Vec<u8>>,
+    unspanned: Option<Unspanned>,
 }
 
 /// The allele a fragment's bases past the windows place it as (`read`: its base at an
@@ -1162,7 +1242,7 @@ mod tests {
         let (ctx, v) = beside_run(2);
         let j = junction(&v).unwrap();
         assert_eq!((j.lo, j.mh, j.ref_w.len()), (100, 2, 2 * K + 2));
-        let (alt, hidden) = hidden_alleles(&v, &[]).unwrap();
+        let (alt, hidden) = hidden_alleles(&v, &[], 151).unwrap();
         let two = hidden.iter().find(|h| h.change == -120).expect("one more unit deleted");
         assert_eq!((two.first_diff, two.need(), two.listed), (K + 60, 2 * K + 60, false));
         assert_eq!(two.row, (99, ctx.as_bytes()[99..220].to_vec(), vec![ctx.as_bytes()[99]]));
@@ -1176,7 +1256,7 @@ mod tests {
         // With four copies, one more unit deleted reads alike for three of them; a deletion
         // of more than twice the given bases is not looked for (as RJ-24's other
         // breakpoints).
-        let (_, hidden) = hidden_alleles(&beside_run(4).1, &[]).unwrap();
+        let (_, hidden) = hidden_alleles(&beside_run(4).1, &[], 151).unwrap();
         assert_eq!(hidden.iter().find(|h| h.change == -120).map(|h| h.first_diff), Some(K + 180));
         assert!(hidden.iter().all(|h| h.change >= -120));
     }
@@ -1190,9 +1270,39 @@ mod tests {
         let two = del(&ctx, 99, 120);
         let snv = Variant::new("1".into(), 230, ctx[230..231].into(), "A".into(), "SNP".into(), None, 0, 0, None, None, None, None);
         let before = del(&ctx, 40, 50);
-        let (_, hidden) = hidden_alleles(&v, &[two, snv, before]).unwrap();
+        let (_, hidden) = hidden_alleles(&v, &[two, snv, before], 151).unwrap();
         let listed: Vec<i64> = hidden.iter().filter(|h| h.listed).map(|h| h.change).collect();
         assert_eq!(listed, vec![-120]);
+    }
+
+    #[test]
+    fn an_allele_that_is_the_alt_with_a_listed_neighbour_is_not_another_allele() {
+        // The ALT continues T: 12-base units for 40 + 12 bases, then an A, then 13-base units.
+        // One more unit deleted reads T from its 12th base: it first differs at T's 40th (the
+        // A) and on is the ALT with that A inserted after its 39th base. Listed as an input row,
+        // that insertion is the carriers' neighbour (RJ-24): no other allele.
+        let mut left: Vec<u8> = cgt(100, 23).into_bytes();
+        let deleted = format!("A{}", cgt(59, 29));
+        let u = cgt(12, 31).into_bytes();
+        let (p, at) = (12usize, 40usize);
+        let mut t: Vec<u8> = u.clone();
+        while t.len() < 200 {
+            let i = t.len();
+            t.push(if i < at + p { t[i - p] } else if i == at + p { b'A' } else { t[i - p - 1] });
+        }
+        if left[99] == deleted.as_bytes()[59] {
+            left[99] = if deleted.as_bytes()[59] == b'C' { b'G' } else { b'C' };
+        }
+        let ctx = format!("{}{}{}{}", String::from_utf8(left).unwrap(), deleted, String::from_utf8(t.clone()).unwrap(), cgt(300, 37));
+        let v = del(&ctx, 99, 60);
+        let (_, hidden) = hidden_alleles(&v, &[], 151).unwrap();
+        let more = hidden.iter().find(|h| h.change == -72).expect("one more unit deleted");
+        assert_eq!(more.first_diff, K + at);
+        let g = 160 + at as i64 - 1; // the anchor of the insertion, on the ALT's continuation
+        let row = (g, (t[at - 1] as char).to_string(), format!("{}A", t[at - 1] as char));
+        let listed = Variant { listed_indels: vec![row], ..v.clone() };
+        let (_, hidden) = hidden_alleles(&listed, &[], 151).unwrap();
+        assert!(hidden.iter().all(|h| h.change != -72), "the ALT with its listed neighbour");
     }
 
     #[test]

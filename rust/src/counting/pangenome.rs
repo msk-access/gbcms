@@ -440,6 +440,7 @@ mod tests {
             reach_rows: Vec::new(),
             reach_unrecorded: false,
             whole_ref: None,
+            listed_indels: Vec::new(),
         }
     }
 
@@ -487,6 +488,7 @@ mod tests {
             reach_rows: Vec::new(),
             reach_unrecorded: false,
             whole_ref: None,
+            listed_indels: Vec::new(),
         };
         assert!(build_haplotype_matrix(&v, &[]).is_none());
     }

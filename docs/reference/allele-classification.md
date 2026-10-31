@@ -433,8 +433,11 @@ way), so a CIGAR-only rule read VAF 0.000 at 287 of 300 heterozygous deletions.
   bases where the two differ favour the ALT by one base read at `--min-baseq` (a base
   fitting neither costs both alike, an error; one base of the other's against three of
   the ALT's is forgiven); otherwise the read is the ALT or that allele: neither, with
-  partial evidence (RJ-25). The windows do not grow: REF, told from both at the
-  junction, keeps its reads and the sibling claim its window. A site with no other
+  partial evidence (RJ-25). A read that fits the deletion with a listed row applied
+  past the junction (an indel or a substitution the input names) as well, but for one
+  base, is the deletion with that neighbour: it spells no other allele and its ALT call
+  stands. The windows do not grow: REF, told from both at the junction, keeps its reads
+  and the sibling claim its window. A site with no other
   count keeps its reads. Where the difference lies past the longest read, nothing is
   held, the counts stand and `gbcms_diagnostic` names the row,
   `UNIT_COUNT_UNSPANNED(change:bases/longest)`. Under the sequence judge the alleles

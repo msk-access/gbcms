@@ -15,7 +15,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   (listed, or spelled in full by its own bases on 3 or more fragments and 5% of those telling
   the ALT from it, RJ-25's floor; a fragment spells it only where its bases fit it, and fit
   REF worse, over 24 bases past where it and the ALT differ), an ALT read now counts only where its confident bases where
-  the two first differ show the given count; a read ending sooner is either allele: partial
+  the two first differ show the given count, or show it with a listed row applied (a phased
+  neighbour the input names, as RJ-24 takes a listed change); a read ending sooner is either allele: partial
   evidence (RJ-25), not ALT. Errors where the two read alike cost both and decide nothing
   (RJ-26). A site with no other count keeps its reads; REF reads and the sibling claim keep
   their windows. Both paths: the rules (`junction`) and, under `--read-judge sequence`, the
@@ -24,7 +25,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   read), nothing is held, the counts stand, and `gbcms_diagnostic` names the row:
   `UNIT_COUNT_UNSPANNED(change:bases/longest)`, a new `BaseCounts.unit_count_unspanned`
   (no new column). Prep holds the reference a read reaches past twice a long deletion's
-  length (`whole_ref`). RJ-24 amended 2026-10-30.
+  length (`whole_ref`), and the input's indel rows inside it (`listed_indels`). RJ-24 amended
+  2026-10-30.
 
 ### Fixed — the Smith-Waterman local re-scoring's `partial_alt` reads the scores that made the call (#195)
 
