@@ -215,7 +215,15 @@ jobs:
           cd rust && cargo test
 
   docker-test:
-    runs-on: ubuntu-latest
+    name: docker-test (${{ matrix.arch }})
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { arch: amd64, runner: ubuntu-latest }
+          # GitHub's arm64 runner: the image is built and run natively, never under QEMU
+          - { arch: arm64, runner: ubuntu-24.04-arm }
 
     steps:
       - name: Checkout code
@@ -231,21 +239,44 @@ jobs:
           push: false
           load: true
           tags: gbcms:test
-          cache-from: type=gha,scope=test
-          cache-to: type=gha,mode=max,scope=test
+          cache-from: type=gha,scope=test-${{ matrix.arch }}
+          cache-to: type=gha,mode=max,scope=test-${{ matrix.arch }}
 
       - name: Run the image
         run: |
           docker images gbcms:test --format "table {{.Repository}}\t{{.Tag}}\t{{.Size}}"
+          # The image is the runner's architecture, not an emulated one.
+          test "$(docker image inspect gbcms:test --format '{{.Architecture}}')" = "${{ matrix.arch }}"
           # The CLI starts, and the locked dependencies satisfy gbcms's requirements.
           docker run --rm gbcms:test --version
           docker run --rm --entrypoint python gbcms:test -m pip check
+
+      # A counting run on a synthetic data set (scripts/wheel_fixture_run.py), whose output
+      # digests are printed. The architectures must write the same bytes, and so must
+      # Apptainer below: Docker's run is the reference.
+      - name: A counting run in the image
+        run: |
+          set -euo pipefail
+          mkdir -p work/docker digests
+          docker run --rm -v "$PWD/scripts:/scripts:ro" -v "$PWD/work/docker:/work" \
+            --entrypoint python gbcms:test /scripts/wheel_fixture_run.py /work/fixture > work/docker.txt
+          cat work/docker.txt
+          cp work/docker.txt "digests/${{ matrix.arch }}.txt"
+
+      - name: Upload the output digests
+        uses: actions/upload-artifact@v4
+        with:
+          name: image-digests-${{ matrix.arch }}
+          path: digests
+          if-no-files-found: error
 
       # How a RHEL cluster runs the image (the Nextflow singularity, slurm and iris
       # profiles): Apptainer, from a SIF built from the local image. Unlike Docker, it runs
       # as the caller, on a read-only filesystem, with the caller's HOME and environment in
       # the container and the data folders bound in (what Nextflow's autoMounts does).
+      # The clusters are x86_64, so this runs on the amd64 leg.
       - name: Install Apptainer
+        if: matrix.arch == 'amd64'
         run: |
           sudo add-apt-repository -y ppa:apptainer/ppa
           sudo apt-get update
@@ -254,10 +285,11 @@ jobs:
           sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0 || true
           apptainer --version
 
-      - name: Run the image under Docker and under Apptainer
+      - name: Run the image under Apptainer
+        if: matrix.arch == 'amd64'
         run: |
           set -euo pipefail
-          mkdir -p work/docker work/apptainer
+          mkdir -p work/apptainer
           # A package in the caller's HOME, which Apptainer binds into the container: a
           # Python imports it before the image's own unless the image turns the user site
           # off. The folder is the one the image's own Python reads, for this HOME (so a
@@ -271,11 +303,6 @@ jobs:
           decoy="$site_dir/pydantic"
           mkdir -p "$decoy"
           echo 'raise ImportError("imported from the caller HOME, not from the image")' > "$decoy/__init__.py"
-
-          # Docker is the reference: a counting run on a synthetic data set, whose
-          # output digests (scripts/wheel_fixture_run.py) are printed.
-          docker run --rm -v "$PWD/scripts:/scripts:ro" -v "$PWD/work/docker:/work" \
-            --entrypoint python gbcms:test /scripts/wheel_fixture_run.py /work/fixture > work/docker.txt
 
           apptainer build gbcms.sif docker-daemon://gbcms:test
           # The trap is live: with the image's setting undone, its Python imports the decoy.
@@ -291,7 +318,23 @@ jobs:
           apptainer exec -B "$PWD/scripts:/scripts:ro" -B "$PWD/work/apptainer:/work" gbcms.sif \
             /bin/bash -c 'python /scripts/wheel_fixture_run.py /work/fixture' > work/apptainer.txt
 
-          cat work/docker.txt
           diff -u work/docker.txt work/apptainer.txt
           echo "The outputs under Apptainer equal the Docker run's."
 
+  docker-compare:
+    name: The image counts the same on both architectures
+    needs: docker-test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: image-digests-*
+          merge-multiple: true
+          path: digests
+      - name: Compare
+        run: |
+          cd digests
+          test "$(ls | wc -l)" -eq 2
+          for f in *.txt; do echo "== $f"; cat "$f"; done
+          diff -u amd64.txt arm64.txt
+          echo "amd64 and arm64 write the same bytes."

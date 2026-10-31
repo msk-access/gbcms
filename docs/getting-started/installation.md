@@ -73,7 +73,12 @@ gives:
 | Windows (native) | Not built or tested; use WSL2, which is the Linux row |
 
 The Docker image (`ghcr.io/msk-access/gbcms`) is built by the same workflow for
-`linux/amd64` and carries Python 3.11.
+`linux/amd64` and `linux/arm64`, each on a runner of its own architecture, and joined
+into one tag: a pull gets the image of your host's architecture, so on Apple silicon (and
+on arm64 Linux) it runs natively, not under emulation. It carries Python 3.11. The
+Nextflow `docker` profile still forces `--platform linux/amd64`, so a pipeline run
+uses the same image everywhere; CI requires both architectures to write the same output
+on a synthetic data set, which is what has to hold before that option is dropped.
 
 ### Building from source
 

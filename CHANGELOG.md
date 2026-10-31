@@ -24,6 +24,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Checked locally on macOS arm64, with the wheel of the stable-ABI change: the wheel is
   3.2 MB, installs on Python 3.10 to 3.14, and the suite passes on all five.
 
+### Added — a native arm64 Docker image, joined with amd64 into one multi-arch tag (#236)
+
+- The release builds the image on an amd64 runner and on GitHub's arm64 runner (no QEMU),
+  pushes each by digest, and a new job `docker-merge` joins the two into one tag
+  (`X.Y.Z` and `latest`). Pulling the tag on Apple silicon gets an arm64 image that runs
+  natively; before, Docker Desktop ran the amd64 image under emulation. The image lock's
+  hashes cover every platform's wheels, so both architectures install the same versions.
+- The `docker-test` job runs on both architectures. In each it builds the image on the
+  runner, checks that the image is the runner's architecture, runs `--version` and
+  `pip check`, and runs the counting run on a synthetic data set. The new job
+  `docker-compare` fails unless amd64 and arm64 write the same bytes.
+- The Nextflow `docker` profile still forces `--platform linux/amd64`. Dropping it would let
+  Apple silicon run the native image; that waits for `docker-compare` to pass on real CI
+  runs, and it changes what a pipeline run on a Mac uses.
+- Publishing: a manual run of the release workflow builds both images and pushes nothing. A tag
+  push pushes two untagged images and joins them; the first tagged release is the first
+  time the join runs.
+
 ### Added — CI runs the image through Apptainer, as RHEL clusters do (#233)
 
 - The `docker-test` job installs Apptainer, builds a SIF from the image it just built
