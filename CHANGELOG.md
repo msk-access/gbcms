@@ -36,12 +36,42 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   reads as ALT and made false-absent rows. RJ-24 and RJ-25 amended 2026-10-31.
 - `UNIT_COUNT_UNSPANNED` weighs the nearest unit count on each side (one that reads like the
   given deletion for its shift and 12 bases more), not any count past reach.
-- Where no read at the site can reach the first difference (the run longer than the longest
-  read), nothing is held, the counts stand, and `gbcms_diagnostic` names the row:
+- Where no read at the site can spell an unlisted count (the run longer than the longest
+  read), nothing is held for it, the counts stand, and `gbcms_diagnostic` names the row:
   `UNIT_COUNT_UNSPANNED(change:bases/longest)`, a new `BaseCounts.unit_count_unspanned`
-  (no new column). Prep holds the reference a read reaches past twice a long deletion's
-  length (`whole_ref`), and the input's indel rows inside it (`listed_indels`). RJ-24 amended
-  2026-10-30.
+  (no new column). A listed count there is held (below). Prep holds the reference a read reaches
+  past twice a long deletion's length (`whole_ref`), and the input's indel rows inside it
+  (`listed_indels`). RJ-24 amended 2026-10-30.
+- The rule closed on one principle, on both paths (operator, 2026-10-31, option A throughout;
+  RJ-24 and RJ-25 amended): a read is ALT only where its own confident bases carry the given
+  ALT and tell it from every candidate (REF, every listed allele, each found allele that
+  passes the presence test). The final review of rule X found four places where the branch
+  departed from it, three on the rules path only; all are closed, each red first on the rules
+  path and under `--read-judge sequence`:
+  - A read is "the deletion with its listed neighbour" only where its confident bases show that
+    row's change. One input row no read carries (a 1-bp deletion 270 bases past the junction,
+    or an SNV) turned 6 tie reads into ALT on the rules path, (RD, AD, partial) (6, 0, 6) to
+    (6, 6, 0); the sequence judge stayed (6, 0, 6). HG002 4:3610329 is unchanged.
+  - A listed other unit count is held wherever it first differs, past every read's reach too:
+    the reads that cannot tell are partial evidence, (6, 12, 0) to (6, 0, 12) on the rules
+    path, and the row is named `UNIT_COUNT_UNSPANNED`. The cost is a row with `alt_count` 0
+    until a read can tell (HG002: two rows on the rules path, ALT 15 to 0 and 5 to 0; the
+    sequence judge already counted 0 there).
+  - A read whose own bases spell an unlisted other unit count in full is never ALT, whatever the
+    presence floor (RJ-6): partial evidence, or depth only where the aligner doubts its
+    placement (RJ-29). The floor decides only the reads that cannot tell. The sequence judge
+    leaves such reads depth only (an allele under the floor is no state), so `partial_alt`
+    differs between the paths on them, `alt_count` does not.
+  - The presence test reads each read's qualities as the hold does (BAQ-adjusted, inside the
+    readable range), and "within a read's reach" is the first difference and the 24 bases the
+    spelling test reads (it was 4). `UNIT_COUNT_UNSPANNED`'s `bases` is larger by 20, and a
+    count that first differs 4 to 23 bases before the longest read's end is named.
+  - One presence test, RJ-25's (`carrier::is_found`: 3 fragments and 5% of the fragments
+    spelling the allele it is nearest), asked by the exact-carrier guard, the junction guard and
+    the sequence judge's found alleles; the judge counted reads against 5% of all the site's
+    reads. On HG002 nothing moves on the rules path; under the sequence judge 101 reads on 25
+    rows (18 distinct) move. One tolerance, RJ-27's (`carrier::one_error_forgiven`), for the
+    carrier rule and the junction judge's telling; no count changes.
 
 ### Added — a macOS wheel for Apple silicon (arm64) (#237)
 

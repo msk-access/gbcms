@@ -44,12 +44,13 @@
 //!   the copy's differing base), that allele reads like the ALT through the windows and on
 //!   to its first difference ([`Hidden`]). Where it is present at the site (listed, or
 //!   spelled in full on [`GUARD_MIN_READS`] fragments and [`GUARD_REF_SHARE`] of those
-//!   spelling the ALT there, as RJ-25 finds another allele) and a read of the longest
-//!   length at the site can reach that difference, an ALT call stands only where the read's
-//!   confident bases where the two differ tell the ALT ([`tells`]); otherwise it is the ALT
-//!   or that allele: neither, with partial evidence (RJ-25). The windows do not grow: REF,
-//!   told from both at the junction, and the sibling claim keep theirs. Past a read's reach
-//!   nothing is held, and the row is named (UNIT_COUNT_UNSPANNED).
+//!   spelling the ALT there, as RJ-25 finds another allele: [`is_found`]), an ALT call stands
+//!   only where the read's confident bases where the two differ tell the ALT ([`tells`]);
+//!   otherwise it is the ALT or that allele: neither, with partial evidence (RJ-25). A listed
+//!   count is held wherever it first differs; a read that spells an unlisted one in full
+//!   ([`spells_in_full`]) is never ALT, whatever the floor (RJ-6). The windows do not grow:
+//!   REF, told from both at the junction, and the sibling claim keep theirs. Past what a read
+//!   can spell an unlisted count nothing is held, and the row is named (UNIT_COUNT_UNSPANNED).
 
 use log::trace;
 use rust_htslib::bam::record::{Aux, Cigar, Record};
@@ -175,9 +176,9 @@ pub(crate) fn junction(v: &Variant) -> Option<Junction> {
     Some(Junction { lo: start + lo as i64, len, mh, ref_w, alt_w, ref_back })
 }
 
-/// Another allele at the breakpoint past the longest read's reach: its length change
-/// (deleted bases negative), the bases a read must hold from the windows' first base to
-/// tell it from the ALT, and the longest read at the site (UNIT_COUNT_UNSPANNED).
+/// Another allele at the breakpoint past what a read can spell: its length change (deleted
+/// bases negative), the bases a read must hold from the windows' first base to spell it in
+/// full ([`Hidden::need`]), and the longest read at the site (UNIT_COUNT_UNSPANNED).
 pub(crate) type Unspanned = (i64, usize, usize);
 
 /// Bases past an allele's first difference from the ALT that its bases are held for: a

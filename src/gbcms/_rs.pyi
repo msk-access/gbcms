@@ -166,9 +166,10 @@ class BaseCounts:
     # rules. Diagnostic only (UNEXPLAINED_READS flag).
     unexplained_reads: int
     # At a deletion of 50 bp or more: another allele at its breakpoint reading like the ALT
-    # past what the longest read at the site holds, as CHANGE:BASES/LONGEST (length change,
-    # deleted bases negative; bases a read must hold from the junction windows' first base;
-    # the longest read); empty when none. Diagnostic only (UNIT_COUNT_UNSPANNED flag).
+    # past what a read can spell, as CHANGE:BASES/LONGEST (length change, deleted bases
+    # negative; bases a read must hold from the junction windows' first base: the first
+    # difference and 24 more; the longest read); empty when none. Diagnostic only
+    # (UNIT_COUNT_UNSPANNED flag).
     unit_count_unspanned: str
     # At a deletion of 50 bp or more: each other unit count present at its breakpoint that
     # takes ALT calls, as POS:REF>ALT:n/m (1-based POS of the deletion's anchor; n fragments

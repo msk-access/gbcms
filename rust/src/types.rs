@@ -548,12 +548,13 @@ pub struct BaseCounts {
     #[pyo3(get)]
     pub unexplained_reads: u32,
     /// At a deletion of 50 bp or more: another allele at its breakpoint (another unit count
-    /// of a run beside it, #297) that reads like the ALT past what the longest read at the
-    /// site holds, as `CHANGE:BASES/LONGEST` (its length change, deleted bases negative; the
-    /// bases a read must hold from the junction windows' first base to tell the two; the
-    /// longest read); empty when none. No read can tell its carriers from the ALT's, so the
-    /// rule holds nothing for it and the counts stand. Diagnostic only (feeds
-    /// UNIT_COUNT_UNSPANNED); no count changes.
+    /// of a run beside it, #297) that reads like the ALT past what a read can spell, as
+    /// `CHANGE:BASES/LONGEST` (its length change, deleted bases negative; the bases a read
+    /// must hold from the junction windows' first base to spell it in full: the first
+    /// difference and 24 more; the longest read); empty when none. No read can tell an
+    /// unlisted one's carriers from the ALT's, so the rule holds nothing for it (a listed one
+    /// is held wherever it first differs). Diagnostic only (feeds UNIT_COUNT_UNSPANNED); no
+    /// count changes.
     #[pyo3(get)]
     pub unit_count_unspanned: String,
     /// At a deletion of 50 bp or more: each other unit count present at its breakpoint that

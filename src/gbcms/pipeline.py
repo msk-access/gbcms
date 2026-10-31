@@ -1073,10 +1073,12 @@ class Pipeline:
             UNIT_COUNT_UNSPANNED(change:bases/longest): at a deletion of 50 bp or
                 more, another allele at its breakpoint (another unit count of a run
                 beside it, `change` its length change, deleted bases negative) reads
-                like the given deletion past what the longest read at the site holds:
-                a read must hold `bases` bases from the junction windows' first base to
-                tell the two, and the longest is `longest`. No read can, so the given
-                deletion's alt_count may include that allele's carriers. Counts stand.
+                like the given deletion past what a read can spell: a read must hold
+                `bases` bases from the junction windows' first base (the first difference
+                and 24 more) to spell the count in full, and the longest is `longest`.
+                A count nobody listed that no read can spell is held for nothing, so the
+                given deletion's alt_count may include its carriers; a listed one is held
+                (its reads are partial evidence). The flag changes no count.
         """
         flags: list[str] = []
 
@@ -1193,9 +1195,9 @@ class Pipeline:
         if unexplained > 0:
             flags.append(f"UNEXPLAINED_READS({unexplained}/{counts.dp})")
 
-        # A long deletion's other unit count reading like it past what the longest read at
-        # the site holds: no read can tell their carriers apart, so nothing is held and the
-        # counts stand; the flag names it.
+        # A long deletion's other unit count reading like it past what a read can spell: no
+        # read can tell an unlisted one's carriers apart, so nothing is held for it (a listed
+        # one is held); the flag names it and changes no count.
         unspanned = getattr(counts, "unit_count_unspanned", "")
         if unspanned:
             flags.append(f"UNIT_COUNT_UNSPANNED({unspanned})")
