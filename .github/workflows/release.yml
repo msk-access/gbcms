@@ -66,7 +66,7 @@ jobs:
   # too, so what that workflow installs on a macOS runner is what is published. Intel
   # Macs build the source distribution.
   macos:
-    runs-on: macos-14
+    runs-on: macos-latest
     needs: [verify]
     steps:
       - uses: actions/checkout@v5

@@ -41,8 +41,9 @@ def _ancestors(jobs, job):
 def test_the_release_builds_and_publishes_the_apple_silicon_wheel():
     jobs = _jobs("release.yml")
     macos = jobs["macos"]
-    # macos-14 and macos-15 and later are arm64; macos-13 and any -intel runner are not
-    assert macos["runs-on"] == "macos-14", macos["runs-on"]
+    # macos-latest is arm64 (macos-15 and later); macos-13 and any -intel runner are not.
+    # macos-14 images retire on 2026-11-02.
+    assert macos["runs-on"] == "macos-latest", macos["runs-on"]
     assert "verify" in _ancestors(jobs, "macos"), "nothing builds before the version check"
     assert "macos" in _needs(jobs, "release")
     uses = [s.get("uses") for s in macos["steps"]]
@@ -62,10 +63,10 @@ def test_the_action_targets_macos_11_and_records_the_commit():
 
 def test_the_wheel_checks_install_the_macos_wheel_at_both_ends_of_the_range():
     jobs = _jobs("wheels.yml")
-    assert jobs["macos-build"]["runs-on"] == "macos-14"
+    assert jobs["macos-build"]["runs-on"] == "macos-latest"
     assert "./.github/actions/macos-wheel" in [s.get("uses") for s in jobs["macos-build"]["steps"]]
     test = jobs["macos-test"]
-    assert test["runs-on"] == "macos-14" and "macos-build" in _needs(jobs, "macos-test")
+    assert test["runs-on"] == "macos-latest" and "macos-build" in _needs(jobs, "macos-test")
     assert {"3.10", "3.14"} <= set(test["strategy"]["matrix"]["python"])
     assert "scripts/check_wheel.sh" in "\n".join(str(s.get("run", "")) for s in test["steps"])
     assert "macos-test" in _needs(jobs, "compare")

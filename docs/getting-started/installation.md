@@ -57,7 +57,7 @@
 
 What a release builds is exactly what `.github/workflows/release.yml` builds: the
 `linux` job (`ubuntu-latest`, `--release`, in the `manylinux_2_28` image, which is
-AlmaLinux 8), the `macos` job (`macos-14`, Apple silicon) and the `sdist` job. The
+AlmaLinux 8), the `macos` job (`macos-latest`, Apple silicon) and the `sdist` job. The
 extension uses Python's stable ABI (`abi3-py310`), so each wheel job builds one wheel,
 `cp310-abi3`, that every CPython from 3.10 installs. The `Wheels` workflow installs the
 Linux wheel in Rocky Linux 8 and 9 containers and the macOS wheel on an Apple silicon
