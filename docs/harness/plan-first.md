@@ -62,15 +62,25 @@ in this instance or in the mechanism, and does an option break an invariant?
 
 ## How the trial is judged
 
-- **Baseline:** the same measures on #297, #264 and #369 in this cycle, by the same script
-  (`~/test/gbcms/harness/plan670/plan-first/baseline.py`, local).
+- **Baseline** (measured 2026-10-31 by `~/test/gbcms/harness/plan670/plan-first/baseline.py`, local;
+  agent tokens are summed over context resets; the main session's own tokens are not visible):
+
+  | Measure | #297 (unit-run rule) | #264 (long-insertion windows) | #369 (long-insertion band) |
+  |:--|--:|--:|--:|
+  | Agent tokens | 3.02 M | 2.38 M | 1.03 M |
+  | Review rounds | 4 | 3 | 2 |
+  | HPC builds, batches, array tasks | 6, 17, 496 | 5, 10, 174 | 2, 14, 320 |
+  | Commits undone | 5 (of 11) | 0 | 0 |
+  | Decision reversed later | yes (option (b)) | no | no |
+
 - **Trial items:** the layered audit of rule conditions (the first plan), then the next two
   count-changing items.
-- **Bar, fixed now:**
-  - at most two review rounds per decision;
-  - no condition added and later removed;
-  - at most two HPC batches per decision;
-  - fewer agent tokens per decision than the baseline's median;
+- **Bar, fixed now** (per decision):
+  - at most two review rounds;
+  - no condition added and later removed, and no decision reversed;
+  - HPC builds at most the options the plan measures, plus one final build; batches fewer than the
+    baseline's median (14);
+  - agent tokens below the baseline's median (2.38 M);
   - the operator can read the page in five minutes.
 - **If the trial passes:** the page goes into the decision protocol and replaces text there. A
   count-changing PR must then link its plan, and the qa-check step looks for the link.

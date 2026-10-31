@@ -1,6 +1,6 @@
 # Audit: the counting conditions added in 6.7.0, by class or by row
 
-Status: draft, for the operator's approval
+Status: approved 2026-10-31 (scope A; tools local for the trial; first run without a token budget)
 Rounds: 0 of 2 · New conditions: 0 of 0 (an audit adds none) · HPC batches: 0 of 0
 
 ## 1. The class
@@ -53,10 +53,13 @@ the options.
 
 ## 5. Budget and stop rule
 
+- **First run: no token budget** (operator, 2026-10-31: "as we are running it for the first time run
+  without budget"). The cost log records the tokens each layer uses; those numbers set the budget
+  for later runs. The estimate was Sonnet about 300k and Fable about 400k.
 - Layers 0 and 1 use no model tokens to run; a Sonnet agent writes the inventory script.
-- Layer 2 (Sonnet) uses at most 300k tokens; layer 3 (Fable) at most 400k tokens, in one pass.
-- If the inventory has more than 400 rows, stop. Show the operator the counts by module and by kind
-  before the sort.
+- Layer 3 (Fable) runs once, on the narrowed rows only.
+- If the inventory has more than 400 rows, report the counts by module and by kind to the operator,
+  then go on.
 - The audit changes no code. A proposed change waits for its own plan.
 
 ## 6. Work and models
@@ -79,11 +82,13 @@ the options.
 
 ## 7. State
 
-- 2026-10-31: the plan is drafted. The baseline of #297, #264 and #369 is being measured
-  (`~/test/gbcms/harness/plan670/plan-first/baseline.md`, when done). Nothing has run.
+- 2026-10-31: the plan is drafted. The baseline of #297, #264 and #369 is measured
+  (`~/test/gbcms/harness/plan670/plan-first/baseline.md`; 5.82 M agent tokens for the three, 41 HPC
+  batches). Nothing has run.
 
 ## 8. Cost log
 
 | Layer | Agent and model | Tokens | Rows | Notes |
 |:--|:--|--:|--:|:--|
-| | | | | |
+| 1. Code graph | `graphify update` and `cluster-only --no-label` (no model) | 0 | – | develop a065ab64: 1,582 nodes, 5,114 edges, 45 groups; `~/test/gbcms/harness/plan670/audit/code_develop/` |
+| 0. Inventory | Sonnet writes `inventory.py` | | | running |
