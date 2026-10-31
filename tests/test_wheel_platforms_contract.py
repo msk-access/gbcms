@@ -61,7 +61,7 @@ def test_the_wheel_checks_install_the_wheel_in_rocky_linux_8_and_9():
     wf = yaml.safe_load((WF / "wheels.yml").read_text())
     jobs = wf["jobs"]
     legs = jobs["rocky"]["strategy"]["matrix"]["include"]
-    built = {(leg["rocky"], leg["manylinux"]) for leg in legs}
+    built = {(leg["rocky"], leg.get("manylinux", "manylinux_2_28")) for leg in legs}
     assert {("8", "manylinux_2_28"), ("9", "manylinux_2_28")} <= built, built
     assert "build" in jobs["rocky"]["needs"] and "rocky" in jobs["compare"]["needs"]
     script = (ROOT / "scripts" / "check_wheel.sh").read_text()
@@ -94,3 +94,43 @@ def test_the_container_script_is_one_single_quoted_word():
     steps = _jobs("wheels.yml")["rocky"]["steps"]
     run = next(s["run"] for s in steps if "bash -euo pipefail -c" in str(s.get("run", "")))
     assert run.count("'") == 2, run.count("'")
+
+
+# ── one wheel for every Python (the stable ABI) ─────────────────────────────
+
+
+def test_the_stable_abi_floor_is_the_python_floor():
+    """`abi3-pyNN` makes a wheel that installs on CPython NN and newer; it must be the
+    lowest Python the package claims, or a supported Python gets no wheel (or a wheel
+    that does not import)."""
+    requires = _toml(ROOT / "pyproject.toml")["project"]["requires-python"]
+    assert requires.startswith(">=3."), requires
+    floor = requires[len(">=3.") :]
+    pyo3 = _toml(ROOT / "rust" / "Cargo.toml")["dependencies"]["pyo3"]
+    assert f"abi3-py3{floor}" in pyo3["features"], (requires, pyo3)
+    action = yaml.safe_load(ACTION.read_text())
+    assert action["inputs"]["interpreter"]["default"] == f"python3.{floor}"
+
+
+def test_the_wheel_checks_run_every_python_of_the_range_on_rhel_8():
+    """The suite at both ends of the range, an install and a counting run between."""
+    wf = yaml.safe_load((WF / "wheels.yml").read_text())
+    legs = wf["jobs"]["rocky"]["strategy"]["matrix"]["include"]
+    on_8 = {leg["python"]: leg["suite"] for leg in legs if leg["rocky"] == "8"}
+    assert {"3.10", "3.12", "3.13", "3.14", "system"} <= set(on_8), on_8
+    assert on_8["3.10"] == "1" and on_8["3.14"] == "1", on_8
+    classifiers = _toml(ROOT / "pyproject.toml")["project"]["classifiers"]
+    for minor in ("10", "11", "12", "13", "14"):
+        assert f"Programming Language :: Python :: 3.{minor}" in classifiers, minor
+
+
+def test_the_loaded_extension_is_the_stable_abi_build():
+    """An editable install keeps `src/gbcms/_rs.*.so`, and Python tries the version-specific
+    suffix (`.cpython-311-darwin.so`) before the stable-ABI one (`.abi3.so`): a leftover from a
+    build before the switch would run the old engine under every test. Trash it and rebuild."""
+    import gbcms._rs as rs
+
+    assert rs.__file__.endswith(".abi3.so"), (
+        f"{rs.__file__} is not the stable-ABI build; trash any src/gbcms/_rs.cpython-*.so "
+        "and run maturin develop --release again"
+    )

@@ -16,13 +16,16 @@ maturin develop   # fast, unoptimized: for iterating; use --release for tests an
 ```
 
 - **Repo root only.** `maturin develop -m rust/Cargo.toml` ignores `[tool.maturin]`, installs a
-  useless top-level `_rs` package, and never refreshes `src/gbcms/_rs.cpython-*.so`, which the
-  editable install imports first: the build "succeeds" and tests keep running the old engine.
+  useless top-level `_rs` package, and never refreshes `src/gbcms/_rs.abi3.so`, which the
+  editable install imports: the build "succeeds" and tests keep running the old engine.
 - **Stale `.so` trap.** After every rebuild check freshness:
   `python -c "import gbcms._rs as m, os, time; print(m.__file__, time.ctime(os.path.getmtime(m.__file__)))"`
-  must print `src/gbcms/_rs...so` with a just-now mtime. If an old `.so` shadows it, `trash` it
-  and rebuild from the root. Never filter build output (`| grep error`) without this check:
-  a missing `maturin` binary also looks like silence (the main checkout's `.venv` has none).
+  must print `src/gbcms/_rs.abi3.so` with a just-now mtime. If an old `.so` shadows it, `trash` it
+  and rebuild from the root. The extension is a stable-ABI build (`abi3-py310`), one file for every
+  Python; Python tries a version-specific suffix first, so a leftover `_rs.cpython-3xx-*.so` from
+  before the switch wins over the new `.abi3.so`. `tests/test_wheel_platforms_contract.py` fails when
+  the loaded extension is not the `.abi3.so`. Never filter build output (`| grep error`) without the
+  freshness check: a missing `maturin` binary also looks like silence (the main checkout's `.venv` has none).
 - **Set `VIRTUAL_ENV`, unset `CONDA_PREFIX`.** Without `VIRTUAL_ENV` maturin installs into the
   nearest `.venv` above the cwd; from a worktree under `.claude/worktrees/` that is the MAIN
   checkout's `.venv`, which then points at the worktree for every other session (put it in
