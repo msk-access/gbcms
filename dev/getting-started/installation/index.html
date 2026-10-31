@@ -79,7 +79,7 @@
             body[data-md-color-scheme="slate"] .gslide-title { color: var(--md-default-fg-color); }
             body[data-md-color-scheme="slate"] .gslide-desc { color: var(--md-default-fg-color); }
         </style><meta name="panzoom-theme" content="material">
-<meta name="panzoom-data" content='{"selectors": [".d2", ".mermaid"], "initial_zoom_level": 1.0}'> </head>
+<meta name="panzoom-data" content='{"selectors": [".mermaid", ".d2"], "initial_zoom_level": 1.0}'> </head>
   
   
     
@@ -2189,10 +2189,11 @@
 <a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>gbcms<span class="w"> </span>--version
 </code></pre></div>
 <div class="admonition info">
-<p class="admonition-title">One prebuilt wheel</p>
-<p>A release publishes one wheel, for <strong>every CPython from 3.10 on Linux x86_64 with
-glibc 2.28+</strong> (RHEL 8 and 9, Ubuntu 20.04+, Debian 10+), and the source
-distribution. On any other platform, <code>pip install gbcms</code> compiles the source
+<p class="admonition-title">Two prebuilt wheels</p>
+<p>A release publishes a wheel for <strong>every CPython from 3.10 on Linux x86_64 with
+glibc 2.28+</strong> (RHEL 8 and 9, Ubuntu 20.04+, Debian 10+), a wheel for <strong>every CPython
+from 3.10 on Apple silicon Macs with macOS 11+</strong>, and the source distribution.
+On any other platform, <code>pip install gbcms</code> compiles the source
 distribution on your machine, which needs a Rust toolchain and a C compiler.
 The wheel needs pip 20.3 or newer; on RHEL 8, install it into a virtual
 environment of a newer Python (see <a href="#legacy-linux-rhel-8-hpc">RHEL 8</a>).
@@ -2233,7 +2234,7 @@ See <a href="#platform-support">Platform support</a>.</p>
 </tr>
 <tr>
 <td style="text-align: left;">OS</td>
-<td style="text-align: left;">Linux (x86_64 wheel needs glibc 2.28+: RHEL 8 and newer), macOS (built from source), Windows through WSL2</td>
+<td style="text-align: left;">Linux (x86_64 wheel needs glibc 2.28+: RHEL 8 and newer), macOS (the wheel is for Apple silicon, macOS 11+; Intel builds from source), Windows through WSL2</td>
 </tr>
 <tr>
 <td style="text-align: left;">Memory</td>
@@ -2250,10 +2251,12 @@ See <a href="#platform-support">Platform support</a>.</p>
 <h2 id="platform-support">Platform support<a class="headerlink" href="#platform-support" title="Permanent link">¶</a></h2>
 <p>What a release builds is exactly what <code>.github/workflows/release.yml</code> builds: the
 <code>linux</code> job (<code>ubuntu-latest</code>, <code>--release</code>, in the <code>manylinux_2_28</code> image, which is
-AlmaLinux 8) and the <code>sdist</code> job. The extension uses Python's stable ABI (<code>abi3-py310</code>),
-so the <code>linux</code> job builds one wheel, <code>cp310-abi3</code>, that every CPython from 3.10 installs.
-The <code>Wheels</code> workflow installs that wheel in Rocky Linux 8 and 9 containers with Python
-3.10 to 3.14 and runs the test suite there. So <code>pip install gbcms</code> gives:</p>
+AlmaLinux 8), the <code>macos</code> job (<code>macos-14</code>, Apple silicon) and the <code>sdist</code> job. The
+extension uses Python's stable ABI (<code>abi3-py310</code>), so each wheel job builds one wheel,
+<code>cp310-abi3</code>, that every CPython from 3.10 installs. The <code>Wheels</code> workflow installs the
+Linux wheel in Rocky Linux 8 and 9 containers and the macOS wheel on an Apple silicon
+runner, with Python 3.10 to 3.14, and runs the test suite there. So <code>pip install gbcms</code>
+gives:</p>
 <table>
 <thead>
 <tr>
@@ -2271,8 +2274,12 @@ The <code>Wheels</code> workflow installs that wheel in Rocky Linux 8 and 9 cont
 <td style="text-align: left;">Builds the source distribution; see <a href="#legacy-linux-rhel-8-hpc">Legacy Linux</a></td>
 </tr>
 <tr>
-<td style="text-align: left;">macOS, Intel or Apple Silicon</td>
-<td style="text-align: left;">Builds the source distribution (<abbr title="Continuous Integration - Automated build and test system">CI</abbr> builds and tests it on macOS with Python 3.12)</td>
+<td style="text-align: left;">macOS on Apple silicon (arm64), macOS 11+, Python 3.10 to 3.14</td>
+<td style="text-align: left;">Installs the prebuilt wheel (<code>cp310-abi3</code>, <code>macosx_11_0_arm64</code>)</td>
+</tr>
+<tr>
+<td style="text-align: left;">macOS on an Intel Mac</td>
+<td style="text-align: left;">Builds the source distribution (not built in <abbr title="Continuous Integration - Automated build and test system">CI</abbr>; Intel Macs are the last that macOS supports)</td>
 </tr>
 <tr>
 <td style="text-align: left;">Windows (native)</td>
@@ -2453,7 +2460,7 @@ dependencies.</p>
     <span class="md-icon" title="Last update">
       <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M21 13.1c-.1 0-.3.1-.4.2l-1 1 2.1 2.1 1-1c.2-.2.2-.6 0-.8l-1.3-1.3c-.1-.1-.2-.2-.4-.2m-1.9 1.8-6.1 6V23h2.1l6.1-6.1zM12.5 7v5.2l4 2.4-1 1L11 13V7zM11 21.9c-5.1-.5-9-4.8-9-9.9C2 6.5 6.5 2 12 2c5.3 0 9.6 4.1 10 9.3-.3-.1-.6-.2-1-.2s-.7.1-1 .2C19.6 7.2 16.2 4 12 4c-4.4 0-8 3.6-8 8 0 4.1 3.1 7.5 7.1 7.9l-.1.2z"></path></svg>
     </span>
-    <span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-timeago" title="October 30, 2026 21:17:37 UTC"><span class="timeago" datetime="2026-10-30T21:17:37+00:00" locale="en"></span></span><span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-iso_date" title="October 30, 2026 21:17:37 UTC">2026-10-30</span>
+    <span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-timeago" title="October 30, 2026 21:24:20 UTC"><span class="timeago" datetime="2026-10-30T21:24:20+00:00" locale="en"></span></span><span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-iso_date" title="October 30, 2026 21:24:20 UTC">2026-10-30</span>
   </span>
 
     

@@ -2764,10 +2764,11 @@ Use mouse to pan and zoom
 <a id="__codelineno-0-2" name="__codelineno-0-2" href="#getting-started-installation-__codelineno-0-2"></a>gbcms<span class="w"> </span>--version
 </code></pre></div>
 <div class="admonition info">
-<p class="admonition-title">One prebuilt wheel</p>
-<p>A release publishes one wheel, for <strong>every CPython from 3.10 on Linux x86_64 with
-glibc 2.28+</strong> (RHEL 8 and 9, Ubuntu 20.04+, Debian 10+), and the source
-distribution. On any other platform, <code>pip install gbcms</code> compiles the source
+<p class="admonition-title">Two prebuilt wheels</p>
+<p>A release publishes a wheel for <strong>every CPython from 3.10 on Linux x86_64 with
+glibc 2.28+</strong> (RHEL 8 and 9, Ubuntu 20.04+, Debian 10+), a wheel for <strong>every CPython
+from 3.10 on Apple silicon Macs with macOS 11+</strong>, and the source distribution.
+On any other platform, <code>pip install gbcms</code> compiles the source
 distribution on your machine, which needs a Rust toolchain and a C compiler.
 The wheel needs pip 20.3 or newer; on RHEL 8, install it into a virtual
 environment of a newer Python (see <a href="#getting-started-installation-legacy-linux-rhel-8-hpc">RHEL 8</a>).
@@ -2808,7 +2809,7 @@ See <a href="#getting-started-installation-platform-support">Platform support</a
 </tr>
 <tr>
 <td style="text-align: left;">OS</td>
-<td style="text-align: left;">Linux (x86_64 wheel needs glibc 2.28+: RHEL 8 and newer), macOS (built from source), Windows through WSL2</td>
+<td style="text-align: left;">Linux (x86_64 wheel needs glibc 2.28+: RHEL 8 and newer), macOS (the wheel is for Apple silicon, macOS 11+; Intel builds from source), Windows through WSL2</td>
 </tr>
 <tr>
 <td style="text-align: left;">Memory</td>
@@ -2825,10 +2826,12 @@ See <a href="#getting-started-installation-platform-support">Platform support</a
 <h2 id="getting-started-installation-platform-support">Platform support<a class="headerlink" href="#getting-started-installation-platform-support" title="Permanent link">¶</a></h2>
 <p>What a release builds is exactly what <code>.github/workflows/release.yml</code> builds: the
 <code>linux</code> job (<code>ubuntu-latest</code>, <code>--release</code>, in the <code>manylinux_2_28</code> image, which is
-AlmaLinux 8) and the <code>sdist</code> job. The extension uses Python's stable ABI (<code>abi3-py310</code>),
-so the <code>linux</code> job builds one wheel, <code>cp310-abi3</code>, that every CPython from 3.10 installs.
-The <code>Wheels</code> workflow installs that wheel in Rocky Linux 8 and 9 containers with Python
-3.10 to 3.14 and runs the test suite there. So <code>pip install gbcms</code> gives:</p>
+AlmaLinux 8), the <code>macos</code> job (<code>macos-14</code>, Apple silicon) and the <code>sdist</code> job. The
+extension uses Python's stable ABI (<code>abi3-py310</code>), so each wheel job builds one wheel,
+<code>cp310-abi3</code>, that every CPython from 3.10 installs. The <code>Wheels</code> workflow installs the
+Linux wheel in Rocky Linux 8 and 9 containers and the macOS wheel on an Apple silicon
+runner, with Python 3.10 to 3.14, and runs the test suite there. So <code>pip install gbcms</code>
+gives:</p>
 <table>
 <thead>
 <tr>
@@ -2846,8 +2849,12 @@ The <code>Wheels</code> workflow installs that wheel in Rocky Linux 8 and 9 cont
 <td style="text-align: left;">Builds the source distribution; see <a href="#getting-started-installation-legacy-linux-rhel-8-hpc">Legacy Linux</a></td>
 </tr>
 <tr>
-<td style="text-align: left;">macOS, Intel or Apple Silicon</td>
-<td style="text-align: left;">Builds the source distribution (<abbr title="Continuous Integration - Automated build and test system">CI</abbr> builds and tests it on macOS with Python 3.12)</td>
+<td style="text-align: left;">macOS on Apple silicon (arm64), macOS 11+, Python 3.10 to 3.14</td>
+<td style="text-align: left;">Installs the prebuilt wheel (<code>cp310-abi3</code>, <code>macosx_11_0_arm64</code>)</td>
+</tr>
+<tr>
+<td style="text-align: left;">macOS on an Intel Mac</td>
+<td style="text-align: left;">Builds the source distribution (not built in <abbr title="Continuous Integration - Automated build and test system">CI</abbr>; Intel Macs are the last that macOS supports)</td>
 </tr>
 <tr>
 <td style="text-align: left;">Windows (native)</td>
@@ -19931,13 +19938,15 @@ commit history and makes the back-merge conflict-free.</p>
 <p>The tag triggers <code>.github/workflows/release.yml</code>:</p>
 <ol>
 <li><strong>Verify</strong> — <code>scripts/release.py check --tag X.Y.Z</code>; every other job waits for it</li>
-<li><strong>Build one wheel</strong> — <code>cp310-abi3</code>, <code>manylinux_2_28_x86_64</code> (the stable ABI, so one
+<li><strong>Build two wheels</strong> — <code>cp310-abi3</code>, <code>manylinux_2_28_x86_64</code> (the stable ABI, so one
    wheel serves every CPython from 3.10; AlmaLinux 8, glibc 2.28: it installs on RHEL 8
-   and newer) — plus an <strong>sdist</strong> (jobs <code>linux</code> and <code>sdist</code>). The
-   <code>linux</code> job builds with the local action <code>.github/actions/linux-wheel</code>; the <code>Wheels</code>
-   workflow builds with the same action on every change to the build and installs the
-   wheel in Rocky Linux 8 and 9 containers (pip with binary wheels only, the suite, and
-   a counting run whose output digests must match everywhere)</li>
+   and newer) and <code>cp310-abi3</code>, <code>macosx_11_0_arm64</code> (Apple silicon) — plus an <strong>sdist</strong>
+   (jobs <code>linux</code>, <code>macos</code> and <code>sdist</code>). The <code>linux</code> and <code>macos</code> jobs build with the local
+   actions <code>.github/actions/linux-wheel</code> and <code>.github/actions/macos-wheel</code>; the <code>Wheels</code>
+   workflow builds with the same actions on every change to the build and installs the
+   wheels (the Linux one in Rocky Linux 8 and 9 containers, the macOS one on an Apple
+   silicon runner): pip with binary wheels only, the suite, and a counting run whose
+   output digests must match everywhere</li>
 <li><strong>Publish to PyPI</strong> (via maturin)</li>
 <li><strong>Build the Docker image</strong> on an amd64 and an arm64 runner (natively, no emulation), push each
    by digest, and join them (job <code>docker-merge</code>) into one multi-arch tag, <code>ghcr.io/msk-access/gbcms:X.Y.Z</code>
@@ -19957,14 +19966,15 @@ build, so its checksums and attestations would no longer match what PyPI serves.
 <div class="admonition warning">
 <p class="admonition-title">One wheel, not a matrix</p>
 <p>This list previously claimed Linux x86_64 + aarch64, macOS x86_64 + arm64, and Windows.
-<code>release.yml</code> has only <code>linux</code> and <code>sdist</code> jobs, and 6.2.0 published exactly
-<code>gbcms-X.Y.Z-cp311-cp311-manylinux_2_34_x86_64.whl</code> and <code>gbcms-X.Y.Z.tar.gz</code> (the
-wheel is <code>manylinux_2_28</code> from 6.7.0).</p>
+<code>release.yml</code> had only <code>linux</code> and <code>sdist</code> jobs, and 6.2.0 published exactly
+<code>gbcms-X.Y.Z-cp311-cp311-manylinux_2_34_x86_64.whl</code> and <code>gbcms-X.Y.Z.tar.gz</code>. From
+6.7.0 it publishes a Linux x86_64 wheel (<code>manylinux_2_28</code>) and an Apple silicon wheel
+(<code>macosx_11_0_arm64</code>), each <code>cp310-abi3</code>.</p>
 <p>The practical consequence, worth knowing before telling a user to <code>pip install gbcms</code>:
-<strong>everyone not on manylinux x86_64 builds from the sdist</strong>, which needs a Rust
-toolchain. That includes macOS (Intel and Apple Silicon). Broadening the matrix is a
-real change to <code>release.yml</code>, not a docs fix — until then, this list should describe
-what actually ships. (Until 6.6.0 the wheel was <code>cp311</code> only, so every other Python
+<strong>everyone not on Linux x86_64 or Apple silicon builds from the sdist</strong>, which needs a
+Rust toolchain. That includes Intel Macs, Linux aarch64 and Windows. Broadening the
+matrix is a real change to <code>release.yml</code>, not a docs fix — until then, this list should
+describe what actually ships. (Until 6.6.0 the wheel was <code>cp311</code> only, so every other Python
 built from the sdist.)</p>
 </div>
 <h3 id="development-release-guide-9-check-the-github-release">9. Check the GitHub Release<a class="headerlink" href="#development-release-guide-9-check-the-github-release" title="Permanent link">¶</a></h3>
@@ -20085,12 +20095,12 @@ on <code>develop</code> fails until it is done.</p>
 <tr>
 <td style="text-align: left;"><code>release.yml</code></td>
 <td style="text-align: left;">Tag push <code>X.Y.Z</code></td>
-<td style="text-align: left;">Verify the version sources, build the wheel and sdist, publish PyPI and Docker (amd64 and arm64), create the GitHub Release</td>
+<td style="text-align: left;">Verify the version sources, build the Linux and macOS wheels and the sdist, publish PyPI and Docker (amd64 and arm64), create the GitHub Release</td>
 </tr>
 <tr>
 <td style="text-align: left;"><code>wheels.yml</code></td>
-<td style="text-align: left;">Push/PR touching <code>rust/</code>, <code>pyproject.toml</code>, the wheel action or the check scripts; manual</td>
-<td style="text-align: left;">Build the Linux wheel with the release's action and install it in Rocky Linux 8 and 9 containers (<code>pip</code> with binary wheels only, the suite, and a counting run whose output digests must match everywhere); publishes nothing</td>
+<td style="text-align: left;">Push/PR touching <code>rust/</code>, <code>pyproject.toml</code>, the wheel actions or the check scripts; manual</td>
+<td style="text-align: left;">Build the Linux and macOS wheels with the release's actions and install them (Linux in Rocky Linux 8 and 9 containers, Python 3.10 to 3.14; macOS on an Apple silicon runner, 3.10 and 3.14): <code>pip</code> with binary wheels only, the suite, and a counting run whose output digests must match everywhere; publishes nothing</td>
 </tr>
 <tr>
 <td style="text-align: left;"><code>nextflow-lint.yml</code></td>
@@ -20364,6 +20374,23 @@ count-affecting merge since the previous release, run on the changed rows only.<
 <p>The format is based on <a href="https://keepachangelog.com/en/1.0.0/">Keep a Changelog</a>,
 and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semantic Versioning</a>.</p>
 <h2 id="development-changelog-unreleased">[Unreleased]<a class="headerlink" href="#development-changelog-unreleased" title="Permanent link">¶</a></h2>
+<h3 id="development-changelog-added-a-macos-wheel-for-apple-silicon-arm64-237">Added — a macOS wheel for Apple silicon (arm64) (#237)<a class="headerlink" href="#development-changelog-added-a-macos-wheel-for-apple-silicon-arm64-237" title="Permanent link">¶</a></h3>
+<ul>
+<li>The release builds <code>cp310-abi3-macosx_11_0_arm64</code> on <code>macos-14</code> with the new local action
+  <code>.github/actions/macos-wheel</code>, and publishes it to PyPI and the release page (with its
+  checksum and build-provenance attestation) beside the Linux wheel. <code>pip install gbcms</code> on
+  an Apple silicon Mac with macOS 11 or newer, on any Python from 3.10, now installs a wheel;
+  before, it built the source distribution (Rust, clang and htslib's C source).</li>
+<li>The <code>Wheels</code> workflow builds that wheel on a macOS runner on every change to the build, and
+  installs it on Python 3.10 and 3.14 with <code>pip install --only-binary=:all:</code>. The suite runs
+  there, and the counting run's output digests must equal the Linux ones. The same steps run
+  on a Mac with <code>scripts/check_wheel.sh</code>.</li>
+<li>Intel Macs (x86_64) still build the source distribution: nothing in <abbr title="Continuous Integration - Automated build and test system">CI</abbr> uses an Intel Mac,
+  and a wheel for one would be a second entry in the same two jobs (or a cross build on the
+  arm64 runner) if a user asks for it.</li>
+<li>Checked locally on macOS arm64, with the wheel of the stable-ABI change: the wheel is
+  3.2 MB, installs on Python 3.10 to 3.14, and the suite passes on all five.</li>
+</ul>
 <h3 id="development-changelog-added-a-native-arm64-docker-image-joined-with-amd64-into-one-multi-arch-tag-236">Added — a native arm64 Docker image, joined with amd64 into one multi-arch tag (#236)<a class="headerlink" href="#development-changelog-added-a-native-arm64-docker-image-joined-with-amd64-into-one-multi-arch-tag-236" title="Permanent link">¶</a></h3>
 <ul>
 <li>The release builds the image on an amd64 runner and on GitHub's arm64 runner (no QEMU),
