@@ -216,11 +216,13 @@ pub(crate) struct Hidden {
 }
 
 impl Hidden {
-    /// Bases a read must hold from the windows' first base to spell it in full: through
-    /// [`K`] bases from its first difference, as the windows hold [`K`] of each allele's own
-    /// continuation.
+    /// Bases a read must hold from the windows' first base to spell it in full: [`PAST`] bases
+    /// on from its first difference, as the guard reads an allele on past the windows before it
+    /// places a fragment. The same bases the reach, the spelling test and the diagnostic use (a
+    /// count that first differs sooner than that before the longest read's end is in no read's
+    /// reach to spell).
     pub(crate) fn need(&self) -> usize {
-        self.first_diff + K
+        self.first_diff + PAST
     }
 }
 
@@ -564,7 +566,7 @@ fn spells_in_full(
     h: &Hidden,
 ) -> bool {
     told == Some(false)
-        && q + h.first_diff + PAST <= end
+        && q + h.need() <= end
         && spells(seq, quals, min_baseq, q, (alt, &h.bases, reference), n, end)
         && !a_listed_neighbour(seq, quals, min_baseq, q, &h.bases, (alt, neighbours), n, end)
 }
@@ -1436,7 +1438,7 @@ mod tests {
         assert_eq!((j.lo, j.mh, j.ref_w.len()), (100, 2, 2 * K + 2));
         let (alt, hidden) = hidden_alleles(&v, &[], 151).unwrap();
         let two = hidden.iter().find(|h| h.change == -120).expect("one more unit deleted");
-        assert_eq!((two.first_diff, two.need(), two.listed), (K + 60, 2 * K + 60, false));
+        assert_eq!((two.first_diff, two.need(), two.listed), (K + 60, K + 60 + PAST, false));
         assert_eq!(two.row, (99, ctx.as_bytes()[99..220].to_vec(), vec![ctx.as_bytes()[99]]));
         assert_eq!(&alt[..K], &ctx.as_bytes()[96..100]);
         assert_eq!(&alt[K..K + 120], &ctx.as_bytes()[160..280], "the ALT reads the run on");

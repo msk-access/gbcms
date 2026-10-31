@@ -282,9 +282,10 @@ def _long_run(listed):
 def test_a_run_longer_than_the_read_keeps_the_counts_and_names_the_row(tmp_path, judge):
     """Four units after the deleted copy: one more unit deleted reads like the given
     deletion for 184 bases from the windows' first base, and a 150-bp read cannot hold
-    188 of them. Nothing is held (every carrier ALT, as before) and the row is named."""
+    the 208 it takes to spell the count in full (184 and the 24 past the first difference,
+    F7; 188 before). Nothing is held (every carrier ALT, as before) and the row is named."""
     ref, rows, reads = _long_run(False)
-    assert _count(tmp_path, ref, rows, reads, judge) == [((6, 12, 0, 18), "-120:188/150")]
+    assert _count(tmp_path, ref, rows, reads, judge) == [((6, 12, 0, 18), "-120:208/150")]
 
 
 @pytest.mark.parametrize("judge", JUDGES)
@@ -297,7 +298,7 @@ def test_a_listed_count_past_the_read_holds_the_reads_and_names_the_rows(tmp_pat
     partial, (6, 6, 6); the sequence judge held both rows, (6, 0, 12)."""
     ref, rows, reads = _long_run(True)
     got = _count(tmp_path, ref, rows, reads, judge, listed=True)
-    assert got == [((6, 0, 12, 18), "-120:188/150"), ((6, 0, 12, 18), "-60:188/150")]
+    assert got == [((6, 0, 12, 18), "-120:208/150"), ((6, 0, 12, 18), "-60:208/150")]
 
 
 # ── The sibling claim keeps REF's window ───────────────────────────────────────────
@@ -760,3 +761,23 @@ def test_the_presence_test_reads_the_qualities_the_hold_reads(tmp_path, judge, b
     (c,) = count_checked(bam, [pv.variant], read_judge=judge, apply_baq=baq, **kw)
     _invariants(c)
     assert (c.rd, c.ad, c.partial_alt, c.dp) == ((6, 16, 0, 22) if baq else (6, 0, 16, 22))
+
+
+@pytest.mark.parametrize("judge", JUDGES)
+@pytest.mark.parametrize(
+    "copies, named",
+    [(3, ""), (4, "-35:168/150"), (5, "-105:168/150")],
+    ids=["in-reach", "4-to-23-bases-short", "far"],
+)
+def test_an_unlisted_count_no_read_can_spell_in_full_is_named(tmp_path, judge, copies, named):
+    """F7. A 70-base deletion (two copies of a 35-base unit) before a run of `copies` of the
+    unit; every read 150 bp, none of the other count. The nearest other count first differs from
+    the ALT 109, 144 or 179 bases from the windows' first base (the one fewer unit deleted, or,
+    in the last run, the one more: the nearest on either side is named). A read spells an
+    allele in full only 24 bases past its first difference, so with 144 (4 to 23 bases before
+    the longest read's end) no read can: the reach test read the spelling's 4 bases, not its
+    24, and the count was neither held nor named. It is named now, with the bases a read must
+    hold (168). Counts unchanged; with 109 a read can spell it, so it is not named."""
+    ref, a, h, rows = _shape(35, copies, own=2)
+    reads = _reads(a, "REF", h["REF"], LONG, size=0) + _reads(a, "one", h["one"], LONG, size=70)
+    assert _count(tmp_path, ref, [rows["one"]], reads, judge) == [((6, 6, 0, 12), named)]
