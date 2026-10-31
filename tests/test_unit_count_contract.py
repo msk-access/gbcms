@@ -874,3 +874,64 @@ def test_the_presence_floor_counts_fragments_not_reads(tmp_path, judge, fragment
     else:
         assert (rd, ad) == (6, 12)
         assert partial == (4 if judge == "rules" else 0)
+
+
+def _spread(a, name, hap, *, size, k, tag):
+    """`k` reads of `hap` (`_reads`' geometry, 251 bp), each fragment its own, starting between
+    20 and 219 bases before the junction `a`: every one holds the junction windows and, for a
+    carrier, reads 30 or more bases past the count's first difference."""
+    out = []
+    for i in range(k):
+        s = a - 20 - (i % 200)
+        seq = hap[s : s + 251]
+        if name == "REF":
+            pos, cig = s, ((0, 251),)
+        else:
+            pos, cig = s, ((0, a - s), (2, size), (0, 251 - (a - s)))
+        r = make_read(f"{name}{tag}{i}", seq, pos, cig)
+        r.flag = 0x1 | 0x2 | 0x20 | 0x40
+        r.next_reference_id, r.next_reference_start, r.template_length = 0, pos + 250, 450
+        out.append(r)
+    return out
+
+
+@pytest.mark.parametrize("judge", JUDGES)
+def test_the_presence_floor_is_a_share_of_the_allele_it_is_nearest(tmp_path, judge):
+    """C1a, the denominator (RJ-25: 3 fragments and 5% of the fragments spelling the allele the
+    found one is nearest), end to end. A 5% site: 570 REF fragments and 30 of the given one-unit
+    deletion holding the run; the two-unit deletion is spelled in full on 3 fragments, nearer the
+    given count (60 bases off) than REF (120 off). 3 is at least 5% of 30, so it is at the site,
+    and the 12 short carriers of either count, which cannot tell them apart, are partial evidence
+    on both paths: (RD, AD, partial) = (570, 30, 15). The rules path's guard finds the count and
+    hands it to the sequence judge as a state, so the judge's own test is not reached here; the
+    judge's test is pinned apart, in its unit tests (a found allele near X, near REF, and under
+    a twentieth of the nearest)."""
+    ref, a, h, rows, reads = _ticket()
+    reads += _spread(a, "REF", h["REF"], size=0, k=570 - 6, tag="m")
+    reads += _spread(a, "one", h["one"], size=60, k=30, tag="m")
+    reads += _reads(a, "two", h["two"], HOLDING, size=120, k=3, tag="h")
+    (((rd, ad, partial, dp), _),) = _count(tmp_path, ref, [rows["one"]], reads, judge)
+    assert (rd, ad, partial, dp) == (570, 30, 15, 615)
+
+
+@pytest.mark.parametrize("judge", JUDGES)
+def test_mates_that_disagree_find_no_other_count(tmp_path, judge):
+    """C1a (the junction guard's `conflict`: mates telling the two apart differently spell
+    neither). Three fragments whose first mate holds the run and spells the two-unit deletion in
+    full, and whose second mate holds it and tells the given count from it. The fragment spells
+    neither, so the count is not at the site and the 12 short carriers, which cannot tell the
+    counts apart, stay ALT, with the 3 second mates: (RD, AD) = (6, 15), on both paths (the 3
+    first mates are partial evidence on the rules path, depth only under the judge). The sequence
+    judge counted each such fragment both as telling the count and as beaten by the given one:
+    3 of 9 fragments found it, held the short carriers, and read (6, 3)."""
+    ref, a, h, rows, reads = _ticket()
+    firsts = _reads(a, "two", h["two"], HOLDING, size=120, k=3, tag="h")
+    seconds = _reads(a, "one", h["one"], HOLDING, size=60, k=3, tag="h")
+    for first, second in zip(firsts, seconds, strict=True):
+        second.query_name = first.query_name
+        second.flag = 0x1 | 0x2 | 0x10 | 0x80
+    (((rd, ad, partial, _), _),) = _count(
+        tmp_path, ref, [rows["one"]], reads + firsts + seconds, judge
+    )
+    assert (rd, ad) == (6, 15)
+    assert partial == (3 if judge == "rules" else 0)
