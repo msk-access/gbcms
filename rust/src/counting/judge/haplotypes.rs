@@ -579,7 +579,9 @@ pub(crate) enum OwnGapRule {
 /// [`Site::equal_window`], read on for both alleles where the guard's masks hide the base
 /// telling them apart, [`Site::read_on`]). Measurement only, TEMPORARY: `window` (the windows,
 /// never read on: the first build of the windows); `off` (none of them: the judge before the
-/// windows).
+/// windows). The switch is retired when the sequence judge becomes the default (planned for
+/// 6.8.0): `ReadOn`'s behaviour stays, and this enum, the switch and the tests of its other
+/// values go.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum LongInsRule {
     ReadOn,
@@ -587,6 +589,8 @@ pub(crate) enum LongInsRule {
     Off,
 }
 
+/// The long-insertion rule `GBCMS_JUDGE_LONG_INS` names (TEMPORARY, measurement only: see
+/// [`LongInsRule`]); the default when unset or not one of `window` and `off`.
 pub(crate) fn long_ins_rule() -> LongInsRule {
     match std::env::var("GBCMS_JUDGE_LONG_INS").as_deref() {
         Ok("window") => LongInsRule::Window,
