@@ -548,9 +548,9 @@ def test_a_listed_count_no_read_shows_holds_nothing(tmp_path, judge):
 def test_a_listed_count_shown_on_five_percent_holds_the_run(tmp_path, judge, holders, held):
     """S6, listed: one two-unit carrier holds the run beside 19 of the given count holding it
     (1 of 20 fragments: 5%), so the listed allele is present and the 6 short carriers fit both:
-    partial evidence. Beside 20 (1 of 21) it is not, and they count ALT; so does the two-unit
-    carrier on the rules path, as before (its bases past the windows are not read), while the
-    sequence judge, reading it whole, does not credit it."""
+    partial evidence. Beside 20 (1 of 21) it is not, and they count ALT; the two-unit carrier,
+    its bases where the counts differ showing the two-unit deletion, is not ALT on either path
+    (depth only, as the sequence judge reads it whole)."""
     ref, a, h, rows = _shape(60, 2)
     reads = _reads(a, "REF", h["REF"], HOLDING, size=0)
     reads += _reads(a, "one", h["one"], SHORT, size=60)
@@ -558,8 +558,9 @@ def test_a_listed_count_shown_on_five_percent_holds_the_run(tmp_path, judge, hol
     reads += _reads(a, "two", h["two"], HOLDING, size=120, k=1, tag="h")
     got = _count(tmp_path, ref, [rows["one"], rows["two"]], reads, judge, listed=True)
     rd, ad, partial = got[0][0][:3]
-    unheld = holders + 6 + (1 if judge == "rules" else 0)
-    assert (rd, ad) == ((6, holders) if held else (6, unheld))
+    assert (rd, ad) == ((6, holders) if held else (6, holders + 6))
+    if not held:
+        assert partial == 0
 
 
 @pytest.mark.parametrize("judge", JUDGES)
@@ -579,3 +580,64 @@ def test_a_listed_count_whose_copies_differ_is_shown(tmp_path, judge):
     reads += _reads(a, "one", h["one"], HOLDING, size=60, k=4, tag="h")
     got = _count(tmp_path, ref, [rows["one"], rows["two"]], reads, judge, listed=True)
     assert got[0][0][:3] == (6, 4, 16)
+
+
+@pytest.mark.parametrize("judge", JUDGES)
+@pytest.mark.parametrize("reached", [0, 1, 2])
+def test_a_listed_count_too_few_reads_decide_stays_present(tmp_path, judge, reached):
+    """A listed count is decided, present or absent, only where 3 or more fragments reach
+    where it and the given count differ and tell one of them (RJ-25's 3-fragment floor).
+    Below that it stays present, as past a read's reach: the 6 short carriers fit both,
+    partial evidence, never ALT, on both paths, and the `reached` carriers telling the given
+    count count ALT. The listed two-unit row likewise holds them all (HG002 10:11885357: a
+    117-bp and a 39-bp deletion alike for 98 bases, 1 fragment reaching)."""
+    ref, a, h, rows = _shape(60, 2)
+    reads = _reads(a, "REF", h["REF"], HOLDING, size=0)
+    reads += _reads(a, "one", h["one"], SHORT, size=60)
+    reads += _reads(a, "one", h["one"], HOLDING, size=60, k=reached, tag="h")
+    got = _count(tmp_path, ref, [rows["one"], rows["two"]], reads, judge, listed=True)
+    assert [g[0][:3] for g in got] == [(6, reached, 6), (6, 0, 6 + reached)]
+
+
+@pytest.mark.parametrize("judge", JUDGES)
+@pytest.mark.parametrize("doubted", [0, 5], ids=["placed", "doubted"])
+def test_only_reads_placed_here_decide_a_listed_count(tmp_path, judge, doubted):
+    """The 5% share counts only fragments the aligner places here (RJ-29), on both sides: one
+    two-unit carrier beside 19 of the given count holding the run is 5%, so the listed count
+    is present and the 6 short carriers and the two-unit one are partial, whether or not 5
+    more carriers of the given count that the aligner also places elsewhere (XS equal to AS)
+    read the run."""
+    ref, a, h, rows = _shape(60, 2)
+    reads = _reads(a, "REF", h["REF"], HOLDING, size=0)
+    reads += _reads(a, "one", h["one"], SHORT, size=60)
+    reads += _reads(a, "one", h["one"], HOLDING, size=60, k=19, tag="h")
+    reads += _reads(a, "two", h["two"], HOLDING, size=120, k=1, tag="h")
+    elsewhere = _reads(a, "one", h["one"], HOLDING, size=60, k=doubted, tag="x")
+    for r in elsewhere:
+        r.set_tag("AS", 240)
+        r.set_tag("XS", 240)
+    got = _count(tmp_path, ref, [rows["one"], rows["two"]], reads + elsewhere, judge, listed=True)
+    rd, ad, partial = got[0][0][:3]
+    assert (rd, partial) == (6, 7) and ad >= 19
+
+
+@pytest.mark.parametrize("judge", JUDGES)
+def test_a_listed_count_no_read_shows_is_named(tmp_path, judge):
+    """S1 listed (the worked example): the two-unit deletion, decided absent on 4 fragments
+    telling the given count, takes no ALT call, and is named for the row all the same (the
+    COEXISTING_ALLELE form at the deletion's anchor): 6 fragments whose ALT calls stand though
+    they do not tell the given count from it, and 4 that do."""
+    ref, a, h, rows = _shape(60, 2)
+    reads = _reads(a, "REF", h["REF"], HOLDING, size=0)
+    reads += _reads(a, "one", h["one"], SHORT, size=60)
+    reads += _reads(a, "one", h["one"], HOLDING, size=60, k=4, tag="h")
+    fa, bam = write_contig(tmp_path, ref, reads, "c")
+    vs = [_rs.Variant("1", *rows[k], "DEL") for k in ("one", "two")]
+    pvs = _rs.prepare_variants(vs, fa, 5, False, 1, True, read_judge=judge)
+    variants = [pv.variant for pv in pvs]
+    kw = {"reference_fasta": fa} if judge == "sequence" else {}
+    kw["sibling_variants"] = [[w for w in variants if w is not v] for v in variants]
+    c = count_checked(bam, variants, read_judge=judge, **kw)[0]
+    assert (c.rd, c.ad, c.partial_alt) == (6, 10, 0)
+    p, r, al = rows["two"]
+    assert c.unit_count_allele == f"{p + 1}:{r}>{al}:6/4"

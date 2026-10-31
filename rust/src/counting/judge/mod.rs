@@ -401,10 +401,12 @@ pub(crate) fn read_views<'r>(
 /// a warning, when the reference does not hold the window or the row's REF.
 pub(crate) fn site_for(v: &Variant, guard: Option<&Guard>, reference: &CachedFasta, reads: &[ReadView]) -> Option<Site> {
     let target = Row::new(v.pos, v.ref_allele.as_bytes(), v.alt_allele.as_bytes());
-    // A listed other unit count of a long deletion that no read shows (RJ-25's sibling rule,
-    // the junction guard's `unit_absent`) is no other allele at this row: no state.
+    // A listed other unit count of a long deletion the reads decide absent (RJ-25's sibling
+    // rule, the junction guard's `unit_absent`) is no other allele at this row: no state.
     let absent = |p: i64, r: &str, a: &str| {
-        guard.is_some_and(|g| g.unit_absent.iter().any(|(q, x, y)| *q == p && x[..] == *r.as_bytes() && y[..] == *a.as_bytes()))
+        guard.is_some_and(|g| {
+            g.unit_absent.iter().map(|h| &h.row).any(|(q, x, y)| *q == p && x[..] == *r.as_bytes() && y[..] == *a.as_bytes())
+        })
     };
     let listed: Vec<Row> =
         v.reach_rows.iter().filter(|(p, r, a)| !absent(*p, r, a)).map(|(p, r, a)| Row::new(*p, r.as_bytes(), a.as_bytes())).collect();

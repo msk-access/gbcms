@@ -1629,13 +1629,16 @@ fn count_variant_from_cache(
         counts.unit_count_unspanned = format!("{change:+}:{need}/{longest}");
     }
     // Another unit count present at a long deletion's breakpoint holds its ALT calls: named,
-    // with the fragments spelling it and those telling the given count from it; diagnostic
-    // only (OBSERVED_ALLELE / COEXISTING_ALLELE).
+    // with the fragments whose ALT call it takes and those telling the given count from it;
+    // a listed one the reads decide absent holds none, and is named with the fragments whose
+    // ALT calls stand though they do not tell the given count from it and the deciding ones
+    // telling the given count; diagnostic only (OBSERVED_ALLELE / COEXISTING_ALLELE).
     if let Some(g) = rules.guard.and_then(|g| g.get(variant)) {
         let text = |b: &[u8]| String::from_utf8_lossy(b).into_owned();
         counts.unit_count_allele = g
             .unit_others
             .iter()
+            .chain(&g.unit_absent)
             .filter(|h| h.held > 0)
             .map(|h| format!("{}:{}>{}:{}/{}", h.row.0 + 1, text(&h.row.1), text(&h.row.2), h.held, h.told))
             .collect::<Vec<_>>()

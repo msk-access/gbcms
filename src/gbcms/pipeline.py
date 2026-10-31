@@ -1153,7 +1153,9 @@ class Pipeline:
         # At a long deletion beside a run, another unit count present at its breakpoint holds
         # the ALT calls: a read counts ALT only where its bases tell the given count from it.
         # Named in the same form: n fragments whose ALT call it takes, m that tell the given count
-        # (OBSERVED_ALLELE where none does). The counts stand as written.
+        # (OBSERVED_ALLELE where none does); a listed one the reads decide absent holds none and
+        # is named so too (n fragments whose ALT calls stand though they do not tell the two
+        # apart, m deciding ones telling the given count). The counts stand as written.
         held = getattr(counts, "unit_count_allele", "")
         for entry in held.split("+") if held else ():
             allele, tally = entry.rsplit(":", 1)

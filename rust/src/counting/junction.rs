@@ -653,6 +653,25 @@ pub(crate) fn classify(
             }
         }
     }
+    if out.is_alt {
+        // A listed other unit count the reads decide absent holds nothing, but a read whose
+        // bases where the two differ show it is no ALT call, on either path (the sequence
+        // judge, reading it whole, credits it to no row here): depth only.
+        if let Some(g) = guard.filter(|g| !g.unit_absent.is_empty()) {
+            let end = splice_after(record, hi).unwrap_or(seq.len()).min(readable.1);
+            let shows = g.unit_absent.iter().find(|h| {
+                tells(&seq, quals, min_baseq, lo as i64, (&g.unit_alt, &h.bases), h.first_diff, end) == Some(false)
+                    && !a_listed_neighbour(&seq, quals, min_baseq, lo, &h.bases, &g.unit_neighbours, h.first_diff, end)
+            });
+            if let Some(h) = shows {
+                trace!(
+                    "junction: an ALT read showing a listed allele the reads decide absent ({:+} bp) → neither",
+                    h.change,
+                );
+                out = ClassifyResult::neither(ClassifyPhase::MaskedCompare);
+            }
+        }
+    }
     if out.is_ref && own_indel_inside(record, j.span()) {
         // The read's own alignment deletes or inserts bases inside the deleted span:
         // another allele (C26), whatever its window shows.
@@ -965,7 +984,9 @@ pub(crate) fn guard_for(
 /// windows ([`hidden_alleles`], `siblings` the listed rows) and are present at the site
 /// within the longest read's reach, with the ALT's bases they are told from, and the
 /// nearest one past that reach (its change, the bases a read must hold, the longest read).
-/// Present: listed, or spelled in full (from the windows' first base through [`K`] bases
+/// Present: listed and shown on 1 fragment or more and 5% of those showing either, or
+/// listed where fewer than [`GUARD_MIN_READS`] fragments tell the two apart (RJ-25's sibling
+/// rule; else the listed one is absent, `absent`); or spelled in full (from the windows' first base through [`K`] bases
 /// from its first difference, as the windows hold [`K`] bases of each allele's
 /// continuation) on [`GUARD_MIN_READS`] fragments or more and on [`GUARD_REF_SHARE`] of
 /// the fragments spelling the ALT over the same bases (RJ-25's floor). Fragments are read
@@ -1040,8 +1061,10 @@ fn present_hidden(
             // a read the hold would take from the ALT, as `classify` holds one
             slot.held |= told_here != Some(true) && !a_listed_neighbour(&seq, quals, min_baseq, q, &h.bases, &neighbours, h.first_diff, end);
             slot.alt |= told_here == Some(true);
-            // a read showing the allele: its bases where the two differ tell it from the ALT
-            // (placed here, from the left flank), whether or not it reads far enough to spell it
+            // a read deciding a listed allele: placed here (RJ-29, from the left flank), its
+            // bases where the two differ telling the ALT (`alt_here`) or the allele (`shown`),
+            // whether or not it reads far enough to spell it
+            slot.alt_here |= here && told_here == Some(true);
             slot.shown |= here && told_here == Some(false);
             // read in full: [`PAST`] bases on from the first difference, as the guard reads an
             // allele on past the windows before it places a fragment
@@ -1071,8 +1094,8 @@ fn present_hidden(
             }
         }
     }
-    // the listed ones no read shows: the sequence judge weighs them as no state
-    let mut absent: Vec<(i64, Vec<u8>, Vec<u8>)> = Vec::new();
+    // the listed ones the reads decide absent: the sequence judge weighs them as no state
+    let mut absent: Vec<Hidden> = Vec::new();
     let present: Vec<Hidden> = reach
         .into_iter()
         .enumerate()
@@ -1082,31 +1105,44 @@ fn present_hidden(
             // fragments whose ALT call it would take: a read fitting the ALT's windows that
             // tells the given count from it nowhere, its mate no better
             let held = fragments.values().filter(|c| c[k].held && !c[k].alt).count();
-            let showing = fragments.values().filter(|c| c[k].shown && !c[k].alt).count();
-            let alt_any = fragments.values().filter(|c| c[k].alt && !c[k].shown).count();
+            let showing = fragments.values().filter(|c| c[k].shown && !c[k].alt_here).count();
+            let alt_any = fragments.values().filter(|c| c[k].alt_here && !c[k].shown).count();
             let found = spelled >= GUARD_MIN_READS as usize && spelled as f64 >= GUARD_REF_SHARE * alt_told as f64;
             // A listed one is another allele only where at least one fragment shows it (its
             // bases where it and the ALT differ tell it from the ALT) and 5% of those showing
             // either do (RJ-25's sibling rule: the annotation lowers the 3-fragment floor, not
             // the share; operator, 2026-10-31). Shown, not spelled in full: the annotation says
             // which allele to look for, and in a repeat whose copies differ few reads of a real
-            // one fit the reference's copies wholly.
-            let shown = h.listed && showing >= 1 && showing as f64 >= GUARD_REF_SHARE * (showing + alt_any) as f64;
+            // one fit the reference's copies wholly. Decided only on evidence: where fewer
+            // than [`GUARD_MIN_READS`] fragments reach where the two differ and tell one of
+            // them, it stays present, as past a read's reach (a read short of it ties the two).
+            let decided = showing + alt_any >= GUARD_MIN_READS as usize;
+            let shown = h.listed
+                && (!decided || (showing >= 1 && showing as f64 >= GUARD_REF_SHARE * (showing + alt_any) as f64));
             trace!(
                 "junction: another allele at {}:{} ({:+} bp, reading like the ALT for {} bases from the windows' first base) {}: {} fragments spell it, {} the ALT over the same bases",
                 v.chrom, v.pos + 1, h.change, h.first_diff,
-                match (h.listed, found || shown) { (true, true) => "listed, shown", (true, false) => "listed, not shown", (false, true) => "found", _ => "not found" },
+                match (h.listed, decided, found || shown) {
+                    (true, false, _) => "listed, undecided",
+                    (true, _, true) => "listed, shown",
+                    (true, _, false) => "listed, not shown",
+                    (false, _, true) => "found",
+                    _ => "not found",
+                },
                 spelled, alt_told,
             );
             trace!("junction: {} fragments show it, {} the ALT", showing, alt_any);
-            if h.listed && !shown {
-                absent.push(h.row.clone());
+            if h.listed && !shown && !found {
+                // named with the fragments whose ALT calls stand though they do not tell the
+                // given count from it, and those that decided it so
+                absent.push(Hidden { spelled: showing as u32, told: alt_any as u32, held: held as u32, ..h });
+                return None;
             }
             (found || shown).then_some(Hidden { spelled: spelled as u32, told: alt_told as u32, held: held as u32, ..h })
         })
         .collect();
-    if present.is_empty() {
-        return PresentHidden { unspanned, absent, ..PresentHidden::default() };
+    if present.is_empty() && absent.is_empty() {
+        return PresentHidden { unspanned, ..PresentHidden::default() };
     }
     PresentHidden { alt, others: present, neighbours, unspanned, absent }
 }
@@ -1114,13 +1150,15 @@ fn present_hidden(
 /// One fragment's reading against one other allele at the breakpoint ([`present_hidden`]):
 /// read in full, the ALT told (`Some(true)`) or the allele spelled (`Some(false)`), mates
 /// disagreeing there (`conflict`); and, wherever it reads, a read of it the hold takes from the
-/// ALT (`held`), one telling the ALT (`alt`), or one placed here telling the allele (`shown`).
+/// ALT (`held`), one telling the ALT (`alt`; placed here, `alt_here`), or one placed here
+/// telling the allele (`shown`).
 #[derive(Clone, Default)]
 struct Tally {
     told: Option<bool>,
     conflict: bool,
     held: bool,
     alt: bool,
+    alt_here: bool,
     shown: bool,
 }
 
@@ -1133,8 +1171,8 @@ struct PresentHidden {
     others: Vec<Hidden>,
     neighbours: Vec<Vec<u8>>,
     unspanned: Option<Unspanned>,
-    /// The listed ones within reach that no read shows (RJ-25's sibling rule), as rows.
-    absent: Vec<(i64, Vec<u8>, Vec<u8>)>,
+    /// The listed ones within reach the reads decide absent (RJ-25's sibling rule).
+    absent: Vec<Hidden>,
 }
 
 /// The allele a fragment's bases past the windows place it as (`read`: its base at an

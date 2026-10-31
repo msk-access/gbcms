@@ -84,7 +84,10 @@ breakpoint (listed, or spelled in full on 3 or more fragments the aligner places
 holds the row's ALT calls (RJ-24); where it takes one, it is named in the same form at the
 deletion's anchor, listed or not, with `n` the fragments fitting the ALT's windows whose ALT
 call it takes and `m` those that tell the given count from it (`OBSERVED_ALLELE` where `m`
-is 0). `n` and `m`
+is 0). A listed one the reads decide absent (RJ-25's sibling rule) takes none and is named
+the same way, `COEXISTING_ALLELE`, with `n` the fragments whose ALT calls stand though they
+do not tell the given count from it and `m` the deciding fragments that tell the given
+count: its `n` reads count ALT, where a held one's are partial. `n` and `m`
 are taken over the reads the counts read (first-class reads the mapping rule
 admits: in RNA a unique mapper, `NH:i:1`, below `--min-mapq`; under strandedness
 enforcement, sense reads only), so they compare with `alt_count` and `ref_count`.
