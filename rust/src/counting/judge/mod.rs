@@ -1793,4 +1793,43 @@ mod tests {
         ];
         assert_eq!(calls_masked(&c, &x, vec![330], &reads, ReadOn), vec![Ref, Alt, Ref, Alt, Ref, Alt]);
     }
+
+    #[test]
+    fn a_sibling_allele_takes_the_masks_laid_on_both_windows_too() {
+        use haplotypes::LongInsRule::ReadOn;
+        use Call::*;
+        // The guard masks 359, 60 bases from the anchor: REF's base there, and (laid by offset)
+        // X's last inserted base. A listed allele of X's length at X's anchor, differing from X
+        // at that base alone, is a haplotype a read is weighed against too, so it takes the
+        // mask at that offset as REF and X do (RJ-27: the masks are read on every haplotype
+        // alike). No base then tells X from the sibling, and a read with a third base there
+        // (no allele's) weighs on neither: partial evidence, X or the sibling, never ALT
+        // (RJ-25). Left unmasked on the sibling alone, that third base was an error against
+        // the sibling and none against X, so the read counted ALT, and a clean X carrier did
+        // too while the sibling's own carriers were partial evidence: [Ref, Ref, Ref, Alt,
+        // Other, Alt, Ref, Ref] for the reads below.
+        let (c, x, last) = long_duplication();
+        let other = *b"ACGT".iter().find(|&&b| b != last && b != c[359]).unwrap();
+        let third = *b"ACGT".iter().find(|&&b| b != last && b != c[359] && b != other).unwrap();
+        let mut ins2 = x.alt_al.clone();
+        *ins2.last_mut().unwrap() = other;
+        let sib = Row::new(299, &c[299..300], &ins2);
+        let (h, hs) = (haplotype(&c, &[&x]), haplotype(&c, &[&sib]));
+        assert_eq!((h[359], hs[359]), (last, other), "the alleles differ at the masked offset alone");
+        let with = |hap: &[u8], base: u8| {
+            let mut v = hap[262..362].to_vec();
+            v[97] = base; // the base at 359
+            v
+        };
+        let mut reads: Vec<ReadView> = (0..3).map(|i| read(&c, 250 + i, 150, 250 + i as i64, "150M").named(format!("r{i}").as_bytes())).collect();
+        reads.push(read(&h, 262, 100, 262, "100M").named(b"altClean"));
+        reads.push(read(&hs, 262, 100, 262, "100M").named(b"sibClean"));
+        reads.push(read_q(&with(&h, third), vec![Q; 100], 262, "100M").named(b"third"));
+        reads.push(read(&c, 262, 100, 262, "100M").named(b"refClean"));
+        reads.push(read_q(&with(&c, third), vec![Q; 100], 262, "100M").named(b"refThird"));
+        let candidates = Candidates { listed: vec![sib.clone()], masked: vec![359], ..Candidates::default() };
+        let s = haplotypes::Site::build_ins(x.clone(), &candidates, (0, c.to_vec()), &reads, ReadOn).unwrap();
+        let got: Vec<Call> = reads.iter().map(|r| judge(&s, r, MIN_BQ, false).call).collect();
+        assert_eq!(got, vec![Ref, Ref, Ref, Other, Other, Other, Ref, Ref], "{got:?}");
+    }
 }
