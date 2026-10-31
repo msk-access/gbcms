@@ -510,6 +510,9 @@ When `--umi-tag` is specified (e.g., `--umi-tag RX`), fragment identity incorpor
 | RNA mode | Not available | Dedicated `gbcms rna` with transcriptome filters |
 | UMI support | Not available | `--umi-tag` for molecule-level deduplication |
 
+For the measured count differences from GetBaseCountsMultiSample 1.2.5, one line each with its
+cause, see [Known differences from 1.2.5](architecture.md#known-differences-from-getbasecountsmultisample-125).
+
 ---
 
 ## Related

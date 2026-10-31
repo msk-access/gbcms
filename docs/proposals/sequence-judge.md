@@ -731,6 +731,119 @@ placement, bases). Cost within 2× develop. The HPC gate.
      HG002 nocl (29) and sub (21) only.
    - **Effects.** Speed and memory only: no output changes. RNA mode refuses the sequence judge,
      and the default rules path does not run it. Nextflow's per-task memory is unchanged in code.
+8. **Decided (operator, 2026-10-30): a long listed insertion past a read's band sends the read
+   to the full programme (#369).**
+   - **Mechanism.** The band around a read's own placement widens only for the length changes of
+     the rows within the slack and two bases of the read's span (`graph::bands`). All of an
+     insertion's bases stand at its anchor's coordinate, so an insertion near the read widens the
+     band. One inside the read's reach (its span and its length each side) but past that window
+     does not, yet it can hold the read's best path where the read's body is a copy of a stretch
+     inside it: an expanded repeat or a duplication. The copy check finds such a copy only where
+     one of its three 20-base pieces matches exactly, so a read with an error in each piece, or
+     masked bases, stood on its placement's worse score. Now a listed insertion longer than the
+     band's slack (16 bases) in a read's reach but past its window sends every state of the read
+     to the full programme over its reach (`graph::skips_bands`; the whole read: `Site::graph_read`
+     sets the read's full flag where any state's graph holds one), and the linear aligner drops its
+     band under the same trigger (`Site::long_skips`). Deletions do not trigger it: a path to a far
+     deletion pays the gap to it (the window's 18 bases at least, -24 or worse). On HG002 the 9
+     reads a far deletion moved under the first rule (deletions too) found the same better path
+     with the deletions removed: the deletion only sent them to the full programme. Red-first tests
+     (the band tests in `haplotypes.rs`): a read copied from inside a long listed insertion and
+     written on a reference copy is called REF by its band (REF -18, ALT -22) and depth only by
+     the full programme (every state -12); with the rule, depth only. The class at its edges,
+     before and after the read: the row 17 bases past the span (the band widens already) and 18
+     (past it), the read's length less one (in reach) and its length (out of reach); insertions
+     of 16 bases (the rule does not fire) and 17, 64 and 65; reads 20 to 60 bases inside;
+     soft clips; the copy check blind or not. Each checks the decided call, not only the scores.
+     The deletion mirror: a far listed deletion holds no better path and does not fire.
+   - **Effects.** Both read loops call `judge::classify`, so read and fragment counts, mFSD, the
+     observations export and the MNP-rescue recount follow the calls. The site build uses the same
+     scorer: one HG002 site changes its states (nocl 5:1192149: the found 1-base deletion TA>T is
+     told apart by 6 reads instead of 7, so the site is built with 4 states instead of 5; its 13
+     reads move as the full programme moves them). A read counted in depth only through its call
+     (admitted by its soft-clipped bases or the right flank) leaves the depth when it becomes depth
+     only (3:38084468 AGTG>A: DP 322 to 321). The default path does not run the judge (run b9Q
+     byte-identical to develop's hfR); RNA mode refuses it; the writers, flags and Nextflow are
+     unchanged. The decided-contract suite is identical to develop's (the same 139 tests fail
+     with the same messages) under the measurement switch off, per state, the whole read, and the
+     final rule.
+   - **Measured on every arm** (HPC; develop fe534049, run hfS, against the measurement build
+     c69c: the whole read, run b9A, the rule as decided; per state, run b9I; the first rule with
+     deletions, run b9F; no band, run hbF; the switch off, run b9P, byte-identical to hfS):
+
+     | Arm | Reads judged | The whole read (b9A) | Per state (b9I) | With deletions (b9F) | No band (hbF) |
+     |:--|--:|--:|--:|--:|--:|
+     | panel (IMPACT tumour) | 421,745 | 0 | 0 | 0 | 43 |
+     | across (IMPACT normal, ACCESS XS1, XS2) | 411,166 | 0 | 0 | 0 | 0 |
+     | WES | 125,144 | 0 | 0 | 0 | 1 |
+     | germline normals | 100,598 | 0 | 0 | 0 | 0 |
+     | gate subset | 12,151,735 | 0 | 0 | 0 | 186 |
+     | HG002 delins and compound hets (4 arms) | 63,124 | 0 | 0 | 0 | 0 |
+     | HG002 c246 | 130,386 | 77 (5.9 per 10k) | 77 | 84 | 97 |
+     | HG002 tr | 97,328 | 30 (3.1) | 30 | 30 | 46 |
+     | HG002 sub | 151,157 | 150 (9.9) | 150 | 154 | 200 |
+     | HG002 nocl | 473,505 | 365 (7.7) | 362 | 388 | 635 |
+
+     Every one of the 622 moves is the full programme's (the call no band gives). 616 are reads
+     near a long listed insertion and 6 at long deletion rows (5 at 17:21985642, sent on by
+     listed insertions of 831 and 30 bases inside the deletion's span; 1 at 13:112294518). 537 move to depth only:
+     through the insertion the read fits each state alike. 36 move from depth only and 49
+     between calls. Oracles v2 and v3: identical to develop on every patient arm and subset.
+     HG002 truth: no row changes class under v2dbq20, v2db or v2cq20; no truth-labelled read
+     moves. 205 of 26,189 rows on the four HG002 VCF arms change counts (median VAF change
+     0.015); DP >= RD+AD and DPF >= RDF+ADF hold on every row.
+   - **Worked rows (HG002, public).** sub and nocl 3:38084467 AGTG>A, in a VNTR with listed
+     insertions of 2,178 and 4,071 bases 112 bases on: one read scored ALT 0 and REF -56 (its REF
+     state banded) and was called ALT; both states score 0 in full: depth only. The row goes from
+     DP 322, RD 19, AD 23 (VAF 0.548) to DP 321, RD 17, AD 15 (VAF 0.469), as with no band. sub
+     and nocl 1:4144500 SNV, a listed 1,127-base insertion 128 bases on (homozygous ALT in the
+     truth): 11 reads change call (9 ALT, 2 REF to depth only; one scored ALT -39, REF -43, OTHER
+     -43 in its bands and 0 for every state in full); the row goes from RD 4, AD 48 (VAF 0.923) to
+     RD 2, AD 39 (0.951). tr 22:18106693, a 192-base insertion with a listed 51-base insertion
+     beside it: AD 1 to 0, as with no band.
+   - **Cost** (HPC, whole nodes, CPU against develop's build; the switch off within 1% of it on
+     every type): HG002 c246 1.001, tr 1.038, sub 1.018, nocl 1.014; IMPACT tumour and normal
+     1.006 to 1.007; gate subset IMPACT tumour 1.005 to 1.015 (the switch off 1.002 to 1.012);
+     WES and germline normals 1.00; the shortest ACCESS runs vary by up to 3% under every label.
+     Peak memory unchanged within develop's own spread (nocl 1,777 MB; develop 1,692 to 1,750).
+     The states run in full on HG002: nocl 15.7% to 19.2%, sub 10.0% to 15.0%, tr 6.2% to
+     11.1%, c246 5.6% to 7.8%.
+   - **Known partials.**
+     - Far insertions of 16 bases or fewer are left to the band on purpose: a read holds at most
+       16 bases of one, the rest on the reference beside it, where its aligner places it.
+     - The band gap left (reads no band still moves): 356 on HG002 (126 near a long listed
+       insertion by the 300-base measure but outside the read's reach, 16 bases or fewer, or
+       moved by another path; 89 near a long listed deletion; 56 that fit no state well; 85 near
+       a tandem repeat), and 43 on the panel, 186 on the gate subset, 1 on WES (reads that fit no
+       state well, #375's class). Per state it is 359 on HG002.
+     - Two truth-labelled reads stay wrong under either variant: one read at 16:89398326 (a
+       listed deletion row; the nocl and sub arms) is depth only where no band calls it ALT, as
+       the truth does. It is in the deletion and fit gap, not this class.
+     - A listed insertion inside a long deletion's span is a state of the deletion's site, not a
+       context REF can hold (17:21985642): a satellite read inside the 831-base insertion fits
+       that state at 0 and REF at -24, so it is called another allele. The full programme does
+       the same; a separate ticket.
+     - What this cannot see: the patient arms list few long insertions (gatex 89 of 17 bases or
+       more in 64 runs, 36 of 50 or more; panel, across and WES 3 each; germline normals 1), and
+       none holds a read of the class, so patient data shows only that the rule does no harm.
+   - **Options not taken.** Per state (`longins`, run b9I): 619 reads, every one as no band; 3
+     reads keep a call from states left on a worse band score beside states run in full
+     (3:195782588 OTHER -12 against -8, 7:157858728 OTHER -20 against 0, 13:112294518 ALT -52
+     against 0); the whole read gives them the full programme's call at the same cost. With
+     deletions (`longfull`, run b9F): 656 reads, 37 more, 9 of them sent on by a far deletion
+     whose better path does not use it, for 2.4 to 3.9% more CPU on IMPACT and no patient change.
+     The floor counting a far insertion's length as a free shift (option 3, run b9L): weaker,
+     since the read's offset is its distance to the insertion, not the insertion's length; for a
+     far insertion of 17 to 63 bases the wide band's floor stays below 0 and the band stands
+     short (22:18106693: a 51-base insertion, the wide band stands at -20 where the full
+     programme gives -8). Widening the band by the insertion's length (option 1) is this rule with
+     a worse cost bound: the band is as wide as the insertion is long, more than the full
+     programme over the read's reach once the insertion is longer than the read.
+   - **Other tools.** GATK's PairHMM scores each read against each whole haplotype, with no band.
+     DeepVariant's realigner places reads on candidate haplotypes by k-mers, a gapless pass, then
+     Striped Smith-Waterman. Octopus runs a banded pair HMM at up to 10 positions per haplotype
+     found by 6-mer hashing, beside the read's own position. Paragraph and vg align whole reads to
+     the graph.
 
 ## 11. Open tickets the judge resolves (measured 2026-10-28)
 On the merged branch (develop 6efeb5bb merged in), against its own default path, which gives

@@ -24,7 +24,9 @@ git diff --cached --name-only | grep -Ei '\.(parquet|bam|bai|cram|crai|tsv|csv|m
 **Read every exit code; never gate on a pipe.** `pytest | tail && git commit` commits when
 pytest fails, because the pipeline's status is `tail`'s (it happened: a failing fixture was
 committed). Redirect to a log and test `$?`, or `set -o pipefail`. The same holds for
-`cargo test | grep`.
+`cargo test | grep`. Read a background gate's result in a step of its own, and commit only in the
+next step: printing the result and committing in one command commits before anyone reads it (it
+happened: `cat gate.out; git commit` committed over `pytest=1`).
 
 **Lint tools** run at CI's versions. The shared `.venv`'s black (25.9) lags CI's latest and
 disagrees on some formatting; CI installs the newest from the `dev` group. A fresh scratch venv

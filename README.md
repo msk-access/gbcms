@@ -29,9 +29,10 @@
 pip install gbcms
 ```
 
-A release ships one prebuilt wheel (CPython 3.11, Linux x86_64, glibc 2.34+) and the
-source distribution. On macOS, other Python versions and older Linux, `pip` builds the
-source, which needs a Rust toolchain and a C compiler. The exact platform matrix and
+A release ships a prebuilt wheel for every CPython from 3.10 on Linux x86_64 (glibc 2.28+:
+RHEL 8 and newer) and on Apple silicon Macs (macOS 11+), and the source distribution. On
+Intel Macs and older Linux, `pip` builds the source, which needs a Rust toolchain and a C
+compiler. The exact platform matrix and
 build prerequisites are on the
 [Installation page](https://msk-access.github.io/gbcms/getting-started/installation/#platform-support).
 

@@ -4,9 +4,9 @@
 > Update the **Now** and **Next** sections as work progresses. When a "Now" section is finished,
 > move it to `.agents/archive/CONTINUITY_ARCHIVE.md` (older sections live there).
 
-_Last updated: 2026-10-30_
+_Last updated: 2026-10-31_
 
-## Now — 6.7.0 package 2: the sequence judge and its follow-ups merged (2026-10-30)
+## Now — 6.7.0 package 2: the sequence judge and its follow-ups merged (2026-10-31)
 
 **Merged to develop** (all opt-in under `--read-judge sequence`; the default path is unchanged):
 - the sequence judge itself (#363);
@@ -23,22 +23,43 @@ change's moves, nothing else). Two HG002 reads (three calls across arms) move on
 the found-allele change together; both were traced, and both final calls are right: each read fits a
 long listed insertion nearby equally on every haplotype, so it is depth only.
 
+**Merged 2026-10-30/31:** the band rule for long listed insertions, whole-read variant (#388, #369);
+the stale fallback scores (#382, #195); the docs build notice (#381); the RHEL 8 wheel without
+OpenSSL (#383, #234) and one abi3 wheel for Python 3.10–3.14 (#387, #235); the measured differences
+from GetBaseCountsMultiSample 1.2.5 (#386); record updates (#380, #384). Closed with the judge's
+fix: #301, #144 (status note: its count rests partly on reads RJ-23 calls depth only) and #246.
+
+**Order (operator, 2026-10-31):** all count-changing work first, then speed, then code clean-up.
+The platform PRs (#389 Apptainer, #236 arm64 image, #237 macOS wheel) and the spike-in truth set
+(#275) continue alongside, as they change no count.
+
+**Speed floor** (`.agents/memory/speed-floor.md`): production-size benchmark on HPC against the C++
+binary 1.2.5 (`kit/run_prod.sbatch`, `pf71.*`). The default path meets it in all 8 cases (1.4–2.4×
+faster; ACCESS 1 BAM × 20,000 rows about equal); the judge does not from 5,000 rows up (1.3–5.2×
+slower). The plan for the judge is on #335, after the counting work; #150's profile is the start.
+
 **HPC works** (kit, ledger and copies in `~/test/gbcms/harness/hpc/`): Linux builds equal the Mac
-builds byte for byte; about 2 minutes per task; arrays at most 20 at a time (the operator's guard
-setting); clinical BAMs one at a time, the work-folder copies in parallel.
+builds byte for byte; up to 300 jobs at once across our arrays (operator, 2026-10-30); clinical BAMs
+one at a time, the work-folder copies in parallel; containers through Singularity
+(`module load singularity`), cached in the work folder.
 
-**Open:**
-- **The band can miss a path through a long listed insertion** (found 2026-10-30): a state's banded
-  score stands above the floor while a much better path through a long listed insertion lies outside
-  its band. On two small HG002 row sets, 30 reads at 3 rows differ from no-band calls. It predates
-  #375 and #377. Not yet sized or ticketed.
-- The guard's masks depend on `--min-baseq` (#374); the SNV tie rule with a confident third base (#367).
-- `MNV_SHARED` keeps a 32-row cap (needs 33 listed MNV rows over one SNV; not realistic). Noted only.
-- Nextflow resources (branch `feature/nextflow-resources`, local): waits for the sweep; per-assay
-  profiles held (operator, 2026-10-30).
+**In flight (counts):**
+- #297, the narrow unit-run rule (fix/297-narrow-unit-run, three review fixes in 8be9f3c7, HPC n99):
+  ties stay partial evidence; merges after the spike-in truth (phase 1b, #275) shows its benefit.
+- #264, RJ-23's equal windows in the judge with RJ-27's symmetric read-on (fix/264-equal-windows,
+  HPC y64); the per-read symmetry bar replaces the 0.5 VAF bar; the cis option stays opt-in; REF
+  credited on large unscored clips is its own fix before #331.
+- RNA package 3 (#292): (c) and (d) dropped; the partial-span carrier rule committed; the DNA check
+  of spliced-only ALT rows running on HPC; #385 (RJ-17 exon-start deletions) and the ALT-side
+  insertion gap queued.
+- Recorded, not fixed: the rules path's masked-comparison false ALT (on #331); the band miss for
+  listed insertions inside a long deletion's span (draft, not filed).
 
-**Next (package 2):** size and decide the band miss; then re-check and close #290, #301, #297, #144,
-#246 and #264's docs with the judge; then packages 3→7 (table below), and #331 for 6.8.0.
+**Open:** the guard's masks depend on `--min-baseq` (#374); the SNV tie rule with a confident third
+base (#367); Nextflow resources wait for the sweep (branch `feature/nextflow-resources`, local).
+
+**Next (package 2):** #297 and #264 to their decisions; then packages 3→7 (table below), the truth
+sets and the HPC gate; then speed (#335) and clean-up; #331 for 6.8.0.
 
 ## Next — 6.7.0 work packages (operator, 2026-10-23: the recommended order; #304 in 6.7.0)
 Tickets that answer the same question, or share code paths and measurements, land together.

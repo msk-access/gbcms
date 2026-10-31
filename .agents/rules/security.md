@@ -50,6 +50,11 @@ of the conversation. The operator decided (2026-10-26, after asking what reaches
     sanitizer first and sends every printed line through it, so no output shows a position, sample
     ID or read name, not even while debugging. Every brief that touches patient reads says so.
     (Operator 2026-10-29, after two agents printed patient positions and a read name.)
+  - The sanitizer covers stderr too. Libraries print file names (htslib's "index older than
+    data" warning names the BAM, which is a sample ID); merge stderr into the filtered stream or
+    send it to a file that never prints. (2026-10-30: an agent's tool output showed WES BAM names.)
+  - Test the sanitizer on a made-up line holding each kind of identifier before it sees patient
+    data. (2026-10-30: a masking command that did not mask printed five DMP BAM stems.)
 - **cBioPortal study files** (`data_*.txt`, `meta_*.txt`, case lists: cohort-wide patient-level
   rows) stay on this machine: "I need you to only write scripts and run them here to understand
   and tease what can be used". Enforced by `.claude/hooks/protect-cbioportal.py`; the protected
