@@ -70,6 +70,9 @@ adversarially, from the code and the numbers, not from the author's conclusion.
 
 - Comments and log strings never cite ticket labels (`.agents/rules/code-quality.md`).
 - A failing test's expectation is never edited without telling the operator first (`AGENTS.md`).
+- **Decide by class, not by row** (2026-10-31: "i feel we regressed and made certain row level
+  decisions vs category level"). Review findings do not go back to a builder as a fix list after the
+  first round until the rule's conditions are counted (`.agents/rules/decision-protocol.md` §3).
 - **Every failed task is reported** (2026-10-30: "when i see failed task should i probe you"). When a
   background task, HPC job or agent run fails, the next message says what failed and what follows:
   fixed and rerun, stopped on purpose, a red-first test failing as intended, or still open. The

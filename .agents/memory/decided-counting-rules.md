@@ -30,6 +30,14 @@ the counting-engine skill maps it).
    insertions, a truncated copy is another allele under the exact-carrier rule (#278 D2); the CIGAR
    fallback's 90% band is the only place a truncation still counts ALT (`genotyper-not-caller`).
 
+4. **A listed other unit count is always a candidate** (#297, operator, 2026-10-31: rule X). Where a
+   long deletion sits in a tandem repeat and another copy number of that repeat is listed as its own
+   row, that row is a candidate within reach, on both paths (input taken as correct). A read that
+   stops before the two counts differ is `partial_alt`. Only found alleles (nobody listed them) pass
+   a presence test (RJ-25). Rejected: option (b), a listed count decided absent from the reads. It
+   changed no count on the patient sets or HG002, added about eight conditions, and its false-absent
+   rows credited the other allele's reads as ALT (`.agents/learnings/REJECTED.md`).
+
 Superseded: the 2026-09-17 "delins stay Phase 3, do not touch" and the placement-aware 50+ bp band
 (by RJ-4 #141, RJ-15 #202, RJ-24 #254 and #285, #278 D2).
 
