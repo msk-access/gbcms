@@ -416,7 +416,20 @@ the ALT's state cannot take (23 reads at a 5.2 kb tandem duplication on nocl). T
 long insertions from short reads count them at their breakpoints, over windows a read can hold:
 GraphTyper2 writes only each breakpoint's sequence (up to about 152 bp) into its graph and
 counts the reads aligning to its REF and ALT sequence there; Paragraph genotypes each breakpoint
-on its own graph and combines them. RNA does not take the sequence judge.
+on its own graph and combines them. RNA does not take the sequence judge. On every arm (HPC,
+against the judge before the windows): the patient sets change 8 rows, all insertions of 50 bp or
+more in the gate set, each losing 1 to 4 ALT reads, REF unchanged, oracles v3 and v2 passing on
+every set; HG002's truth arms lose the true ALT reads lying inside long inserts (50-299 bp: tr 835
+to 526 of 865, nocl 1,230 to 876 of 1,270; 1 kb or more on nocl 1,762 to 978 of 1,836), true REF
+and wrong calls unchanged but for 23 REF reads at a 5.2 kb tandem duplication (above), no other
+class changing; the windows match the anchor gate measured before them except at 4 rows, where
+REF reads short of REF's window are depth. On the 0.5 bar at 50 bp or more the windows read low:
+c246 median 0.387 (9 of 23 rows in band) to 0.286 (4 of 21), tr 0.425 (26 of 50) to 0.327 (19 of
+46), nocl 0.375 (50 of 105) to 0.286 (32 of 94). The reads themselves are short of ALT there:
+of the reads the truth decides at those het rows, those placed to hold the windows are 476 ALT
+against 782 REF on tr, 523 against 735 on nocl (likely mapping, not measured: a carrier's read
+over the anchor is mostly insert, written clipped, and is placed here less often; the reads inside
+the insert, counted before, made up for them).
 
 Evidence behind the RJ-23 amendment of 2026-10-16 (#279). On HG002's long insertions,
 reads were compared base by base. Some fit the ALT placed from the right flank better,
