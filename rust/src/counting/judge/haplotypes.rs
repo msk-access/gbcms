@@ -26,7 +26,7 @@ use rust_htslib::bam::record::Cigar;
 
 use super::graph::{self, Graph, GraphBuilder, GraphRead, ShortReads, Workspace};
 use super::score::{self, Alignment, Band, Placed, BAND_SLACK, DELTA, WILD};
-use crate::counting::carrier::{GUARD_MIN_READS, GUARD_REF_SHARE};
+use crate::counting::carrier::{is_found, GUARD_MIN_READS, GUARD_REF_SHARE};
 
 /// The longest repeat period looked for in a window ([`score::tandem_tracts`]): the wide band's
 /// slack (a longer one leaves the full programme to decide, as a band's own edge would).
@@ -644,8 +644,8 @@ pub(crate) const FOUND_MIN_READS: u32 = 2;
 pub(crate) enum FoundRule {
     /// Every found allele at X's site is a state (no token).
     All,
-    /// `told`: the found floor of reads ([`GUARD_MIN_READS`] and [`GUARD_REF_SHARE`] of the
-    /// site's) tell it; `toldK`: K reads.
+    /// `told`: RJ-25's presence test ([`is_found`]) over fragments, those a read of which tells
+    /// it against those a given allele beats it on; `toldK`: K reads.
     Told(usize),
 }
 
@@ -3040,15 +3040,24 @@ impl Site {
     }
 
     /// A found allele stays a state only where the reads tell it from X and from REF by
-    /// [`DELTA`], the state's graph beating REF's and X's, on the found floor of reads
-    /// (`told`: [`GUARD_MIN_READS`] and [`GUARD_REF_SHARE`] of the site's; `toldK`: K reads),
-    /// those that write it first, then the rest.
+    /// [`DELTA`], the state's graph beating REF's and X's. `told`: RJ-25's presence test
+    /// ([`is_found`]) over fragments, the fragments with a read that tells it against the
+    /// fragments with a read that a given allele (X or REF) beats it on, the ones spelling the
+    /// allele it is nearest; `toldK` (measurement only): K reads. Those that write it first,
+    /// then the rest.
     fn drop_graph_spellings(&mut self, found: &[(Row, &[usize])], reads: &[ReadView], rule: FoundRule) {
-        let floor = match rule {
+        let fixed = match rule {
             FoundRule::All => return,
-            FoundRule::Told(k) if k > 0 => k as f64,
-            FoundRule::Told(_) => (GUARD_REF_SHARE * reads.len() as f64).max(f64::from(GUARD_MIN_READS)),
+            FoundRule::Told(k) if k > 0 => Some(k),
+            FoundRule::Told(_) => None,
         };
+        // a read's fragment: its name (the mates share it); a read with none stands alone
+        let keys: Vec<Vec<u8>> = reads
+            .iter()
+            .enumerate()
+            .map(|(i, r)| if r.name.is_empty() { i.to_string().into_bytes() } else { r.name.clone() })
+            .collect();
+        let fragments = keys.iter().collect::<HashSet<_>>().len();
         let mut ws = Workspace::default();
         let mut dropped: Vec<usize> = Vec::new();
         let given: Vec<usize> = (0..self.graphs.len()).filter(|&k| self.graphs[k].class != Class::Other).collect();
@@ -3057,22 +3066,31 @@ impl Site {
                 continue;
             };
             let Some(k) = self.graphs.iter().position(|g| g.row == Some(o)) else { continue };
-            let mut told = 0usize;
+            let (mut told, mut beaten): (HashSet<&Vec<u8>>, HashSet<&Vec<u8>>) = (HashSet::new(), HashSet::new());
+            let mut told_reads = 0usize;
+            let mut present = false;
             let rest = (0..reads.len()).filter(|i| by.binary_search(i).is_err());
-            for read in by.iter().copied().chain(rest).filter_map(|i| reads.get(i)) {
-                let gr = self.graph_read(read);
+            for i in by.iter().copied().chain(rest).filter(|&i| i < reads.len()) {
+                let gr = self.graph_read(&reads[i]);
                 let own = graph::score(&ShortReads, &gr, &self.graphs[k].graph, &mut ws);
-                let tells = given.iter().all(|&g| graph::score(&ShortReads, &gr, &self.graphs[g].graph, &mut ws) <= own - DELTA);
-                if tells {
-                    told += 1;
-                    if told as f64 >= floor {
+                let best = given.iter().map(|&g| graph::score(&ShortReads, &gr, &self.graphs[g].graph, &mut ws)).max();
+                if best.is_none_or(|b| b <= own - DELTA) {
+                    told_reads += 1;
+                    told.insert(&keys[i]);
+                    // the fragments of the site are at least those spelling the allele it is
+                    // nearest: found against all of them is found against those
+                    present = fixed.map_or_else(|| is_found(told.len(), fragments), |k| told_reads >= k);
+                    if present {
                         break;
                     }
+                } else if best.is_some_and(|b| b >= own + DELTA) {
+                    beaten.insert(&keys[i]);
                 }
             }
-            let keep = told as f64 >= floor;
+            let keep = present || fixed.map_or_else(|| is_found(told.len(), beaten.len()), |k| told_reads >= k);
+            let told = (told.len(), beaten.len());
             log::debug!(
-                "haplotype judge: the found allele {}:{}>{} at {}:{}>{} (written by {} of {} reads, told on {told}) → {}",
+                "haplotype judge: the found allele {}:{}>{} at {}:{}>{} (written by {} of {} reads, told on {} fragments, beaten by a given allele on {}) → {}",
                 row.pos + 1,
                 String::from_utf8_lossy(&row.ref_al),
                 String::from_utf8_lossy(&row.alt_al),
@@ -3081,6 +3099,8 @@ impl Site {
                 String::from_utf8_lossy(&self.rows[0].alt_al),
                 by.len(),
                 reads.len(),
+                told.0,
+                told.1,
                 if keep { "another allele, a state" } else { "X's or REF's spelling, not a state" },
             );
             if !keep {

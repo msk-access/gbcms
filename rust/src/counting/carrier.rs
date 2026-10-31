@@ -262,6 +262,17 @@ const GUARD_APART_SHARE: f64 = 0.03;
 const GUARD_ORIENTATION_ALPHA: f64 = 1e-3;
 /// Share of the REF reads on which a change is no longer the ALT's alone.
 pub(crate) const GUARD_REF_SHARE: f64 = 0.05;
+
+/// RJ-25's presence test, stated once: an allele nobody listed is at the locus where the
+/// fragments that spell it in full number at least [`GUARD_MIN_READS`] and at least
+/// [`GUARD_REF_SHARE`] of the fragments spelling the allele it is nearest (`nearest`): an
+/// allele recurs above the errors of the molecules it could be an error of. Every place that
+/// decides whether the reads show an unlisted allele asks it: the guard's other alleles
+/// ([`other_alleles`]), the other unit counts at a long deletion (the junction guard), and the
+/// found alleles the sequence judge keeps as states.
+pub(crate) fn is_found(spelling: usize, nearest: usize) -> bool {
+    spelling >= GUARD_MIN_READS as usize && spelling as f64 >= GUARD_REF_SHARE * nearest as f64
+}
 /// Longest tandem-repeat unit the event is grown through (besides the length change).
 const MAX_UNIT: usize = 6;
 /// Masked base: matches any haplotype base.
@@ -2671,10 +2682,8 @@ fn other_alleles(
     let mut others: Vec<OtherAllele> = placed.spellings[if side == Side::Ref { 0 } else { 1 }]
         .iter()
         .filter(|(b, f)| {
-            let n = f.len() as u32;
             counter_spelling.is_none_or(|r| apart(b, r, masked_counter) > 0)
-                && n >= GUARD_MIN_READS
-                && n as f64 >= GUARD_REF_SHARE * source(b) as f64
+                && is_found(f.len(), source(b) as usize)
                 && !separate(b)
         })
         // the spelling in place of REF's window bases (either allele's window starts at
@@ -4041,6 +4050,18 @@ pub(crate) fn score(bases: &[u8], quals: &[u8], min_baseq: u8, hap: &[u8], span:
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn rj25_s_presence_test_is_three_fragments_and_a_twentieth_of_the_nearest_allele_s() {
+        // 3 fragments and 5% of those spelling the allele it is nearest
+        assert!(!is_found(2, 0), "two fragments are under the floor");
+        assert!(is_found(3, 0));
+        assert!(is_found(3, 60), "5% of 60 is 3");
+        assert!(!is_found(3, 61), "and 5% of 61 is more");
+        assert!(is_found(5, 100));
+        assert!(!is_found(5, 101));
+        assert!(!is_found(0, 0));
+    }
     use rust_htslib::bam::record::CigarString;
 
     /// An unpaired read of `cigar` at `pos`.

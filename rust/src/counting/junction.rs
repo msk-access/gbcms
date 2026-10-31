@@ -59,7 +59,7 @@ use crate::types::Variant;
 
 use super::carrier::{
     aligned_query_range, confident_weight, one_base_evidence, readable_range, score, Guard, OtherAllele, Placement,
-    ReadRules, Reading, GUARD_MIN_READS, GUARD_MIN_SHARE, GUARD_REF_SHARE, SHIFT_REACH, WILD,
+    is_found, ReadRules, Reading, GUARD_MIN_READS, GUARD_MIN_SHARE, GUARD_REF_SHARE, SHIFT_REACH, WILD,
 };
 use super::observed::{canonical, ObservedAllele};
 use super::utils::{find_read_pos, median_qual, ClassifyPhase, ClassifyResult};
@@ -1143,7 +1143,7 @@ fn present_hidden(
         // fragments whose ALT call it would take: a read fitting the ALT's windows that
         // tells the given count from it nowhere, its mate no better
         let held = fragments.values().filter(|c| c[k].held && !c[k].alt).count();
-        let found = spelled >= GUARD_MIN_READS as usize && spelled as f64 >= GUARD_REF_SHARE * alt_told as f64;
+        let found = is_found(spelled, alt_told);
         if found || h.listed {
             trace!(
                 "junction: another allele at {}:{} ({:+} bp, reading like the ALT for {} bases from the windows' first base) {}: {} fragments spell it, {} the ALT over the same bases",
