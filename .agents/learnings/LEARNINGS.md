@@ -33,6 +33,28 @@ regenerating a section.
 
 ---
 
+## [LRN-20261031-002] rule-trigger | review fixes went back to the builder round after round, each a row-level condition
+- **Status:** resolved (rule promoted); the #297 re-frame waits for the operator.
+- **Cause:** rule-trigger.
+- **Summary:**
+  - On #297 (the narrow unit-run rule) I sent each adversarial review's findings to the builder as a
+    fix list, four rounds in two days. The rule gained about ten conditions: the narrow run, deletions
+    only, the placement test, the nearest-count diagnostic, option (b)'s presence test, a 3-fragment
+    floor, a placement test on both sides of the 5% share, a depth rule, a new diagnostic name. Each
+    was justified by named rows (10:11885357, p1b_022 and others). The spike-in then found the next
+    boundary row (soft-clipped deciders).
+  - `decision-protocol.md` §3 already said "a narrowing made to pass a bar is a signal that the
+    mechanism was wrong", but nothing triggered it: it was not part of the step where I forward
+    review findings, and the reviewer briefs did not ask "instance or mechanism?".
+  - Option (b) also decided that a listed input allele was absent, against invariant 7 ("input
+    alleles are taken as correct"). I presented it without saying so. The operator saw the drift
+    (2026-10-31: "i feel we regressed and made certain row level decisions vs category level").
+- **Promotion target:** `.agents/rules/decision-protocol.md` §3 — `DONE:` count the conditions before
+  a second fix round; a condition only named rows justify stops the loop and goes to the operator
+  as a class question with one class-level option; reviewers are asked "instance or mechanism?";
+  options are tested against invariant 7 before they reach the operator.
+- **Related:** `working-agreements` ("Also standing"); `genotyper-not-caller`.
+
 ## [LRN-20261031-001] rule-body | a gate result read and a commit made in one command
 - **Status:** resolved (rule promoted).
 - **Cause:** rule-body.
