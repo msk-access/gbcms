@@ -1629,20 +1629,21 @@ fn count_variant_from_cache(
         counts.unit_count_unspanned = format!("{change:+}:{need}/{longest}");
     }
     // Another unit count present at a long deletion's breakpoint holds its ALT calls: named,
-    // with the fragments whose ALT call it takes and those telling the given count from it;
-    // a listed one the reads decide absent holds none, and is named with the fragments whose
-    // ALT calls stand though they do not tell the given count from it and the deciding ones
-    // telling the given count; diagnostic only (OBSERVED_ALLELE / COEXISTING_ALLELE).
+    // with the fragments whose ALT call it takes and those telling the given count from it
+    // (OBSERVED_ALLELE / COEXISTING_ALLELE); a listed one the reads decide absent holds none,
+    // and is named with the fragments whose ALT calls stand though they do not tell the two
+    // apart and the deciding ones telling the given count (UNIT_COUNT_ABSENT); diagnostic only.
     if let Some(g) = rules.guard.and_then(|g| g.get(variant)) {
         let text = |b: &[u8]| String::from_utf8_lossy(b).into_owned();
-        counts.unit_count_allele = g
-            .unit_others
-            .iter()
-            .chain(&g.unit_absent)
-            .filter(|h| h.held > 0)
-            .map(|h| format!("{}:{}>{}:{}/{}", h.row.0 + 1, text(&h.row.1), text(&h.row.2), h.held, h.told))
-            .collect::<Vec<_>>()
-            .join("+");
+        let named = |hs: &[super::junction::Hidden]| {
+            hs.iter()
+                .filter(|h| h.held > 0)
+                .map(|h| format!("{}:{}>{}:{}/{}", h.row.0 + 1, text(&h.row.1), text(&h.row.2), h.held, h.told))
+                .collect::<Vec<_>>()
+                .join("+")
+        };
+        counts.unit_count_allele = named(&g.unit_others);
+        counts.unit_count_absent = named(&g.unit_absent);
     }
     let use_baq = baq_applies(apply_baq, exon_boundary_dist);
     // The variant's own indel span that BAQ leaves alone, once per variant.

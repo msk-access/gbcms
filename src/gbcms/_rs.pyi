@@ -172,11 +172,14 @@ class BaseCounts:
     unit_count_unspanned: str
     # At a deletion of 50 bp or more: each other unit count present at its breakpoint that
     # takes ALT calls, as POS:REF>ALT:n/m (1-based POS of the deletion's anchor; n fragments
-    # whose ALT call it takes, m that tell the given count from it), and each listed one the
-    # reads decide absent (n fragments whose ALT calls stand though they do not tell the two
-    # apart, m deciding ones telling the given count), several joined by '+'; empty when none.
-    # Diagnostic only (OBSERVED_ALLELE where m is 0, else COEXISTING_ALLELE).
+    # whose ALT call it takes, m that tell the given count from it), several joined by '+';
+    # empty when none. Diagnostic only (OBSERVED_ALLELE where m is 0, else COEXISTING_ALLELE).
     unit_count_allele: str
+    # At a deletion of 50 bp or more: each listed other unit count the reads decide absent
+    # (RJ-25's sibling rule), which holds no ALT call, as POS:REF>ALT:n/m (n fragments whose
+    # ALT calls stand though they do not tell the two apart, m deciding ones telling the given
+    # count), several joined by '+'; empty when none. Diagnostic only (UNIT_COUNT_ABSENT).
+    unit_count_absent: str
     # GTF-informed annotation (None when no GTF)
     exon_boundary_dist: int | None
     # Per-transcript counts (empty string when no GTF or no overlap)

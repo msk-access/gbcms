@@ -624,9 +624,10 @@ def test_only_reads_placed_here_decide_a_listed_count(tmp_path, judge, doubted):
 @pytest.mark.parametrize("judge", JUDGES)
 def test_a_listed_count_no_read_shows_is_named(tmp_path, judge):
     """S1 listed (the worked example): the two-unit deletion, decided absent on 4 fragments
-    telling the given count, takes no ALT call, and is named for the row all the same (the
-    COEXISTING_ALLELE form at the deletion's anchor): 6 fragments whose ALT calls stand though
-    they do not tell the given count from it, and 4 that do."""
+    telling the given count, takes no ALT call, and is named for the row all the same, by its
+    own name (UNIT_COUNT_ABSENT, at the deletion's anchor; not COEXISTING_ALLELE, which names
+    a count holding calls): 6 fragments whose ALT calls stand though they do not tell the
+    given count from it, and 4 that do."""
     ref, a, h, rows = _shape(60, 2)
     reads = _reads(a, "REF", h["REF"], HOLDING, size=0)
     reads += _reads(a, "one", h["one"], SHORT, size=60)
@@ -640,4 +641,4 @@ def test_a_listed_count_no_read_shows_is_named(tmp_path, judge):
     c = count_checked(bam, variants, read_judge=judge, **kw)[0]
     assert (c.rd, c.ad, c.partial_alt) == (6, 10, 0)
     p, r, al = rows["two"]
-    assert c.unit_count_allele == f"{p + 1}:{r}>{al}:6/4"
+    assert (c.unit_count_allele, c.unit_count_absent) == ("", f"{p + 1}:{r}>{al}:6/4")

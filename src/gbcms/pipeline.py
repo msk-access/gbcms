@@ -1077,6 +1077,12 @@ class Pipeline:
                 a read must hold `bases` bases from the junction windows' first base to
                 tell the two, and the longest is `longest`. No read can, so the given
                 deletion's alt_count may include that allele's carriers. Counts stand.
+            UNIT_COUNT_ABSENT(chrom:pos:REF>ALT:n/m): at a deletion of 50 bp or more, a
+                listed other unit count at its breakpoint that the reads decide absent
+                (3 or more fragments tell it from the given deletion, none or under 5%
+                of them showing it: RJ-25's sibling rule), so it holds no ALT call: n
+                fragments whose ALT calls stand though they do not tell the two apart,
+                m deciding fragments telling the given deletion. Counts stand.
         """
         flags: list[str] = []
 
@@ -1153,9 +1159,7 @@ class Pipeline:
         # At a long deletion beside a run, another unit count present at its breakpoint holds
         # the ALT calls: a read counts ALT only where its bases tell the given count from it.
         # Named in the same form: n fragments whose ALT call it takes, m that tell the given count
-        # (OBSERVED_ALLELE where none does); a listed one the reads decide absent holds none and
-        # is named so too (n fragments whose ALT calls stand though they do not tell the two
-        # apart, m deciding ones telling the given count). The counts stand as written.
+        # (OBSERVED_ALLELE where none does). The counts stand as written.
         held = getattr(counts, "unit_count_allele", "")
         for entry in held.split("+") if held else ():
             allele, tally = entry.rsplit(":", 1)
@@ -1201,6 +1205,13 @@ class Pipeline:
         unspanned = getattr(counts, "unit_count_unspanned", "")
         if unspanned:
             flags.append(f"UNIT_COUNT_UNSPANNED({unspanned})")
+
+        # A listed other unit count at a long deletion's breakpoint the reads decide absent
+        # (RJ-25's sibling rule) holds no ALT call: the ALT calls of the reads that cannot tell
+        # it from the given count stand, and the flag names it with them. The counts stand.
+        absent = getattr(counts, "unit_count_absent", "")
+        for entry in absent.split("+") if absent else ():
+            flags.append(f"UNIT_COUNT_ABSENT({variant.chrom}:{entry})")
 
         return flags
 

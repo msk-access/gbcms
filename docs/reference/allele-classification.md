@@ -447,7 +447,8 @@ way), so a CIGAR-only rule read VAF 0.000 at 287 of 300 heterozygous deletions.
   held, the counts stand and `gbcms_diagnostic` names the row,
   `UNIT_COUNT_UNSPANNED(change:bases/longest)`. Under the sequence judge the alleles
   found so are site states, so its reads tie the same way. The allele that holds the
-  calls is named, `OBSERVED_ALLELE` or `COEXISTING_ALLELE` at the deletion's anchor.
+  calls is named, `OBSERVED_ALLELE` or `COEXISTING_ALLELE` at the deletion's anchor; a
+  listed one the reads decide absent holds none and is named `UNIT_COUNT_ABSENT`.
 - **RNA:** the same, after splice triage (a deletion written as a splice N stays
   excluded).
 

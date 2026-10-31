@@ -32,9 +32,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   or more fragments placed here tell the two apart (with fewer it stays present, as past a
   read's reach). Under `--read-judge sequence` a listed row so decided absent is no state at
   that row (before, its ties made the given count's short carriers partial though no molecule
-  carried it); a read showing it is no ALT call on either path; and it is named,
-  `COEXISTING_ALLELE`, with the fragments whose ALT calls stand though they do not tell the
-  two apart. RJ-24 and RJ-25 amended 2026-10-31.
+  carried it); a read showing it is no ALT call on either path; and it is named in
+  `gbcms_diagnostic`, `UNIT_COUNT_ABSENT(chrom:pos:REF>ALT:n/m)`, with the fragments whose ALT
+  calls stand though they do not tell the two apart and the deciding ones
+  (`BaseCounts.unit_count_absent`). RJ-24 and RJ-25 amended 2026-10-31.
 - `UNIT_COUNT_UNSPANNED` weighs the nearest unit count on each side (one that reads like the
   given deletion for its shift and 12 bases more), not any count past reach.
 - Where no read at the site can reach the first difference (the run longer than the longest

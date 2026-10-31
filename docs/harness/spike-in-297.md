@@ -110,7 +110,7 @@ Per class, setting, input form, alignment and path:
    than the planted one more (D + unit + 4 above the read length: 5 T3 rows at 2×151); on no
    other row of T1 to T3; the other count named (`OBSERVED_ALLELE` or `COEXISTING_ALLELE` at the deletion's
    anchor) on every row where it is present (listed, or found), on every listed-form row the
-   reads decide absent (`COEXISTING_ALLELE`, with the fragments whose ALT calls stand), and on
+   reads decide absent (`UNIT_COUNT_ABSENT`, with the fragments whose ALT calls stand), and on
    no S1 or S6 row of the found form.
 7. S1 and S6 rows, and class C: counts equal to develop's in the unlisted form; in the listed
    form, S1 rows (no molecule of the other count) equal to the unlisted form's where 3 or more
@@ -119,6 +119,19 @@ Per class, setting, input form, alignment and path:
    operator 2026-10-31), on both paths. Count the S1 rows of the listed form held
    all the same: where fewer than 20 fragments show either count, one read's errors at the
    first difference can show the other count (the 1-fragment floor's cost at depth).
+   Count, before the merge, the rows at low depth where a listed count really present is
+   decided absent (the floor stays 3; operator, 2026-10-31): below 20 deciding fragments the
+   5% share is one fragment, so a listed count is called absent exactly when none of its n
+   deciders shows it, which at a compound heterozygote of equal haplotypes happens by chance
+   on 2^-n of rows (1 in 8 at n = 3, 1 in 16 at 4, 1 in 32 at 5). The reviewer's example:
+   depth 20, a 117-bp and a 39-bp deletion listed, alike for 98 bases; 3 reads reach the
+   difference, all of the 117's haplotype, and 10 short reads, 5 of each: the 117 row reads
+   (0, 13, 0) against a truth AD of 8, the 39 row (0, 0, 10) against 5. Report per class,
+   setting and depth, BWA and ABRA2 apart.
+   Open item, not measured: BWA soft-clips the longer count's deciding reads, and a clipped
+   read may fail the placement test (`placed_here`, RJ-29; the left flank) more often than a
+   gapped one, so the longer count may be decided less often. Compare the deciding fragments
+   per count, clipped against gapped.
 
 ## What this cannot see
 
