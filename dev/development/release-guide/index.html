@@ -31,7 +31,7 @@
             body[data-md-color-scheme="slate"] .gslide-title { color: var(--md-default-fg-color); }
             body[data-md-color-scheme="slate"] .gslide-desc { color: var(--md-default-fg-color); }
         </style><meta name="panzoom-theme" content="material">
-<meta name="panzoom-data" content='{"selectors": [".d2", ".mermaid"], "initial_zoom_level": 1.0}'> </head>
+<meta name="panzoom-data" content='{"selectors": [".mermaid", ".d2"], "initial_zoom_level": 1.0}'> </head>
 <body data-md-color-accent="custom" data-md-color-primary="custom" data-md-color-scheme="default" dir="ltr">
 <input autocomplete="off" class="md-toggle" data-md-toggle="drawer" id="__drawer" type="checkbox">
 <input autocomplete="off" class="md-toggle" data-md-toggle="search" id="__search" type="checkbox">
@@ -1548,8 +1548,9 @@ commit history and makes the back-merge conflict-free.</p>
 <p>The tag triggers <code>.github/workflows/release.yml</code>:</p>
 <ol>
 <li><strong>Verify</strong> — <code>scripts/release.py check --tag X.Y.Z</code>; every other job waits for it</li>
-<li><strong>Build one wheel</strong> — <code>cp311</code>, <code>manylinux_2_28_x86_64</code> (AlmaLinux 8, glibc 2.28: it
-   installs on RHEL 8 and newer) — plus an <strong>sdist</strong> (jobs <code>linux</code> and <code>sdist</code>). The
+<li><strong>Build one wheel</strong> — <code>cp310-abi3</code>, <code>manylinux_2_28_x86_64</code> (the stable ABI, so one
+   wheel serves every CPython from 3.10; AlmaLinux 8, glibc 2.28: it installs on RHEL 8
+   and newer) — plus an <strong>sdist</strong> (jobs <code>linux</code> and <code>sdist</code>). The
    <code>linux</code> job builds with the local action <code>.github/actions/linux-wheel</code>; the <code>Wheels</code>
    workflow builds with the same action on every change to the build and installs the
    wheel in Rocky Linux 8 and 9 containers (pip with binary wheels only, the suite, and
@@ -1575,10 +1576,11 @@ build, so its checksums and attestations would no longer match what PyPI serves.
 <code>gbcms-X.Y.Z-cp311-cp311-manylinux_2_34_x86_64.whl</code> and <code>gbcms-X.Y.Z.tar.gz</code> (the
 wheel is <code>manylinux_2_28</code> from 6.7.0).</p>
 <p>The practical consequence, worth knowing before telling a user to <code>pip install gbcms</code>:
-<strong>everyone not on cp311 manylinux x86_64 builds from the sdist</strong>, which needs a Rust
-toolchain. That includes macOS (Intel and Apple Silicon) and every Python other than
-3.11. Broadening the matrix is a real change to <code>release.yml</code>, not a docs fix — until
-then, this list should describe what actually ships.</p>
+<strong>everyone not on manylinux x86_64 builds from the sdist</strong>, which needs a Rust
+toolchain. That includes macOS (Intel and Apple Silicon). Broadening the matrix is a
+real change to <code>release.yml</code>, not a docs fix — until then, this list should describe
+what actually ships. (Until 6.6.0 the wheel was <code>cp311</code> only, so every other Python
+built from the sdist.)</p>
 </div>
 <h3 id="9-check-the-github-release">9. Check the GitHub Release<a class="headerlink" href="#9-check-the-github-release" title="Permanent link">¶</a></h3>
 <p>The <code>github-release</code> job creates the Releases page entry once PyPI and the image are
@@ -1750,7 +1752,7 @@ on <code>develop</code> fails until it is done.</p>
 <span class="md-icon" title="Last update">
 <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M21 13.1c-.1 0-.3.1-.4.2l-1 1 2.1 2.1 1-1c.2-.2.2-.6 0-.8l-1.3-1.3c-.1-.1-.2-.2-.4-.2m-1.9 1.8-6.1 6V23h2.1l6.1-6.1zM12.5 7v5.2l4 2.4-1 1L11 13V7zM11 21.9c-5.1-.5-9-4.8-9-9.9C2 6.5 6.5 2 12 2c5.3 0 9.6 4.1 10 9.3-.3-.1-.6-.2-1-.2s-.7.1-1 .2C19.6 7.2 16.2 4 12 4c-4.4 0-8 3.6-8 8 0 4.1 3.1 7.5 7.1 7.9l-.1.2z"></path></svg>
 </span>
-<span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-timeago" title="October 30, 2026 20:40:43 UTC"><span class="timeago" datetime="2026-10-30T20:40:43+00:00" locale="en"></span></span><span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-iso_date" title="October 30, 2026 20:40:43 UTC">2026-10-30</span>
+<span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-timeago" title="October 30, 2026 21:01:44 UTC"><span class="timeago" datetime="2026-10-30T21:01:44+00:00" locale="en"></span></span><span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-iso_date" title="October 30, 2026 21:01:44 UTC">2026-10-30</span>
 </span>
 <span class="md-source-file__fact">
 <span class="md-icon" title="Created">

@@ -29,7 +29,7 @@
             body[data-md-color-scheme="slate"] .gslide-title { color: var(--md-default-fg-color); }
             body[data-md-color-scheme="slate"] .gslide-desc { color: var(--md-default-fg-color); }
         </style><meta name="panzoom-theme" content="material">
-<meta name="panzoom-data" content='{"selectors": [".d2", ".mermaid"], "initial_zoom_level": 1.0}'> </head>
+<meta name="panzoom-data" content='{"selectors": [".mermaid", ".d2"], "initial_zoom_level": 1.0}'> </head>
 <body data-md-color-accent="custom" data-md-color-primary="custom" data-md-color-scheme="default" dir="ltr">
 <input autocomplete="off" class="md-toggle" data-md-toggle="drawer" id="__drawer" type="checkbox">
 <input autocomplete="off" class="md-toggle" data-md-toggle="search" id="__search" type="checkbox">
@@ -769,6 +769,15 @@
 </a>
 <nav aria-label="[Unreleased]" class="md-nav">
 <ul class="md-nav__list">
+<li class="md-nav__item">
+<a class="md-nav__link" href="#changed-one-wheel-for-every-python-from-310-the-extension-uses-the-stable-abi-abi3-py310-235">
+<span class="md-ellipsis">
+      
+        Changed — one wheel for every Python from 3.10: the extension uses the stable ABI (abi3-py310) (#235)
+      
+    </span>
+</a>
+</li>
 <li class="md-nav__item">
 <a class="md-nav__link" href="#changed-the-linux-wheel-installs-on-rhel-8-manylinux_2_28-and-the-extension-links-no-openssl-or-libcurl-234">
 <span class="md-ellipsis">
@@ -3053,11 +3062,39 @@
 <p>The format is based on <a href="https://keepachangelog.com/en/1.0.0/">Keep a Changelog</a>,
 and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semantic Versioning</a>.</p>
 <h2 id="unreleased">[Unreleased]<a class="headerlink" href="#unreleased" title="Permanent link">¶</a></h2>
+<h3 id="changed-one-wheel-for-every-python-from-310-the-extension-uses-the-stable-abi-abi3-py310-235">Changed — one wheel for every Python from 3.10: the extension uses the stable ABI (<code>abi3-py310</code>) (#235)<a class="headerlink" href="#changed-one-wheel-for-every-python-from-310-the-extension-uses-the-stable-abi-abi3-py310-235" title="Permanent link">¶</a></h3>
+<ul>
+<li>The Linux wheel is now <code>cp310-abi3</code>: one file that installs on CPython 3.10, 3.11, 3.12, 3.13
+  and 3.14, and on later ones. Before, the one wheel was <code>cp311</code>, and every other Python built
+  the source distribution (a Rust toolchain and a C compiler). A release builds one wheel per
+  platform, not one per Python.</li>
+<li>Why one wheel and not five. <abbr title="Python-Rust interop library for building native Python modules">PyO3</abbr> builds under <code>abi3-py310</code> only if every Python API the
+  bindings use is in the stable ABI; it builds, and these bindings (<code>#[pyfunction]</code>,
+  <code>#[pyclass]</code> with <code>#[pyo3(get)]</code> fields, <code>Vec</code> and <code>Option</code> conversions, <code>py.detach</code>,
+  <code>pyo3-log</code>) use nothing else. The price is small. Measured on macOS arm64, Python 3.11 and
+  3.14, against a per-version wheel of the same commit: making 300,000 <code>Variant</code> objects and reading or
+  writing their fields is within 6% (the 3.11 run +4%, the 3.14 run -2%); building the small
+  tuples of a <code>Variant</code> (30,000 objects, three getters) is 15% slower (12.0 to 13.7 ms on 3.11);
+  one counting call on 4,000 SNVs takes 496 ms at best with either wheel (the median varies
+  by ±5% with machine load). The wheel is 4 KB larger (0.1%).</li>
+<li>What the stable ABI cannot do: a free-threaded Python (3.13t, 3.14t) takes no <code>abi3</code> wheel.
+  gbcms is not built or tested free-threaded (<code>gil_used = true</code> in the module), so nothing is
+  lost today. If a binding ever needs an API outside the stable ABI, remove the feature and
+  build one wheel per Python.</li>
+<li>Checks. The full suite passes on 3.10, 3.11, 3.12, 3.13 and 3.14 with the one wheel, and a
+  counting run on a synthetic data set writes byte-identical output on all five and with a
+  per-version wheel of the same commit. The
+  <code>Wheels</code> workflow installs the wheel in Rocky Linux 8 and 9 with Python 3.10 to 3.14.</li>
+<li>For developers: the built file is <code>src/gbcms/_rs.abi3.so</code> now. Python tries a
+  version-specific suffix first, so a leftover <code>src/gbcms/_rs.cpython-3xx-*.so</code> from an earlier
+  build wins over it and runs the old engine. Move it to the Trash and run <code>maturin develop
+  --release</code> again; a new test fails when the loaded extension is not the <code>.abi3.so</code>.</li>
+</ul>
 <h3 id="changed-the-linux-wheel-installs-on-rhel-8-manylinux_2_28-and-the-extension-links-no-openssl-or-libcurl-234">Changed — the Linux wheel installs on RHEL 8 (manylinux_2_28), and the extension links no OpenSSL or libcurl (#234)<a class="headerlink" href="#changed-the-linux-wheel-installs-on-rhel-8-manylinux_2_28-and-the-extension-links-no-openssl-or-libcurl-234" title="Permanent link">¶</a></h3>
 <ul>
 <li>The release builds its Linux wheel in the <code>manylinux_2_28</code> image (AlmaLinux 8, glibc 2.28),
   not <code>manylinux_2_34</code>. The wheel now installs on RHEL 8 and newer; before, <code>pip install</code> on
-  RHEL 8 built the source distribution. (Python 3.11 only until the wheels of other Pythons.)</li>
+  RHEL 8 built the source distribution.</li>
 <li>Why the build image had to change: the curl that rust-htslib builds in refuses OpenSSL older
   than 3.0, and RHEL 8 ships 1.1.1. The fix is not a newer OpenSSL but none: rust-htslib is
   built without its default <code>curl</code> feature, which only serves remote files (http, https, s3,
