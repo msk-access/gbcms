@@ -45,6 +45,9 @@ regenerating a section.
 - **Promotion target:** `.agents/rules/security.md` (patient BAM slices, the sanitizer bullet) —
   `DONE:` the sanitizer covers stderr; library warnings print file names; merge stderr into the
   filtered stream or keep it in a file that never prints.
+- **Second slip, same day:** another agent's masking command did not mask and printed five DMP BAM
+  stems from a region list. `DONE:` the sanitizer is tested on a made-up line holding each kind of
+  identifier before it sees patient data.
 - **Related:** the 2026-10-29 sanitizer-first rule (#372).
 
 ## [LRN-20261030-002] rule-trigger | follow-up work went to the agent at hand, not the model the task needs
