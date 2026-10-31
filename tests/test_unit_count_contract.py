@@ -529,6 +529,40 @@ def test_reads_the_aligner_places_elsewhere_spell_no_count(tmp_path, judge):
 
 
 @pytest.mark.parametrize("judge", JUDGES)
+@pytest.mark.parametrize("doubted", [False, True], ids=["placed-here", "aligner-doubts"])
+def test_a_read_placed_from_the_right_flank_that_spells_another_count_is_partial(
+    tmp_path, judge, doubted
+):
+    """Fix 1 (RJ-24: a read placed from the right flank is ALT where it fits, else another
+    allele; RJ-29: only the aligner's doubt makes a read depth only). One carrier of the
+    two-unit deletion has the 17 bases before the junction in a left soft clip, aligned from
+    the last 3 bases of the flank, so the windows' first base lies in its clip and the read is
+    placed from the right flank. Its bases spell the two-unit count in full on this one
+    fragment (under the floor of 3, so the count is not found). Spelling another count it is
+    no ALT: partial evidence on the rules path, as a read placed from the left flank is (F3).
+    It was depth only, the hold taking the right flank for a doubt; only the aligner's own
+    doubt (XS equal to AS) leaves it depth only. The 12 short carriers, which cannot tell the
+    counts apart, stay ALT. The sequence judge leaves a read of an allele under the floor
+    depth only (an allele under the floor is no state): AD agrees, partial_alt does not."""
+    ref, a, h, rows, reads = _ticket()
+    s = a - 20
+    r = make_read(
+        "twoR",
+        h["two"][s : s + 251],
+        a - 3,
+        ((4, 17), (0, 3), (2, 60), (0, 60), (2, 60), (0, 171)),
+    )
+    r.flag = 0x1 | 0x2 | 0x20 | 0x40
+    r.next_reference_id, r.next_reference_start, r.template_length = 0, a - 3 + 250, 450
+    if doubted:
+        r.set_tag("AS", 230)
+        r.set_tag("XS", 230)
+    (((rd, ad, partial, dp), _),) = _count(tmp_path, ref, [rows["one"]], reads + [r], judge)
+    assert (rd, ad, dp) == (6, 12, 19)
+    assert partial == (1 if judge == "rules" and not doubted else 0)
+
+
+@pytest.mark.parametrize("judge", JUDGES)
 @pytest.mark.parametrize("given", [0, 4], ids=["alone", "beside-holding-carriers"])
 def test_the_count_that_holds_the_calls_is_named(tmp_path, judge, given):
     """The two-unit deletion found on its 4 holding carriers takes the ALT calls of the 16

@@ -703,9 +703,10 @@ pub(crate) fn classify(
                 // A read whose own bases spell another unit count is no ALT, whatever the
                 // presence floor: the floor decides only the reads that cannot tell (RJ-6).
                 // Partial evidence where the aligner places it here alone, else depth only
-                // (RJ-29: a read it doubts, or one placed from the right flank, may belong to
-                // another copy).
-                let here = placement == Placement::Flank && placed_here(record);
+                // (RJ-29: a read it doubts may belong to another copy). The side the window
+                // was placed from decides nothing: a read placed from the right flank is ALT
+                // where it fits, else another allele (RJ-24).
+                let here = placed_here(record);
                 trace!(
                     "junction: an ALT read that spells another allele at the breakpoint ({:+} bp) → {}",
                     h.change, if here { "partial evidence" } else { "depth only" },
