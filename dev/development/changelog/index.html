@@ -792,6 +792,24 @@
 <p>The format is based on <a href="https://keepachangelog.com/en/1.0.0/">Keep a Changelog</a>,
 and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semantic Versioning</a>.</p>
 <h2 id="unreleased">[Unreleased]<a class="headerlink" href="#unreleased" title="Permanent link">¶</a></h2>
+<h3 id="added-a-native-arm64-docker-image-joined-with-amd64-into-one-multi-arch-tag-236">Added — a native arm64 Docker image, joined with amd64 into one multi-arch tag (#236)<a class="headerlink" href="#added-a-native-arm64-docker-image-joined-with-amd64-into-one-multi-arch-tag-236" title="Permanent link">¶</a></h3>
+<ul>
+<li>The release builds the image on an amd64 runner and on GitHub's arm64 runner (no QEMU),
+  pushes each by digest, and a new job <code>docker-merge</code> joins the two into one tag
+  (<code>X.Y.Z</code> and <code>latest</code>). Pulling the tag on Apple silicon gets an arm64 image that runs
+  natively; before, Docker Desktop ran the amd64 image under emulation. The image lock's
+  hashes cover every platform's wheels, so both architectures install the same versions.</li>
+<li>The <code>docker-test</code> job runs on both architectures. In each it builds the image on the
+  runner, checks that the image is the runner's architecture, runs <code>--version</code> and
+  <code>pip check</code>, and runs the counting run on a synthetic data set. The new job
+  <code>docker-compare</code> fails unless amd64 and arm64 write the same bytes.</li>
+<li>The Nextflow <code>docker</code> profile still forces <code>--platform linux/amd64</code>. Dropping it would let
+  Apple silicon run the native image; that waits for <code>docker-compare</code> to pass on real <abbr title="Continuous Integration - Automated build and test system">CI</abbr>
+  runs, and it changes what a pipeline run on a Mac uses.</li>
+<li>Publishing: a manual run of the release workflow builds both images and pushes nothing. A tag
+  push pushes two untagged images and joins them; the first tagged release is the first
+  time the join runs.</li>
+</ul>
 <h3 id="added-ci-runs-the-image-through-apptainer-as-rhel-clusters-do-233">Added — <abbr title="Continuous Integration - Automated build and test system">CI</abbr> runs the image through Apptainer, as RHEL clusters do (#233)<a class="headerlink" href="#added-ci-runs-the-image-through-apptainer-as-rhel-clusters-do-233" title="Permanent link">¶</a></h3>
 <ul>
 <li>The <code>docker-test</code> job installs Apptainer, builds a <abbr title="Singularity Image Format - Container image format for HPC">SIF</abbr> from the image it just built

@@ -2856,7 +2856,12 @@ The <code>Wheels</code> workflow installs that wheel in Rocky Linux 8 and 9 cont
 </tbody>
 </table>
 <p>The Docker image (<code>ghcr.io/msk-access/gbcms</code>) is built by the same workflow for
-<code>linux/amd64</code> and carries Python 3.11.</p>
+<code>linux/amd64</code> and <code>linux/arm64</code>, each on a runner of its own architecture, and joined
+into one tag: a pull gets the image of your host's architecture, so on Apple silicon (and
+on arm64 Linux) it runs natively, not under emulation. It carries Python 3.11. The
+Nextflow <code>docker</code> profile still forces <code>--platform linux/amd64</code>, so a pipeline run
+uses the same image everywhere; <abbr title="Continuous Integration - Automated build and test system">CI</abbr> requires both architectures to write the same output
+on a synthetic data set, which is what has to hold before that option is dropped.</p>
 <h3 id="getting-started-installation-building-from-source">Building from source<a class="headerlink" href="#getting-started-installation-building-from-source" title="Permanent link">¶</a></h3>
 <p>Every row above that builds from source needs, on your machine:</p>
 <ul>
@@ -19934,7 +19939,9 @@ commit history and makes the back-merge conflict-free.</p>
    wheel in Rocky Linux 8 and 9 containers (pip with binary wheels only, the suite, and
    a counting run whose output digests must match everywhere)</li>
 <li><strong>Publish to PyPI</strong> (via maturin)</li>
-<li><strong>Build Docker image</strong> → push to <code>ghcr.io/msk-access/gbcms:X.Y.Z</code></li>
+<li><strong>Build the Docker image</strong> on an amd64 and an arm64 runner (natively, no emulation), push each
+   by digest, and join them (job <code>docker-merge</code>) into one multi-arch tag, <code>ghcr.io/msk-access/gbcms:X.Y.Z</code>
+   and <code>latest</code></li>
 <li><strong>Create the GitHub Release</strong> — title and notes from the CHANGELOG section, the
    wheel and sdist attached with <code>SHA256SUMS</code>, and a build-provenance attestation for
    each artifact (verify with <code>gh attestation verify &lt;file&gt; --repo msk-access/gbcms</code>)</li>
@@ -20068,7 +20075,7 @@ on <code>develop</code> fails until it is done.</p>
 <tr>
 <td style="text-align: left;"><code>test.yml</code></td>
 <td style="text-align: left;">Push to develop/main, PR</td>
-<td style="text-align: left;">Run tests: Ubuntu 3.10 (dependencies at their floors), 3.11 and 3.14, macOS 3.12; lint; Rust unit tests; build the image and run it under Docker and under Apptainer (as a RHEL cluster does)</td>
+<td style="text-align: left;">Run tests: Ubuntu 3.10 (dependencies at their floors), 3.11 and 3.14, macOS 3.12; lint; Rust unit tests; build the image on amd64 and arm64 runners and run it under Docker on both and under Apptainer on amd64 (as a RHEL cluster does), the two architectures' output digests compared</td>
 </tr>
 <tr>
 <td style="text-align: left;"><code>latest-deps.yml</code></td>
@@ -20078,7 +20085,7 @@ on <code>develop</code> fails until it is done.</p>
 <tr>
 <td style="text-align: left;"><code>release.yml</code></td>
 <td style="text-align: left;">Tag push <code>X.Y.Z</code></td>
-<td style="text-align: left;">Verify the version sources, build the wheel and sdist, publish PyPI and Docker, create the GitHub Release</td>
+<td style="text-align: left;">Verify the version sources, build the wheel and sdist, publish PyPI and Docker (amd64 and arm64), create the GitHub Release</td>
 </tr>
 <tr>
 <td style="text-align: left;"><code>wheels.yml</code></td>
@@ -20357,6 +20364,24 @@ count-affecting merge since the previous release, run on the changed rows only.<
 <p>The format is based on <a href="https://keepachangelog.com/en/1.0.0/">Keep a Changelog</a>,
 and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semantic Versioning</a>.</p>
 <h2 id="development-changelog-unreleased">[Unreleased]<a class="headerlink" href="#development-changelog-unreleased" title="Permanent link">¶</a></h2>
+<h3 id="development-changelog-added-a-native-arm64-docker-image-joined-with-amd64-into-one-multi-arch-tag-236">Added — a native arm64 Docker image, joined with amd64 into one multi-arch tag (#236)<a class="headerlink" href="#development-changelog-added-a-native-arm64-docker-image-joined-with-amd64-into-one-multi-arch-tag-236" title="Permanent link">¶</a></h3>
+<ul>
+<li>The release builds the image on an amd64 runner and on GitHub's arm64 runner (no QEMU),
+  pushes each by digest, and a new job <code>docker-merge</code> joins the two into one tag
+  (<code>X.Y.Z</code> and <code>latest</code>). Pulling the tag on Apple silicon gets an arm64 image that runs
+  natively; before, Docker Desktop ran the amd64 image under emulation. The image lock's
+  hashes cover every platform's wheels, so both architectures install the same versions.</li>
+<li>The <code>docker-test</code> job runs on both architectures. In each it builds the image on the
+  runner, checks that the image is the runner's architecture, runs <code>--version</code> and
+  <code>pip check</code>, and runs the counting run on a synthetic data set. The new job
+  <code>docker-compare</code> fails unless amd64 and arm64 write the same bytes.</li>
+<li>The Nextflow <code>docker</code> profile still forces <code>--platform linux/amd64</code>. Dropping it would let
+  Apple silicon run the native image; that waits for <code>docker-compare</code> to pass on real <abbr title="Continuous Integration - Automated build and test system">CI</abbr>
+  runs, and it changes what a pipeline run on a Mac uses.</li>
+<li>Publishing: a manual run of the release workflow builds both images and pushes nothing. A tag
+  push pushes two untagged images and joins them; the first tagged release is the first
+  time the join runs.</li>
+</ul>
 <h3 id="development-changelog-added-ci-runs-the-image-through-apptainer-as-rhel-clusters-do-233">Added — <abbr title="Continuous Integration - Automated build and test system">CI</abbr> runs the image through Apptainer, as RHEL clusters do (#233)<a class="headerlink" href="#development-changelog-added-ci-runs-the-image-through-apptainer-as-rhel-clusters-do-233" title="Permanent link">¶</a></h3>
 <ul>
 <li>The <code>docker-test</code> job installs Apptainer, builds a <abbr title="Singularity Image Format - Container image format for HPC">SIF</abbr> from the image it just built
