@@ -450,9 +450,20 @@ listed insertion lengthened REF's alone); counted in columns, it keeps them (RD 
 check made first, on every call, makes depth the reads inside a long insert tying another allele
 (partial evidence before): partial to depth at 28 c246, 80 tr, 128 sub and 168 nocl rows (on tr
 1,495 reads, 3 of them true ALT and 1 true REF), no REF or ALT count changing. The masks laid on
-both windows by offset change 11 HG002 rows (by truth, on nocl 5 true REF reads REF to depth and 1
-true ALT depth to ALT; at chr21:41865095, the 5 REF reads whose only telling base past the masked
-SNV is read below `--min-baseq` are depth); the symmetry bar is unchanged on every arm.
+both windows by offset change 11 row entries on the four HG002 arms (10 rows: chr19:3332480 +329 is
+on sub and on nocl), against the build before them. By truth, on nocl: 5 true REF reads REF to depth
+(4 at chr17:367066 +402, 1 at chr9:108247879 +401), 1 true ALT read depth to ALT (chr17:367066 +402)
+and 2 reads without a truth label depth to ALT (chr19:3332480 +329, the same on sub); on
+c246, 1 true REF read REF to depth (chr7:158521942 +470) and 10 reads the truth cannot decide or label
+(9 REF to depth, 1 depth to REF); on tr, 3 reads the truth cannot decide, REF to depth. #144's two
+duplications are measured apart, on reads placed on the phased truth haplotypes, against the build
+without the masks and with the same other fixes: chr22:39653046 changes no read, and chr21:41865095,
+which is on none of the four arms, turns its last 5 REF reads to depth (REF 5 to 0, ALT 2). Those 5 are
+not unreadable: each reads the reference's base at the masked SNV (89 bases from the anchor) and a
+confident base (Q37) that is the reference's at the next telling base (129 bases from the anchor).
+Before the masks, the ALT's last inserted base told them from the ALT by one confident mismatch
+(ALT -4, REF 0 in the trace); masked, the ALT fits each as well as REF does (0 and 0), as the two
+copies are twins. The symmetry bar is unchanged on every arm.
 
 Evidence behind the RJ-23 amendment of 2026-10-16 (#279). On HG002's long insertions,
 reads were compared base by base. Some fit the ALT placed from the right flank better,
