@@ -703,10 +703,30 @@ fn conclude_margin<'h, F: Fn(usize) -> std::rc::Rc<Hap>>(
     let Some(won) = won else {
         return Verdict { call, qual: 0, best: scores, holds_anchor: false, placed: None, confirmed: false, spells: 0, spells_x: 0, clip: None, fits: FitsTrace::default(), fits_none: false, neither: NeitherTrace::default(), owngap: OwnGapTrace::default() };
     };
+    let w = fit_other.or(mixed_on).unwrap_or_else(|| best[won as usize].map_or(0, |(_, h)| h));
+    // RJ-23's equal windows at a long insertion: a call holds, on the called haplotype, the
+    // anchor and as many bases on as REF's window (the run and the base past it, read on where
+    // masks hide that base). An ALT read holds the insert's first bases, not the whole insert;
+    // a read inside the insert, or holding only its far junction, holds no window, as a REF
+    // read starting inside the run holds none: depth only, whichever allele it fits, another
+    // allele's too (one tying X inside the insert is no partial evidence), so no allele gains
+    // read starts another cannot have.
+    if site.long_insertion() {
+        let (hap_w, w_al) = (ex.hap(w), ex.align(w));
+        if let Some((a, b)) = site.equal_window(&hap_w) {
+            let (wa, off) = (&w_al.0, w_al.1);
+            if !wa.covers().is_some_and(|(s, e)| ((s + off) as i64) <= a && b <= (e + off) as i64) {
+                trace!(
+                    "haplotype judge: a {call:?} call at a long insertion holding no equal window from its anchor ({a}-{b}; the read covers {:?}) → depth only",
+                    wa.covers().map(|(s, e)| (s + off, e + off)),
+                );
+                return Verdict { call: Call::Depth, qual: 0, best: scores, holds_anchor: false, placed: None, confirmed: false, spells: 0, spells_x: 0, clip: None, fits: FitsTrace::default(), fits_none: false, neither: NeitherTrace::default(), owngap: OwnGapTrace::default() };
+            }
+        }
+    }
     if call == Call::Other && !ask_anchor {
         return Verdict { call, qual: 0, best: scores, holds_anchor: false, placed: None, confirmed: false, spells: 0, spells_x: 0, clip: None, fits: FitsTrace::default(), fits_none: false, neither: NeitherTrace::default(), owngap: OwnGapTrace::default() };
     }
-    let w = fit_other.or(mixed_on).unwrap_or_else(|| best[won as usize].map_or(0, |(_, h)| h));
     let (hap_w, w_al) = (ex.hap(w), ex.align(w));
     let hap_w: &Hap = &hap_w;
     let (wa, off) = (&w_al.0, w_al.1);
@@ -764,21 +784,6 @@ fn conclude_margin<'h, F: Fn(usize) -> std::rc::Rc<Hap>>(
     let placed = wa.placed.iter().position(at).zip(wa.placed.iter().rposition(at)).map(|(a, b)| (a, b + 1));
     if call == Call::Other {
         return Verdict { call, qual: 0, best: scores, holds_anchor, placed, confirmed: false, spells: 0, spells_x: 0, clip: None, fits: FitsTrace::default(), fits_none: false, neither: nt, owngap: OwnGapTrace::default() };
-    }
-    // RJ-23's equal windows at a long insertion: a REF or ALT call holds, on the called
-    // haplotype, the anchor and as many bases on as REF's window (the run and the base past
-    // it). An ALT read holds the insert's first bases, not the whole insert; a read inside
-    // the insert, or holding only its far junction, holds no window, as a REF read starting
-    // inside the run holds none: depth only, so neither allele gains read starts the other
-    // cannot have.
-    if let Some((a, b)) = site.equal_window(hap_w) {
-        if !wa.covers().is_some_and(|(s, e)| ((s + off) as i64) <= a && b <= (e + off) as i64) {
-            trace!(
-                "haplotype judge: a {call:?} call at a long insertion holding no equal window from its anchor ({a}-{b}; the read covers {:?}) → depth only",
-                wa.covers().map(|(s, e)| (s + off, e + off)),
-            );
-            return Verdict { call: Call::Depth, qual: 0, best: scores, holds_anchor: false, placed: None, confirmed: false, spells: 0, spells_x: 0, clip: None, fits: FitsTrace::default(), fits_none: false, neither: nt, owngap: OwnGapTrace::default() };
-        }
     }
     // The bases that tell X from REF at its site, covered by the winning alignment: X's
     // own for an ALT call, none of them read confidently as another base; REF's for a REF

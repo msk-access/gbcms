@@ -1483,6 +1483,11 @@ impl Site {
         !self.rows[0].changes_length()
     }
 
+    /// Whether X is a pure insertion of [`LONG_EVENT`] bases or more read over equal windows.
+    pub(crate) fn long_insertion(&self) -> bool {
+        self.long_ins.is_some()
+    }
+
     /// Where X is a pure insertion of [`LONG_EVENT`] bases or more: the columns `[a, b]`
     /// (inclusive) of `hap` a REF or ALT call on it must cover (RJ-23's equal windows, read
     /// from the anchor): the base before X's run and as many columns on as REF's window holds

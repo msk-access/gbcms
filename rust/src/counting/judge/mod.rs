@@ -1706,6 +1706,33 @@ mod tests {
     }
 
     #[test]
+    fn reads_inside_a_long_insert_tying_another_allele_are_depth_only() {
+        use haplotypes::LongInsRule::ReadOn;
+        use Call::*;
+        // A listed allele of X's length at X's anchor, its insert differing from X's at its
+        // 11th base. Reads lying inside the insert past that base hold no window from the
+        // anchor on either allele: depth only (RJ-23), not another allele's partial evidence;
+        // reads holding the windows keep their calls.
+        let (c, x, _) = long_duplication();
+        let mut ins2 = x.alt_al.clone();
+        ins2[11] = *b"ACGT".iter().find(|&&b| b != ins2[11]).unwrap();
+        let sib = Row::new(299, &c[299..300], &ins2);
+        let (h, hs) = (haplotype(&c, &[&x]), haplotype(&c, &[&sib]));
+        let reads = vec![
+            read(&h, 330, 100, 330, "100M"),  // inside X's insert, through its far junction
+            read(&h, 320, 40, 320, "40M"),    // inside the insert only
+            read(&hs, 330, 100, 330, "100M"), // inside the other allele's insert
+            read(&c, 330, 100, 330, "100M"),  // REF, starting inside the run
+            read(&h, 260, 100, 260, "100M"),  // X's window from the anchor
+            read(&hs, 260, 100, 260, "100M"), // the other allele's window from the anchor
+        ];
+        let candidates = Candidates { listed: vec![sib.clone()], ..Candidates::default() };
+        let s = haplotypes::Site::build_ins(x.clone(), &candidates, (0, c.to_vec()), &reads, ReadOn).unwrap();
+        let got: Vec<Call> = reads.iter().map(|r| judge(&s, r, MIN_BQ, false).call).collect();
+        assert_eq!(got, vec![Depth, Depth, Depth, Depth, Alt, Other]);
+    }
+
+    #[test]
     fn under_the_cis_option_a_change_a_ref_molecule_carries_stays_masked_on_ref() {
         use haplotypes::LongInsRule::Cis;
         use Call::*;
