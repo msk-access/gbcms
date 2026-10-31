@@ -2766,9 +2766,11 @@ Use mouse to pan and zoom
 <div class="admonition info">
 <p class="admonition-title">One prebuilt wheel</p>
 <p>A release publishes one wheel, for <strong>CPython 3.11 on Linux x86_64 with glibc
-2.34+</strong> (Ubuntu 22.04+, RHEL 9+, Debian 12+), and the source distribution. On
-any other platform or Python, <code>pip install gbcms</code> compiles the source
+2.28+</strong> (RHEL 8 and 9, Ubuntu 20.04+, Debian 10+), and the source distribution.
+On any other platform or Python, <code>pip install gbcms</code> compiles the source
 distribution on your machine, which needs a Rust toolchain and a C compiler.
+The wheel needs pip 20.3 or newer; on RHEL 8, install it into a virtual
+environment of a newer Python (see <a href="#getting-started-installation-legacy-linux-rhel-8-hpc">RHEL 8</a>).
 See <a href="#getting-started-installation-platform-support">Platform support</a>.</p>
 </div>
 </div>
@@ -2806,7 +2808,7 @@ See <a href="#getting-started-installation-platform-support">Platform support</a
 </tr>
 <tr>
 <td style="text-align: left;">OS</td>
-<td style="text-align: left;">Linux (x86_64 wheel needs glibc 2.34+), macOS (built from source), Windows through WSL2</td>
+<td style="text-align: left;">Linux (x86_64 wheel needs glibc 2.28+: RHEL 8 and newer), macOS (built from source), Windows through WSL2</td>
 </tr>
 <tr>
 <td style="text-align: left;">Memory</td>
@@ -2822,8 +2824,10 @@ See <a href="#getting-started-installation-platform-support">Platform support</a
 <hr>
 <h2 id="getting-started-installation-platform-support">Platform support<a class="headerlink" href="#getting-started-installation-platform-support" title="Permanent link">¶</a></h2>
 <p>What a release builds is exactly what <code>.github/workflows/release.yml</code> builds: the
-<code>linux</code> job (<code>ubuntu-latest</code>, <code>--release -i python3.11</code>, <code>manylinux_2_34</code>) and the
-<code>sdist</code> job. So <code>pip install gbcms</code> gives:</p>
+<code>linux</code> job (<code>ubuntu-latest</code>, <code>--release -i python3.11</code>, in the <code>manylinux_2_28</code>
+image, which is AlmaLinux 8) and the <code>sdist</code> job. The <code>Wheels</code> workflow installs that
+wheel in Rocky Linux 8 and 9 containers and runs the test suite there. So <code>pip install
+gbcms</code> gives:</p>
 <table>
 <thead>
 <tr>
@@ -2833,15 +2837,15 @@ See <a href="#getting-started-installation-platform-support">Platform support</a
 </thead>
 <tbody>
 <tr>
-<td style="text-align: left;">Linux x86_64, glibc 2.34+, Python 3.11</td>
-<td style="text-align: left;">Installs the prebuilt wheel (<code>cp311</code>, <code>manylinux_2_34_x86_64</code>)</td>
+<td style="text-align: left;">Linux x86_64, glibc 2.28+ (RHEL 8 and newer), Python 3.11</td>
+<td style="text-align: left;">Installs the prebuilt wheel (<code>cp311</code>, <code>manylinux_2_28_x86_64</code>)</td>
 </tr>
 <tr>
-<td style="text-align: left;">Linux x86_64, glibc 2.34+, another Python (3.10, 3.12 to 3.14)</td>
+<td style="text-align: left;">Linux x86_64, glibc 2.28+, another Python (3.10, 3.12 to 3.14)</td>
 <td style="text-align: left;">Builds the source distribution</td>
 </tr>
 <tr>
-<td style="text-align: left;">Linux with glibc below 2.34 (RHEL 8, CentOS 8), or Linux aarch64</td>
+<td style="text-align: left;">Linux with glibc below 2.28 (RHEL 7, CentOS 7), or Linux aarch64</td>
 <td style="text-align: left;">Builds the source distribution; see <a href="#getting-started-installation-legacy-linux-rhel-8-hpc">Legacy Linux</a></td>
 </tr>
 <tr>
@@ -2863,84 +2867,95 @@ See <a href="#getting-started-installation-platform-support">Platform support</a
 <li>a <strong>C compiler</strong> (the bundled htslib is compiled from C);</li>
 <li><strong>libclang</strong>, which <code>bindgen</code> uses for the htslib headers (set <code>LIBCLANG_PATH</code> if it
   is not found);</li>
-<li>the development headers for <strong>zlib, bzip2, xz, libcurl and OpenSSL</strong>.</li>
+<li>the development headers for <strong>zlib, bzip2 and xz</strong>. The build needs no libcurl and
+  no OpenSSL: gbcms reads local files only, so htslib is built without its remote-file
+  support.</li>
 </ul>
-<p>The release build installs <code>zlib-devel bzip2-devel xz-devel libcurl-devel
-openssl-devel clang llvm-devel</code> (the Debian names are <code>zlib1g-dev libbz2-dev
-liblzma-dev libcurl4-openssl-dev libssl-dev clang libclang-dev</code>). <abbr title="Continuous Integration - Automated build and test system">CI</abbr>'s macOS jobs
-install <code>htslib</code>, <code>autoconf</code> and <code>automake</code> with Homebrew before building.</p>
+<p>The release build installs <code>zlib-devel bzip2-devel xz-devel clang llvm-devel</code> (the
+Debian names are <code>zlib1g-dev libbz2-dev liblzma-dev clang libclang-dev</code>). <abbr title="Continuous Integration - Automated build and test system">CI</abbr>'s macOS
+jobs install <code>htslib</code>, <code>autoconf</code> and <code>automake</code> with Homebrew before building.</p>
 <hr>
 <h2 id="getting-started-installation-legacy-linux-rhel-8-hpc">Legacy Linux (RHEL 8 / <abbr title="High-Performance Computing - Cluster computing environment">HPC</abbr>)<a class="headerlink" href="#getting-started-installation-legacy-linux-rhel-8-hpc" title="Permanent link">¶</a></h2>
-<p>For RHEL 8, CentOS 8, or <abbr title="High-Performance Computing - Cluster computing environment">HPC</abbr> systems with glibc &lt; 2.34:</p>
+<p>RHEL 8 (glibc 2.28) installs the prebuilt wheel with pip. RHEL 8's own Python is 3.6,
+so use a newer one, in a virtual environment (the wheel needs pip 20.3 or newer):</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#getting-started-installation-__codelineno-3-1"></a>sudo<span class="w"> </span>dnf<span class="w"> </span>install<span class="w"> </span>python3.11<span class="w">            </span><span class="c1"># or: module load python/3.11, or conda</span>
+<a id="__codelineno-3-2" name="__codelineno-3-2" href="#getting-started-installation-__codelineno-3-2"></a>python3.11<span class="w"> </span>-m<span class="w"> </span>venv<span class="w"> </span>gbcms_env
+<a id="__codelineno-3-3" name="__codelineno-3-3" href="#getting-started-installation-__codelineno-3-3"></a><span class="nb">source</span><span class="w"> </span>gbcms_env/bin/activate
+<a id="__codelineno-3-4" name="__codelineno-3-4" href="#getting-started-installation-__codelineno-3-4"></a>pip<span class="w"> </span>install<span class="w"> </span>--upgrade<span class="w"> </span>pip
+<a id="__codelineno-3-5" name="__codelineno-3-5" href="#getting-started-installation-__codelineno-3-5"></a>pip<span class="w"> </span>install<span class="w"> </span>gbcms
+<a id="__codelineno-3-6" name="__codelineno-3-6" href="#getting-started-installation-__codelineno-3-6"></a>gbcms<span class="w"> </span>--version
+</code></pre></div>
+<p>The other tabs are for Pythons without a wheel, for glibc older than 2.28, and for
+clusters that run containers.</p>
 <div class="tabbed-set tabbed-alternate" data-tabs="2:4"><input checked="" id="getting-started-installation-__tabbed_2_1" name="getting-started-installation-__tabbed_2" type="radio"><input id="getting-started-installation-__tabbed_2_2" name="getting-started-installation-__tabbed_2" type="radio"><input id="getting-started-installation-__tabbed_2_3" name="getting-started-installation-__tabbed_2" type="radio"><input id="getting-started-installation-__tabbed_2_4" name="getting-started-installation-__tabbed_2" type="radio"><div class="tabbed-labels"><label for="getting-started-installation-__tabbed_2_1">Micromamba (Recommended)</label><label for="getting-started-installation-__tabbed_2_2">Conda</label><label for="getting-started-installation-__tabbed_2_3">Singularity (<abbr title="High-Performance Computing - Cluster computing environment">HPC</abbr>)</label><label for="getting-started-installation-__tabbed_2_4">Docker</label></div>
 <div class="tabbed-content">
 <div class="tabbed-block">
-<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#getting-started-installation-__codelineno-3-1"></a><span class="c1"># Create environment with build dependencies</span>
-<a id="__codelineno-3-2" name="__codelineno-3-2" href="#getting-started-installation-__codelineno-3-2"></a><span class="c1"># Note: clangdev (not clang) provides headers needed by bindgen</span>
-<a id="__codelineno-3-3" name="__codelineno-3-3" href="#getting-started-installation-__codelineno-3-3"></a>micromamba<span class="w"> </span>create<span class="w"> </span>-n<span class="w"> </span>gbcms_env<span class="w"> </span><span class="nv">python</span><span class="o">=</span><span class="m">3</span>.13<span class="w"> </span>clangdev<span class="w"> </span>rust<span class="w"> </span>-c<span class="w"> </span>conda-forge
-<a id="__codelineno-3-4" name="__codelineno-3-4" href="#getting-started-installation-__codelineno-3-4"></a>micromamba<span class="w"> </span>activate<span class="w"> </span>gbcms_env
-<a id="__codelineno-3-5" name="__codelineno-3-5" href="#getting-started-installation-__codelineno-3-5"></a>
-<a id="__codelineno-3-6" name="__codelineno-3-6" href="#getting-started-installation-__codelineno-3-6"></a><span class="c1"># Set libclang path for the Rust build</span>
-<a id="__codelineno-3-7" name="__codelineno-3-7" href="#getting-started-installation-__codelineno-3-7"></a><span class="nb">export</span><span class="w"> </span><span class="nv">LIBCLANG_PATH</span><span class="o">=</span><span class="nv">$CONDA_PREFIX</span>/lib
-<a id="__codelineno-3-8" name="__codelineno-3-8" href="#getting-started-installation-__codelineno-3-8"></a>
-<a id="__codelineno-3-9" name="__codelineno-3-9" href="#getting-started-installation-__codelineno-3-9"></a><span class="c1"># Install from source</span>
-<a id="__codelineno-3-10" name="__codelineno-3-10" href="#getting-started-installation-__codelineno-3-10"></a>git<span class="w"> </span>clone<span class="w"> </span>https://github.com/msk-access/gbcms.git
-<a id="__codelineno-3-11" name="__codelineno-3-11" href="#getting-started-installation-__codelineno-3-11"></a><span class="nb">cd</span><span class="w"> </span>gbcms
-<a id="__codelineno-3-12" name="__codelineno-3-12" href="#getting-started-installation-__codelineno-3-12"></a>pip<span class="w"> </span>install<span class="w"> </span>.
+<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#getting-started-installation-__codelineno-4-1"></a><span class="c1"># Create environment with build dependencies</span>
+<a id="__codelineno-4-2" name="__codelineno-4-2" href="#getting-started-installation-__codelineno-4-2"></a><span class="c1"># Note: clangdev (not clang) provides headers needed by bindgen</span>
+<a id="__codelineno-4-3" name="__codelineno-4-3" href="#getting-started-installation-__codelineno-4-3"></a>micromamba<span class="w"> </span>create<span class="w"> </span>-n<span class="w"> </span>gbcms_env<span class="w"> </span><span class="nv">python</span><span class="o">=</span><span class="m">3</span>.13<span class="w"> </span>clangdev<span class="w"> </span>rust<span class="w"> </span>-c<span class="w"> </span>conda-forge
+<a id="__codelineno-4-4" name="__codelineno-4-4" href="#getting-started-installation-__codelineno-4-4"></a>micromamba<span class="w"> </span>activate<span class="w"> </span>gbcms_env
+<a id="__codelineno-4-5" name="__codelineno-4-5" href="#getting-started-installation-__codelineno-4-5"></a>
+<a id="__codelineno-4-6" name="__codelineno-4-6" href="#getting-started-installation-__codelineno-4-6"></a><span class="c1"># Set libclang path for the Rust build</span>
+<a id="__codelineno-4-7" name="__codelineno-4-7" href="#getting-started-installation-__codelineno-4-7"></a><span class="nb">export</span><span class="w"> </span><span class="nv">LIBCLANG_PATH</span><span class="o">=</span><span class="nv">$CONDA_PREFIX</span>/lib
+<a id="__codelineno-4-8" name="__codelineno-4-8" href="#getting-started-installation-__codelineno-4-8"></a>
+<a id="__codelineno-4-9" name="__codelineno-4-9" href="#getting-started-installation-__codelineno-4-9"></a><span class="c1"># Install from source</span>
+<a id="__codelineno-4-10" name="__codelineno-4-10" href="#getting-started-installation-__codelineno-4-10"></a>git<span class="w"> </span>clone<span class="w"> </span>https://github.com/msk-access/gbcms.git
+<a id="__codelineno-4-11" name="__codelineno-4-11" href="#getting-started-installation-__codelineno-4-11"></a><span class="nb">cd</span><span class="w"> </span>gbcms
+<a id="__codelineno-4-12" name="__codelineno-4-12" href="#getting-started-installation-__codelineno-4-12"></a>pip<span class="w"> </span>install<span class="w"> </span>.
 </code></pre></div>
 </div>
 <div class="tabbed-block">
-<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#getting-started-installation-__codelineno-4-1"></a>conda<span class="w"> </span>create<span class="w"> </span>-n<span class="w"> </span>gbcms_env<span class="w"> </span><span class="nv">python</span><span class="o">=</span><span class="m">3</span>.13<span class="w"> </span>clangdev<span class="w"> </span>rust<span class="w"> </span>-c<span class="w"> </span>conda-forge
-<a id="__codelineno-4-2" name="__codelineno-4-2" href="#getting-started-installation-__codelineno-4-2"></a>conda<span class="w"> </span>activate<span class="w"> </span>gbcms_env
-<a id="__codelineno-4-3" name="__codelineno-4-3" href="#getting-started-installation-__codelineno-4-3"></a><span class="nb">export</span><span class="w"> </span><span class="nv">LIBCLANG_PATH</span><span class="o">=</span><span class="nv">$CONDA_PREFIX</span>/lib
-<a id="__codelineno-4-4" name="__codelineno-4-4" href="#getting-started-installation-__codelineno-4-4"></a>
-<a id="__codelineno-4-5" name="__codelineno-4-5" href="#getting-started-installation-__codelineno-4-5"></a>git<span class="w"> </span>clone<span class="w"> </span>https://github.com/msk-access/gbcms.git
-<a id="__codelineno-4-6" name="__codelineno-4-6" href="#getting-started-installation-__codelineno-4-6"></a><span class="nb">cd</span><span class="w"> </span>gbcms
-<a id="__codelineno-4-7" name="__codelineno-4-7" href="#getting-started-installation-__codelineno-4-7"></a>pip<span class="w"> </span>install<span class="w"> </span>.
+<div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#getting-started-installation-__codelineno-5-1"></a>conda<span class="w"> </span>create<span class="w"> </span>-n<span class="w"> </span>gbcms_env<span class="w"> </span><span class="nv">python</span><span class="o">=</span><span class="m">3</span>.13<span class="w"> </span>clangdev<span class="w"> </span>rust<span class="w"> </span>-c<span class="w"> </span>conda-forge
+<a id="__codelineno-5-2" name="__codelineno-5-2" href="#getting-started-installation-__codelineno-5-2"></a>conda<span class="w"> </span>activate<span class="w"> </span>gbcms_env
+<a id="__codelineno-5-3" name="__codelineno-5-3" href="#getting-started-installation-__codelineno-5-3"></a><span class="nb">export</span><span class="w"> </span><span class="nv">LIBCLANG_PATH</span><span class="o">=</span><span class="nv">$CONDA_PREFIX</span>/lib
+<a id="__codelineno-5-4" name="__codelineno-5-4" href="#getting-started-installation-__codelineno-5-4"></a>
+<a id="__codelineno-5-5" name="__codelineno-5-5" href="#getting-started-installation-__codelineno-5-5"></a>git<span class="w"> </span>clone<span class="w"> </span>https://github.com/msk-access/gbcms.git
+<a id="__codelineno-5-6" name="__codelineno-5-6" href="#getting-started-installation-__codelineno-5-6"></a><span class="nb">cd</span><span class="w"> </span>gbcms
+<a id="__codelineno-5-7" name="__codelineno-5-7" href="#getting-started-installation-__codelineno-5-7"></a>pip<span class="w"> </span>install<span class="w"> </span>.
 </code></pre></div>
 </div>
 <div class="tabbed-block">
-<div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#getting-started-installation-__codelineno-5-1"></a>singularity<span class="w"> </span>pull<span class="w"> </span>docker://ghcr.io/msk-access/gbcms:X.Y.Z
-<a id="__codelineno-5-2" name="__codelineno-5-2" href="#getting-started-installation-__codelineno-5-2"></a>singularity<span class="w"> </span><span class="nb">exec</span><span class="w"> </span>gbcms_X.Y.Z.sif<span class="w"> </span>gbcms<span class="w"> </span>--help
-<a id="__codelineno-5-3" name="__codelineno-5-3" href="#getting-started-installation-__codelineno-5-3"></a>
-<a id="__codelineno-5-4" name="__codelineno-5-4" href="#getting-started-installation-__codelineno-5-4"></a><span class="c1"># With data binding</span>
-<a id="__codelineno-5-5" name="__codelineno-5-5" href="#getting-started-installation-__codelineno-5-5"></a>singularity<span class="w"> </span><span class="nb">exec</span><span class="w"> </span>-B<span class="w"> </span>/path/to/data:/data<span class="w"> </span>gbcms_X.Y.Z.sif<span class="w"> </span>gbcms<span class="w"> </span>dna<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-5-6" name="__codelineno-5-6" href="#getting-started-installation-__codelineno-5-6"></a><span class="w">  </span>--variants<span class="w"> </span>/data/variants.vcf<span class="w"> </span>--bam<span class="w"> </span>/data/sample.bam<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-5-7" name="__codelineno-5-7" href="#getting-started-installation-__codelineno-5-7"></a><span class="w">  </span>--fasta<span class="w"> </span>/data/ref.fa<span class="w"> </span>--output-dir<span class="w"> </span>/data/results/
+<div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#getting-started-installation-__codelineno-6-1"></a>singularity<span class="w"> </span>pull<span class="w"> </span>docker://ghcr.io/msk-access/gbcms:X.Y.Z
+<a id="__codelineno-6-2" name="__codelineno-6-2" href="#getting-started-installation-__codelineno-6-2"></a>singularity<span class="w"> </span><span class="nb">exec</span><span class="w"> </span>gbcms_X.Y.Z.sif<span class="w"> </span>gbcms<span class="w"> </span>--help
+<a id="__codelineno-6-3" name="__codelineno-6-3" href="#getting-started-installation-__codelineno-6-3"></a>
+<a id="__codelineno-6-4" name="__codelineno-6-4" href="#getting-started-installation-__codelineno-6-4"></a><span class="c1"># With data binding</span>
+<a id="__codelineno-6-5" name="__codelineno-6-5" href="#getting-started-installation-__codelineno-6-5"></a>singularity<span class="w"> </span><span class="nb">exec</span><span class="w"> </span>-B<span class="w"> </span>/path/to/data:/data<span class="w"> </span>gbcms_X.Y.Z.sif<span class="w"> </span>gbcms<span class="w"> </span>dna<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-6-6" name="__codelineno-6-6" href="#getting-started-installation-__codelineno-6-6"></a><span class="w">  </span>--variants<span class="w"> </span>/data/variants.vcf<span class="w"> </span>--bam<span class="w"> </span>/data/sample.bam<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-6-7" name="__codelineno-6-7" href="#getting-started-installation-__codelineno-6-7"></a><span class="w">  </span>--fasta<span class="w"> </span>/data/ref.fa<span class="w"> </span>--output-dir<span class="w"> </span>/data/results/
 </code></pre></div>
 </div>
 <div class="tabbed-block">
-<div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#getting-started-installation-__codelineno-6-1"></a>docker<span class="w"> </span>pull<span class="w"> </span>ghcr.io/msk-access/gbcms:X.Y.Z
-<a id="__codelineno-6-2" name="__codelineno-6-2" href="#getting-started-installation-__codelineno-6-2"></a>docker<span class="w"> </span>run<span class="w"> </span>--rm<span class="w"> </span>-v<span class="w"> </span><span class="k">$(</span><span class="nb">pwd</span><span class="k">)</span>:/data<span class="w"> </span>ghcr.io/msk-access/gbcms:X.Y.Z<span class="w"> </span>gbcms<span class="w"> </span>--help
+<div class="highlight"><pre><span></span><code><a id="__codelineno-7-1" name="__codelineno-7-1" href="#getting-started-installation-__codelineno-7-1"></a>docker<span class="w"> </span>pull<span class="w"> </span>ghcr.io/msk-access/gbcms:X.Y.Z
+<a id="__codelineno-7-2" name="__codelineno-7-2" href="#getting-started-installation-__codelineno-7-2"></a>docker<span class="w"> </span>run<span class="w"> </span>--rm<span class="w"> </span>-v<span class="w"> </span><span class="k">$(</span><span class="nb">pwd</span><span class="k">)</span>:/data<span class="w"> </span>ghcr.io/msk-access/gbcms:X.Y.Z<span class="w"> </span>gbcms<span class="w"> </span>--help
 </code></pre></div>
 </div>
 </div>
 </div>
 <div class="admonition note">
-<p class="admonition-title">Why not pip install?</p>
-<p>The one prebuilt wheel requires glibc 2.34+. On RHEL 8 (glibc 2.28), pip falls back
-to source compilation, which requires Rust and clang headers. The conda environment
-provides these dependencies.</p>
+<p class="admonition-title">When pip builds from source</p>
+<p>The one prebuilt wheel is for CPython 3.11 and glibc 2.28+. On any other Python, or
+on glibc older than 2.28, pip falls back to source compilation, which requires
+Rust and clang headers. The conda environments above provide these dependencies.</p>
 </div>
 <hr>
 <h2 id="getting-started-installation-verification">Verification<a class="headerlink" href="#getting-started-installation-verification" title="Permanent link">¶</a></h2>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-7-1" name="__codelineno-7-1" href="#getting-started-installation-__codelineno-7-1"></a><span class="c1"># Check installation</span>
-<a id="__codelineno-7-2" name="__codelineno-7-2" href="#getting-started-installation-__codelineno-7-2"></a>gbcms<span class="w"> </span>--version
-<a id="__codelineno-7-3" name="__codelineno-7-3" href="#getting-started-installation-__codelineno-7-3"></a><span class="c1"># Expected: gbcms vX.Y.Z (commit)   (the version, and the commit of the build when known)</span>
-<a id="__codelineno-7-4" name="__codelineno-7-4" href="#getting-started-installation-__codelineno-7-4"></a>
-<a id="__codelineno-7-5" name="__codelineno-7-5" href="#getting-started-installation-__codelineno-7-5"></a><span class="c1"># Test help</span>
-<a id="__codelineno-7-6" name="__codelineno-7-6" href="#getting-started-installation-__codelineno-7-6"></a>gbcms<span class="w"> </span>--help
+<div class="highlight"><pre><span></span><code><a id="__codelineno-8-1" name="__codelineno-8-1" href="#getting-started-installation-__codelineno-8-1"></a><span class="c1"># Check installation</span>
+<a id="__codelineno-8-2" name="__codelineno-8-2" href="#getting-started-installation-__codelineno-8-2"></a>gbcms<span class="w"> </span>--version
+<a id="__codelineno-8-3" name="__codelineno-8-3" href="#getting-started-installation-__codelineno-8-3"></a><span class="c1"># Expected: gbcms vX.Y.Z (commit)   (the version, and the commit of the build when known)</span>
+<a id="__codelineno-8-4" name="__codelineno-8-4" href="#getting-started-installation-__codelineno-8-4"></a>
+<a id="__codelineno-8-5" name="__codelineno-8-5" href="#getting-started-installation-__codelineno-8-5"></a><span class="c1"># Test help</span>
+<a id="__codelineno-8-6" name="__codelineno-8-6" href="#getting-started-installation-__codelineno-8-6"></a>gbcms<span class="w"> </span>--help
 </code></pre></div>
 <hr>
 <h2 id="getting-started-installation-docker-usage">Docker Usage<a class="headerlink" href="#getting-started-installation-docker-usage" title="Permanent link">¶</a></h2>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-8-1" name="__codelineno-8-1" href="#getting-started-installation-__codelineno-8-1"></a>docker<span class="w"> </span>run<span class="w"> </span>--rm<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-8-2" name="__codelineno-8-2" href="#getting-started-installation-__codelineno-8-2"></a><span class="w">  </span>-v<span class="w"> </span><span class="k">$(</span><span class="nb">pwd</span><span class="k">)</span>:/data<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-8-3" name="__codelineno-8-3" href="#getting-started-installation-__codelineno-8-3"></a><span class="w">  </span>ghcr.io/msk-access/gbcms:X.Y.Z<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-8-4" name="__codelineno-8-4" href="#getting-started-installation-__codelineno-8-4"></a><span class="w">  </span>gbcms<span class="w"> </span>dna<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-8-5" name="__codelineno-8-5" href="#getting-started-installation-__codelineno-8-5"></a><span class="w">    </span>--variants<span class="w"> </span>/data/variants.vcf<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-8-6" name="__codelineno-8-6" href="#getting-started-installation-__codelineno-8-6"></a><span class="w">    </span>--bam<span class="w"> </span>/data/sample.bam<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-8-7" name="__codelineno-8-7" href="#getting-started-installation-__codelineno-8-7"></a><span class="w">    </span>--fasta<span class="w"> </span>/data/reference.fa<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-8-8" name="__codelineno-8-8" href="#getting-started-installation-__codelineno-8-8"></a><span class="w">    </span>--output-dir<span class="w"> </span>/data/results/
+<div class="highlight"><pre><span></span><code><a id="__codelineno-9-1" name="__codelineno-9-1" href="#getting-started-installation-__codelineno-9-1"></a>docker<span class="w"> </span>run<span class="w"> </span>--rm<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-9-2" name="__codelineno-9-2" href="#getting-started-installation-__codelineno-9-2"></a><span class="w">  </span>-v<span class="w"> </span><span class="k">$(</span><span class="nb">pwd</span><span class="k">)</span>:/data<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-9-3" name="__codelineno-9-3" href="#getting-started-installation-__codelineno-9-3"></a><span class="w">  </span>ghcr.io/msk-access/gbcms:X.Y.Z<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-9-4" name="__codelineno-9-4" href="#getting-started-installation-__codelineno-9-4"></a><span class="w">  </span>gbcms<span class="w"> </span>dna<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-9-5" name="__codelineno-9-5" href="#getting-started-installation-__codelineno-9-5"></a><span class="w">    </span>--variants<span class="w"> </span>/data/variants.vcf<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-9-6" name="__codelineno-9-6" href="#getting-started-installation-__codelineno-9-6"></a><span class="w">    </span>--bam<span class="w"> </span>/data/sample.bam<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-9-7" name="__codelineno-9-7" href="#getting-started-installation-__codelineno-9-7"></a><span class="w">    </span>--fasta<span class="w"> </span>/data/reference.fa<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-9-8" name="__codelineno-9-8" href="#getting-started-installation-__codelineno-9-8"></a><span class="w">    </span>--output-dir<span class="w"> </span>/data/results/
 </code></pre></div>
 <div class="admonition tip">
 <p class="admonition-title">Docker Volume</p>
@@ -2950,20 +2965,20 @@ provides these dependencies.</p>
 <h2 id="getting-started-installation-troubleshooting">Troubleshooting<a class="headerlink" href="#getting-started-installation-troubleshooting" title="Permanent link">¶</a></h2>
 <p>See the <strong><a href="#resources-troubleshooting">full Troubleshooting Guide</a></strong> for detailed solutions.</p>
 <p>Quick checks:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-9-1" name="__codelineno-9-1" href="#getting-started-installation-__codelineno-9-1"></a><span class="c1"># BAM index missing</span>
-<a id="__codelineno-9-2" name="__codelineno-9-2" href="#getting-started-installation-__codelineno-9-2"></a>samtools<span class="w"> </span>index<span class="w"> </span>sample.bam
-<a id="__codelineno-9-3" name="__codelineno-9-3" href="#getting-started-installation-__codelineno-9-3"></a>
-<a id="__codelineno-9-4" name="__codelineno-9-4" href="#getting-started-installation-__codelineno-9-4"></a><span class="c1"># FASTA index missing</span>
-<a id="__codelineno-9-5" name="__codelineno-9-5" href="#getting-started-installation-__codelineno-9-5"></a>samtools<span class="w"> </span>faidx<span class="w"> </span>reference.fa
-<a id="__codelineno-9-6" name="__codelineno-9-6" href="#getting-started-installation-__codelineno-9-6"></a>
-<a id="__codelineno-9-7" name="__codelineno-9-7" href="#getting-started-installation-__codelineno-9-7"></a><span class="c1"># Chromosome mismatch — compare names between FASTA, BAM, VCF/MAF</span>
-<a id="__codelineno-9-8" name="__codelineno-9-8" href="#getting-started-installation-__codelineno-9-8"></a>grep<span class="w"> </span><span class="s2">"^&gt;"</span><span class="w"> </span>reference.fa<span class="w"> </span><span class="p">|</span><span class="w"> </span>head<span class="w"> </span>-5
-<a id="__codelineno-9-9" name="__codelineno-9-9" href="#getting-started-installation-__codelineno-9-9"></a>samtools<span class="w"> </span>view<span class="w"> </span>-H<span class="w"> </span>sample.bam<span class="w"> </span><span class="p">|</span><span class="w"> </span>grep<span class="w"> </span><span class="s2">"^@SQ"</span><span class="w"> </span><span class="p">|</span><span class="w"> </span>head<span class="w"> </span>-5
+<div class="highlight"><pre><span></span><code><a id="__codelineno-10-1" name="__codelineno-10-1" href="#getting-started-installation-__codelineno-10-1"></a><span class="c1"># BAM index missing</span>
+<a id="__codelineno-10-2" name="__codelineno-10-2" href="#getting-started-installation-__codelineno-10-2"></a>samtools<span class="w"> </span>index<span class="w"> </span>sample.bam
+<a id="__codelineno-10-3" name="__codelineno-10-3" href="#getting-started-installation-__codelineno-10-3"></a>
+<a id="__codelineno-10-4" name="__codelineno-10-4" href="#getting-started-installation-__codelineno-10-4"></a><span class="c1"># FASTA index missing</span>
+<a id="__codelineno-10-5" name="__codelineno-10-5" href="#getting-started-installation-__codelineno-10-5"></a>samtools<span class="w"> </span>faidx<span class="w"> </span>reference.fa
+<a id="__codelineno-10-6" name="__codelineno-10-6" href="#getting-started-installation-__codelineno-10-6"></a>
+<a id="__codelineno-10-7" name="__codelineno-10-7" href="#getting-started-installation-__codelineno-10-7"></a><span class="c1"># Chromosome mismatch — compare names between FASTA, BAM, VCF/MAF</span>
+<a id="__codelineno-10-8" name="__codelineno-10-8" href="#getting-started-installation-__codelineno-10-8"></a>grep<span class="w"> </span><span class="s2">"^&gt;"</span><span class="w"> </span>reference.fa<span class="w"> </span><span class="p">|</span><span class="w"> </span>head<span class="w"> </span>-5
+<a id="__codelineno-10-9" name="__codelineno-10-9" href="#getting-started-installation-__codelineno-10-9"></a>samtools<span class="w"> </span>view<span class="w"> </span>-H<span class="w"> </span>sample.bam<span class="w"> </span><span class="p">|</span><span class="w"> </span>grep<span class="w"> </span><span class="s2">"^@SQ"</span><span class="w"> </span><span class="p">|</span><span class="w"> </span>head<span class="w"> </span>-5
 </code></pre></div>
 <p>For glibc errors, installation failures, or Docker permission issues, see <a href="#resources-troubleshooting-installation-issues">Troubleshooting → Installation Issues</a>.</p>
 <hr>
 <h2 id="getting-started-installation-upgrade">Upgrade<a class="headerlink" href="#getting-started-installation-upgrade" title="Permanent link">¶</a></h2>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-10-1" name="__codelineno-10-1" href="#getting-started-installation-__codelineno-10-1"></a>pip<span class="w"> </span>install<span class="w"> </span>--upgrade<span class="w"> </span>gbcms
+<div class="highlight"><pre><span></span><code><a id="__codelineno-11-1" name="__codelineno-11-1" href="#getting-started-installation-__codelineno-11-1"></a>pip<span class="w"> </span>install<span class="w"> </span>--upgrade<span class="w"> </span>gbcms
 </code></pre></div>
 <hr>
 <h2 id="getting-started-installation-related">Related<a class="headerlink" href="#getting-started-installation-related" title="Permanent link">¶</a></h2>
@@ -19793,8 +19808,12 @@ commit history and makes the back-merge conflict-free.</p>
 <p>The tag triggers <code>.github/workflows/release.yml</code>:</p>
 <ol>
 <li><strong>Verify</strong> — <code>scripts/release.py check --tag X.Y.Z</code>; every other job waits for it</li>
-<li><strong>Build one wheel</strong> — <code>cp311</code>, <code>manylinux_2_34_x86_64</code> — plus an <strong>sdist</strong> (jobs <code>linux</code>
-   and <code>sdist</code>)</li>
+<li><strong>Build one wheel</strong> — <code>cp311</code>, <code>manylinux_2_28_x86_64</code> (AlmaLinux 8, glibc 2.28: it
+   installs on RHEL 8 and newer) — plus an <strong>sdist</strong> (jobs <code>linux</code> and <code>sdist</code>). The
+   <code>linux</code> job builds with the local action <code>.github/actions/linux-wheel</code>; the <code>Wheels</code>
+   workflow builds with the same action on every change to the build and installs the
+   wheel in Rocky Linux 8 and 9 containers (pip with binary wheels only, the suite, and
+   a counting run whose output digests must match everywhere)</li>
 <li><strong>Publish to PyPI</strong> (via maturin)</li>
 <li><strong>Build Docker image</strong> → push to <code>ghcr.io/msk-access/gbcms:X.Y.Z</code></li>
 <li><strong>Create the GitHub Release</strong> — title and notes from the CHANGELOG section, the
@@ -19813,7 +19832,8 @@ build, so its checksums and attestations would no longer match what PyPI serves.
 <p class="admonition-title">One wheel, not a matrix</p>
 <p>This list previously claimed Linux x86_64 + aarch64, macOS x86_64 + arm64, and Windows.
 <code>release.yml</code> has only <code>linux</code> and <code>sdist</code> jobs, and 6.2.0 published exactly
-<code>gbcms-X.Y.Z-cp311-cp311-manylinux_2_34_x86_64.whl</code> and <code>gbcms-X.Y.Z.tar.gz</code>.</p>
+<code>gbcms-X.Y.Z-cp311-cp311-manylinux_2_34_x86_64.whl</code> and <code>gbcms-X.Y.Z.tar.gz</code> (the
+wheel is <code>manylinux_2_28</code> from 6.7.0).</p>
 <p>The practical consequence, worth knowing before telling a user to <code>pip install gbcms</code>:
 <strong>everyone not on cp311 manylinux x86_64 builds from the sdist</strong>, which needs a Rust
 toolchain. That includes macOS (Intel and Apple Silicon) and every Python other than
@@ -19939,6 +19959,11 @@ on <code>develop</code> fails until it is done.</p>
 <td style="text-align: left;"><code>release.yml</code></td>
 <td style="text-align: left;">Tag push <code>X.Y.Z</code></td>
 <td style="text-align: left;">Verify the version sources, build the wheel and sdist, publish PyPI and Docker, create the GitHub Release</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>wheels.yml</code></td>
+<td style="text-align: left;">Push/PR touching <code>rust/</code>, <code>pyproject.toml</code>, the wheel action or the check scripts; manual</td>
+<td style="text-align: left;">Build the Linux wheel with the release's action and install it in Rocky Linux 8 and 9 containers (<code>pip</code> with binary wheels only, the suite, and a counting run whose output digests must match everywhere); publishes nothing</td>
 </tr>
 <tr>
 <td style="text-align: left;"><code>nextflow-lint.yml</code></td>
@@ -20143,8 +20168,10 @@ count-affecting merge since the previous release, run on the changed rows only.<
    skipped one is still named. Row 0 is the previous release built as a wheel, so a
    difference between its image and a wheel build is named as such; the last row is
    the commit the release ships.</li>
-<li><strong>The wheels.</strong> One manylinux wheel per commit, built as the release builds it
-   (the <em>Checkpoint wheels</em> workflow; each wheel is an artifact named <code>wheel-&lt;sha&gt;</code>).
+<li><strong>The wheels.</strong> One manylinux wheel per commit, built as releases up to 6.6.0 built
+   theirs (the <em>Checkpoint wheels</em> workflow, <code>manylinux_2_34</code> with the system OpenSSL,
+   because commits before 6.7.0 still link libcurl; each wheel is an artifact named
+   <code>wheel-&lt;sha&gt;</code>).
    Before a release the workflow is not yet on the default branch, where GitHub
    requires a manually run workflow to be, so start it with a push: a branch
    <code>checkpoint-wheels/X.Y.Z</code> that commits the list as
@@ -20210,6 +20237,27 @@ count-affecting merge since the previous release, run on the changed rows only.<
 <p>The format is based on <a href="https://keepachangelog.com/en/1.0.0/">Keep a Changelog</a>,
 and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semantic Versioning</a>.</p>
 <h2 id="development-changelog-unreleased">[Unreleased]<a class="headerlink" href="#development-changelog-unreleased" title="Permanent link">¶</a></h2>
+<h3 id="development-changelog-changed-the-linux-wheel-installs-on-rhel-8-manylinux_2_28-and-the-extension-links-no-openssl-or-libcurl-234">Changed — the Linux wheel installs on RHEL 8 (manylinux_2_28), and the extension links no OpenSSL or libcurl (#234)<a class="headerlink" href="#development-changelog-changed-the-linux-wheel-installs-on-rhel-8-manylinux_2_28-and-the-extension-links-no-openssl-or-libcurl-234" title="Permanent link">¶</a></h3>
+<ul>
+<li>The release builds its Linux wheel in the <code>manylinux_2_28</code> image (AlmaLinux 8, glibc 2.28),
+  not <code>manylinux_2_34</code>. The wheel now installs on RHEL 8 and newer; before, <code>pip install</code> on
+  RHEL 8 built the source distribution. (Python 3.11 only until the wheels of other Pythons.)</li>
+<li>Why the build image had to change: the curl that rust-htslib builds in refuses OpenSSL older
+  than 3.0, and RHEL 8 ships 1.1.1. The fix is not a newer OpenSSL but none: rust-htslib is
+  built without its default <code>curl</code> feature, which only serves remote files (http, https, s3,
+  gcs), and gbcms opens only paths that exist. <code>curl-sys</code>, <code>openssl-sys</code> and <code>openssl-src</code> leave
+  <code>rust/Cargo.lock</code>, and with them the OpenSSL license question of a wheel that carries
+  OpenSSL. Counts are unchanged: a counting run on a synthetic data set (SNV, MNV, insertion,
+  deletion; two paired-end BAMs; <abbr title="Mutant Fragment Size Distribution - Insert-size analysis for REF vs ALT fragments">mFSD</abbr> on) writes byte-identical output with and without the
+  feature. On macOS arm64 the wheel falls from 5.77 to 3.20 MB.</li>
+<li>New <code>Wheels</code> workflow and local action <code>.github/actions/linux-wheel</code> (the recipe the
+  release also uses): on a change to the build, it builds the wheel and installs it in Rocky
+  Linux 8 and 9 containers with <code>pip install --only-binary=:all:</code>, runs the test suite there,
+  and compares the output digests of a counting run (<code>scripts/wheel_fixture_run.py</code>) between
+  Rocky 8, Rocky 9 and the <code>manylinux_2_34</code> wheel that earlier releases shipped. The same
+  steps run on any RHEL machine with <code>scripts/check_wheel.sh</code>. <code>checkpoint-wheels.yml</code> is
+  unchanged: it builds older commits, which still link libcurl, so it keeps <code>manylinux_2_34</code>.</li>
+</ul>
 <h3 id="development-changelog-fixed-the-smith-waterman-local-re-scorings-partial_alt-reads-the-scores-that-made-the-call-195">Fixed — the Smith-Waterman local re-scoring's <code>partial_alt</code> reads the scores that made the call (#195)<a class="headerlink" href="#development-changelog-fixed-the-smith-waterman-local-re-scorings-partial_alt-reads-the-scores-that-made-the-call-195" title="Permanent link">¶</a></h3>
 <ul>
 <li>Where a complex row's semiglobal scores are unreliable, the <code>sw</code> step re-scores with a local
@@ -24464,14 +24512,14 @@ should get a narrow public wrapper (see <code>src/gbcms/observations.py</code>) 
 <details class="question">
 <summary>htslib linking error: <code>cannot find -lhts</code></summary>
 <p>The Rust backend compiles htslib statically. Ensure compression library headers are present:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#resources-troubleshooting-__codelineno-3-1"></a>apt-get<span class="w"> </span>install<span class="w"> </span>zlib1g-dev<span class="w"> </span>libbz2-dev<span class="w"> </span>liblzma-dev<span class="w"> </span>libcurl4-openssl-dev
+<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#resources-troubleshooting-__codelineno-3-1"></a>apt-get<span class="w"> </span>install<span class="w"> </span>zlib1g-dev<span class="w"> </span>libbz2-dev<span class="w"> </span>liblzma-dev
 </code></pre></div>
 </details>
 <details class="question">
-<summary><code>GLIBC_2.34 not found</code> when installing via pip</summary>
-<p>Your system has an older glibc (RHEL 8 / CentOS 8 / <abbr title="High-Performance Computing - Cluster computing environment">HPC</abbr>). The one prebuilt wheel (CPython 3.11, Linux x86_64) requires glibc 2.34+; other platforms build from source (<a href="#getting-started-installation-platform-support">Platform support</a>).
-Use the <a href="#getting-started-installation-legacy-linux-rhel-8-hpc">Legacy Linux</a> install path
-(micromamba + clangdev + source install).</p>
+<summary>pip builds from source, or <code>GLIBC_2.28 not found</code></summary>
+<p>The one prebuilt wheel (CPython 3.11, Linux x86_64) needs glibc 2.28 or newer (RHEL 8 and newer) and pip 20.3 or newer. With another Python, an older glibc or an older pip, pip builds the source distribution instead (<a href="#getting-started-installation-platform-support">Platform support</a>).
+On RHEL 8, install Python 3.11 and use a virtual environment (<code>python3.11 -m venv</code>, then <code>pip install --upgrade pip</code>); see the
+<a href="#getting-started-installation-legacy-linux-rhel-8-hpc">Legacy Linux</a> install path. For a Python without a wheel, or glibc older than 2.28, use that page's micromamba + clangdev source install.</p>
 </details>
 <details class="question">
 <summary><code>LIBCLANG_PATH</code> not set error during build</summary>

@@ -79,7 +79,7 @@
             body[data-md-color-scheme="slate"] .gslide-title { color: var(--md-default-fg-color); }
             body[data-md-color-scheme="slate"] .gslide-desc { color: var(--md-default-fg-color); }
         </style><meta name="panzoom-theme" content="material">
-<meta name="panzoom-data" content='{"selectors": [".mermaid", ".d2"], "initial_zoom_level": 1.0}'> </head>
+<meta name="panzoom-data" content='{"selectors": [".d2", ".mermaid"], "initial_zoom_level": 1.0}'> </head>
   
   
     
@@ -2226,8 +2226,10 @@ count-affecting merge since the previous release, run on the changed rows only.<
    skipped one is still named. Row 0 is the previous release built as a wheel, so a
    difference between its image and a wheel build is named as such; the last row is
    the commit the release ships.</li>
-<li><strong>The wheels.</strong> One manylinux wheel per commit, built as the release builds it
-   (the <em>Checkpoint wheels</em> workflow; each wheel is an artifact named <code>wheel-&lt;sha&gt;</code>).
+<li><strong>The wheels.</strong> One manylinux wheel per commit, built as releases up to 6.6.0 built
+   theirs (the <em>Checkpoint wheels</em> workflow, <code>manylinux_2_34</code> with the system OpenSSL,
+   because commits before 6.7.0 still link libcurl; each wheel is an artifact named
+   <code>wheel-&lt;sha&gt;</code>).
    Before a release the workflow is not yet on the default branch, where GitHub
    requires a manually run workflow to be, so start it with a push: a branch
    <code>checkpoint-wheels/X.Y.Z</code> that commits the list as
@@ -2299,7 +2301,7 @@ count-affecting merge since the previous release, run on the changed rows only.<
     <span class="md-icon" title="Last update">
       <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M21 13.1c-.1 0-.3.1-.4.2l-1 1 2.1 2.1 1-1c.2-.2.2-.6 0-.8l-1.3-1.3c-.1-.1-.2-.2-.4-.2m-1.9 1.8-6.1 6V23h2.1l6.1-6.1zM12.5 7v5.2l4 2.4-1 1L11 13V7zM11 21.9c-5.1-.5-9-4.8-9-9.9C2 6.5 6.5 2 12 2c5.3 0 9.6 4.1 10 9.3-.3-.1-.6-.2-1-.2s-.7.1-1 .2C19.6 7.2 16.2 4 12 4c-4.4 0-8 3.6-8 8 0 4.1 3.1 7.5 7.1 7.9l-.1.2z"></path></svg>
     </span>
-    <span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-timeago" title="October 9, 2026 03:49:56 UTC"><span class="timeago" datetime="2026-10-09T03:49:56+00:00" locale="en"></span></span><span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-iso_date" title="October 9, 2026 03:49:56 UTC">2026-10-09</span>
+    <span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-timeago" title="October 30, 2026 20:35:42 UTC"><span class="timeago" datetime="2026-10-30T20:35:42+00:00" locale="en"></span></span><span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-iso_date" title="October 30, 2026 20:35:42 UTC">2026-10-30</span>
   </span>
 
     

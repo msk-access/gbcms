@@ -29,7 +29,7 @@
             body[data-md-color-scheme="slate"] .gslide-title { color: var(--md-default-fg-color); }
             body[data-md-color-scheme="slate"] .gslide-desc { color: var(--md-default-fg-color); }
         </style><meta name="panzoom-theme" content="material">
-<meta name="panzoom-data" content='{"selectors": [".mermaid", ".d2"], "initial_zoom_level": 1.0}'> </head>
+<meta name="panzoom-data" content='{"selectors": [".d2", ".mermaid"], "initial_zoom_level": 1.0}'> </head>
 <body data-md-color-accent="custom" data-md-color-primary="custom" data-md-color-scheme="default" dir="ltr">
 <input autocomplete="off" class="md-toggle" data-md-toggle="drawer" id="__drawer" type="checkbox">
 <input autocomplete="off" class="md-toggle" data-md-toggle="search" id="__search" type="checkbox">
@@ -769,6 +769,15 @@
 </a>
 <nav aria-label="[Unreleased]" class="md-nav">
 <ul class="md-nav__list">
+<li class="md-nav__item">
+<a class="md-nav__link" href="#changed-the-linux-wheel-installs-on-rhel-8-manylinux_2_28-and-the-extension-links-no-openssl-or-libcurl-234">
+<span class="md-ellipsis">
+      
+        Changed — the Linux wheel installs on RHEL 8 (manylinux_2_28), and the extension links no OpenSSL or libcurl (#234)
+      
+    </span>
+</a>
+</li>
 <li class="md-nav__item">
 <a class="md-nav__link" href="#fixed-the-smith-waterman-local-re-scorings-partial_alt-reads-the-scores-that-made-the-call-195">
 <span class="md-ellipsis">
@@ -3035,6 +3044,27 @@
 <p>The format is based on <a href="https://keepachangelog.com/en/1.0.0/">Keep a Changelog</a>,
 and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semantic Versioning</a>.</p>
 <h2 id="unreleased">[Unreleased]<a class="headerlink" href="#unreleased" title="Permanent link">¶</a></h2>
+<h3 id="changed-the-linux-wheel-installs-on-rhel-8-manylinux_2_28-and-the-extension-links-no-openssl-or-libcurl-234">Changed — the Linux wheel installs on RHEL 8 (manylinux_2_28), and the extension links no OpenSSL or libcurl (#234)<a class="headerlink" href="#changed-the-linux-wheel-installs-on-rhel-8-manylinux_2_28-and-the-extension-links-no-openssl-or-libcurl-234" title="Permanent link">¶</a></h3>
+<ul>
+<li>The release builds its Linux wheel in the <code>manylinux_2_28</code> image (AlmaLinux 8, glibc 2.28),
+  not <code>manylinux_2_34</code>. The wheel now installs on RHEL 8 and newer; before, <code>pip install</code> on
+  RHEL 8 built the source distribution. (Python 3.11 only until the wheels of other Pythons.)</li>
+<li>Why the build image had to change: the curl that rust-htslib builds in refuses OpenSSL older
+  than 3.0, and RHEL 8 ships 1.1.1. The fix is not a newer OpenSSL but none: rust-htslib is
+  built without its default <code>curl</code> feature, which only serves remote files (http, https, s3,
+  gcs), and gbcms opens only paths that exist. <code>curl-sys</code>, <code>openssl-sys</code> and <code>openssl-src</code> leave
+  <code>rust/Cargo.lock</code>, and with them the OpenSSL license question of a wheel that carries
+  OpenSSL. Counts are unchanged: a counting run on a synthetic data set (SNV, MNV, insertion,
+  deletion; two paired-end BAMs; <abbr title="Mutant Fragment Size Distribution - Insert-size analysis for REF vs ALT fragments">mFSD</abbr> on) writes byte-identical output with and without the
+  feature. On macOS arm64 the wheel falls from 5.77 to 3.20 MB.</li>
+<li>New <code>Wheels</code> workflow and local action <code>.github/actions/linux-wheel</code> (the recipe the
+  release also uses): on a change to the build, it builds the wheel and installs it in Rocky
+  Linux 8 and 9 containers with <code>pip install --only-binary=:all:</code>, runs the test suite there,
+  and compares the output digests of a counting run (<code>scripts/wheel_fixture_run.py</code>) between
+  Rocky 8, Rocky 9 and the <code>manylinux_2_34</code> wheel that earlier releases shipped. The same
+  steps run on any RHEL machine with <code>scripts/check_wheel.sh</code>. <code>checkpoint-wheels.yml</code> is
+  unchanged: it builds older commits, which still link libcurl, so it keeps <code>manylinux_2_34</code>.</li>
+</ul>
 <h3 id="fixed-the-smith-waterman-local-re-scorings-partial_alt-reads-the-scores-that-made-the-call-195">Fixed — the Smith-Waterman local re-scoring's <code>partial_alt</code> reads the scores that made the call (#195)<a class="headerlink" href="#fixed-the-smith-waterman-local-re-scorings-partial_alt-reads-the-scores-that-made-the-call-195" title="Permanent link">¶</a></h3>
 <ul>
 <li>Where a complex row's semiglobal scores are unreliable, the <code>sw</code> step re-scores with a local

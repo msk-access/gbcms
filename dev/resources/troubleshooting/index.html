@@ -79,7 +79,7 @@
             body[data-md-color-scheme="slate"] .gslide-title { color: var(--md-default-fg-color); }
             body[data-md-color-scheme="slate"] .gslide-desc { color: var(--md-default-fg-color); }
         </style><meta name="panzoom-theme" content="material">
-<meta name="panzoom-data" content='{"selectors": [".mermaid", ".d2"], "initial_zoom_level": 1.0}'> </head>
+<meta name="panzoom-data" content='{"selectors": [".d2", ".mermaid"], "initial_zoom_level": 1.0}'> </head>
   
   
     
@@ -2151,14 +2151,14 @@
 <details class="question">
 <summary>htslib linking error: <code>cannot find -lhts</code></summary>
 <p>The Rust backend compiles htslib statically. Ensure compression library headers are present:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a>apt-get<span class="w"> </span>install<span class="w"> </span>zlib1g-dev<span class="w"> </span>libbz2-dev<span class="w"> </span>liblzma-dev<span class="w"> </span>libcurl4-openssl-dev
+<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a>apt-get<span class="w"> </span>install<span class="w"> </span>zlib1g-dev<span class="w"> </span>libbz2-dev<span class="w"> </span>liblzma-dev
 </code></pre></div>
 </details>
 <details class="question">
-<summary><code>GLIBC_2.34 not found</code> when installing via pip</summary>
-<p>Your system has an older glibc (RHEL 8 / CentOS 8 / <abbr title="High-Performance Computing - Cluster computing environment">HPC</abbr>). The one prebuilt wheel (CPython 3.11, Linux x86_64) requires glibc 2.34+; other platforms build from source (<a href="../../getting-started/installation/#platform-support">Platform support</a>).
-Use the <a href="../../getting-started/installation/#legacy-linux-rhel-8-hpc">Legacy Linux</a> install path
-(micromamba + clangdev + source install).</p>
+<summary>pip builds from source, or <code>GLIBC_2.28 not found</code></summary>
+<p>The one prebuilt wheel (CPython 3.11, Linux x86_64) needs glibc 2.28 or newer (RHEL 8 and newer) and pip 20.3 or newer. With another Python, an older glibc or an older pip, pip builds the source distribution instead (<a href="../../getting-started/installation/#platform-support">Platform support</a>).
+On RHEL 8, install Python 3.11 and use a virtual environment (<code>python3.11 -m venv</code>, then <code>pip install --upgrade pip</code>); see the
+<a href="../../getting-started/installation/#legacy-linux-rhel-8-hpc">Legacy Linux</a> install path. For a Python without a wheel, or glibc older than 2.28, use that page's micromamba + clangdev source install.</p>
 </details>
 <details class="question">
 <summary><code>LIBCLANG_PATH</code> not set error during build</summary>
@@ -2571,7 +2571,7 @@ genuinely has nothing to count.</p>
     <span class="md-icon" title="Last update">
       <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M21 13.1c-.1 0-.3.1-.4.2l-1 1 2.1 2.1 1-1c.2-.2.2-.6 0-.8l-1.3-1.3c-.1-.1-.2-.2-.4-.2m-1.9 1.8-6.1 6V23h2.1l6.1-6.1zM12.5 7v5.2l4 2.4-1 1L11 13V7zM11 21.9c-5.1-.5-9-4.8-9-9.9C2 6.5 6.5 2 12 2c5.3 0 9.6 4.1 10 9.3-.3-.1-.6-.2-1-.2s-.7.1-1 .2C19.6 7.2 16.2 4 12 4c-4.4 0-8 3.6-8 8 0 4.1 3.1 7.5 7.1 7.9l-.1.2z"></path></svg>
     </span>
-    <span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-timeago" title="October 28, 2026 23:02:46 UTC"><span class="timeago" datetime="2026-10-28T23:02:46+00:00" locale="en"></span></span><span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-iso_date" title="October 28, 2026 23:02:46 UTC">2026-10-28</span>
+    <span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-timeago" title="October 30, 2026 20:35:42 UTC"><span class="timeago" datetime="2026-10-30T20:35:42+00:00" locale="en"></span></span><span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-iso_date" title="October 30, 2026 20:35:42 UTC">2026-10-30</span>
   </span>
 
     
