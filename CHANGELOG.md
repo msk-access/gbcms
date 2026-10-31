@@ -20,7 +20,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Python version would have had them replace the image's locked ones. Checked on the base
   image with Docker (a package in a bound HOME is imported; with `PYTHONNOUSERSITE=1` it is
   not). The image now sets `PYTHONNOUSERSITE=1`, and the CI run puts a package that raises on
-  import in the caller's home first, so a regression fails loudly. A `PYTHONPATH` in the
+  import in the caller's home first, in the folder the image's own Python reads (it asks that
+  Python, so a Python upgrade moves the trap with it), and shows that Python reads it once
+  the setting is undone. A regression, or a trap in the wrong folder, fails loudly. A `PYTHONPATH` in the
   caller's environment still reaches the container (Apptainer passes the environment on;
   `--cleanenv` stops it): the installation page says so.
 

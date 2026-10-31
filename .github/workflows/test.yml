@@ -260,8 +260,15 @@ jobs:
           mkdir -p work/docker work/apptainer
           # A package in the caller's HOME, which Apptainer binds into the container: a
           # Python imports it before the image's own unless the image turns the user site
-          # off. The Docker run below does not see HOME.
-          decoy="$HOME/.local/lib/python3.11/site-packages/pydantic"
+          # off. The folder is the one the image's own Python reads, for this HOME (so a
+          # new Python in the image moves the trap with it). The Docker runs do not see HOME.
+          site_dir="$(docker run --rm -e HOME="$HOME" --entrypoint python gbcms:test \
+            -c 'import site; print(site.getusersitepackages())')"
+          case "$site_dir" in
+            "$HOME"/*) ;;
+            *) echo "the image's user site $site_dir is not under HOME $HOME" >&2; exit 1 ;;
+          esac
+          decoy="$site_dir/pydantic"
           mkdir -p "$decoy"
           echo 'raise ImportError("imported from the caller HOME, not from the image")' > "$decoy/__init__.py"
 
@@ -271,6 +278,13 @@ jobs:
             --entrypoint python gbcms:test /scripts/wheel_fixture_run.py /work/fixture > work/docker.txt
 
           apptainer build gbcms.sif docker-daemon://gbcms:test
+          # The trap is live: with the image's setting undone, its Python imports the decoy.
+          # Without this, a trap in the wrong folder would pass for a guard that works.
+          if apptainer exec gbcms.sif env -u PYTHONNOUSERSITE python -c 'import pydantic' 2> work/decoy.err; then
+            echo "the decoy is not where the image's Python looks" >&2
+            exit 1
+          fi
+          grep -q "imported from the caller HOME" work/decoy.err
           # exec, through bash, in the read-only SIF with the data folders bound, as a task runs
           apptainer exec gbcms.sif gbcms --version
           apptainer exec gbcms.sif python -m pip check

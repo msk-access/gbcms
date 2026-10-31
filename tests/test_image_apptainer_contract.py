@@ -10,7 +10,10 @@ packages until the image turned the user site off. Contracts:
 - the image sets PYTHONNOUSERSITE;
 - the job that builds the image installs Apptainer, builds a SIF from the Docker image,
   runs the CLI and a counting run in it with a hostile package in the caller's HOME, and
-  fails unless the outputs equal the Docker run's.
+  fails unless the outputs equal the Docker run's;
+- the hostile package sits in the folder the image's own Python reads (asked of that
+  Python, never a version written into the workflow), and the job shows that it is read
+  once the image's setting is undone.
 """
 
 import re
@@ -52,7 +55,23 @@ def test_ci_runs_the_image_through_apptainer_and_compares_with_docker():
 
 def test_ci_puts_a_hostile_package_in_the_callers_home_before_the_apptainer_run():
     runs = _runs(_image_job())
-    decoy = runs.index(".local/lib/python3.11/site-packages/pydantic")
+    decoy = runs.index('decoy="$site_dir/pydantic"')
     assert decoy < runs.index("apptainer exec"), "the decoy must exist before the run"
     # Apptainer binds HOME by default; the Docker reference run does not see it
     assert "--no-home" not in runs and "--containall" not in runs
+
+
+def test_the_hostile_package_sits_where_the_images_own_python_looks():
+    """A Python upgrade in the image moves the user site (`.local/lib/python3.N/...`): a path
+    with a version written into the workflow would stop being read and the check would pass
+    on a guard that guards nothing."""
+    runs = _runs(_image_job())
+    before_decoy = runs.split('decoy="')[0]
+    assert "site.getusersitepackages()" in before_decoy and "gbcms:test" in before_decoy
+    assert not re.search(r"\.local/lib/python3", runs), "a Python version is written in the path"
+    # the trap is shown to be live when the image's setting is undone, and the job stops if not
+    live = "apptainer exec gbcms.sif env -u PYTHONNOUSERSITE python -c 'import pydantic'"
+    assert live in runs
+    assert 'grep -q "imported from the caller HOME" work/decoy.err' in runs
+    # ... before the runs that rely on the guard
+    assert runs.index(live) < runs.index("apptainer exec gbcms.sif gbcms --version")
