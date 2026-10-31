@@ -69,9 +69,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - One presence test, RJ-25's (`carrier::is_found`: 3 fragments and 5% of the fragments
     spelling the allele it is nearest), asked by the exact-carrier guard, the junction guard and
     the sequence judge's found alleles; the judge counted reads against 5% of all the site's
-    reads. On HG002 nothing moves on the rules path; under the sequence judge 101 reads on 25
-    rows (18 distinct) move. One tolerance, RJ-27's (`carrier::one_error_forgiven`), for the
-    carrier rule and the junction judge's telling; no count changes.
+    reads. This changes presence for every allele the sequence judge finds, at every event (SNVs,
+    MNVs and short indels as well), not only for #297's unit counts. On HG002 nothing moves on
+    the rules path; under the sequence judge 101 reads on 25 rows (18 distinct) move. One
+    tolerance, RJ-27's (`carrier::one_error_forgiven`), for the carrier rule and the junction
+    judge's telling; no count changes.
+  - Round 2 of the close (operator, 2026-10-31), two more places closed on the same principle:
+    a read placed from the right flank (its junction bases in a left soft clip) that spells an
+    unlisted other unit count is partial evidence like one placed from the left, not depth only
+    (only the aligner's own doubt, RJ-29, makes it depth only); and the sequence judge's
+    presence test divides by the fragments spelling the allele the found one is nearest (REF's
+    or X's, by the bases that differ over the window; the larger when as near), not by every
+    fragment either given allele beats it on, and a fragment whose mates disagree counts for
+    neither, as the junction guard's `conflict`. On HG002 the right-flank change moves no read;
+    the judge's presence test moves nothing on the rules path and, under the sequence judge, 37
+    read calls on 8 arm rows (6 distinct rows), 7 of them (5 distinct rows) in the counts: four
+    rows lose a found allele because a telling fragment's mates disagree, one (a 106-bp
+    insertion) gains one and 11 of its 79 ALT reads become partial evidence, and one read moves
+    from depth to partial evidence.
+  - Named limits until the sequence judge is the default (#331): under the judge a read that
+    spells a deletion of another length at X's anchor, below the presence floor, is depth only
+    where the rules path calls it partial; and on the rules path the carriers of the deletion
+    that also carry an unlisted 1-bp insertion are all held, where the judge places the insertion
+    as a separate event and counts ALT those that reach the run's end (RJ-24).
 
 ### Added — a macOS wheel for Apple silicon (arm64) (#237)
 

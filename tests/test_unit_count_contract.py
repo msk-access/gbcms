@@ -467,8 +467,10 @@ def test_a_listed_neighbour_makes_no_other_count(tmp_path, judge, listed):
     vs = [_rs.Variant("1", p, r, al, kind) for kind, (p, r, al) in kinds]
     pvs = _rs.prepare_variants(vs, fa, 5, False, 1, True, read_judge=judge)
     kw = {"reference_fasta": fa} if judge == "sequence" else {}
-    got = count_checked(bam, [pv.variant for pv in pvs], read_judge=judge, **kw)[0]
-    _invariants(got)
+    rows = count_checked(bam, [pv.variant for pv in pvs], read_judge=judge, **kw)
+    for row in rows:
+        _invariants(row)
+    got = rows[0]
     assert (got.rd, got.ad) == ((6, 6) if listed else (6, 0) if judge == "rules" else (6, 3))
 
 
