@@ -401,13 +401,41 @@ fn misses_over(seq: &[u8], quals: &[u8], min_baseq: u8, s: usize, hap: &[u8], fr
     (seen > 0).then_some(misses)
 }
 
-/// Whether the read fits the given deletion with a listed neighbour (`neighbours`, from
-/// [`with_listed_rows`]) over offsets `from` up to query position `end` as well as allele `b`,
-/// and but for one base: it is that, the input taken as correct (RJ-24), never `b`.
+/// Whether the read's confident bases show a listed row's change (`x`: the ALT's bases `alt`
+/// with that row applied, [`with_listed_rows`]): at one base or more of offsets `from` up to
+/// query position `end` where `x` and the ALT differ, it reads `x`'s base. A row whose change
+/// no base the read holds shows (it lies past the read, or before `from` where the read cannot
+/// tell), or whose base the read reads as the ALT's or not confidently, is not carried by it.
 #[allow(clippy::too_many_arguments)]
-fn a_listed_neighbour(seq: &[u8], quals: &[u8], min_baseq: u8, s: usize, b: &[u8], neighbours: &[Vec<u8>], from: usize, end: usize) -> bool {
+fn shows_change(seq: &[u8], quals: &[u8], min_baseq: u8, s: usize, alt: &[u8], x: &[u8], from: usize, end: usize) -> bool {
+    (from..x.len()).take_while(|&k| s + k < end && s + k < seq.len() && s + k < quals.len()).any(|k| {
+        let (base, bq) = (seq[s + k].to_ascii_uppercase(), quals[s + k]);
+        matches!(x[k], b'A' | b'C' | b'G' | b'T') && alt.get(k).is_some_and(|&y| y != x[k]) && base != WILD && bq >= min_baseq && base == x[k]
+    })
+}
+
+/// Whether the read is the given deletion with a listed neighbour (`neighbours`, from
+/// [`with_listed_rows`], over the ALT's bases `alt`): its confident bases show that row's change
+/// ([`shows_change`]) and fit the deletion with it over offsets `from` up to query position `end`
+/// as well as allele `b`, and but for one base. It is that, the input taken as correct
+/// (RJ-24), never `b`; a read that shows no listed row's change is not (RJ-28: a row's count
+/// does not depend on an input row the read does not carry).
+#[allow(clippy::too_many_arguments)]
+fn a_listed_neighbour(
+    seq: &[u8],
+    quals: &[u8],
+    min_baseq: u8,
+    s: usize,
+    b: &[u8],
+    (alt, neighbours): (&[u8], &[Vec<u8>]),
+    from: usize,
+    end: usize,
+) -> bool {
     let own = misses_over(seq, quals, min_baseq, s, b, from, end).unwrap_or(0);
-    neighbours.iter().any(|x| misses_over(seq, quals, min_baseq, s, x, from, end).is_some_and(|m| m <= 1 && m <= own))
+    neighbours.iter().any(|x| {
+        misses_over(seq, quals, min_baseq, s, x, from, end).is_some_and(|m| m <= 1 && m <= own)
+            && shows_change(seq, quals, min_baseq, s, alt, x, from, end)
+    })
 }
 
 /// The row of the haplotype that, from the deletion's first base `lo` (offset in `w`,
@@ -633,7 +661,7 @@ pub(crate) fn classify(
             let end = splice_after(record, hi).unwrap_or(seq.len()).min(readable.1);
             let untold = g.unit_others.iter().find(|h| {
                 tells(&seq, quals, min_baseq, lo as i64, (&g.unit_alt, &h.bases), h.first_diff, end) != Some(true)
-                    && !a_listed_neighbour(&seq, quals, min_baseq, lo, &h.bases, &g.unit_neighbours, h.first_diff, end)
+                    && !a_listed_neighbour(&seq, quals, min_baseq, lo, &h.bases, (&g.unit_alt, &g.unit_neighbours), h.first_diff, end)
             });
             if let Some(h) = untold {
                 trace!(
@@ -1029,7 +1057,8 @@ fn present_hidden(
         for (h, slot) in reach.iter().zip(calls.iter_mut()) {
             let told_here = tells(&seq, quals, min_baseq, q as i64, (&alt, &h.bases), h.first_diff, end);
             // a read the hold would take from the ALT, as `classify` holds one
-            slot.held |= told_here != Some(true) && !a_listed_neighbour(&seq, quals, min_baseq, q, &h.bases, &neighbours, h.first_diff, end);
+            slot.held |= told_here != Some(true)
+                && !a_listed_neighbour(&seq, quals, min_baseq, q, &h.bases, (&alt, &neighbours), h.first_diff, end);
             slot.alt |= told_here == Some(true);
             // read in full: [`PAST`] bases on from the first difference, as the guard reads an
             // allele on past the windows before it places a fragment
@@ -1045,7 +1074,7 @@ fn present_hidden(
             if !told
                 && (!here
                     || !spells(&seq, quals, min_baseq, q, (&alt, &h.bases, &reference), n, end)
-                    || a_listed_neighbour(&seq, quals, min_baseq, q, &h.bases, &neighbours, n, end))
+                    || a_listed_neighbour(&seq, quals, min_baseq, q, &h.bases, (&alt, &neighbours), n, end))
             {
                 continue;
             }
@@ -1424,6 +1453,30 @@ mod tests {
         assert_eq!(tell(b"CCCCGGGGAAT", &low, 11), None);
         // one base of each: neither is told
         assert_eq!(tell(b"CCCCGGGGATT", &q, 11), None);
+    }
+
+    #[test]
+    fn a_read_shows_a_listed_rows_change_only_where_it_reads_the_rows_base() {
+        // The ALT's bases, the ALT with a listed SNV at offset 8 (C for G), and with a listed
+        // 1-bp insertion after offset 10 (an A): a read is the deletion with that neighbour
+        // only where its confident bases, past `from`, read the row's change.
+        let alt = b"CCCCGGGGCCTTTGGAAC".as_slice();
+        let mut snv = alt.to_vec();
+        snv[8] = b'G';
+        let ins = [&alt[..10], b"TA".as_slice(), &alt[11..]].concat();
+        let q = [30u8; 19];
+        let shows = |read: &[u8], quals: &[u8], x: &[u8], from: usize, end: usize| shows_change(read, quals, 20, 0, alt, x, from, end);
+        assert!(shows(&snv, &q, &snv, 8, 18), "a read with the SNV's base shows it");
+        assert!(!shows(alt, &q, &snv, 8, 18), "the ALT's base there: no");
+        assert!(!shows(&snv, &q, &snv, 9, 18), "the change lies before `from`: the read cannot show it there");
+        assert!(!shows(&snv, &q, &snv, 8, 8), "the read ends before it");
+        let mut low = q;
+        low[8] = 10;
+        assert!(!shows(&snv, &low, &snv, 8, 18), "below --min-baseq: not confident");
+        assert!(shows(&ins, &q, &ins, 8, 19), "a read with the insertion shifts onto the row's bases");
+        assert!(!shows(alt, &q, &ins, 8, 18), "the ALT's bases over the same offsets: no");
+        // a deletion row 270 bases past the read changes nothing the read holds: x is the ALT
+        assert!(!shows(alt, &q, alt, 8, 18), "no difference to show");
     }
 
     #[test]

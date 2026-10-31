@@ -94,11 +94,26 @@ def _reads(a, name, hap, shape, *, size, k=6, tag="", clip=False):
     return out
 
 
+def _kind(ref_allele, alt_allele):
+    """The variant kind of a row, from its alleles."""
+    if len(ref_allele) == len(alt_allele):
+        return "SNP"
+    return "DEL" if len(ref_allele) > len(alt_allele) else "INS"
+
+
+def _invariants(c):
+    """The four counting invariants (AGENTS.md), asserted on one row's counts."""
+    assert c.dp >= c.rd + c.ad
+    assert c.dpf >= c.rdf + c.adf
+    assert c.rd == c.rd_fwd + c.rd_rev
+    assert c.ad == c.ad_fwd + c.ad_rev
+
+
 def _count(tmp_path, ref, rows, reads, judge, listed=False):
     """Counts per row, each with its UNIT_COUNT_UNSPANNED field; `listed`: the rows are
     co-annotated siblings of one another."""
     fa, bam = write_contig(tmp_path, ref, reads, "c")
-    vs = [_rs.Variant("1", p, r, al, "DEL") for (p, r, al) in rows]
+    vs = [_rs.Variant("1", p, r, al, _kind(r, al)) for (p, r, al) in rows]
     pvs = _rs.prepare_variants(vs, fa, 5, False, 1, True, read_judge=judge)
     variants = [pv.variant for pv in pvs]
     kw = {"reference_fasta": fa} if judge == "sequence" else {}
@@ -106,8 +121,7 @@ def _count(tmp_path, ref, rows, reads, judge, listed=False):
         kw["sibling_variants"] = [[w for w in variants if w is not v] for v in variants]
     got = count_checked(bam, variants, read_judge=judge, **kw)
     for c in got:
-        assert c.dp >= c.rd + c.ad and c.dpf >= c.rdf + c.adf
-        assert c.rd == c.rd_fwd + c.rd_rev and c.ad == c.ad_fwd + c.ad_rev
+        _invariants(c)
     return [((c.rd, c.ad, c.partial_alt, c.dp), c.unit_count_unspanned) for c in got]
 
 
@@ -532,7 +546,7 @@ def test_the_count_that_holds_the_calls_is_named(tmp_path, judge, given):
 def _counts(tmp_path, ref, rows, reads, judge, listed=False):
     """The `BaseCounts` of each row, the four counting invariants asserted on every one."""
     fa, bam = write_contig(tmp_path, ref, reads, "c")
-    vs = [_rs.Variant("1", p, r, al, "DEL") for (p, r, al) in rows]
+    vs = [_rs.Variant("1", p, r, al, _kind(r, al)) for (p, r, al) in rows]
     pvs = _rs.prepare_variants(vs, fa, 5, False, 1, True, read_judge=judge)
     variants = [pv.variant for pv in pvs]
     kw = {"reference_fasta": fa} if judge == "sequence" else {}
@@ -540,10 +554,7 @@ def _counts(tmp_path, ref, rows, reads, judge, listed=False):
         kw["sibling_variants"] = [[w for w in variants if w is not v] for v in variants]
     got = count_checked(bam, variants, read_judge=judge, **kw)
     for c in got:
-        assert c.dp >= c.rd + c.ad
-        assert c.dpf >= c.rdf + c.adf
-        assert c.rd == c.rd_fwd + c.rd_rev
-        assert c.ad == c.ad_fwd + c.ad_rev
+        _invariants(c)
     return got
 
 
@@ -626,3 +637,77 @@ def test_the_s1_example_through_the_cli_names_the_listed_count(tmp_path, judge, 
     else:
         assert counts == ("6", "10", "0")
         assert not any(f.startswith(("OBSERVED_ALLELE", "COEXISTING_ALLELE")) for f in flags)
+
+
+# ── Closing the rule on one principle (#297 close): a read is ALT only where its own ──
+# ── confident bases tell the given ALT from every candidate ──────────────────────────
+
+
+def _tie_carriers(a, h, mode, k=6):
+    """`k` carriers of the given count that cannot tell it from the listed two-unit count:
+    251 bp from 20 bases before the junction, written with the deletion. Past the junction
+    their bases are read at Q5 (unread) but for two bases. Mode "A": the bases where the two
+    counts agree are read confidently and every base where they differ is unread. Mode "B":
+    one telling base shows the given count's base and one shows the other count's, so one
+    base against one: a tie."""
+    out = []
+    for i in range(k):
+        s = a - 20 - i
+        seq = list(h["one"][s : s + 251])
+        qual = [30] * 251
+        start = (a - s) + 60  # the first base past the junction, in read coordinates
+        diffs = [x for x in range(start, 251) if h["one"][s + x] != h["two"][s + x]]
+        for x in range(start, 251):
+            agree = h["one"][s + x] == h["two"][s + x]
+            qual[x] = 30 if (mode == "A" and agree) else 5
+        if mode == "B":
+            qual[diffs[0]] = 30  # one telling base, the given count's
+            seq[diffs[1]] = h["two"][s + diffs[1]]
+            qual[diffs[1]] = 30  # one telling base, the other count's
+        cig = ((0, a - s), (2, 60), (0, 251 - (a - s)))
+        r = make_read(f"one{mode}{i}", "".join(seq), s, cig, quals=qual)
+        r.flag = 0x1 | 0x2 | 0x20 | 0x40
+        r.next_reference_id, r.next_reference_start, r.template_length = 0, s + 250, 450
+        out.append(r)
+    return out
+
+
+def _unrelated_row(kind, ref, a):
+    """One input row that no read carries and that has nothing to do with the two counts:
+    a 1-bp deletion 270 bases past the junction (past what a read holds), or an SNV 10 bases
+    into the run."""
+    if kind == "deletion":
+        far = a + 60 + 120 + 150 - 1
+        return (far, ref[far : far + 2], ref[far])
+    return (a + 70, ref[a + 70], _other(ref[a + 70]))
+
+
+@pytest.mark.parametrize("judge", JUDGES)
+@pytest.mark.parametrize("mode", ["A", "B"], ids=["bases-agree", "one-against-one"])
+@pytest.mark.parametrize("extra", ["none", "deletion", "snv"])
+def test_an_unrelated_listed_row_makes_no_tie_read_the_deletion_with_a_neighbour(
+    tmp_path, judge, mode, extra
+):
+    """F1. 6 REF reads and 6 carriers of the given count that cannot tell it from the listed
+    two-unit count (S1's shape): each is partial evidence, (RD, AD, partial) = (6, 0, 6), on
+    both paths. One more input row that no read carries (a 1-bp deletion past every read's
+    reach, or an SNV 10 bases into the run) changes nothing: a read is "the deletion with its
+    listed neighbour" only where its confident bases show the neighbour's change (RJ-24,
+    RJ-28: a row's count does not depend on an unrelated input row). The rules path gave
+    (6, 6, 0) with such a row: the neighbour's bases equal the ALT's over everything a read
+    holds, so every tie read fitted it."""
+    ref, a, h, rows = _shape(60, 2)
+    reads = _reads(a, "REF", h["REF"], HOLDING, size=0) + _tie_carriers(a, h, mode)
+    rws = [rows["one"], rows["two"]] + ([] if extra == "none" else [_unrelated_row(extra, ref, a)])
+    fa, bam = write_contig(tmp_path, ref, reads, "c")
+    vs = [_rs.Variant("1", p, r, al, _kind(r, al)) for (p, r, al) in rws]
+    variants = [
+        pv.variant for pv in _rs.prepare_variants(vs, fa, 5, False, 1, True, read_judge=judge)
+    ]
+    siblings = [[variants[1]], [variants[0]]] + [[] for _ in rws[2:]]
+    kw = {"reference_fasta": fa} if judge == "sequence" else {}
+    got = count_checked(bam, variants, read_judge=judge, sibling_variants=siblings, **kw)
+    for c in got:
+        _invariants(c)
+    c = got[0]
+    assert (c.rd, c.ad, c.partial_alt) == (6, 0, 6)
