@@ -28,6 +28,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   steps run on any RHEL machine with `scripts/check_wheel.sh`. `checkpoint-wheels.yml` is
   unchanged: it builds older commits, which still link libcurl, so it keeps `manylinux_2_34`.
 
+### Fixed — the docs say what the original's `--filter_non_primary` removes, and list the measured differences from 1.2.5
+
+- `docs/reference/read-filters.md` implied that the original GetBaseCountsMultiSample's single
+  `--filter_non_primary` flag covers supplementary alignments. It removes secondary alignments
+  only (flag `0x100`); a read's supplementary records stay in its depth, `REF` and `ALT`. The
+  comparison now says so.
+- `docs/reference/architecture.md` has a new list, "Known differences from
+  GetBaseCountsMultiSample 1.2.5": one line per difference with its cause, the HG002 reads and
+  rows it moves, and the rule that explains it. Docs only; no count changes.
+
 ### Fixed — the Smith-Waterman local re-scoring's `partial_alt` reads the scores that made the call (#195)
 
 - Where a complex row's semiglobal scores are unreliable, the `sw` step re-scores with a local

@@ -180,13 +180,13 @@ Beyond the read-level filters above, gbcms also applies **base-level quality thr
 ## Comparison with Original GBCMS
 
 !!! note "Filter Non-Primary"
-    The original GBCMS has a single `--filter_non_primary` flag. gbcms splits this into `--filter-secondary` and `--filter-supplementary` for finer control. Both default to **on** in gbcms (stricter than the original behavior, which was off).
+    The original GBCMS has a single `--filter_non_primary` flag (default off), and it removes **secondary** alignments only (SAM flag `0x100`, tested with BamTools' `IsPrimaryAlignment`). It never removes a supplementary alignment (`0x800`): with the flag on or off, a read's supplementary records stay and are counted in depth, `REF` and `ALT` like any other read that passes the original's other filters, so one physical read can count twice. gbcms splits the filter into `--filter-secondary` and `--filter-supplementary`, both **on** by default, and a secondary or supplementary record is never a read-level observation (see [Filter Options](#filter-options)). For the counts this changes, see the [known differences from 1.2.5](architecture.md#known-differences-from-getbasecountsmultisample-125).
 
 | Feature | Original GBCMS | gbcms |
 |:--------|:---------------|:---------|
 | Base quality filtering | No threshold | Default `--min-baseq 20` |
 | Duplicate filtering | Optional | **On** by default |
-| Non-primary filter | Single flag (default off) | Split: secondary + supplementary (**both On**) |
+| Non-primary filter | Single flag, secondary (`0x100`) only; supplementary always kept (default off) | Split: secondary + supplementary (**both On**), neither a read-level observation |
 | QC-failed filter | Optional | **On** by default |
 | Indel read filter | Optional | Optional (off by default) |
 
@@ -205,7 +205,7 @@ BAM fetch window: [183, 206)   ← ±17bp (repeat_span + 2)
 ```
 
 !!! important "Anchor Overlap Gate"
-    Although reads are fetched from the wider window, **only reads that overlap the variant's anchor position** (or are classified as REF/ALT via shifted indel matching) contribute to the DP count. This prevents DP inflation from reads that were brought in by the window padding but don't actually cover the variant.
+    Although reads are fetched from the wider window, **only reads that overlap the variant's anchor position** (or are classified as REF/ALT via shifted indel matching) contribute to the DP count. This prevents DP inflation from reads that were brought in by the window padding but don't actually cover the variant. Two kinds of read count although they miss the anchor, both decided from their own bases: a read whose allele lies in soft-clipped bases (DNA) and a read decided from windows read from the right flank (see [Known differences from 1.2.5](architecture.md#known-differences-from-getbasecountsmultisample-125)).
 
     ```
     Read A: [90─────100]        → overlaps anchor at 100 → counted in DP ✅
