@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added — a macOS wheel for Apple silicon (arm64) (#237)
+
+- The release builds `cp310-abi3-macosx_11_0_arm64` on `macos-14` with the new local action
+  `.github/actions/macos-wheel`, and publishes it to PyPI and the release page (with its
+  checksum and build-provenance attestation) beside the Linux wheel. `pip install gbcms` on
+  an Apple silicon Mac with macOS 11 or newer, on any Python from 3.10, now installs a wheel;
+  before, it built the source distribution (Rust, clang and htslib's C source).
+- The `Wheels` workflow builds that wheel on a macOS runner on every change to the build, and
+  installs it on Python 3.10 and 3.14 with `pip install --only-binary=:all:`. The suite runs
+  there, and the counting run's output digests must equal the Linux ones. The same steps run
+  on a Mac with `scripts/check_wheel.sh`.
+- Intel Macs (x86_64) still build the source distribution: nothing in CI uses an Intel Mac,
+  and a wheel for one would be a second entry in the same two jobs (or a cross build on the
+  arm64 runner) if a user asks for it.
+- Checked locally on macOS arm64, with the wheel of the stable-ABI change: the wheel is
+  3.2 MB, installs on Python 3.10 to 3.14, and the suite passes on all five.
+
 ### Added — a native arm64 Docker image, joined with amd64 into one multi-arch tag (#236)
 
 - The release builds the image on an amd64 runner and on GitHub's arm64 runner (no QEMU),
