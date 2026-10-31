@@ -417,6 +417,28 @@ way), so a CIGAR-only rule read VAF 0.000 at 287 of 300 heterozygous deletions.
   the ALT reads alone name the larger allele in `gbcms_diagnostic` (the deletion
   with the changes); beside a run none is named. Masks never take every offset where REF and ALT
   differ: those stay read, and a read changed there is neither.
+- **Another unit count beside a run** (#297, RJ-24 amended 2026-10-30): where the
+  bases past the deletion repeat with the period of another allele at its breakpoint
+  (one more or one fewer unit of a tandem run whose deleted copy differs from it, so
+  the windows stop at the copy's differing base), that allele reads like the ALT
+  through the windows and on to its first difference. Every such allele is computed
+  exactly from the reference (deletions of up to twice the given bases and insertions
+  of up to as many, at the deletion's breakpoint, and the listed rows), never by a run
+  detector. Where one is present at the site (listed, or spelled in full by its own
+  bases on 3 or more fragments and 5% of those telling the ALT from it: read on 24
+  bases past its first difference, fitting it but for one base past the windows, with
+  its base at two or more of the bases where it and the ALT differ and the ALT's at
+  none, and fitting REF worse by two) and the longest read at the
+  site can reach that difference, an ALT call stands only where the read's confident
+  bases where the two differ favour the ALT by one base read at `--min-baseq` (a base
+  fitting neither costs both alike, an error; one base of the other's against three of
+  the ALT's is forgiven); otherwise the read is the ALT or that allele: neither, with
+  partial evidence (RJ-25). The windows do not grow: REF, told from both at the
+  junction, keeps its reads and the sibling claim its window. A site with no other
+  count keeps its reads. Where the difference lies past the longest read, nothing is
+  held, the counts stand and `gbcms_diagnostic` names the row,
+  `UNIT_COUNT_UNSPANNED(change:bases/longest)`. Under the sequence judge the alleles
+  found so are site states, so its reads tie the same way.
 - **RNA:** the same, after splice triage (a deletion written as a splice N stays
   excluded).
 

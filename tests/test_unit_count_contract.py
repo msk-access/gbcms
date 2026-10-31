@@ -1,0 +1,380 @@
+"""A long deletion beside a run of its own unit: another unit count present at the site
+holds the run (#297, RJ-24 amended 2026-10-30, the narrow rule).
+
+Where the bases past a deletion of 50 bp or more repeat with the period of another allele
+at its breakpoint (one more or one fewer unit of a tandem run whose deleted copy differs
+from it, so the windows stop at the copy's first differing base), that allele reads like
+the given one over the junction windows and on until the haplotypes first differ. A read
+ending sooner fits either. The rule holds such a read to that base only where the other
+allele is really present at the site: listed, or spelled in full by its own bases on 3 or
+more fragments and 5% of those spelling the ALT there (RJ-25's floor). A read fitting the
+ALT that does not tell it from that allele, by a confident base where the two differ,
+is the ALT or that allele: neither, with partial evidence (RJ-25). A site with no such
+allele keeps its reads as before. REF is told from both at the junction, so its reads
+are unchanged, and the sibling claim keeps REF's window (RJ-24). Where a read of the
+library's length cannot reach the first difference, nothing is held: the counts stand
+and the row is named, UNIT_COUNT_UNSPANNED(change:bases/longest read).
+
+Shapes (synthetic, PHI-free, paired inward, 6 reads per class unless named):
+REF = flank, u1, the run of `m` copies of u, flank; u1 is u but for its third base.
+The row deletes u1 (one unit); "two" deletes u1 and the run's first u. "short" reads hold
+50 bases past the junction (100 bp from 50 before it); "holding" reads 251 bp from 20
+before it. Counts per row: (ref_count, alt_count, partial_alt), with total_count where it
+matters. Every case runs on the rules path and under the sequence judge.
+"""
+
+import random
+
+import pytest
+from helpers import count_checked, make_read, write_contig
+
+from gbcms import _rs
+
+JUDGES = ["rules", "sequence"]
+SHORT, HOLDING = (100, 50), (251, 20)
+
+
+def _other(b):
+    return {"A": "C", "C": "G", "G": "T", "T": "A"}[b]
+
+
+def _shape(n, m, own=None, seed=297):
+    """REF and the haplotypes (REF, "one": the row's deletion, "two": one more unit) for a
+    unit of `n` bases; the deleted copy (`own` units of it, default one) differs from the
+    unit at its third base. Returns (REF, the anchor's next base `a`, haps, rows)."""
+    rng = random.Random(seed * 1000 + n * 10 + m)
+    while True:
+        u = "".join(rng.choice("ACGT") for _ in range(n))
+        left = "".join(rng.choice("ACGT") for _ in range(400))
+        right = "".join(rng.choice("ACGT") for _ in range(400))
+        if (n < 3 or len(set(u)) > 2) and right[0] != u[0] and left[-1] != u[-1]:
+            break
+    own = own or 1
+    deleted = list(u * own)
+    deleted[2] = _other(deleted[2])
+    deleted = "".join(deleted)
+    a = len(left)
+    ref = left + deleted + u * m + right
+    k = len(deleted)
+    haps = {"REF": ref, "one": ref[:a] + ref[a + k :], "two": ref[:a] + ref[a + k + n :]}
+    rows = {
+        "one": (a - 1, ref[a - 1 : a + k], ref[a - 1]),
+        "two": (a - 1, ref[a - 1 : a + k + n], ref[a - 1]),
+    }
+    return ref, a, haps, rows
+
+
+def _reads(a, name, hap, shape, *, size, k=6, tag="", clip=False):
+    """`k` reads of `hap` (`shape`: length, bases before the junction `a`), written as an
+    aligner would: REF ungapped; a carrier with its deletion of `size` bases at the junction
+    (or soft-clipped there, `clip`) where it holds it, placed past it otherwise."""
+    rl, before = shape
+    out = []
+    for i in range(k):
+        s = a - before - i
+        seq = hap[s : s + rl]
+        if name == "REF" or s + rl <= a:
+            pos, cig = s, ((0, rl),)
+        elif s < a and clip:
+            pos, cig = s, ((0, a - s), (4, rl - (a - s)))
+        elif s < a:
+            pos, cig = s, ((0, a - s), (2, size), (0, rl - (a - s)))
+        else:
+            pos, cig = s + size, ((0, rl),)
+        r = make_read(f"{name}{tag}{i}", seq, pos, cig)
+        r.flag = 0x1 | 0x2 | 0x20 | 0x40
+        r.next_reference_id, r.next_reference_start, r.template_length = 0, pos + 250, 450
+        out.append(r)
+    return out
+
+
+def _count(tmp_path, ref, rows, reads, judge, listed=False):
+    """Counts per row, each with its UNIT_COUNT_UNSPANNED field; `listed`: the rows are
+    co-annotated siblings of one another."""
+    fa, bam = write_contig(tmp_path, ref, reads, "c")
+    vs = [_rs.Variant("1", p, r, al, "DEL") for (p, r, al) in rows]
+    pvs = _rs.prepare_variants(vs, fa, 5, False, 1, True, read_judge=judge)
+    variants = [pv.variant for pv in pvs]
+    kw = {"reference_fasta": fa} if judge == "sequence" else {}
+    if listed:
+        kw["sibling_variants"] = [[w for w in variants if w is not v] for v in variants]
+    got = count_checked(bam, variants, read_judge=judge, **kw)
+    for c in got:
+        assert c.dp >= c.rd + c.ad and c.dpf >= c.rdf + c.adf
+        assert c.rd == c.rd_fwd + c.rd_rev and c.ad == c.ad_fwd + c.ad_rev
+    return [((c.rd, c.ad, c.partial_alt, c.dp), c.unit_count_unspanned) for c in got]
+
+
+def _ticket(n=60, m=2, clip=False):
+    """The ticket's reads: 6 REF holding, 6 of two units and 6 of the given one, short
+    (`clip`: the two-unit carriers soft-clipped at the junction, as BWA writes many)."""
+    ref, a, h, rows = _shape(n, m)
+    reads = _reads(a, "REF", h["REF"], HOLDING, size=0)
+    reads += _reads(a, "two", h["two"], SHORT, size=2 * n, clip=clip)
+    reads += _reads(a, "one", h["one"], SHORT, size=n)
+    return ref, a, h, rows, reads
+
+
+# ── #297's table, with and without the other unit count ────────────────────────────
+
+
+@pytest.mark.parametrize("judge", JUDGES)
+def test_no_other_count_keeps_the_reads(tmp_path, judge):
+    """The given count alone, short of the run and holding it: every carrier is ALT, as
+    before (no hold where no other count is at the site)."""
+    ref, a, h, rows = _shape(60, 2)
+    reads = _reads(a, "REF", h["REF"], HOLDING, size=0)
+    reads += _reads(a, "one", h["one"], SHORT, size=60)
+    reads += _reads(a, "one", h["one"], HOLDING, size=60, k=4, tag="h")
+    assert _count(tmp_path, ref, [rows["one"]], reads, judge) == [((6, 10, 0, 16), "")]
+
+
+@pytest.mark.parametrize("judge", JUDGES)
+def test_short_carriers_of_another_count_alone_do_not_hold_the_run(tmp_path, judge):
+    """#297's table as filed: no read spells the two-unit deletion in full (all end inside
+    the run), so it is not found at the site and the reads count as before: 6/12/0."""
+    ref, a, h, rows, reads = _ticket()
+    assert _count(tmp_path, ref, [rows["one"]], reads, judge) == [((6, 12, 0, 18), "")]
+
+
+@pytest.mark.parametrize("judge", JUDGES)
+@pytest.mark.parametrize("clip", [False, True], ids=["written", "clipped"])
+@pytest.mark.parametrize("given", [0, 4], ids=["alone", "beside-holding-carriers"])
+def test_another_count_present_holds_the_run(tmp_path, judge, clip, given):
+    """#297's table with the two-unit deletion present: 4 of its carriers hold the run (an
+    aligner writes every two-unit carrier as the deletion, or soft-clips each at the
+    junction: then no read writes it, and only their bases show it). The short carriers of
+    either count fit both: partial evidence, never ALT (RJ-25). Carriers of the given count
+    holding the run count ALT; the two-unit ones holding it carry another allele. REF reads
+    are unchanged."""
+    ref, a, h, rows, reads = _ticket(clip=clip)
+    reads += _reads(a, "two", h["two"], HOLDING, size=120, k=4, tag="h", clip=clip)
+    reads += _reads(a, "one", h["one"], HOLDING, size=60, k=given, tag="h")
+    got = _count(tmp_path, ref, [rows["one"]], reads, judge)
+    assert got == [((6, given, 16, 22 + given), "")]
+
+
+@pytest.mark.parametrize("judge", JUDGES)
+def test_one_fewer_unit_present_holds_the_run(tmp_path, judge):
+    """The mirror: the row deletes two units (the differing copy and the run's first), and
+    the one-unit deletion is present (4 carriers holding the run of three copies). The two
+    read alike for two copies; the short carriers of either fit both: partial; carriers
+    holding the run count for the count they show."""
+    ref, a, h, rows = _shape(60, 3)
+    reads = _reads(a, "REF", h["REF"], HOLDING, size=0)
+    reads += _reads(a, "two", h["two"], SHORT, size=120)
+    reads += _reads(a, "one", h["one"], SHORT, size=60)
+    reads += _reads(a, "one", h["one"], HOLDING, size=60, k=4, tag="h")
+    reads += _reads(a, "two", h["two"], HOLDING, size=120, k=4, tag="h")
+    got = _count(tmp_path, ref, [rows["two"]], reads, judge)
+    assert got == [((6, 4, 16, 26), "")]
+
+
+@pytest.mark.parametrize("judge", JUDGES)
+def test_an_inserted_unit_is_told_at_the_junction(tmp_path, judge):
+    """An allele inserting one unit keeps the differing copy, so the junction tells it from
+    the one-unit deletion: with 4 of its carriers holding the run, nothing is held and the
+    short carriers of the given count stay ALT."""
+    ref, a, h, rows = _shape(60, 2)
+    plus = ref[: a + 60] + ref[a + 60 : a + 120] + ref[a + 60 :]
+    reads = _reads(a, "REF", h["REF"], HOLDING, size=0)
+    reads += _reads(a, "one", h["one"], SHORT, size=60)
+    for i in range(4):
+        s = a - 20 - i
+        r = make_read(f"plus{i}", plus[s : s + 251], s, ((0, 80 + i), (1, 60), (0, 111 - i)))
+        r.flag = 0x1 | 0x2 | 0x20 | 0x40
+        r.next_reference_id, r.next_reference_start, r.template_length = 0, s + 250, 450
+        reads.append(r)
+    (((rd, ad, _, _), diag),) = _count(tmp_path, ref, [rows["one"]], reads, judge)
+    assert (rd, ad, diag) == (6, 6, "")
+
+
+@pytest.mark.parametrize("judge", JUDGES)
+@pytest.mark.parametrize(
+    "holding, alt", [(2, 14), (3, 0)], ids=["two-fragments", "three-fragments"]
+)
+def test_the_other_count_is_found_on_three_fragments(tmp_path, judge, holding, alt):
+    """Found as RJ-25 finds another allele: on 3 or more fragments. Two two-unit carriers
+    holding the run leave the site as before (on the rules path every carrier ALT);
+    three hold it."""
+    ref, a, h, rows, reads = _ticket()
+    reads += _reads(a, "two", h["two"], HOLDING, size=120, k=holding, tag="h")
+    (((rd, ad, _, _), _),) = _count(tmp_path, ref, [rows["one"]], reads, judge)
+    if judge == "rules" or holding >= 3:
+        assert (rd, ad) == (6, alt)
+    else:
+        assert rd == 6 and ad >= 12  # the judge as before: the short carriers ALT
+
+
+@pytest.mark.parametrize("judge", JUDGES)
+def test_the_other_count_is_found_on_five_percent_of_the_alt_fragments(tmp_path, judge):
+    """And on 5% of the fragments spelling the ALT there: 3 two-unit carriers holding the
+    run beside 80 of the given count holding it (3.75%) leave the site as before; beside
+    40 (7.5%) they hold it."""
+    ref, a, h, rows = _shape(60, 2)
+    base = _reads(a, "REF", h["REF"], HOLDING, size=0)
+    base += _reads(a, "one", h["one"], SHORT, size=60)
+    base += _reads(a, "two", h["two"], HOLDING, size=120, k=3, tag="h")
+    for many, short_alt in ((80, True), (40, False)):
+        d = tmp_path / str(many)
+        d.mkdir()
+        reads = base + _reads(a, "one", h["one"], HOLDING, size=60, k=many, tag="m")
+        (((rd, ad, _, _), _),) = _count(d, ref, [rows["one"]], reads, judge)
+        assert rd == 6
+        if short_alt:
+            assert ad >= many + 6, (many, ad)
+        else:
+            assert ad == many, (many, ad)
+
+
+@pytest.mark.parametrize("judge", JUDGES)
+def test_a_listed_other_count_holds_the_run(tmp_path, judge):
+    """The two-unit deletion listed beside the row: the short carriers fit both rows, so
+    neither row's ALT (partial evidence at each); carriers holding the run count for the
+    row whose count they show (RJ-5, RJ-25)."""
+    ref, a, h, rows, reads = _ticket()
+    reads += _reads(a, "two", h["two"], HOLDING, size=120, k=4, tag="h")
+    reads += _reads(a, "one", h["one"], HOLDING, size=60, k=4, tag="h")
+    got = _count(tmp_path, ref, [rows["one"], rows["two"]], reads, judge, listed=True)
+    assert [g[0][:3] for g in got] == [(6, 4, 16), (6, 4, 16)]
+
+
+# ── A run longer than the read ─────────────────────────────────────────────────────
+
+LONG = (150, 20)  # every read 150 bp: none reaches the end of a four-unit run
+
+
+def _long_run(listed):
+    ref, a, h, rows = _shape(60, 4)
+    reads = _reads(a, "REF", h["REF"], LONG, size=0)
+    reads += _reads(a, "one", h["one"], LONG, size=60)
+    reads += _reads(a, "two", h["two"], LONG, size=120)
+    return ref, ([rows["one"], rows["two"]] if listed else [rows["one"]]), reads
+
+
+@pytest.mark.parametrize("judge", JUDGES)
+def test_a_run_longer_than_the_read_keeps_the_counts_and_names_the_row(tmp_path, judge):
+    """Four units after the deleted copy: one more unit deleted reads like the given
+    deletion for 184 bases from the windows' first base, and a 150-bp read cannot hold
+    188 of them. Nothing is held (every carrier ALT, as before) and the row is named."""
+    ref, rows, reads = _long_run(False)
+    assert _count(tmp_path, ref, rows, reads, judge) == [((6, 12, 0, 18), "-120:188/150")]
+
+
+@pytest.mark.parametrize("judge", JUDGES)
+def test_a_listed_count_past_the_read_keeps_the_counts_and_names_the_rows(tmp_path, judge):
+    """The two-unit deletion listed too, past what a read holds: the counts stand as
+    before on each path and both rows are named, each with the other's count. Before: the
+    rules count every carrier ALT at the one-unit row, and at the two-unit row the aligned
+    sibling test (RJ-5) leaves the one-unit carriers, which its aligned slice reads as REF
+    as well as ALT, partial; the sequence judge weighs the listed rows as states."""
+    ref, rows, reads = _long_run(True)
+    got = _count(tmp_path, ref, rows, reads, judge, listed=True)
+    if judge == "rules":
+        want = [((6, 12, 0, 18), "-120:188/150"), ((6, 6, 6, 18), "-60:188/150")]
+    else:
+        want = [((6, 0, 12, 18), "-120:188/150"), ((6, 0, 12, 18), "-60:188/150")]
+    assert got == want
+
+
+# ── The sibling claim keeps REF's window ───────────────────────────────────────────
+
+
+@pytest.mark.parametrize("judge", JUDGES)
+def test_the_sibling_claim_keeps_refs_window_beside_another_count(tmp_path, judge):
+    """A co-annotated SNV 20 bases into the deleted copy, on every REF read, with the
+    two-unit deletion present (4 carriers holding the run): the run held for the ALT
+    leaves REF's window where it was, so the SNV, past it, claims no REF read (RJ-24);
+    REF stays 6 (the first build grew the window and the claim with it)."""
+    ref, a, h, rows, reads = _ticket()
+    reads += _reads(a, "two", h["two"], HOLDING, size=120, k=4, tag="h")
+    g = a + 20
+    snv_base = _other(ref[g])
+    with_snv = ref[:g] + snv_base + ref[g + 1 :]
+    reads = [r for r in reads if not r.query_name.startswith("REF")]
+    reads += _reads(a, "REF", with_snv, HOLDING, size=0)
+    fa, bam = write_contig(tmp_path, ref, reads, "c")
+    vs = [_rs.Variant("1", *rows["one"], "DEL"), _rs.Variant("1", g, ref[g], snv_base, "SNP")]
+    deletion, snv = (
+        pv.variant for pv in _rs.prepare_variants(vs, fa, 5, False, 1, True, read_judge=judge)
+    )
+    kw = {"reference_fasta": fa} if judge == "sequence" else {}
+    got, _ = count_checked(
+        bam, [deletion, snv], read_judge=judge, sibling_variants=[[snv], [deletion]], **kw
+    )
+    assert (got.rd, got.ad, got.partial_alt) == (6, 0, 16)
+
+
+# ── Short units: the first difference, not a run end, sets the hold ────────────────
+
+
+def _short_unit(n, run, own, seed=11):
+    """A deletion of `own` copies of an `n`-base unit (the copies' third base changed),
+    before a run of `run` exact copies: one more unit deleted reads like the given
+    deletion until the run's last unit."""
+    return _shape(n, run, own=own, seed=seed)
+
+
+SMALL = [
+    pytest.param(1, 30, 50, id="unit-1"),
+    pytest.param(2, 20, 25, id="unit-2"),
+    pytest.param(4, 10, 13, id="unit-4"),
+    pytest.param(5, 8, 10, id="unit-5"),
+]
+
+
+@pytest.mark.parametrize("judge", JUDGES)
+@pytest.mark.parametrize("n, run, own", SMALL)
+@pytest.mark.parametrize("present", [False, True], ids=["alone", "present"])
+def test_short_units(tmp_path, judge, n, run, own, present):
+    """A 50-to-52-bp deletion of copies of a 1-, 2-, 4- or 5-base unit before a run of
+    it. Short carriers hold 15 bases past the junction, past the windows but short of
+    where one more unit deleted first differs. With that allele present (4 carriers holding
+    the run), they fit both: partial; alone, ALT as before."""
+    ref, a, h, rows = _short_unit(n, run, own)
+    size = n * own
+    short = (60, 45)  # 15 bases past the junction
+    reads = _reads(a, "REF", h["REF"], HOLDING, size=0)
+    reads += _reads(a, "one", h["one"], short, size=size)
+    reads += _reads(a, "one", h["one"], HOLDING, size=size, k=4, tag="h")
+    if present:
+        reads += _reads(a, "two", h["two"], HOLDING, size=size + n, k=4, tag="h")
+    (((rd, ad, partial, _), _),) = _count(tmp_path, ref, [rows["one"]], reads, judge)
+    assert (rd, ad, partial) == ((6, 4, 10) if present else (6, 10, 0))
+
+
+# ── Errors over a long stretch (RJ-26) ─────────────────────────────────────────────
+
+
+@pytest.mark.parametrize("judge", JUDGES)
+@pytest.mark.parametrize(
+    "error, alt",
+    [
+        ("none", 4),
+        ("in the run", 4),  # where both counts read alike: costs both, decides nothing
+        ("a third base past the difference", 4),  # neither count's: an error
+        ("the difference unread", 0),  # every telling base N (unread): a tie
+    ],
+)
+def test_errors_over_the_held_run(tmp_path, judge, error, alt):
+    """The two-unit deletion present (4 carriers holding the run); 4 carriers of the given
+    count hold it with one error. Only the bases where the two counts differ tell them:
+    an error in the run both read alike, or a third base where they differ, leaves the
+    call ALT; with those bases unread (N, as a duplex disagreement is masked) the read fits
+    both."""
+    ref, a, h, rows, reads = _ticket()
+    reads += _reads(a, "two", h["two"], HOLDING, size=120, k=4, tag="h")
+    one = h["one"]
+    first = next(i for i in range(a, len(one)) if one[i] != h["two"][i])
+
+    hap = one
+    if error == "the difference unread":
+        hap = one[:first] + "N" * (len(one) - first)
+    elif error == "in the run":
+        hap = one[: a + 30] + _other(one[a + 30]) + one[a + 31 :]
+    elif error == "a third base past the difference":
+        third = next(b for b in "ACGT" if b not in (one[first + 1], h["two"][first + 1]))
+        hap = one[: first + 1] + third + one[first + 2 :]
+    reads += _reads(a, "one", hap, HOLDING, size=60, k=4, tag="h")
+    (((rd, ad, _, _), _),) = _count(tmp_path, ref, [rows["one"]], reads, judge)
+    assert (rd, ad) == (6, alt)

@@ -90,7 +90,9 @@ pub struct Variant {
 
     /// Reference bases a whole read reaches each side of an event the exact-carrier rule
     /// judges, with their 0-based start (covering `event_ref`): a read the aligner placed
-    /// a unit off in a repeat is read whole over all its bases. Prep's; None otherwise.
+    /// a unit off in a repeat is read whole over all its bases. For a deletion of 50 bp or
+    /// more, as many bases again past it as it deletes: its other alleles at its breakpoint
+    /// are read past where they first differ from it (#297). Prep's; None otherwise.
     pub whole_ref: Option<(i64, String)>,
 }
 
@@ -536,6 +538,15 @@ pub struct BaseCounts {
     /// changes.
     #[pyo3(get)]
     pub unexplained_reads: u32,
+    /// At a deletion of 50 bp or more: another allele at its breakpoint (another unit count
+    /// of a run beside it, #297) that reads like the ALT past what the longest read at the
+    /// site holds, as `CHANGE:BASES/LONGEST` (its length change, deleted bases negative; the
+    /// bases a read must hold from the junction windows' first base to tell the two; the
+    /// longest read); empty when none. No read can tell its carriers from the ALT's, so the
+    /// rule holds nothing for it and the counts stand. Diagnostic only (feeds
+    /// UNIT_COUNT_UNSPANNED); no count changes.
+    #[pyo3(get)]
+    pub unit_count_unspanned: String,
     /// Reads processed with the requested `--umi-tag` present. Internal only
     /// (no Python getter): summed per BAM to warn when a requested UMI tag is
     /// never seen and fragment grouping silently fell back to QNAME.

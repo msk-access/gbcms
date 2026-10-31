@@ -165,6 +165,11 @@ class BaseCounts:
     # confident mismatches, whether or not the fit rule made them depth only; 0 under the
     # rules. Diagnostic only (UNEXPLAINED_READS flag).
     unexplained_reads: int
+    # At a deletion of 50 bp or more: another allele at its breakpoint reading like the ALT
+    # past what the longest read at the site holds, as CHANGE:BASES/LONGEST (length change,
+    # deleted bases negative; bases a read must hold from the junction windows' first base;
+    # the longest read); empty when none. Diagnostic only (UNIT_COUNT_UNSPANNED flag).
+    unit_count_unspanned: str
     # GTF-informed annotation (None when no GTF)
     exon_boundary_dist: int | None
     # Per-transcript counts (empty string when no GTF or no overlap)

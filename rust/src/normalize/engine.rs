@@ -609,14 +609,18 @@ fn event_core_ref(reader: &mut fasta::IndexedReader<File>, v: &Variant, tally: &
 
 /// The reference a whole read reaches each side of an event the exact-carrier rule
 /// judges (`Variant::whole_ref`): its change interval plus
-/// [`carrier::WHOLE_READ_REACH`] each side, and at least the event reference. None for
-/// any other variant, or when the fetch fails.
+/// [`carrier::WHOLE_READ_REACH`] each side, and at least the event reference. For a
+/// deletion of 50 bp or more (the junction judge's), as many bases again past it as it
+/// deletes: its other alleles at its breakpoint, up to twice its length, are read a whole
+/// read's reach past where they first differ from it (#297). None for any other variant,
+/// or when the fetch fails.
 fn whole_read_ref(reader: &mut fasta::IndexedReader<File>, v: &Variant) -> Option<(i64, String)> {
-    if !carrier::judges(v) {
+    let past = crate::counting::junction::reference_past(v);
+    if !carrier::judges(v) && past == 0 {
         return None;
     }
     let (c_lo, c_hi) = window::change_interval(v);
-    let (mut lo, mut hi) = ((c_lo.min(v.pos) - carrier::WHOLE_READ_REACH).max(0), c_hi.max(v.pos + v.ref_allele.len() as i64) + carrier::WHOLE_READ_REACH);
+    let (mut lo, mut hi) = ((c_lo.min(v.pos) - carrier::WHOLE_READ_REACH).max(0), c_hi.max(v.pos + v.ref_allele.len() as i64) + past + carrier::WHOLE_READ_REACH);
     if let Some((s, seq)) = &v.event_ref {
         (lo, hi) = (lo.min(*s), hi.max(s + seq.len() as i64));
     }

@@ -1261,7 +1261,7 @@ fn count_bin_shared(
             carrier::CarrierGuard::new(move || {
                 let counted = |r: &Record| counted_read(r, v, mode, enforce_strandedness, strandedness, min_mapq);
                 if junction::judges(v) {
-                    junction::guard_for(cache, v, &counted, min_baseq)
+                    junction::guard_for(cache, v, &counted, min_baseq, siblings)
                 } else if read_judge == judge::ReadJudge::Haplotype {
                     // the sequence judge also takes the alleles written past the masks
                     carrier::guard_for_judge(cache, v, &counted, min_baseq, siblings)
@@ -1622,6 +1622,11 @@ fn count_variant_from_cache(
     // haplotype's, left unmasked: diagnostic only (POSSIBLE_MINORITY_HAPLOTYPE).
     if let Some((pos, r, b, c, n)) = rules.guard.and_then(|g| g.get(variant)).and_then(|g| g.minority) {
         counts.possible_minority = format!("{}:{}>{}:{c}/{n}", pos + 1, r as char, b as char);
+    }
+    // Another allele at a long deletion's breakpoint reading like the ALT past what the
+    // longest read here holds: nothing is held for it; diagnostic only (UNIT_COUNT_UNSPANNED).
+    if let Some((change, need, longest)) = rules.guard.and_then(|g| g.get(variant)).and_then(|g| g.unit_unspanned) {
+        counts.unit_count_unspanned = format!("{change:+}:{need}/{longest}");
     }
     let use_baq = baq_applies(apply_baq, exon_boundary_dist);
     // The variant's own indel span that BAQ leaves alone, once per variant.

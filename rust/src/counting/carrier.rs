@@ -2049,6 +2049,19 @@ pub(crate) struct Guard {
     /// carriers among the reads placed apart (the most carried, where several are).
     /// Diagnostic only (POSSIBLE_MINORITY_HAPLOTYPE).
     pub minority: Option<(i64, u8, u8, u32, u32)>,
+    /// A long deletion's other alleles at its breakpoint that read like the ALT through
+    /// its junction windows and on (another unit count of a run beside it, #297), present
+    /// at the site (listed, or spelled in full on [`GUARD_MIN_READS`] fragments and
+    /// [`GUARD_REF_SHARE`] of those spelling the ALT there) and within a read's reach: an
+    /// ALT call must tell the ALT from each by its bases ([`super::junction::Hidden`]).
+    pub unit_others: Vec<super::junction::Hidden>,
+    /// The ALT's bases from the junction windows' first base, as far as `unit_others`'s.
+    pub unit_alt: Vec<u8>,
+    /// Another allele at the breakpoint that reads like the ALT past what the longest read
+    /// at the site holds: its length change (deleted bases negative), the bases a read must
+    /// hold from the windows' first base to tell the two, and that read's length. Nothing is
+    /// held for it; diagnostic only (UNIT_COUNT_UNSPANNED).
+    pub unit_unspanned: Option<super::junction::Unspanned>,
 }
 
 impl Guard {
@@ -2066,6 +2079,9 @@ impl Guard {
             judge_ref_others: Vec::new(),
             indels: Vec::new(),
             minority: None,
+            unit_others: Vec::new(),
+            unit_alt: Vec::new(),
+            unit_unspanned: None,
         }
     }
 }

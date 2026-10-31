@@ -329,3 +329,21 @@ def test_unexplained_reads_flag():
             counts.unexplained_reads = value
         _make_pipeline()._compute_diagnostics([pv], [counts])
         assert "UNEXPLAINED_READS" not in pv.gbcms_diagnostic
+
+
+def test_unit_count_unspanned_flag():
+    """UNIT_COUNT_UNSPANNED(change:bases/longest) names a long deletion's other unit count
+    that reads like it past the longest read at the site (#297); absent when the field is
+    empty or missing."""
+    pv = _mock_prepared_variant(ref_allele="A" * 61, alt_allele="A", variant_type="DELETION")
+    counts = _mock_counts(dp=24, ad=24)
+    counts.unit_count_unspanned = "-120:188/150"
+    _make_pipeline()._compute_diagnostics([pv], [counts])
+    assert pv.gbcms_diagnostic == "UNIT_COUNT_UNSPANNED(-120:188/150)"
+    for value in ("", None):
+        pv = _mock_prepared_variant(ref_allele="A" * 61, alt_allele="A", variant_type="DELETION")
+        counts = _mock_counts(dp=24, ad=24)
+        if value is not None:
+            counts.unit_count_unspanned = value
+        _make_pipeline()._compute_diagnostics([pv], [counts])
+        assert "UNIT_COUNT_UNSPANNED" not in pv.gbcms_diagnostic

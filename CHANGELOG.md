@@ -7,6 +7,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed — a long deletion's ALT reads must tell it from another unit count present at the site (#297)
+
+- At a deletion of 50 bp or more beside a tandem run of its unit (its deleted copy differing
+  from the run's, so the junction windows stop at that base), another unit count reads like
+  the given deletion until the run's copies end. Where such an allele is present at the site
+  (listed, or spelled in full by its own bases on 3 or more fragments and 5% of those telling
+  the ALT from it, RJ-25's floor; a fragment spells it only where its bases fit it, and fit
+  REF worse, over 24 bases past where it and the ALT differ), an ALT read now counts only where its confident bases where
+  the two first differ show the given count; a read ending sooner is either allele: partial
+  evidence (RJ-25), not ALT. Errors where the two read alike cost both and decide nothing
+  (RJ-26). A site with no other count keeps its reads; REF reads and the sibling claim keep
+  their windows. Both paths: the rules (`junction`) and, under `--read-judge sequence`, the
+  found alleles as site states (the judge already held listed and aligner-written ones).
+- Where no read at the site can reach the first difference (the run longer than the longest
+  read), nothing is held, the counts stand, and `gbcms_diagnostic` names the row:
+  `UNIT_COUNT_UNSPANNED(change:bases/longest)`, a new `BaseCounts.unit_count_unspanned`
+  (no new column). Prep holds the reference a read reaches past twice a long deletion's
+  length (`whole_ref`). RJ-24 amended 2026-10-30.
+
 ### Fixed — the Smith-Waterman local re-scoring's `partial_alt` reads the scores that made the call (#195)
 
 - Where a complex row's semiglobal scores are unreliable, the `sw` step re-scores with a local

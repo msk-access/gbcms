@@ -1066,6 +1066,13 @@ class Pipeline:
                 elsewhere at least as well (XS >= AS); otherwise its bases at the row
                 decide it, so a row with many may count foreign reads (a paralog's, or
                 reads placed at a homozygous deletion). Counts stand.
+            UNIT_COUNT_UNSPANNED(change:bases/longest): at a deletion of 50 bp or
+                more, another allele at its breakpoint (another unit count of a run
+                beside it, `change` its length change, deleted bases negative) reads
+                like the given deletion past what the longest read at the site holds:
+                a read must hold `bases` bases from the junction windows' first base to
+                tell the two, and the longest is `longest`. No read can, so the given
+                deletion's alt_count may include that allele's carriers. Counts stand.
         """
         flags: list[str] = []
 
@@ -1167,6 +1174,13 @@ class Pipeline:
         unexplained = getattr(counts, "unexplained_reads", 0)
         if unexplained > 0:
             flags.append(f"UNEXPLAINED_READS({unexplained}/{counts.dp})")
+
+        # A long deletion's other unit count reading like it past what the longest read at
+        # the site holds: no read can tell their carriers apart, so nothing is held and the
+        # counts stand; the flag names it.
+        unspanned = getattr(counts, "unit_count_unspanned", "")
+        if unspanned:
+            flags.append(f"UNIT_COUNT_UNSPANNED({unspanned})")
 
         return flags
 
