@@ -2060,6 +2060,12 @@ pub(crate) struct Guard {
     /// Those bases with each listed row past the junction applied: a read fitting one carries
     /// the deletion with a listed neighbour, never another of `unit_others` (RJ-24).
     pub unit_neighbours: Vec<Vec<u8>>,
+    /// The other alleles at the breakpoint within a read's reach that are not present at the
+    /// site (nobody listed them and under the floor of fragments spell them), and REF's bases
+    /// from the junction windows' first base: a read that spells one in full is no ALT, partial
+    /// evidence (RJ-6); the floor decides only the reads that cannot tell.
+    pub unit_absent: Vec<super::junction::Hidden>,
+    pub unit_ref: Vec<u8>,
     /// Another allele at the breakpoint that reads like the ALT past what the longest read
     /// at the site holds: its length change (deleted bases negative), the bases a read must
     /// hold from the windows' first base to tell the two, and that read's length. Nothing is
@@ -2085,6 +2091,8 @@ impl Guard {
             unit_others: Vec::new(),
             unit_alt: Vec::new(),
             unit_neighbours: Vec::new(),
+            unit_absent: Vec::new(),
+            unit_ref: Vec::new(),
             unit_unspanned: None,
         }
     }

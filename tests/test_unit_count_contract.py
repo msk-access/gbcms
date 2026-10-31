@@ -210,20 +210,23 @@ def test_an_inserted_unit_is_told_at_the_junction(tmp_path, judge):
 
 
 @pytest.mark.parametrize("judge", JUDGES)
-@pytest.mark.parametrize(
-    "holding, alt", [(2, 14), (3, 0)], ids=["two-fragments", "three-fragments"]
-)
-def test_the_other_count_is_found_on_three_fragments(tmp_path, judge, holding, alt):
-    """Found as RJ-25 finds another allele: on 3 or more fragments. Two two-unit carriers
-    holding the run leave the site as before (on the rules path every carrier ALT);
-    three hold it."""
+@pytest.mark.parametrize("holding", [1, 2, 3])
+def test_the_other_count_is_found_on_three_fragments(tmp_path, judge, holding):
+    """Found as RJ-25 finds another allele: on 3 or more fragments. With three, the short
+    carriers of either count (they cannot tell the counts apart) and the three that hold the
+    run are partial evidence: (6, 0, 15). With fewer the count is not at the site, and the
+    floor decides only the reads that cannot tell: the 12 short carriers stay ALT. A read
+    whose own bases spell the other count is no ALT whatever the floor (F3, RJ-6): partial
+    evidence on the rules path (the judge, where an allele under the floor is no state,
+    leaves it depth only). Before F3 the rules path counted the holders ALT: (6, 14) for two."""
     ref, a, h, rows, reads = _ticket()
     reads += _reads(a, "two", h["two"], HOLDING, size=120, k=holding, tag="h")
-    (((rd, ad, _, _), _),) = _count(tmp_path, ref, [rows["one"]], reads, judge)
-    if judge == "rules" or holding >= 3:
-        assert (rd, ad) == (6, alt)
+    (((rd, ad, partial, _), _),) = _count(tmp_path, ref, [rows["one"]], reads, judge)
+    if holding >= 3:
+        assert (rd, ad, partial) == (6, 0, 12 + holding)
     else:
-        assert rd == 6 and ad >= 12  # the judge as before: the short carriers ALT
+        assert (rd, ad) == (6, 12)
+        assert partial == (holding if judge == "rules" else 0)
 
 
 @pytest.mark.parametrize("judge", JUDGES)
@@ -239,10 +242,13 @@ def test_the_other_count_is_found_on_five_percent_of_the_alt_fragments(tmp_path,
         d = tmp_path / str(many)
         d.mkdir()
         reads = base + _reads(a, "one", h["one"], HOLDING, size=60, k=many, tag="m")
-        (((rd, ad, _, _), _),) = _count(d, ref, [rows["one"]], reads, judge)
+        (((rd, ad, partial, _), _),) = _count(d, ref, [rows["one"]], reads, judge)
         assert rd == 6
         if short_alt:
-            assert ad >= many + 6, (many, ad)
+            # the 3 two-unit carriers spell the count under the floor: no ALT (F3), partial
+            # on the rules path, depth only under the judge; the short carriers stay ALT
+            assert ad == many + 6, (many, ad)
+            assert partial == (3 if judge == "rules" else 0), (many, partial)
         else:
             assert ad == many, (many, ad)
 
@@ -505,15 +511,18 @@ def test_reads_the_aligner_places_elsewhere_spell_no_count(tmp_path, judge):
     """RJ-29's placement test: the 4 two-unit carriers holding the run (soft-clipped, so no
     read writes that deletion) are placed elsewhere as well by their aligner (XS equal to
     AS): they may come from another copy, so they do not make the two-unit deletion present,
-    and the site keeps its reads as before (the rules: every carrier ALT; the judge: the
-    holding two-unit carriers depth only)."""
+    and the site keeps its reads as before (the 12 short carriers ALT; the holding
+    two-unit carriers depth only, on both paths)."""
     ref, a, h, rows, reads = _ticket(clip=True)
     doubted = _reads(a, "two", h["two"], HOLDING, size=120, k=4, tag="h", clip=True)
     for r in doubted:
         r.set_tag("AS", 230)
         r.set_tag("XS", 230)
     got = _count(tmp_path, ref, [rows["one"]], reads + doubted, judge)
-    assert got == [((6, 16, 0, 22) if judge == "rules" else (6, 12, 0, 22), "")]
+    # the doubted holders spell the two-unit count, so they are no ALT (F3), and as the aligner
+    # doubts their placement they are depth only on both paths (before F3 the rules counted
+    # them ALT: AD 16 against the judge's 12)
+    assert got == [((6, 12, 0, 22), "")]
 
 
 @pytest.mark.parametrize("judge", JUDGES)

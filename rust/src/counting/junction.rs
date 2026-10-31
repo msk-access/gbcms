@@ -545,6 +545,30 @@ fn spells(seq: &[u8], quals: &[u8], min_baseq: u8, s: usize, (a, b, r): (&[u8], 
     shown >= 2 && ref_misses >= misses + 2
 }
 
+/// Whether a read placed from query position `q` and read up to `end` spells allele `h` in
+/// full (`told`: what [`tells`] found for it): it holds [`PAST`] bases on from the allele's first
+/// difference from the ALT, its bases where the two differ show the allele's and not the ALT's,
+/// past the windows they fit the allele but for one ([`spells`]; `bases`: the ALT's, REF's and
+/// the ALT with each listed row applied, from the windows' first base), and it is not the
+/// deletion with a listed neighbour. The one test of a read that shows another unit count:
+/// [`present_hidden`] counts the fragments passing it, and [`classify`] holds the read.
+#[allow(clippy::too_many_arguments)]
+fn spells_in_full(
+    seq: &[u8],
+    quals: &[u8],
+    min_baseq: u8,
+    (q, end): (usize, usize),
+    told: Option<bool>,
+    (alt, reference, neighbours): (&[u8], &[u8], &[Vec<u8>]),
+    n: usize,
+    h: &Hidden,
+) -> bool {
+    told == Some(false)
+        && q + h.first_diff + PAST <= end
+        && spells(seq, quals, min_baseq, q, (alt, &h.bases, reference), n, end)
+        && !a_listed_neighbour(seq, quals, min_baseq, q, &h.bases, (alt, neighbours), n, end)
+}
+
 /// The genome span REF's window reads, [its first base, its last + 1): the flank, the
 /// microhomology and K deleted bases. Nothing past it is read, for either allele.
 /// None when the junction judge does not judge `v`.
@@ -657,7 +681,7 @@ pub(crate) fn classify(
         // Another allele at the breakpoint present at the site that reads like the ALT past
         // the windows (#297): the call stands only where the read's bases where the two
         // differ tell the ALT; else it is the ALT or that allele, partial evidence (RJ-25).
-        if let Some(g) = guard.filter(|g| !g.unit_others.is_empty()) {
+        if let Some(g) = guard.filter(|g| !g.unit_others.is_empty() || !g.unit_absent.is_empty()) {
             let end = splice_after(record, hi).unwrap_or(seq.len()).min(readable.1);
             let untold = g.unit_others.iter().find(|h| {
                 tells(&seq, quals, min_baseq, lo as i64, (&g.unit_alt, &h.bases), h.first_diff, end) != Some(true)
@@ -669,6 +693,27 @@ pub(crate) fn classify(
                     h.change, h.first_diff,
                 );
                 out = ClassifyResult::neither_with_nearby(qual, ClassifyPhase::MaskedCompare);
+            } else if let Some(h) = g.unit_absent.iter().find(|h| {
+                let told = tells(&seq, quals, min_baseq, lo as i64, (&g.unit_alt, &h.bases), h.first_diff, end);
+                spells_in_full(&seq, quals, min_baseq, (lo, end), told, (&g.unit_alt, &g.unit_ref, &g.unit_neighbours), n, h)
+            }) {
+                // A read whose own bases spell another unit count is no ALT, whatever the
+                // presence floor: the floor decides only the reads that cannot tell (RJ-6).
+                // Partial evidence where the aligner places it here alone, else depth only
+                // (RJ-29: a read it doubts, or one placed from the right flank, may belong to
+                // another copy).
+                let here = placement == Placement::Flank && placed_here(record);
+                trace!(
+                    "junction: an ALT read that spells another allele at the breakpoint ({:+} bp) → {}",
+                    h.change, if here { "partial evidence" } else { "depth only" },
+                );
+                out = if here {
+                    ClassifyResult::neither_with_nearby(qual, ClassifyPhase::MaskedCompare)
+                } else {
+                    let mut depth = ClassifyResult::neither(ClassifyPhase::MaskedCompare);
+                    depth.uninformative = true;
+                    depth
+                };
             }
         }
     }
@@ -959,7 +1004,7 @@ pub(crate) fn guard_for(
     // present at the site within a read's reach hold an ALT call to their first difference;
     // one past the longest read at the site names the row.
     let found = present_hidden(read_cache, v, counted, min_baseq, &j, &masked, siblings);
-    if masked.is_empty() && larger.is_none() && found.others.is_empty() && found.unspanned.is_none() {
+    if masked.is_empty() && larger.is_none() && found.others.is_empty() && found.absent.is_empty() && found.unspanned.is_none() {
         return None;
     }
     trace!(
@@ -975,8 +1020,8 @@ pub(crate) fn guard_for(
         .filter(|h| !h.listed)
         .map(|h| OtherAllele { pos: h.row.0, ref_allele: h.row.1.clone(), alt_allele: h.row.2.clone() })
         .collect();
-    (guard.unit_alt, guard.unit_others, guard.unit_neighbours, guard.unit_unspanned) =
-        (found.alt, found.others, found.neighbours, found.unspanned);
+    (guard.unit_alt, guard.unit_others, guard.unit_absent, guard.unit_ref, guard.unit_neighbours, guard.unit_unspanned) =
+        (found.alt, found.others, found.absent, found.reference, found.neighbours, found.unspanned);
     Some(guard)
 }
 
@@ -1073,12 +1118,13 @@ fn present_hidden(
             // of the bases where the two differ and the ALT's at none. A read of a third allele
             // (in a repeat whose copies differ, the sample's own copy changes) is not taken for
             // it.
-            if !told
-                && (!here
-                    || !spells(&seq, quals, min_baseq, q, (&alt, &h.bases, &reference), n, end)
-                    || a_listed_neighbour(&seq, quals, min_baseq, q, &h.bases, (&alt, &neighbours), n, end))
-            {
-                continue;
+            if !told {
+                // placed here alone, else it is shown but not tallied (RJ-29): the hold still takes it
+                let shown = spells_in_full(&seq, quals, min_baseq, (q, end), told_here, (&alt, &reference, &neighbours), n, h);
+                slot.shown |= shown;
+                if !(here && shown) {
+                    continue;
+                }
             }
             trace!(
                 "junction: read {} {} the allele {:+} bp at the breakpoint",
@@ -1090,51 +1136,54 @@ fn present_hidden(
             }
         }
     }
-    let present: Vec<Hidden> = reach
-        .into_iter()
-        .enumerate()
-        .filter_map(|(k, h)| {
-            let count = |want: bool| fragments.values().filter(|c| !c[k].conflict && c[k].told == Some(want)).count();
-            let (spelled, alt_told) = (count(false), count(true));
-            // fragments whose ALT call it would take: a read fitting the ALT's windows that
-            // tells the given count from it nowhere, its mate no better
-            let held = fragments.values().filter(|c| c[k].held && !c[k].alt).count();
-            let found = spelled >= GUARD_MIN_READS as usize && spelled as f64 >= GUARD_REF_SHARE * alt_told as f64;
-            if found || h.listed {
-                trace!(
-                    "junction: another allele at {}:{} ({:+} bp, reading like the ALT for {} bases from the windows' first base) {}: {} fragments spell it, {} the ALT over the same bases",
-                    v.chrom, v.pos + 1, h.change, h.first_diff, if h.listed { "listed" } else { "found" }, spelled, alt_told,
-                );
-            }
-            (found || h.listed).then_some(Hidden { spelled: spelled as u32, told: alt_told as u32, held: held as u32, ..h })
-        })
-        .collect();
-    if present.is_empty() {
-        return PresentHidden { unspanned, ..PresentHidden::default() };
+    let (mut present, mut absent): (Vec<Hidden>, Vec<Hidden>) = (Vec::new(), Vec::new());
+    for (k, h) in reach.into_iter().enumerate() {
+        let count = |want: bool| fragments.values().filter(|c| !c[k].conflict && c[k].told == Some(want)).count();
+        let (spelled, alt_told) = (count(false), count(true));
+        // fragments whose ALT call it would take: a read fitting the ALT's windows that
+        // tells the given count from it nowhere, its mate no better
+        let held = fragments.values().filter(|c| c[k].held && !c[k].alt).count();
+        let found = spelled >= GUARD_MIN_READS as usize && spelled as f64 >= GUARD_REF_SHARE * alt_told as f64;
+        if found || h.listed {
+            trace!(
+                "junction: another allele at {}:{} ({:+} bp, reading like the ALT for {} bases from the windows' first base) {}: {} fragments spell it, {} the ALT over the same bases",
+                v.chrom, v.pos + 1, h.change, h.first_diff, if h.listed { "listed" } else { "found" }, spelled, alt_told,
+            );
+            present.push(Hidden { spelled: spelled as u32, told: alt_told as u32, held: held as u32, ..h });
+        } else if fragments.values().any(|c| c[k].shown) {
+            // not at the site by the floor, yet a read spells it: that read is no ALT
+            absent.push(h);
+        }
     }
-    PresentHidden { alt, others: present, neighbours, unspanned }
+    PresentHidden { alt, others: present, absent, neighbours, reference, unspanned }
 }
 
 /// One fragment's reading against one other allele at the breakpoint ([`present_hidden`]):
 /// read in full, the ALT told (`Some(true)`) or the allele spelled (`Some(false)`), mates
 /// disagreeing there (`conflict`); and, wherever it reads, a read of it the hold takes from the
-/// ALT (`held`) or one telling the ALT (`alt`).
+/// ALT (`held`) or one telling the ALT (`alt`), and whether any read of it spells the allele in
+/// full (`shown`).
 #[derive(Clone, Default)]
 struct Tally {
     told: Option<bool>,
     conflict: bool,
     held: bool,
     alt: bool,
+    /// A read of the fragment spells the allele in full, placed here or not (`spells_in_full`).
+    shown: bool,
 }
 
 /// [`present_hidden`]'s finding: the ALT's bases and the present other alleles' (from the
-/// windows' first base), the ALT with each listed row applied, and the allele past the longest
-/// read's reach.
+/// windows' first base), those within a read's reach that are not present (a read that spells
+/// one in full is no ALT: partial evidence, RJ-6), the ALT with each listed row applied, REF's
+/// bases (for [`spells_in_full`]) and the allele past the longest read's reach.
 #[derive(Default)]
 struct PresentHidden {
     alt: Vec<u8>,
     others: Vec<Hidden>,
+    absent: Vec<Hidden>,
     neighbours: Vec<Vec<u8>>,
+    reference: Vec<u8>,
     unspanned: Option<Unspanned>,
 }
 
@@ -1505,6 +1554,31 @@ mod tests {
         let q = [30u8; 9];
         assert_eq!(tells(b"CCCCTAAAG", &q, 20, 0, (a, b), 4, 9), Some(true));
         assert_eq!(tells(b"CCCCTAANG", &q, 20, 0, (a, b), 4, 9), None);
+    }
+
+    #[test]
+    fn a_read_spells_another_count_in_full_only_where_it_holds_the_bases_and_tells_it() {
+        // The ALT and another count agree for 6 bases, then differ at 6, 9 and 12; REF is
+        // other bases throughout. The allele is held [`PAST`] bases past its first difference.
+        let common = cgt(60, 3).into_bytes();
+        let (mut alt, mut other) = (common.clone(), common.clone());
+        for k in [6, 9, 12] {
+            alt[k] = b'A';
+            other[k] = b'T';
+        }
+        let reference = cgt(60, 9).into_bytes();
+        let h = Hidden { change: -60, bases: other.clone(), first_diff: 6, listed: false, row: (0, Vec::new(), Vec::new()), spelled: 0, told: 0, held: 0 };
+        let q = [30u8; 60];
+        let told = |read: &[u8], end: usize| tells(read, &q, 20, 0, (&alt, &other), 6, end);
+        let spelt = |read: &[u8], end: usize| spells_in_full(read, &q, 20, (0, end), told(read, end), (&alt, &reference, &[]), 6, &h);
+        assert!(spelt(&other, 60), "its bases are the allele's, held to 24 past the first difference");
+        assert!(!spelt(&alt, 60), "the ALT's bases tell the ALT");
+        assert!(!spelt(&other, 29), "it ends before 24 bases past the first difference");
+        assert!(spelt(&other, 30));
+        // the deletion with a listed neighbour (here the ALT with a row giving the allele's bases)
+        // is never another allele
+        let neighbours = vec![other.clone()];
+        assert!(!spells_in_full(&other, &q, 20, (0, 60), told(&other, 60), (&alt, &reference, &neighbours), 6, &h));
     }
 
     #[test]
