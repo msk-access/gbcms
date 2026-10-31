@@ -26,6 +26,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   up to twice the given); an expansion at the breakpoint is not (a REF read inside its copy
   fits it as well). The count that holds a row's ALT calls is named in `gbcms_diagnostic`,
   `OBSERVED_ALLELE` or `COEXISTING_ALLELE` at the deletion's anchor (`BaseCounts.unit_count_allele`).
+- A listed other unit count is present only where at least 1 fragment shows it (its bases
+  where it and the given deletion differ tell it) and 5% of those showing either do (RJ-25's
+  sibling rule, operator 2026-10-31), on both paths:
+  under `--read-judge sequence` such a listed row that no read shows is no state at that row
+  (before, its ties made the given count's short carriers partial though no molecule carried
+  it). RJ-24 and RJ-25 amended 2026-10-31.
 - `UNIT_COUNT_UNSPANNED` weighs the nearest unit count on each side (one that reads like the
   given deletion for its shift and 12 bases more), not any count past reach.
 - Where no read at the site can reach the first difference (the run longer than the longest

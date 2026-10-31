@@ -425,7 +425,9 @@ way), so a CIGAR-only rule read VAF 0.000 at 287 of 300 heterozygous deletions.
   exactly from the reference (the other deletions at the deletion's breakpoint, fewer
   bases or more up to twice the given, and the listed rows; a reference N tells nothing),
   never by a run detector. An insertion at the breakpoint (a tandem copy of the bases
-  before it) is not looked for: a REF read inside the copy fits it as well as REF. Where one is present at the site (listed, or spelled in full by its own
+  before it) is not looked for: a REF read inside the copy fits it as well as REF. Where one is present at the site (listed and shown on 1 or more fragments
+  and 5% of those showing either, its bases where it and the ALT differ telling it, RJ-25's
+  sibling rule; or spelled in full by its own
   bases on 3 or more fragments the aligner places here (XS below AS; MAPQ above 0 where
   it writes no XS) and 5% of those telling the ALT from it: read on 24
   bases past its first difference, fitting it but for one base past the windows, with

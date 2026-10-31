@@ -111,7 +111,12 @@ Per class, setting, input form, alignment and path:
    other row of T1 to T3; the other count named (`OBSERVED_ALLELE` or `COEXISTING_ALLELE` at the deletion's
    anchor) on every row where it is present (listed, or found) and on no S1 row, nor on an S6
    row of the found form.
-7. S1 and S6 rows, and class C: counts equal to develop's.
+7. S1 and S6 rows, and class C: counts equal to develop's in the unlisted form; in the listed
+   form, S1 rows (no molecule of the other count) equal to the unlisted form's, and S6 rows held
+   only where a fragment shows the other count and 5% of those showing either do (RJ-25's
+   sibling rule, operator 2026-10-31), on both paths. Count the S1 rows of the listed form held
+   all the same: where fewer than 20 fragments show either count, one read's errors at the
+   first difference can show the other count (the 1-fragment floor's cost at depth).
 
 ## What this cannot see
 

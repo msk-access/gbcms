@@ -6,8 +6,9 @@ at its breakpoint (one more or one fewer unit of a tandem run whose deleted copy
 from it, so the windows stop at the copy's first differing base), that allele reads like
 the given one over the junction windows and on until the haplotypes first differ. A read
 ending sooner fits either. The rule holds such a read to that base only where the other
-allele is really present at the site: listed, or spelled in full by its own bases on 3 or
-more fragments and 5% of those spelling the ALT there (RJ-25's floor). A read fitting the
+allele is really present at the site: listed and shown by its own bases on 1 or more
+fragments and 5% of those showing either (RJ-25's sibling rule), or spelled in full by its
+own bases on 3 or more fragments and 5% of those spelling the ALT there (RJ-25's floor). A read fitting the
 ALT that does not tell it from that allele, by a confident base where the two differ,
 is the ALT or that allele: neither, with partial evidence (RJ-25). A site with no such
 allele keeps its reads as before. REF is told from both at the junction, so its reads
@@ -466,11 +467,12 @@ def test_ad_reads_low_beside_a_present_count(tmp_path, judge):
     """Named limit (RJ-24, measured on the spike-in arm, D12 phase 1b): REF keeps its
     windows while an ALT read must reach the first difference. One REF read and one carrier
     of the given count start at every base from 144 to 4 before the junction (150 bp each;
-    REF holds its windows from all 141), and the two-unit deletion is listed: only the 86
-    carriers starting 89 bases before the junction or later reach where the counts differ,
-    so AD/(RD+AD) reads 86/227 = 0.379 for a true 0.5."""
+    REF holds its windows from all 141), and the two-unit deletion is listed and present (10
+    of its carriers read past where the counts differ): only the 86 carriers of the given
+    count starting 89 bases before the junction or later reach that base, so AD/(RD+AD) reads
+    86/227 = 0.379 for a true 0.5."""
     ref, a, h, rows = _shape(60, 2)
-    reads = []
+    reads = _reads(a, "two", h["two"], (150, 40), size=120, k=10, tag="p")
     for i, s in enumerate(range(a - 144, a - 3)):
         for name, hap in (("REF", h["REF"]), ("one", h["one"])):
             cig = ((0, 150),) if name == "REF" else ((0, a - s), (2, 60), (0, 150 - (a - s)))
@@ -518,3 +520,62 @@ def test_the_count_that_holds_the_calls_is_named(tmp_path, judge, given):
     (c,) = count_checked(bam, [pv.variant], read_judge=judge, **kw)
     p, r, al = rows["two"]
     assert c.unit_count_allele == f"{p + 1}:{r}>{al}:16/{given}"
+
+
+# ── A listed count is present only where its reads show it (RJ-25's sibling rule) ──
+
+
+@pytest.mark.parametrize("judge", JUDGES)
+def test_a_listed_count_no_read_shows_holds_nothing(tmp_path, judge):
+    """S1, listed: the two-unit deletion is listed, but no molecule carries it (6 REF reads, 6
+    short and 4 holding carriers of the given count). A listed allele is another allele only
+    where at least one fragment shows it (its bases where it and the given count differ tell
+    it) and 5% of those showing either do (RJ-25's sibling rule, operator 2026-10-31): none
+    does, so nothing is held, on either path, and every carrier counts ALT, as unlisted (the
+    judge drops the listed state at this row)."""
+    ref, a, h, rows = _shape(60, 2)
+    reads = _reads(a, "REF", h["REF"], HOLDING, size=0)
+    reads += _reads(a, "one", h["one"], SHORT, size=60)
+    reads += _reads(a, "one", h["one"], HOLDING, size=60, k=4, tag="h")
+    got = _count(tmp_path, ref, [rows["one"], rows["two"]], reads, judge, listed=True)
+    assert got[0][0][:3] == (6, 10, 0)
+
+
+@pytest.mark.parametrize("judge", JUDGES)
+@pytest.mark.parametrize(
+    "holders, held", [(19, True), (20, False)], ids=["5-percent", "below-5-percent"]
+)
+def test_a_listed_count_shown_on_five_percent_holds_the_run(tmp_path, judge, holders, held):
+    """S6, listed: one two-unit carrier holds the run beside 19 of the given count holding it
+    (1 of 20 fragments: 5%), so the listed allele is present and the 6 short carriers fit both:
+    partial evidence. Beside 20 (1 of 21) it is not, and they count ALT; so does the two-unit
+    carrier on the rules path, as before (its bases past the windows are not read), while the
+    sequence judge, reading it whole, does not credit it."""
+    ref, a, h, rows = _shape(60, 2)
+    reads = _reads(a, "REF", h["REF"], HOLDING, size=0)
+    reads += _reads(a, "one", h["one"], SHORT, size=60)
+    reads += _reads(a, "one", h["one"], HOLDING, size=60, k=holders, tag="h")
+    reads += _reads(a, "two", h["two"], HOLDING, size=120, k=1, tag="h")
+    got = _count(tmp_path, ref, [rows["one"], rows["two"]], reads, judge, listed=True)
+    rd, ad, partial = got[0][0][:3]
+    unheld = holders + 6 + (1 if judge == "rules" else 0)
+    assert (rd, ad) == ((6, holders) if held else (6, unheld))
+
+
+@pytest.mark.parametrize("judge", JUDGES)
+def test_a_listed_count_whose_copies_differ_is_shown(tmp_path, judge):
+    """#297's table listed, its 4 two-unit carriers holding the run with two phased changes of
+    their own 5 and 11 bases past where the counts first differ (in a repeat whose copies
+    differ, the sample's copies are not the reference's: HG002's listed unit counts). They fit
+    the two-unit deletion's bases past the windows worse than "but for one", so none spells it
+    in full as a found allele must; each shows it, its bases where the two counts differ telling
+    it from the given one. The annotation names the allele to look for, so it is present and
+    holds the run as unchanged carriers do (the listed test above): 6/4/16 on both paths."""
+    ref, a, h, rows, reads = _ticket()
+    two = list(h["two"])
+    for x in (a + 65, a + 71):  # the given count holds the unit there; neither base is read
+        two[x] = next(b for b in "ACGT" if b not in (two[x], h["one"][x]))
+    reads += _reads(a, "two", "".join(two), HOLDING, size=120, k=4, tag="h")
+    reads += _reads(a, "one", h["one"], HOLDING, size=60, k=4, tag="h")
+    got = _count(tmp_path, ref, [rows["one"], rows["two"]], reads, judge, listed=True)
+    assert got[0][0][:3] == (6, 4, 16)
