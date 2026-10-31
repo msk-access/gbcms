@@ -73,3 +73,24 @@ def test_the_wheel_checks_install_the_wheel_in_rocky_linux_8_and_9():
     for event in ("pull_request", "push"):
         assert ".github/actions/linux-wheel/**" in paths[event]["paths"], event
         assert "rust/**" in paths[event]["paths"], event
+
+
+def test_the_suite_in_a_minimal_image_has_what_the_hook_tests_run():
+    """The suite's hook tests commit in throwaway repositories: the pre-commit hook calls
+    xargs, awk, gzip and a bare python3. A minimal Rocky image lacks findutils, so the dnf
+    line installs them, and the venv's bin leads PATH when pytest runs."""
+    runs = "\n".join(str(step.get("run", "")) for step in _jobs("wheels.yml")["rocky"]["steps"])
+    (dnf,) = [ln for ln in runs.splitlines() if ln.strip().startswith("dnf install")]
+    for package in ("findutils", "gawk", "gzip", "git-core"):
+        assert package in dnf.split(), (package, dnf)
+    script = (ROOT / "scripts" / "check_wheel.sh").read_text()
+    pytest_line = next(ln for ln in script.splitlines() if "bin/pytest" in ln and "-q" in ln)
+    assert pytest_line.strip().startswith('PATH="$venv/bin:$PATH"'), pytest_line
+
+
+def test_the_container_script_is_one_single_quoted_word():
+    """The Rocky steps run `bash -c '...'`: one apostrophe in a comment inside it ends the
+    script early and the rest runs on the runner."""
+    steps = _jobs("wheels.yml")["rocky"]["steps"]
+    run = next(s["run"] for s in steps if "bash -euo pipefail -c" in str(s.get("run", "")))
+    assert run.count("'") == 2, run.count("'")

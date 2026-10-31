@@ -105,7 +105,9 @@ jobs:
             -e RUN_SUITE -e ROCKY -e MANYLINUX \
             "quay.io/rockylinux/rockylinux:$ROCKY" \
             bash -euo pipefail -c '
-              dnf install -y --setopt=install_weak_deps=False python3.11 python3.11-pip git-core
+              # git, xargs, awk and gzip are what the hook tests of the suite run; the
+              # minimal image does not guarantee findutils, gawk or gzip
+              dnf install -y --setopt=install_weak_deps=False python3.11 python3.11-pip git-core findutils gawk gzip
               # the checkout belongs to the runner user, not to root
               git config --global --add safe.directory /repo
               bash scripts/check_wheel.sh dist python3.11 "digests/${MANYLINUX}-rocky${ROCKY}.txt"

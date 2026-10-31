@@ -18,6 +18,9 @@
 #      proof that two installs count the same bytes;
 #   4. the test suite (skipped when RUN_SUITE=0).
 #
+# The suite's hook tests commit in throwaway repositories, so they need git, bash, xargs
+# (findutils), awk and gzip on the machine; a minimal container image has to install them.
+#
 # It creates a temporary folder (printed at the end) and leaves it for you to remove.
 # It installs from PyPI, and the suite takes a few minutes: on a cluster, run it inside
 # a job, not on the login node.
@@ -77,7 +80,9 @@ if [ "$run_suite" = "1" ]; then
   cd "$repo"
   # `pytest`, not `python -m pytest`, and no bytecode: nothing is imported from or
   # written into the checkout's src/. --no-cov: the wheel, not the source, is under test.
-  PYTHONDONTWRITEBYTECODE=1 "$venv/bin/pytest" -q -p no:cacheprovider --no-cov tests/
+  # The venv's bin comes first on PATH: the hook tests make commits whose hooks call a bare
+  # `python3`, which must be the venv's (with PyYAML), not the host's.
+  PATH="$venv/bin:$PATH" PYTHONDONTWRITEBYTECODE=1 "$venv/bin/pytest" -q -p no:cacheprovider --no-cov tests/
 fi
 
 echo "== done; the working folder is $work"
