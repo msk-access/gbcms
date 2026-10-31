@@ -323,9 +323,11 @@ def test_the_sibling_claim_keeps_refs_window_beside_another_count(tmp_path, judg
         pv.variant for pv in _rs.prepare_variants(vs, fa, 5, False, 1, True, read_judge=judge)
     )
     kw = {"reference_fasta": fa} if judge == "sequence" else {}
-    got, _ = count_checked(
+    got, beside = count_checked(
         bam, [deletion, snv], read_judge=judge, sibling_variants=[[snv], [deletion]], **kw
     )
+    for c in (got, beside):
+        _invariants(c)
     assert (got.rd, got.ad, got.partial_alt) == (6, 0, 16)
 
 
@@ -466,7 +468,7 @@ def test_a_listed_neighbour_makes_no_other_count(tmp_path, judge, listed):
     pvs = _rs.prepare_variants(vs, fa, 5, False, 1, True, read_judge=judge)
     kw = {"reference_fasta": fa} if judge == "sequence" else {}
     got = count_checked(bam, [pv.variant for pv in pvs], read_judge=judge, **kw)[0]
-    assert got.dp >= got.rd + got.ad and got.rd == got.rd_fwd + got.rd_rev
+    _invariants(got)
     assert (got.rd, got.ad) == ((6, 6) if listed else (6, 0) if judge == "rules" else (6, 3))
 
 
@@ -543,11 +545,35 @@ def test_the_count_that_holds_the_calls_is_named(tmp_path, judge, given):
     )
     kw = {"reference_fasta": fa} if judge == "sequence" else {}
     (c,) = count_checked(bam, [pv.variant], read_judge=judge, **kw)
+    _invariants(c)
     p, r, al = rows["two"]
     assert c.unit_count_allele == f"{p + 1}:{r}>{al}:16/{given}"
 
 
 # ── Rule X (operator, 2026-10-31): a listed other count is always a candidate ──────
+
+
+def _maf_invariants(row):
+    """The four counting invariants on one MAF row (`total_count` is DP)."""
+    n = {
+        k: int(row[k])
+        for k in (
+            "total_count",
+            "ref_count",
+            "alt_count",
+            "total_count_fragment",
+            "ref_count_fragment",
+            "alt_count_fragment",
+            "ref_count_forward",
+            "ref_count_reverse",
+            "alt_count_forward",
+            "alt_count_reverse",
+        )
+    }
+    assert n["total_count"] >= n["ref_count"] + n["alt_count"]
+    assert n["total_count_fragment"] >= n["ref_count_fragment"] + n["alt_count_fragment"]
+    assert n["ref_count"] == n["ref_count_forward"] + n["ref_count_reverse"]
+    assert n["alt_count"] == n["alt_count_forward"] + n["alt_count_reverse"]
 
 
 def _counts(tmp_path, ref, rows, reads, judge, listed=False):
@@ -635,6 +661,7 @@ def test_the_s1_example_through_the_cli_names_the_listed_count(tmp_path, judge, 
         for x in read_maf_output(glob.glob(str(out / "*.maf"))[0])
         if x["vcf_pos"] == str(p + 1) and x["vcf_ref"] == r
     ]
+    _maf_invariants(row)
     counts = (row["ref_count"], row["alt_count"], row["partial_alt"])
     flags = row["gbcms_diagnostic"].split(";")
     if listed:

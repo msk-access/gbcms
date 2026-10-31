@@ -10,7 +10,7 @@ HG002 site holds REF, the given deletion and another unit count together.
 A deletion of 50 bp or more is judged at its junction (RJ-24). Where the bases after the
 deletion are a tandem run of its unit and the deleted copy differs from the run's copies, the
 junction windows stop at the copy's first differing base. Another unit count (one more unit
-deleted, or one unit inserted) then reads like the given deletion until the run's copies end.
+deleted, or one fewer) then reads like the given deletion until the run's copies end.
 Call the distance from the windows' first base to that first difference **D**.
 
 - Where the other count is present at the site (listed in the input, always: rule X, operator
