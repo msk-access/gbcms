@@ -151,6 +151,15 @@ clusters that run containers.
     docker run --rm -v $(pwd):/data ghcr.io/msk-access/gbcms:X.Y.Z gbcms --help
     ```
 
+!!! note "Singularity and Apptainer bind your HOME"
+    Both runtimes bring your home folder and your environment into the container. The
+    image sets `PYTHONNOUSERSITE=1`, so packages that you installed with `pip install
+    --user` do not replace the ones in the image. A `PYTHONPATH` in your environment still
+    reaches the container: unset it, or add `--cleanenv`, if it holds another gbcms or
+    other copies of the dependencies. CI runs the image under Apptainer on every change
+    that builds it, with a package in the caller's home as a trap, and requires output
+    equal to the Docker run's.
+
 !!! note "When pip builds from source"
     The one prebuilt wheel is for CPython 3.10 and newer and glibc 2.28+. On glibc
     older than 2.28, or on another platform, pip falls back to source compilation,

@@ -357,7 +357,7 @@ Interactive helper for git-flow operations:
 
 | Workflow | Trigger | Purpose |
 |:---------|:--------|:--------|
-| `test.yml` | Push to develop/main, PR | Run tests: Ubuntu 3.10 (dependencies at their floors), 3.11 and 3.14, macOS 3.12; lint; Rust unit tests; build and run the image |
+| `test.yml` | Push to develop/main, PR | Run tests: Ubuntu 3.10 (dependencies at their floors), 3.11 and 3.14, macOS 3.12; lint; Rust unit tests; build the image and run it under Docker and under Apptainer (as a RHEL cluster does) |
 | `latest-deps.yml` | Monthly (the 1st), manual before a release | The suite on the newest dependency releases, Python 3.10–3.14, with compatible Rust updates; a failure opens or updates one `latest-deps` issue |
 | `release.yml` | Tag push `X.Y.Z` | Verify the version sources, build the wheel and sdist, publish PyPI and Docker, create the GitHub Release |
 | `wheels.yml` | Push/PR touching `rust/`, `pyproject.toml`, the wheel action or the check scripts; manual | Build the Linux wheel with the release's action and install it in Rocky Linux 8 and 9 containers (`pip` with binary wheels only, the suite, and a counting run whose output digests must match everywhere); publishes nothing |

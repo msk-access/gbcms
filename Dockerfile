@@ -100,5 +100,11 @@ RUN pip install --no-cache-dir --require-hashes --no-deps -r /app/requirements.l
 # Verify installation
 RUN python -c "from gbcms import _rs; import gbcms; print(f'gbcms {gbcms.__version__} ready')"
 
+# Singularity and Apptainer (the RHEL clusters' runtimes) bind the caller's HOME into the
+# container, and a Python imports packages from ~/.local before its own: the packages
+# that a user put there with pip's --user option would replace the locked ones. Turn the
+# user site off.
+ENV PYTHONNOUSERSITE=1
+
 ENTRYPOINT ["gbcms"]
 CMD ["--help"]
