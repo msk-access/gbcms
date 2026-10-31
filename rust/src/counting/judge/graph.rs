@@ -187,14 +187,15 @@ impl GraphBuilder {
             }
         }
         // each row's length change once, for the band's half-width
-        let mut shifts: Vec<(i64, i64, i64)> = Vec::new();
+        let (mut shifts, mut grows): (Vec<(i64, i64, i64)>, Vec<bool>) = (Vec::new(), Vec::new());
         let mut seen = std::collections::BTreeSet::new();
         for seg in &segments {
             if let Some(r) = seg.row {
                 if seen.insert(r) {
-                    let d = ((seg.after - seg.first) as i64 - (seg.span.1 - seg.span.0)).abs();
-                    if d > 0 {
-                        shifts.push((seg.span.0, seg.span.1, d));
+                    let d = (seg.after - seg.first) as i64 - (seg.span.1 - seg.span.0);
+                    if d != 0 {
+                        shifts.push((seg.span.0, seg.span.1, d.abs()));
+                        grows.push(d > 0);
                     }
                 }
             }
@@ -206,7 +207,7 @@ impl GraphBuilder {
         }
         // every predecessor laid out before its base (edges run forward)
         let topological = (0..n).all(|v| preds[pred_off[v] as usize..pred_off[v + 1] as usize].iter().all(|&u| (u as usize) < v));
-        Graph { segments, bases, coord, seg_of, pred_off, preds, succ_off: succ_count, succs, shifts, end_max, topological }
+        Graph { segments, bases, coord, seg_of, pred_off, preds, succ_off: succ_count, succs, shifts, grows, end_max, topological }
     }
 }
 
@@ -224,6 +225,8 @@ pub(crate) struct Graph {
     succs: Vec<u32>,
     /// Per row the graph holds (once), its REF span and the bases it changes the length by.
     shifts: Vec<(i64, i64, i64)>,
+    /// Per entry of `shifts`, whether the row lengthens the haplotype (an insertion).
+    grows: Vec<bool>,
     /// Per segment (in order), the furthest end of it and those before it.
     end_max: Vec<i64>,
     /// Whether every base's predecessors lie before it: [`run`] fills a column from the
@@ -299,6 +302,7 @@ impl Graph {
             && self.succ_off == other.succ_off
             && self.succs == other.succs
             && self.shifts == other.shifts
+            && self.grows == other.grows
             && self.end_max == other.end_max;
         alike.then(|| self.bases.iter().zip(&other.bases).position(|(a, b)| a != b).unwrap_or(self.bases.len()))
     }
@@ -1191,9 +1195,16 @@ pub(crate) struct GraphRead<'r> {
     /// The longest tandem-repeat period in its reach: how far its own placement may sit off its
     /// best alignment at no cost, which lowers what a band answers for ([`score::stand_floor`]).
     pub(crate) free_shift: i64,
-    /// Measurement only (`GBCMS_JUDGE_BAND=full`): no band; the full programme over its reach.
+    /// No band; the full programme over its reach: where any state of the read's site holds a
+    /// long insertion past its band ([`skips_bands`], set by `Site::graph_read`), and for
+    /// measurement under `GBCMS_JUDGE_BAND=full`.
     pub(crate) full: bool,
+    /// A listed insertion longer than the band's slack in the read's reach but past the window
+    /// its band widens for sends the read to the full programme ([`skips_bands`]). On for
+    /// every read a site scores; off only in tests, to show what the band misses without it.
+    pub(crate) long: bool,
 }
+
 
 /// Half-width of the wider band tried before the full programme (past the length changes).
 const WIDE_SLACK: i64 = 4 * BAND_SLACK;
@@ -1203,17 +1214,52 @@ const WIDE_SLACK: i64 = 4 * BAND_SLACK;
 /// the reference) and the half-widths of the band and the wider band.
 fn bands(g: &Graph, read: &GraphRead) -> ((i64, i64), [i64; 2]) {
     let l = read.seq.len() as i64;
-    // the rows the read can pass: those over its span, widened by what they shift it
+    let shifts = near_shift(g, read);
+    let trim = (read.span.0 - l - shifts, read.span.1 + l + shifts);
+    (trim, [BAND_SLACK + shifts, WIDE_SLACK + shifts])
+}
+
+/// The length changes the read's band widens for: the rows the read can pass, those over its
+/// span, widened by what they shift it (the slack and two bases, and twice the shift, each side).
+fn near_shift(g: &Graph, read: &GraphRead) -> i64 {
     let mut shifts = 0;
     loop {
         let more = g.shifts_near(read.span.0, read.span.1, BAND_SLACK + 2 + 2 * shifts);
         if more == shifts {
-            break;
+            return shifts;
         }
         shifts = more;
     }
+}
+
+/// The rows' length changes in the read's reach ([`bands`]) but outside the window its band
+/// widens for ([`near_shift`]): per row its REF span and its change (positive: an insertion;
+/// negative: a deletion).
+pub(crate) fn far_changes(g: &Graph, read: &GraphRead) -> Vec<(i64, i64, i64)> {
+    if g.shifts.is_empty() {
+        return Vec::new();
+    }
+    let l = read.seq.len() as i64;
+    let shifts = near_shift(g, read);
+    let by = BAND_SLACK + 2 + 2 * shifts;
     let trim = (read.span.0 - l - shifts, read.span.1 + l + shifts);
-    (trim, [BAND_SLACK + shifts, WIDE_SLACK + shifts])
+    let near = |s: i64, e: i64| s < read.span.1 + by && e > read.span.0 - by;
+    g.shifts
+        .iter()
+        .zip(&g.grows)
+        .filter(|(&(s, e, _), _)| s < trim.1 && e > trim.0 && !near(s, e))
+        .map(|(&(s, e, d), &grows)| (s, e, if grows { d } else { -d }))
+        .collect()
+}
+
+/// Whether `g` sends the read straight to the full programme: a listed insertion longer
+/// than the band's slack in the read's reach but past the window its band widens for. All of an
+/// insertion's bases stand at its anchor's coordinate, so a near one widens the band already; a
+/// far one can hold the read's best path where the read's body is a copy of a stretch inside it
+/// (an expanded repeat, a duplication), which no band around the read's own placement reaches.
+/// A path to a far deletion pays the gap to it, so a deletion never sends the read on.
+pub(crate) fn skips_bands(g: &Graph, read: &GraphRead) -> bool {
+    read.long && !g.shifts.is_empty() && far_changes(g, read).iter().any(|&(_, _, d)| d > BAND_SLACK)
 }
 
 /// The read's best score in `g`: in the band where it stands, else the wider band where
@@ -1251,7 +1297,8 @@ pub(crate) fn decided_states<M: ErrorModel>(m: &M, read: &GraphRead, graphs: &[&
     }
     let planned: Vec<((i64, i64), [i64; 2])> = graphs.iter().map(|g| bands(g, read)).collect();
     for step in (if read.full { 2 } else { 0 })..3 {
-        let runs: Vec<bool> = out.iter().map(Option::is_none).collect();
+        // a state that skips its bands runs the full programme alone
+        let runs: Vec<bool> = out.iter().enumerate().map(|(i, o)| o.is_none() && !(step < 2 && skips_bands(graphs[i], read))).collect();
         // this step's band per state; a state laid out as the one it shares from has its band
         let mut stepped: Vec<Option<std::rc::Rc<GraphBand>>> = vec![None; k];
         // a state shares at this step from one that runs it too; that state keeps its total
@@ -1314,7 +1361,7 @@ pub(crate) fn decided<M: ErrorModel>(m: &M, read: &GraphRead, g: &Graph, ws: &mu
         return (0, None);
     }
     let (trim, halves) = bands(g, read);
-    let steps = if read.full { 0 } else { 2 };
+    let steps = if read.full || skips_bands(g, read) { 0 } else { 2 };
     for (half, slack) in halves.into_iter().zip([BAND_SLACK, WIDE_SLACK]).take(steps) {
         let band = GraphBand::new(g, &read.rp, Some(half), trim);
         let floor = floor_for(slack, read);
@@ -1828,7 +1875,8 @@ mod tests {
     fn decided_reference(read: &GraphRead, g: &Graph) -> (i32, Option<i64>, GraphPath) {
         let mut ws = Workspace::default();
         let (trim, halves) = bands(g, read);
-        for (half, slack) in halves.into_iter().zip([BAND_SLACK, WIDE_SLACK]) {
+        let steps = if skips_bands(g, read) { 0 } else { 2 };
+        for (half, slack) in halves.into_iter().zip([BAND_SLACK, WIDE_SLACK]).take(steps) {
             let band = GraphBand::new(g, &read.rp, Some(half), trim);
             let r = run_reference::<ShortReads, true, true>(&ShortReads, read.seq, g, &band, &mut ws);
             if !r.clipped && r.score >= floor_for(slack, read) && (r.score == 0 || !copy_off_band(read.seq, g, &band)) {
@@ -1880,7 +1928,7 @@ mod tests {
             assert_eq!(copy_off_band_lanes(&read, &g, &band), copy, "copy off the band, case {case}");
             copies += usize::from(copy);
             // and the scores, bands and paths the judge reads
-            let gr = GraphRead { seq: &read, rp: rp.clone(), span: (lo, hi + 1), free_shift: 0, full: false };
+            let gr = GraphRead { seq: &read, rp: rp.clone(), span: (lo, hi + 1), free_shift: 0, full: false, long: true };
             let (s0, h0, p0) = decided_reference(&gr, &g);
             let (s1, h1) = decided(&ShortReads, &gr, &g, &mut ws);
             assert_eq!((s0, h0), (s1, h1), "decided, case {case}");
@@ -1907,7 +1955,7 @@ mod tests {
                 let band = GraphBand::new(&g, &rp, half, (lo - 170, hi + 170));
                 same_run(&read, &g, &band, &mut ws, case);
             }
-            let gr = GraphRead { seq: &read, rp: rp.clone(), span: (lo, hi + 1), free_shift: 0, full: false };
+            let gr = GraphRead { seq: &read, rp: rp.clone(), span: (lo, hi + 1), free_shift: 0, full: false, long: true };
             let (s0, h0, p0) = decided_reference(&gr, &g);
             let (s1, h1) = decided(&ShortReads, &gr, &g, &mut ws);
             assert_eq!((s0, h0), (s1, h1), "decided, case {case}");
@@ -1971,7 +2019,7 @@ mod tests {
             let base = &graphs[shares.iter().position(|s| s.is_some()).map_or(0, |k| shares[k].unwrap().0)];
             let (read, rp) = random_read_of(base, &mut st, 100);
             let (lo, hi) = (rp[0], *rp.last().unwrap());
-            let gr = GraphRead { seq: &read, rp: rp.clone(), span: (lo, hi + 1), free_shift: 0, full: false };
+            let gr = GraphRead { seq: &read, rp: rp.clone(), span: (lo, hi + 1), free_shift: 0, full: false, long: true };
             let refs: Vec<&Graph> = graphs.iter().collect();
             let mut wss: Vec<Workspace> = (0..graphs.len()).map(|_| Workspace::default()).collect();
             let all = decided_states(&ShortReads, &gr, &refs, &shares, &mut wss);
@@ -1999,7 +2047,7 @@ mod tests {
         g.pred_off = vec![0, 1, 2, 3, 4, 5, 6];
         g.preds = vec![4, 0, 1, 2, 3, 4];
         g.topological = false;
-        let gr = GraphRead { seq: b"ACGTA", rp: (0..5).collect(), span: (0, 5), free_shift: 0, full: false };
+        let gr = GraphRead { seq: b"ACGTA", rp: (0..5).collect(), span: (0, 5), free_shift: 0, full: false, long: true };
         let mut ws = Workspace::default();
         let (s0, h0, p0) = decided_reference(&gr, &g);
         let (s1, h1) = decided(&ShortReads, &gr, &g, &mut ws);

@@ -1041,6 +1041,13 @@ pub(crate) fn classify(record: &Record, variant: &Variant, quals: &[u8], min_bas
             read.name.clear();
             // the per-read trace lines' arguments are built only where they are written
             let tracing = log::log_enabled!(log::Level::Trace);
+            if tracing {
+                // the long insertions past the read's band that send it to the full programme,
+                // every read (a verdict kept for a read alike included), named as the fits line
+                // names it
+                let mate = if record.is_first_in_template() { 1 } else { 2 };
+                site.trace_far(&String::from_utf8_lossy(record.qname()), mate, &site.graph_read(&read));
+            }
             let view = (read, !overlaps_anchor, min_baseq);
             let clock = std::time::Instant::now();
             let judged = haplotypes.judged(&view);
