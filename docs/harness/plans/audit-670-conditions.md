@@ -68,17 +68,25 @@ the options.
 |:--|:--|:--|:--|
 | 0. Inventory | a script that Sonnet writes (stdlib and git only) | the register, the diffs, the tests | `conditions.tsv`: id, kind, `file:line`, commit, date, ticket, rule, reason text, "cites rows" mark, path (rules, judge, both, shared) |
 | 1. Code graph | `graphify rust/src --no-viz` (syntax parser only; no docs, so no model) | the Rust code | `graphify-out/` (kept out of git) |
-| 2. Sort | Sonnet, with the rubric below; Haiku for the blind 20% | one row at a time: its reason text only | a tag per row |
+| 2. Sort | Sonnet, with the rubric below; Haiku for the blind 20% | **one decision unit (commit) at a time** (operator, 2026-10-31): its subject, body and its rows' reason text; `group_by_commit.py` (no model) makes the units and drops the QC-summary rows | a tag per unit |
 | 3. Reason | Fable, once | the rows tagged "rows" or "unclear", and every rule with four or more conditions; graph queries capped at 1,500 tokens | the clusters (section 4) |
 | 4. Decide | the operator | the clusters | a decision per cluster; each change gets a plan |
 
-**Rubric for layer 2:**
-- **class:** the reason names a read shape or a mechanism without a position ("a read that ends inside
-  the repeat", "insertions of 50 bp or more").
-- **rows:** the reason names positions, rows or test-set shapes, or "to pass a bar".
-- **bug:** the condition makes the code match a rule text that already exists.
-- **speed** or **naming:** no count effect by construction.
-- **unclear:** no reason is recorded.
+**Rubric for layer 2** (run 2; run 1 agreed 12 of 17 = 71%, below the bar, so the rubric was fixed):
+- **class:** the record states a mechanism that holds without any named row ("a read that ends inside
+  the repeat", "insertions of 50 bp or more"). A cited row as evidence does not change this.
+- **rows:** take the named rows out of the record; if no reason is left, it is "rows". This includes
+  "to pass a bar" and "to move row X".
+- **A revert or a narrowing:** tag the reason for it. A mechanism is "class"; "it failed bar X" or "it
+  moved row Y" is "rows".
+- **bug:** the change makes the code match a counting rule that already exists (a register row RJ-n,
+  a decided rule or an invariant), and the record names that rule.
+- **hygiene:** a lint, code-quality or refactor change with no count effect (new in run 2).
+- **speed**, **naming** or **measure:** no count effect on the default behaviour by construction.
+- **unclear:** the record says what changed but not why.
+- **Input, the same for both sorters:** the unit's subject and its whole commit body (up to 3,000
+  characters), and its rows' reason text. The blind sample of run 2 is drawn from the 66 units run 1
+  did not use.
 
 ## 7. State
 
@@ -91,4 +99,7 @@ the options.
 | Layer | Agent and model | Tokens | Rows | Notes |
 |:--|:--|--:|--:|:--|
 | 1. Code graph | `graphify update` and `cluster-only --no-label` (no model) | 0 | – | develop a065ab64: 1,582 nodes, 5,114 edges, 45 groups; `~/test/gbcms/harness/plan670/audit/code_develop/` |
-| 0. Inventory | Sonnet writes `inventory.py` | | | running |
+| 2. Sort, run 2 | Sonnet (83 units); Haiku (a fresh blind 17) | 167,330; 119,051 | 83 | **bar not met on the full tag:** 15 of 17 (88%); both differences are between two "no named rows" tags (hygiene/class, class/bug). **Met on the split that decides layer 3** (rows or unclear, against the rest): 17 of 17. Operator (2026-10-31): go on, conservatively; layer 3 takes run 2's 24 units plus every unit either run tagged rows or unclear: 26 units, 367 conditions. 19 of 83 tags changed between runs, one across the class/rows line (U083). Lesson for later runs: fix the bar on the decision-relevant split before the run |
+| 2. Sort, run 1 | Sonnet (83 units); Haiku (blind 17) | 237,119; 132,221 | 83 | agreement 12 of 17 (71%), below the 90% bar: the inputs differed (Sonnet read the full messages) and the class/rows line was unclear; rubric fixed, run 2 |
+| 0b. Units | `group_by_commit.py` (no model) | 0 | 83 | 841 rows kept (110 QC-summary rows dropped) in 83 commits: merged 71, in flight 12; 11 name positions in their message; blind sample of 17 drawn with seed 20261031 |
+| 0. Inventory | Sonnet writes `inventory.py` | 373,868 | 951 | merged 855, in flight 96; judge path 687 (the judge's first build landed in 6.7.0); 110 rows in QC-summary code that touches no read; the "cites rows" mark is noisy (376 of 419 match only the word "row") |
