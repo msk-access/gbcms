@@ -349,22 +349,6 @@ def test_unit_count_unspanned_flag():
         assert "UNIT_COUNT_UNSPANNED" not in pv.gbcms_diagnostic
 
 
-def test_a_listed_unit_count_decided_absent_has_its_own_name():
-    """A listed other unit count the reads decide absent holds no ALT call: it is named
-    UNIT_COUNT_ABSENT (n fragments whose ALT calls stand though they do not tell the two
-    apart, m deciding ones telling the given count), never COEXISTING_ALLELE, which names a
-    count present and holding calls; one per entry."""
-    deleted = "A" * 61
-    pv = _mock_prepared_variant(ref_allele=deleted, alt_allele="A", variant_type="DELETION")
-    counts = _mock_counts(dp=16, ad=10)
-    counts.unit_count_absent = f"100:{'C' * 121}>C:6/4+100:{'C' * 31}>C:2/5"
-    _make_pipeline()._compute_diagnostics([pv], [counts])
-    assert pv.gbcms_diagnostic.split(";") == [
-        f"UNIT_COUNT_ABSENT(chr1:100:{'C' * 121}>C:6/4)",
-        f"UNIT_COUNT_ABSENT(chr1:100:{'C' * 31}>C:2/5)",
-    ]
-
-
 def test_a_unit_count_holding_the_alt_calls_is_named():
     """At a long deletion, another unit count present at its breakpoint that takes ALT calls
     is named in the OBSERVED_ALLELE form (n fragments whose ALT call it takes, m that tell the

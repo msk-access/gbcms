@@ -283,19 +283,14 @@ pub(crate) fn hidden_alleles(v: &Variant, siblings: &[Variant], reach: usize) ->
         let other = from_shift(from, d + HIDDEN_REACH);
         out.push(Hidden { change: lo as i64 - from as i64, bases: other, first_diff: d, listed: false, row: row_at(&w, *ws, lo, from), spelled: 0, told: 0, held: 0 });
     }
-    // The listed rows (the co-annotated siblings, and the rows in a read's reach the sequence
-    // judge records): each pure indel's haplotype over the same bases, read from the windows'
-    // first base where it keeps the bases before them.
-    let listed_rows = siblings
-        .iter()
-        .map(|s| (s.pos, s.ref_allele.to_ascii_uppercase(), s.alt_allele.to_ascii_uppercase()))
-        .chain(v.reach_rows.iter().cloned());
-    for (sib_pos, sib_ref, sib_alt) in listed_rows {
-        if !super::window::is_pure_indel(&sib_ref, &sib_alt) || (sib_pos, sib_ref.as_str(), sib_alt.as_str()) == (v.pos, v.ref_allele.as_str(), v.alt_allele.as_str()) {
+    // The listed rows: each pure indel's haplotype over the same bases, read from the
+    // windows' first base where it keeps the bases before them.
+    for sib in siblings {
+        if !super::window::is_pure_indel(&sib.ref_allele, &sib.alt_allele) {
             continue;
         }
-        let (r, a) = (sib_ref.to_ascii_uppercase().into_bytes(), sib_alt.to_ascii_uppercase().into_bytes());
-        let Some(p) = usize::try_from(sib_pos - ws).ok().filter(|&p| p + r.len() <= w.len() && w[p..p + r.len()] == r[..]) else {
+        let (r, a) = (sib.ref_allele.to_ascii_uppercase().into_bytes(), sib.alt_allele.to_ascii_uppercase().into_bytes());
+        let Some(p) = usize::try_from(sib.pos - ws).ok().filter(|&p| p + r.len() <= w.len() && w[p..p + r.len()] == r[..]) else {
             continue;
         };
         if p + 1 < g0 {
@@ -308,12 +303,8 @@ pub(crate) fn hidden_alleles(v: &Variant, siblings: &[Variant], reach: usize) ->
         let mut bases = other.to_vec();
         bases.truncate(d + HIDDEN_REACH);
         match out.iter_mut().find(|h| h.bases == bases || (h.change == change && h.first_diff == d)) {
-            Some(h) => {
-                // the input's own writing of it, as the sequence judge holds the row
-                h.listed = true;
-                h.row = (sib_pos, r, a);
-            }
-            None => out.push(Hidden { change, bases, first_diff: d, listed: true, row: (sib_pos, r, a), spelled: 0, told: 0, held: 0 }),
+            Some(h) => h.listed = true,
+            None => out.push(Hidden { change, bases, first_diff: d, listed: true, row: (sib.pos, r, a), spelled: 0, told: 0, held: 0 }),
         }
     }
     // An allele whose bases, past where it and the ALT first differ, are the ALT's with a
@@ -653,25 +644,6 @@ pub(crate) fn classify(
             }
         }
     }
-    if out.is_alt {
-        // A listed other unit count the reads decide absent holds nothing, but a read whose
-        // bases where the two differ show it is no ALT call, on either path (the sequence
-        // judge, reading it whole, credits it to no row here): depth only.
-        if let Some(g) = guard.filter(|g| !g.unit_absent.is_empty()) {
-            let end = splice_after(record, hi).unwrap_or(seq.len()).min(readable.1);
-            let shows = g.unit_absent.iter().find(|h| {
-                tells(&seq, quals, min_baseq, lo as i64, (&g.unit_alt, &h.bases), h.first_diff, end) == Some(false)
-                    && !a_listed_neighbour(&seq, quals, min_baseq, lo, &h.bases, &g.unit_neighbours, h.first_diff, end)
-            });
-            if let Some(h) = shows {
-                trace!(
-                    "junction: an ALT read showing a listed allele the reads decide absent ({:+} bp) → neither",
-                    h.change,
-                );
-                out = ClassifyResult::neither(ClassifyPhase::MaskedCompare);
-            }
-        }
-    }
     if out.is_ref && own_indel_inside(record, j.span()) {
         // The read's own alignment deletes or inserts bases inside the deleted span:
         // another allele (C26), whatever its window shows.
@@ -959,7 +931,7 @@ pub(crate) fn guard_for(
     // present at the site within a read's reach hold an ALT call to their first difference;
     // one past the longest read at the site names the row.
     let found = present_hidden(read_cache, v, counted, min_baseq, &j, &masked, siblings);
-    if masked.is_empty() && larger.is_none() && found.others.is_empty() && found.unspanned.is_none() && found.absent.is_empty() {
+    if masked.is_empty() && larger.is_none() && found.others.is_empty() && found.unspanned.is_none() {
         return None;
     }
     trace!(
@@ -975,8 +947,8 @@ pub(crate) fn guard_for(
         .filter(|h| !h.listed)
         .map(|h| OtherAllele { pos: h.row.0, ref_allele: h.row.1.clone(), alt_allele: h.row.2.clone() })
         .collect();
-    (guard.unit_alt, guard.unit_others, guard.unit_neighbours, guard.unit_unspanned, guard.unit_absent) =
-        (found.alt, found.others, found.neighbours, found.unspanned, found.absent);
+    (guard.unit_alt, guard.unit_others, guard.unit_neighbours, guard.unit_unspanned) =
+        (found.alt, found.others, found.neighbours, found.unspanned);
     Some(guard)
 }
 
@@ -984,9 +956,7 @@ pub(crate) fn guard_for(
 /// windows ([`hidden_alleles`], `siblings` the listed rows) and are present at the site
 /// within the longest read's reach, with the ALT's bases they are told from, and the
 /// nearest one past that reach (its change, the bases a read must hold, the longest read).
-/// Present: listed and shown on 1 fragment or more and 5% of those showing either, or
-/// listed where fewer than [`GUARD_MIN_READS`] fragments tell the two apart (RJ-25's sibling
-/// rule; else the listed one is absent, `absent`); or spelled in full (from the windows' first base through [`K`] bases
+/// Present: listed, or spelled in full (from the windows' first base through [`K`] bases
 /// from its first difference, as the windows hold [`K`] bases of each allele's
 /// continuation) on [`GUARD_MIN_READS`] fragments or more and on [`GUARD_REF_SHARE`] of
 /// the fragments spelling the ALT over the same bases (RJ-25's floor). Fragments are read
@@ -1061,11 +1031,6 @@ fn present_hidden(
             // a read the hold would take from the ALT, as `classify` holds one
             slot.held |= told_here != Some(true) && !a_listed_neighbour(&seq, quals, min_baseq, q, &h.bases, &neighbours, h.first_diff, end);
             slot.alt |= told_here == Some(true);
-            // a read deciding a listed allele: placed here (RJ-29, from the left flank), its
-            // bases where the two differ telling the ALT (`alt_here`) or the allele (`shown`),
-            // whether or not it reads far enough to spell it
-            slot.alt_here |= here && told_here == Some(true);
-            slot.shown |= here && told_here == Some(false);
             // read in full: [`PAST`] bases on from the first difference, as the guard reads an
             // allele on past the windows before it places a fragment
             if q + h.first_diff + PAST > end {
@@ -1094,8 +1059,6 @@ fn present_hidden(
             }
         }
     }
-    // the listed ones the reads decide absent: the sequence judge weighs them as no state
-    let mut absent: Vec<Hidden> = Vec::new();
     let present: Vec<Hidden> = reach
         .into_iter()
         .enumerate()
@@ -1105,61 +1068,32 @@ fn present_hidden(
             // fragments whose ALT call it would take: a read fitting the ALT's windows that
             // tells the given count from it nowhere, its mate no better
             let held = fragments.values().filter(|c| c[k].held && !c[k].alt).count();
-            let showing = fragments.values().filter(|c| c[k].shown && !c[k].alt_here).count();
-            let alt_any = fragments.values().filter(|c| c[k].alt_here && !c[k].shown).count();
             let found = spelled >= GUARD_MIN_READS as usize && spelled as f64 >= GUARD_REF_SHARE * alt_told as f64;
-            // A listed one is another allele only where at least one fragment shows it (its
-            // bases where it and the ALT differ tell it from the ALT) and 5% of those showing
-            // either do (RJ-25's sibling rule: the annotation lowers the 3-fragment floor, not
-            // the share; operator, 2026-10-31). Shown, not spelled in full: the annotation says
-            // which allele to look for, and in a repeat whose copies differ few reads of a real
-            // one fit the reference's copies wholly. Decided only on evidence: where fewer
-            // than [`GUARD_MIN_READS`] fragments reach where the two differ and tell one of
-            // them, it stays present, as past a read's reach (a read short of it ties the two).
-            let decided = showing + alt_any >= GUARD_MIN_READS as usize;
-            let shown = h.listed
-                && (!decided || (showing >= 1 && showing as f64 >= GUARD_REF_SHARE * (showing + alt_any) as f64));
-            trace!(
-                "junction: another allele at {}:{} ({:+} bp, reading like the ALT for {} bases from the windows' first base) {}: {} fragments spell it, {} the ALT over the same bases",
-                v.chrom, v.pos + 1, h.change, h.first_diff,
-                match (h.listed, decided, found || shown) {
-                    (true, false, _) => "listed, undecided",
-                    (true, _, true) => "listed, shown",
-                    (true, _, false) => "listed, not shown",
-                    (false, _, true) => "found",
-                    _ => "not found",
-                },
-                spelled, alt_told,
-            );
-            trace!("junction: {} fragments show it, {} the ALT", showing, alt_any);
-            if h.listed && !shown && !found {
-                // named with the fragments whose ALT calls stand though they do not tell the
-                // given count from it, and those that decided it so
-                absent.push(Hidden { spelled: showing as u32, told: alt_any as u32, held: held as u32, ..h });
-                return None;
+            if found || h.listed {
+                trace!(
+                    "junction: another allele at {}:{} ({:+} bp, reading like the ALT for {} bases from the windows' first base) {}: {} fragments spell it, {} the ALT over the same bases",
+                    v.chrom, v.pos + 1, h.change, h.first_diff, if h.listed { "listed" } else { "found" }, spelled, alt_told,
+                );
             }
-            (found || shown).then_some(Hidden { spelled: spelled as u32, told: alt_told as u32, held: held as u32, ..h })
+            (found || h.listed).then_some(Hidden { spelled: spelled as u32, told: alt_told as u32, held: held as u32, ..h })
         })
         .collect();
-    if present.is_empty() && absent.is_empty() {
+    if present.is_empty() {
         return PresentHidden { unspanned, ..PresentHidden::default() };
     }
-    PresentHidden { alt, others: present, neighbours, unspanned, absent }
+    PresentHidden { alt, others: present, neighbours, unspanned }
 }
 
 /// One fragment's reading against one other allele at the breakpoint ([`present_hidden`]):
 /// read in full, the ALT told (`Some(true)`) or the allele spelled (`Some(false)`), mates
 /// disagreeing there (`conflict`); and, wherever it reads, a read of it the hold takes from the
-/// ALT (`held`), one telling the ALT (`alt`; placed here, `alt_here`), or one placed here
-/// telling the allele (`shown`).
+/// ALT (`held`) or one telling the ALT (`alt`).
 #[derive(Clone, Default)]
 struct Tally {
     told: Option<bool>,
     conflict: bool,
     held: bool,
     alt: bool,
-    alt_here: bool,
-    shown: bool,
 }
 
 /// [`present_hidden`]'s finding: the ALT's bases and the present other alleles' (from the
@@ -1171,8 +1105,6 @@ struct PresentHidden {
     others: Vec<Hidden>,
     neighbours: Vec<Vec<u8>>,
     unspanned: Option<Unspanned>,
-    /// The listed ones within reach the reads decide absent (RJ-25's sibling rule).
-    absent: Vec<Hidden>,
 }
 
 /// The allele a fragment's bases past the windows place it as (`read`: its base at an

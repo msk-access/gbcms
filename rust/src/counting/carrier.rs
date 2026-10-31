@@ -2060,13 +2060,6 @@ pub(crate) struct Guard {
     /// Those bases with each listed row past the junction applied: a read fitting one carries
     /// the deletion with a listed neighbour, never another of `unit_others` (RJ-24).
     pub unit_neighbours: Vec<Vec<u8>>,
-    /// The listed other unit counts within a read's reach the reads decide absent: 3 or more
-    /// fragments placed here tell the ALT or it where the two differ, and none or under 5% of
-    /// them show it (RJ-25's sibling rule). No other allele here: the sequence judge weighs
-    /// none as a state at this row (`Hidden::row`), an ALT call whose bases show one is no ALT
-    /// call on either path, and each is named with `held` and `told` (the deciding fragments
-    /// telling the ALT).
-    pub unit_absent: Vec<super::junction::Hidden>,
     /// Another allele at the breakpoint that reads like the ALT past what the longest read
     /// at the site holds: its length change (deleted bases negative), the bases a read must
     /// hold from the windows' first base to tell the two, and that read's length. Nothing is
@@ -2092,7 +2085,6 @@ impl Guard {
             unit_others: Vec::new(),
             unit_alt: Vec::new(),
             unit_neighbours: Vec::new(),
-            unit_absent: Vec::new(),
             unit_unspanned: None,
         }
     }

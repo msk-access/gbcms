@@ -130,7 +130,6 @@ check | diagnostic | POSSIBLE_MINORITY_HAPLOTYPE | A change on a minority of nea
 check | diagnostic | MNV_SHARED | Under the sequence judge the SNV's ALT reads include a co-listed MNV's carriers, so one molecule counts in both rows: read the two rows together (the counts are unchanged)
 check | diagnostic | INDEL_SHARED | Under the sequence judge the ALT reads include a listed indel's carriers holding this change, so one molecule counts at several rows: read them together (counts unchanged)
 check | diagnostic | UNIT_COUNT_UNSPANNED | Another unit count of a run beside this long deletion reads like it past every read here: its carriers may count as ALT (the counts are unchanged)
-check | diagnostic | UNIT_COUNT_ABSENT | A listed other unit count beside this long deletion no read shows: reads that cannot tell the two count as ALT (the counts are unchanged)
 check | diagnostic | UNEXPLAINED_READS | Under the sequence judge some depth reads fit none of the row's candidate sequences: where they are a large share, foreign reads may count (the counts are unchanged)
 check | diagnostic | SW_FALLBACK | Some reads were scored by a fallback aligner or left uncounted: the row's counts came partly from another scorer
 check | diagnostic | SPLICE_SKIP_DOMINANT | More reads splice over the deleted span than confirm ALT: an alt_count of 0 may hide carriers written as junction reads
