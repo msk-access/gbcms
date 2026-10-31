@@ -2930,6 +2930,16 @@ clusters that run containers.</p>
 </div>
 </div>
 <div class="admonition note">
+<p class="admonition-title">Singularity and Apptainer bind your HOME</p>
+<p>Both runtimes bring your home folder and your environment into the container. The
+image sets <code>PYTHONNOUSERSITE=1</code>, so packages that you installed with <code>pip install
+--user</code> do not replace the ones in the image. A <code>PYTHONPATH</code> in your environment still
+reaches the container: unset it, or add <code>--cleanenv</code>, if it holds another gbcms or
+other copies of the dependencies. <abbr title="Continuous Integration - Automated build and test system">CI</abbr> runs the image under Apptainer on every change
+that builds it, with a package in the caller's home as a trap, and requires output
+equal to the Docker run's.</p>
+</div>
+<div class="admonition note">
 <p class="admonition-title">When pip builds from source</p>
 <p>The one prebuilt wheel is for CPython 3.10 and newer and glibc 2.28+. On glibc
 older than 2.28, or on another platform, pip falls back to source compilation,
@@ -20058,7 +20068,7 @@ on <code>develop</code> fails until it is done.</p>
 <tr>
 <td style="text-align: left;"><code>test.yml</code></td>
 <td style="text-align: left;">Push to develop/main, PR</td>
-<td style="text-align: left;">Run tests: Ubuntu 3.10 (dependencies at their floors), 3.11 and 3.14, macOS 3.12; lint; Rust unit tests; build and run the image</td>
+<td style="text-align: left;">Run tests: Ubuntu 3.10 (dependencies at their floors), 3.11 and 3.14, macOS 3.12; lint; Rust unit tests; build the image and run it under Docker and under Apptainer (as a RHEL cluster does)</td>
 </tr>
 <tr>
 <td style="text-align: left;"><code>latest-deps.yml</code></td>
@@ -20347,6 +20357,25 @@ count-affecting merge since the previous release, run on the changed rows only.<
 <p>The format is based on <a href="https://keepachangelog.com/en/1.0.0/">Keep a Changelog</a>,
 and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semantic Versioning</a>.</p>
 <h2 id="development-changelog-unreleased">[Unreleased]<a class="headerlink" href="#development-changelog-unreleased" title="Permanent link">¶</a></h2>
+<h3 id="development-changelog-added-ci-runs-the-image-through-apptainer-as-rhel-clusters-do-233">Added — <abbr title="Continuous Integration - Automated build and test system">CI</abbr> runs the image through Apptainer, as RHEL clusters do (#233)<a class="headerlink" href="#development-changelog-added-ci-runs-the-image-through-apptainer-as-rhel-clusters-do-233" title="Permanent link">¶</a></h3>
+<ul>
+<li>The <code>docker-test</code> job installs Apptainer, builds a <abbr title="Singularity Image Format - Container image format for HPC">SIF</abbr> from the image it just built
+  (<code>docker-daemon://gbcms:test</code>), and runs the <abbr title="Command Line Interface - Terminal-based program interface">CLI</abbr> and a counting run on a synthetic data set
+  in it: <code>apptainer exec</code> through bash, on the read-only <abbr title="Singularity Image Format - Container image format for HPC">SIF</abbr>, with the data folders bound in
+  (what Nextflow's <code>autoMounts</code> does), as the calling user. It fails unless the output digests
+  equal those of the same run under Docker. It runs on every change that builds the image.</li>
+<li>Found by reading how Singularity and Apptainer differ from Docker: both bind the caller's
+  <code>$HOME</code> into the container, and a Python imports <code>~/.local/lib/python3.x/site-packages</code>
+  before its own packages. Anyone on a cluster with <code>pip install --user</code> packages in the same
+  Python version would have had them replace the image's locked ones. Checked on the base
+  image with Docker (a package in a bound HOME is imported; with <code>PYTHONNOUSERSITE=1</code> it is
+  not). The image now sets <code>PYTHONNOUSERSITE=1</code>, and the <abbr title="Continuous Integration - Automated build and test system">CI</abbr> run puts a package that raises on
+  import in the caller's home first, in the folder the image's own Python reads (it asks that
+  Python, so a Python upgrade moves the trap with it), and shows that Python reads it once
+  the setting is undone. A regression, or a trap in the wrong folder, fails loudly. A <code>PYTHONPATH</code> in the
+  caller's environment still reaches the container (Apptainer passes the environment on;
+  <code>--cleanenv</code> stops it): the installation page says so.</li>
+</ul>
 <h3 id="development-changelog-fixed-the-sequence-judge-no-longer-misses-a-reads-path-through-a-long-listed-insertion-369">Fixed — the sequence judge no longer misses a read's path through a long listed insertion (#369)<a class="headerlink" href="#development-changelog-fixed-the-sequence-judge-no-longer-misses-a-reads-path-through-a-long-listed-insertion-369" title="Permanent link">¶</a></h3>
 <ul>
 <li>Under <code>--read-judge sequence</code>, the band around a read's own placement widened only for the rows

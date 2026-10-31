@@ -29,7 +29,7 @@
             body[data-md-color-scheme="slate"] .gslide-title { color: var(--md-default-fg-color); }
             body[data-md-color-scheme="slate"] .gslide-desc { color: var(--md-default-fg-color); }
         </style><meta name="panzoom-theme" content="material">
-<meta name="panzoom-data" content='{"selectors": [".mermaid", ".d2"], "initial_zoom_level": 1.0}'> </head>
+<meta name="panzoom-data" content='{"selectors": [".d2", ".mermaid"], "initial_zoom_level": 1.0}'> </head>
 <body data-md-color-accent="custom" data-md-color-primary="custom" data-md-color-scheme="default" dir="ltr">
 <input autocomplete="off" class="md-toggle" data-md-toggle="drawer" id="__drawer" type="checkbox">
 <input autocomplete="off" class="md-toggle" data-md-toggle="search" id="__search" type="checkbox">
@@ -769,6 +769,15 @@
 </a>
 <nav aria-label="[Unreleased]" class="md-nav">
 <ul class="md-nav__list">
+<li class="md-nav__item">
+<a class="md-nav__link" href="#added-ci-runs-the-image-through-apptainer-as-rhel-clusters-do-233">
+<span class="md-ellipsis">
+      
+        Added — CI runs the image through Apptainer, as RHEL clusters do (#233)
+      
+    </span>
+</a>
+</li>
 <li class="md-nav__item">
 <a class="md-nav__link" href="#fixed-the-sequence-judge-no-longer-misses-a-reads-path-through-a-long-listed-insertion-369">
 <span class="md-ellipsis">
@@ -3071,6 +3080,25 @@
 <p>The format is based on <a href="https://keepachangelog.com/en/1.0.0/">Keep a Changelog</a>,
 and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semantic Versioning</a>.</p>
 <h2 id="unreleased">[Unreleased]<a class="headerlink" href="#unreleased" title="Permanent link">¶</a></h2>
+<h3 id="added-ci-runs-the-image-through-apptainer-as-rhel-clusters-do-233">Added — <abbr title="Continuous Integration - Automated build and test system">CI</abbr> runs the image through Apptainer, as RHEL clusters do (#233)<a class="headerlink" href="#added-ci-runs-the-image-through-apptainer-as-rhel-clusters-do-233" title="Permanent link">¶</a></h3>
+<ul>
+<li>The <code>docker-test</code> job installs Apptainer, builds a <abbr title="Singularity Image Format - Container image format for HPC">SIF</abbr> from the image it just built
+  (<code>docker-daemon://gbcms:test</code>), and runs the <abbr title="Command Line Interface - Terminal-based program interface">CLI</abbr> and a counting run on a synthetic data set
+  in it: <code>apptainer exec</code> through bash, on the read-only <abbr title="Singularity Image Format - Container image format for HPC">SIF</abbr>, with the data folders bound in
+  (what Nextflow's <code>autoMounts</code> does), as the calling user. It fails unless the output digests
+  equal those of the same run under Docker. It runs on every change that builds the image.</li>
+<li>Found by reading how Singularity and Apptainer differ from Docker: both bind the caller's
+  <code>$HOME</code> into the container, and a Python imports <code>~/.local/lib/python3.x/site-packages</code>
+  before its own packages. Anyone on a cluster with <code>pip install --user</code> packages in the same
+  Python version would have had them replace the image's locked ones. Checked on the base
+  image with Docker (a package in a bound HOME is imported; with <code>PYTHONNOUSERSITE=1</code> it is
+  not). The image now sets <code>PYTHONNOUSERSITE=1</code>, and the <abbr title="Continuous Integration - Automated build and test system">CI</abbr> run puts a package that raises on
+  import in the caller's home first, in the folder the image's own Python reads (it asks that
+  Python, so a Python upgrade moves the trap with it), and shows that Python reads it once
+  the setting is undone. A regression, or a trap in the wrong folder, fails loudly. A <code>PYTHONPATH</code> in the
+  caller's environment still reaches the container (Apptainer passes the environment on;
+  <code>--cleanenv</code> stops it): the installation page says so.</li>
+</ul>
 <h3 id="fixed-the-sequence-judge-no-longer-misses-a-reads-path-through-a-long-listed-insertion-369">Fixed — the sequence judge no longer misses a read's path through a long listed insertion (#369)<a class="headerlink" href="#fixed-the-sequence-judge-no-longer-misses-a-reads-path-through-a-long-listed-insertion-369" title="Permanent link">¶</a></h3>
 <ul>
 <li>Under <code>--read-judge sequence</code>, the band around a read's own placement widened only for the rows
