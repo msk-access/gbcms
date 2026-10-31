@@ -179,3 +179,45 @@ def test_the_shape_is_a_tandem_copy_with_one_telling_base():
     ins = alt[1:]
     assert contig[A + 1 : A + N] == ins[:-1] and contig[A + N] != ins[-1] and contig[A] != ins[-1]
     assert pysam.__version__  # pysam builds the BAM
+
+
+def test_a_long_insertion_no_base_tells_apart_is_depth_only_and_named(tmp_path):
+    """A 60 bp insertion of ten units of a 6-base repeat that runs on past the judge's reach:
+    no base within the haplotypes the judge reads tells REF's window from the ALT's, so every
+    read is depth only, and the row names it, NO_TELLING_BASE (no column added)."""
+    import glob
+
+    from helpers import read_maf_output
+    from typer.testing import CliRunner
+
+    from gbcms.cli import app
+
+    rng = random.Random(2643)
+    unit = "ACGTTG"
+    left = "".join(rng.choice("ACGT") for _ in range(499)) + "C"
+    contig = left + unit * 200 + "".join(rng.choice("ACGT") for _ in range(400))
+    a = 499  # the anchor (0-based), before the repeat
+    ins = unit * 10
+    hx = contig[: a + 1] + ins + contig[a + 1 :]
+    reads = []
+    for i in range(6):
+        s = 440 + 7 * i
+        reads.append(make_read(f"ref{i}", contig[s : s + 150], s, ((0, 150),)))
+        reads.append(
+            make_read(f"alt{i}", hx[s : s + 150], s, ((0, a + 1 - s), (1, 60), (0, 89 - (a - s))))
+        )
+    fa, bam = write_contig(tmp_path, contig, reads, "rep")
+    vcf = tmp_path / "rows.vcf"
+    vcf.write_text(
+        "##fileformat=VCFv4.2\n##contig=<ID=1>\n#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\n"
+        f"1\t{a + 1}\t.\t{contig[a]}\t{contig[a] + ins}\t.\t.\t.\n"
+    )
+    out = tmp_path / "out"
+    args = ["dna", "-v", str(vcf), "-b", f"S:{bam}", "-f", fa, "-o", str(out), "--format", "maf"]
+    result = CliRunner().invoke(app, args + ["--read-judge", "sequence"], env={"COLUMNS": "400"})
+    assert result.exit_code == 0, result.output
+    (row,) = list(read_maf_output(glob.glob(str(out / "*.maf"))[0]))
+    rd, ad, dp = int(row["ref_count"]), int(row["alt_count"]), int(row["total_count"])
+    assert dp >= rd + ad and (rd, ad) == (0, 0) and dp == 12, row
+    assert int(row["ref_count_forward"]) + int(row["ref_count_reverse"]) == rd
+    assert "NO_TELLING_BASE" in row["gbcms_diagnostic"].split(";"), row["gbcms_diagnostic"]

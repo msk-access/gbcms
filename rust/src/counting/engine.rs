@@ -2071,6 +2071,8 @@ fn count_variant_from_cache(
             .join("+");
     }
     counts.ref_dist_end_median = compute_median_u32(&mut ref_dists);
+    // a long insertion whose equal windows no base tells apart (every read depth only)
+    counts.untold_windows = rules.haplotypes.and_then(|h| h.get(variant, rules)).is_some_and(|site| site.windows_untold());
 
     // ── RNA editing site flag (DB-only) ────────────────────────────
     // Flag is True ONLY when a REDIportal database is provided AND this

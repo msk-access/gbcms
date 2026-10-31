@@ -474,6 +474,9 @@ pub(crate) struct Site {
     ref_mirror: Vec<i64>,
     x_mirror: Vec<i64>,
     x_ins_mirror: Vec<usize>,
+    /// At a long insertion, whether no base within the haplotypes tells the equal windows
+    /// apart once the guard's masks are read (every read is depth only).
+    untold: bool,
     /// Where X is a pure insertion of [`LONG_EVENT`] bases or more: the first base of its run
     /// (genome; the anchor is the base before it) and the length of RJ-23's equal windows
     /// from the anchor, the anchor included ([`Site::equal_window`]): the run and the base
@@ -1596,9 +1599,9 @@ impl Site {
     /// and X's, read from the anchor, differ with neither masked. A read short of it holds no
     /// window and is depth only, whichever allele its bases fit: a mask on REF's haplotype
     /// alone (a change past an insertion's run lies, on X's, past the insert) would let REF's
-    /// molecules be told by that base while X's are not. Past the haplotypes' end, no read
-    /// holds it.
-    fn read_on(&self, lo: i64, w: i64) -> i64 {
+    /// molecules be told by that base while X's are not. None where no base within the
+    /// haplotypes tells them apart: no read holds the windows.
+    fn read_on(&self, lo: i64, w: i64) -> Option<i64> {
         let (r, x) = (Hap::build_with(self, &[], true), Hap::build(self, &[0]));
         let (ar, ax) = (self.column_in(&r, lo - 1 - self.start), self.column_in(&x, lo - 1 - self.start));
         let n = (r.seq.len() as i64 - ar).min(x.seq.len() as i64 - ax);
@@ -1607,9 +1610,15 @@ impl Site {
             a != WILD && b != WILD && a != b
         };
         if (0..w.min(n)).any(tells) {
-            return w;
+            return Some(w);
         }
-        (w..n).find(|&k| tells(k)).map_or(n + 1, |k| k + 1)
+        (w..n).find(|&k| tells(k)).map(|k| k + 1)
+    }
+
+    /// At a long insertion, whether no base within the haplotypes tells the equal windows
+    /// apart, so every read is depth only (the row's `NO_TELLING_BASE` diagnostic).
+    pub(crate) fn windows_untold(&self) -> bool {
+        self.untold
     }
 
     /// X's anchor (its first REF base) in `hap`: X's own first base where X is applied.
@@ -2837,6 +2846,7 @@ impl Site {
             ref_mirror: Vec::new(),
             x_mirror: Vec::new(),
             x_ins_mirror: Vec::new(),
+            untold: false,
             long_ins,
             site_window,
             graphs: Vec::new(),
@@ -2860,11 +2870,19 @@ impl Site {
             .collect();
         // Every context at once: one graph per state, no enumeration.
         if let Some((lo, w)) = site.long_ins.filter(|_| ins_rule != LongInsRule::Window) {
-            let read = site.read_on(lo, w);
-            if read != w {
-                log::debug!("haplotype judge: the guard's masks hide the base telling a long insertion's windows apart; both read on, {w} -> {read} bases from the anchor");
+            match site.read_on(lo, w) {
+                Some(read) => {
+                    if read != w {
+                        log::debug!("haplotype judge: the guard's masks hide the base telling a long insertion's windows apart; both read on, {w} -> {read} bases from the anchor");
+                    }
+                    site.long_ins = Some((lo, read));
+                }
+                None => {
+                    log::debug!("haplotype judge: no base within reach tells a long insertion's windows apart; every read is depth only");
+                    site.untold = true;
+                    site.long_ins = Some((lo, i64::MAX / 4));
+                }
             }
-            site.long_ins = Some((lo, read));
         }
         if site.long_ins.is_some() && ins_rule != LongInsRule::Window {
             site.mirror_masks(l);
