@@ -6,8 +6,9 @@ at its breakpoint (one more or one fewer unit of a tandem run whose deleted copy
 from it, so the windows stop at the copy's first differing base), that allele reads like
 the given one over the junction windows and on until the haplotypes first differ. A read
 ending sooner fits either. The rule holds such a read to that base only where the other
-allele is really present at the site: listed, or spelled in full by its own bases on 3 or
-more fragments and 5% of those spelling the ALT there (RJ-25's floor). A read fitting the
+allele is present at the site: listed in the input (always, whatever the reads show: rule X,
+operator 2026-10-31; the input is taken as correct), or, unlisted, spelled in full by its own
+bases on 3 or more fragments and 5% of those spelling the ALT there (RJ-25's floor). A read fitting the
 ALT that does not tell it from that allele, by a confident base where the two differ,
 is the ALT or that allele: neither, with partial evidence (RJ-25). A site with no such
 allele keeps its reads as before. REF is told from both at the junction, so its reads
@@ -20,15 +21,20 @@ REF = flank, u1, the run of `m` copies of u, flank; u1 is u but for its third ba
 The row deletes u1 (one unit); "two" deletes u1 and the run's first u. "short" reads hold
 50 bases past the junction (100 bp from 50 before it); "holding" reads 251 bp from 20
 before it. Counts per row: (ref_count, alt_count, partial_alt), with total_count where it
-matters. Every case runs on the rules path and under the sequence judge.
+matters. Every case runs on the rules path and under the sequence judge. The last section
+pins rule X on #297's S1 example (no molecule carries the listed count), through the engine
+and through the CLI.
 """
 
+import glob
 import random
 
 import pytest
-from helpers import count_checked, make_read, write_contig
+from helpers import count_checked, make_read, read_maf_output, write_contig
+from typer.testing import CliRunner
 
 from gbcms import _rs
+from gbcms.cli import app
 
 JUDGES = ["rules", "sequence"]
 SHORT, HOLDING = (100, 50), (251, 20)
@@ -518,3 +524,105 @@ def test_the_count_that_holds_the_calls_is_named(tmp_path, judge, given):
     (c,) = count_checked(bam, [pv.variant], read_judge=judge, **kw)
     p, r, al = rows["two"]
     assert c.unit_count_allele == f"{p + 1}:{r}>{al}:16/{given}"
+
+
+# ── Rule X (operator, 2026-10-31): a listed other count is always a candidate ──────
+
+
+def _counts(tmp_path, ref, rows, reads, judge, listed=False):
+    """The `BaseCounts` of each row, the four counting invariants asserted on every one."""
+    fa, bam = write_contig(tmp_path, ref, reads, "c")
+    vs = [_rs.Variant("1", p, r, al, "DEL") for (p, r, al) in rows]
+    pvs = _rs.prepare_variants(vs, fa, 5, False, 1, True, read_judge=judge)
+    variants = [pv.variant for pv in pvs]
+    kw = {"reference_fasta": fa} if judge == "sequence" else {}
+    if listed:
+        kw["sibling_variants"] = [[w for w in variants if w is not v] for v in variants]
+    got = count_checked(bam, variants, read_judge=judge, **kw)
+    for c in got:
+        assert c.dp >= c.rd + c.ad
+        assert c.dpf >= c.rdf + c.adf
+        assert c.rd == c.rd_fwd + c.rd_rev
+        assert c.ad == c.ad_fwd + c.ad_rev
+    return got
+
+
+def _s1_example(listed):
+    """#297's S1 worked example: the given deletion (one unit) alone in the molecules. 6 REF
+    reads, 6 short carriers of the given count (they end inside the run), and 4 carriers of
+    it that read through the run. No molecule carries the two-unit deletion, which the input
+    lists (`listed`) or leaves out."""
+    ref, a, h, rows = _shape(60, 2)
+    reads = _reads(a, "REF", h["REF"], HOLDING, size=0)
+    reads += _reads(a, "one", h["one"], SHORT, size=60)
+    reads += _reads(a, "one", h["one"], HOLDING, size=60, k=4, tag="h")
+    return ref, ([rows["one"], rows["two"]] if listed else [rows["one"]]), reads, rows
+
+
+@pytest.mark.parametrize("judge", JUDGES)
+def test_a_listed_count_no_molecule_carries_still_holds_the_short_carriers(tmp_path, judge):
+    """Rule X: the input lists the two-unit deletion, so it is an allele that may be at the
+    site (invariant 7: the input is taken as correct), whether or not a read shows it. The 6
+    short carriers of the given count end inside the run, before the base where the two
+    deletions first differ: each fits either, so each is partial evidence, never ALT. The 4
+    carriers that read through the run tell the given count: ALT. (RD, AD, partial) =
+    (6, 4, 6), on the rules path and under the sequence judge. The listed count is named for
+    the row: COEXISTING_ALLELE form, 6 fragments whose ALT call it takes, 4 that tell the given
+    count from it."""
+    ref, rows_in, reads, rows = _s1_example(listed=True)
+    got = _counts(tmp_path, ref, rows_in, reads, judge, listed=True)
+    c = got[0]
+    assert (c.rd, c.ad, c.partial_alt) == (6, 4, 6)
+    p, r, al = rows["two"]
+    assert c.unit_count_allele == f"{p + 1}:{r}>{al}:6/4"
+
+
+@pytest.mark.parametrize("judge", JUDGES)
+def test_the_same_count_unlisted_and_unshown_holds_nothing(tmp_path, judge):
+    """The same reads with the two-unit deletion left out of the input: no row lists it and
+    no read shows it (RJ-25's floor: spelled in full on 3 or more fragments), so it is not
+    at the site and every carrier of the given count is ALT: (6, 10, 0), nothing named."""
+    ref, rows_in, reads, _ = _s1_example(listed=False)
+    (c,) = _counts(tmp_path, ref, rows_in, reads, judge)
+    assert (c.rd, c.ad, c.partial_alt) == (6, 10, 0)
+    assert c.unit_count_allele == ""
+
+
+@pytest.mark.parametrize("judge", JUDGES)
+@pytest.mark.parametrize("listed", [True, False], ids=["listed", "unlisted"])
+def test_the_s1_example_through_the_cli_names_the_listed_count(tmp_path, judge, listed):
+    """The same reads through `gbcms dna` (a VCF of the deletion, and of the two-unit deletion
+    when listed): the MAF row of the given deletion has ref_count, alt_count and partial_alt
+    (6, 4, 6) and `gbcms_diagnostic` names the listed count, COEXISTING_ALLELE at the
+    deletion's anchor (6 fragments whose ALT call it takes, 4 that tell the given count from
+    it). Unlisted: (6, 10, 0) and no allele named."""
+    ref, rows_in, reads, rows = _s1_example(listed)
+    fa, bam = write_contig(tmp_path, ref, reads, "c")
+    vcf = tmp_path / "v.vcf"
+    vcf.write_text(
+        f"##fileformat=VCFv4.2\n##contig=<ID=1,length={len(ref)}>\n"
+        "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\n"
+        + "".join(f"1\t{p + 1}\t.\t{r}\t{al}\t.\t.\t.\n" for p, r, al in rows_in)
+    )
+    out = tmp_path / "out"
+    res = CliRunner().invoke(
+        app,
+        ["dna", "-v", str(vcf), "-b", f"S:{bam}", "-f", fa, "-o", str(out)]
+        + ["--format", "maf", "--read-judge", judge],
+    )
+    assert res.exit_code == 0, res.output
+    p, r, al = rows["one"]
+    (row,) = [
+        x
+        for x in read_maf_output(glob.glob(str(out / "*.maf"))[0])
+        if x["vcf_pos"] == str(p + 1) and x["vcf_ref"] == r
+    ]
+    counts = (row["ref_count"], row["alt_count"], row["partial_alt"])
+    flags = row["gbcms_diagnostic"].split(";")
+    if listed:
+        p2, r2, al2 = rows["two"]
+        assert counts == ("6", "4", "6")
+        assert f"COEXISTING_ALLELE(1:{p2 + 1}:{r2}>{al2}:6/4)" in flags
+    else:
+        assert counts == ("6", "10", "0")
+        assert not any(f.startswith(("OBSERVED_ALLELE", "COEXISTING_ALLELE")) for f in flags)

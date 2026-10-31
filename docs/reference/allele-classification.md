@@ -417,7 +417,7 @@ way), so a CIGAR-only rule read VAF 0.000 at 287 of 300 heterozygous deletions.
   the ALT reads alone name the larger allele in `gbcms_diagnostic` (the deletion
   with the changes); beside a run none is named. Masks never take every offset where REF and ALT
   differ: those stay read, and a read changed there is neither.
-- **Another unit count beside a run** (#297, RJ-24 amended 2026-10-30): where the
+- **Another unit count beside a run** (#297, RJ-24 amended 2026-10-30 and 2026-10-31, rule X): where the
   bases past the deletion repeat with the period of another allele at its breakpoint
   (one more or one fewer unit of a tandem run whose deleted copy differs from it, so
   the windows stop at the copy's differing base), that allele reads like the ALT
@@ -425,7 +425,10 @@ way), so a CIGAR-only rule read VAF 0.000 at 287 of 300 heterozygous deletions.
   exactly from the reference (the other deletions at the deletion's breakpoint, fewer
   bases or more up to twice the given, and the listed rows; a reference N tells nothing),
   never by a run detector. An insertion at the breakpoint (a tandem copy of the bases
-  before it) is not looked for: a REF read inside the copy fits it as well as REF. Where one is present at the site (listed, or spelled in full by its own
+  before it) is not looked for: a REF read inside the copy fits it as well as REF. A listed
+  one is always a candidate (rule X, operator 2026-10-31: the input is taken as correct, so
+  no read need show the count); one nobody listed counts only where it is present at the
+  site, spelled in full by its own
   bases on 3 or more fragments the aligner places here (XS below AS; MAPQ above 0 where
   it writes no XS) and 5% of those telling the ALT from it: read on 24
   bases past its first difference, fitting it but for one base past the windows, with
@@ -435,7 +438,10 @@ way), so a CIGAR-only rule read VAF 0.000 at 287 of 300 heterozygous deletions.
   bases where the two differ favour the ALT by one base read at `--min-baseq` (a base
   fitting neither costs both alike, an error; one base of the other's against three of
   the ALT's is forgiven); otherwise the read is the ALT or that allele: neither, with
-  partial evidence (RJ-25). A read that fits the deletion with a listed row applied
+  partial evidence (RJ-25). So the given count's reads that end before the first
+  difference stay partial evidence at a listed count that no molecule carries (the cost
+  of rule X: the S1 rows in the listed form); the same reads with the count unlisted
+  and unshown are ALT. A read that fits the deletion with a listed row applied
   past the junction (an indel or a substitution the input names) as well, but for one
   base, is the deletion with that neighbour: it spells no other allele and its ALT call
   stands. The windows do not grow: REF, told from both at the junction, keeps its reads
@@ -444,7 +450,8 @@ way), so a CIGAR-only rule read VAF 0.000 at 287 of 300 heterozygous deletions.
   held, the counts stand and `gbcms_diagnostic` names the row,
   `UNIT_COUNT_UNSPANNED(change:bases/longest)`. Under the sequence judge the alleles
   found so are site states, so its reads tie the same way. The allele that holds the
-  calls is named, `OBSERVED_ALLELE` or `COEXISTING_ALLELE` at the deletion's anchor.
+  calls is named, `OBSERVED_ALLELE` or `COEXISTING_ALLELE` at the deletion's anchor,
+  listed or not.
 - **RNA:** the same, after splice triage (a deletion written as a splice N stays
   excluded).
 

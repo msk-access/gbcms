@@ -13,10 +13,10 @@ junction windows stop at the copy's first differing base. Another unit count (on
 deleted, or one unit inserted) then reads like the given deletion until the run's copies end.
 Call the distance from the windows' first base to that first difference **D**.
 
-- Where the other count is present at the site (listed in the input, or spelled in full on 3
-  or more fragments and 5% of the fragments that spell the given deletion there), an ALT read
-  must reach D and show the given count there. A read that ends sooner is "either allele":
-  partial evidence, not ALT.
+- Where the other count is present at the site (listed in the input, always: rule X, operator
+  2026-10-31; or, unlisted, spelled in full on 3 or more fragments and 5% of the fragments
+  that spell the given deletion there), an ALT read must reach D and show the given count
+  there. A read that ends sooner is "either allele": partial evidence, not ALT.
 - Where no other count is present, nothing changes.
 - REF reads keep their windows (REF differs from both deletions at the junction).
 - Where D is longer than the longest read at the site, nothing is held and the row is named
@@ -58,12 +58,12 @@ VAFs (each locus gets one setting; split the loci of each class over the setting
 
 | Setting | Given | Other | REF | What it tests |
 |:--|--:|--:|--:|:--|
-| S1 | 0.50 | 0 | 0.50 | control: no other count; counts equal develop's |
+| S1 | 0.50 | 0 | 0.50 | control: no other count; counts equal develop's in the unlisted form; in the listed form, rule X holds the short carriers (bar 7) |
 | S2 | 0.25 | 0.25 | 0.50 | the core case: both present beside REF |
 | S3 | 0.40 | 0.10 | 0.50 | the other count near the 3-fragment floor |
 | S4 | 0 | 0.40 | 0.60 | the given allele absent: any AD is a false ALT (develop counts the other count's short reads ALT) |
 | S5 | 0.50 | 0.50 | 0 | two alleles, no REF (a compound het) |
-| S6 | 0.20 | 0.05 | 0.75 | the other count below the floor: the rule must not fire |
+| S6 | 0.20 | 0.05 | 0.75 | the other count below the floor: the rule must not fire in the unlisted form; a listed count is always present (rule X) |
 
 Plus the VAF-0 arm (nothing spiked), as in phase 1.
 
@@ -109,9 +109,13 @@ Per class, setting, input form, alignment and path:
    deletion removes two or more units where one fewer unit deleted reads alike a unit longer
    than the planted one more (D + unit + 4 above the read length: 5 T3 rows at 2×151); on no
    other row of T1 to T3; the other count named (`OBSERVED_ALLELE` or `COEXISTING_ALLELE` at the deletion's
-   anchor) on every row where it is present (listed, or found) and on no S1 row, nor on an S6
-   row of the found form.
-7. S1 and S6 rows, and class C: counts equal to develop's.
+   anchor) on every row where it is present (listed, or found) and on no S1 row of the found
+   form, nor on an S6 row of the found form.
+7. Count the S1 cost of rule X: given reads that stay partial at a listed count no molecule
+   carries, by class and depth (S1 rows in the listed form, and S6 rows where the listed
+   count's molecules are below the floor), BWA and ABRA2 apart. S1 and S6 rows of the found
+   form, and class C: counts equal to develop's. (Option (b) of 2026-10-31, deciding a listed
+   count absent where the reads show none of it, was measured and rejected: RJ-24, REJ-20261031-001.)
 
 ## What this cannot see
 

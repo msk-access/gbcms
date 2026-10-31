@@ -12,10 +12,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - At a deletion of 50 bp or more beside a tandem run of its unit (its deleted copy differing
   from the run's, so the junction windows stop at that base), another unit count reads like
   the given deletion until the run's copies end. Where such an allele is present at the site
-  (listed, or spelled in full by its own bases on 3 or more fragments and 5% of those telling
-  the ALT from it, RJ-25's floor; a fragment spells it only where its bases fit it, and fit
-  REF worse, over 24 bases past where it and the ALT differ; only reads the aligner places
-  here, RJ-29's test), an ALT read now counts only where its confident bases where
+  (listed in the input, always: rule X, operator 2026-10-31, the input is taken as correct;
+  or, unlisted, spelled in full by its own bases on 3 or more fragments and 5% of those
+  telling the ALT from it, RJ-25's floor; a fragment spells it only where its bases fit it,
+  and fit REF worse, over 24 bases past where it and the ALT differ; only reads the aligner
+  places here, RJ-29's test), an ALT read now counts only where its confident bases where
   the two first differ show the given count, or show it with a listed row applied (a phased
   neighbour the input names, as RJ-24 takes a listed change); a read ending sooner is either allele: partial
   evidence (RJ-25), not ALT. Errors where the two read alike cost both and decide nothing
@@ -26,6 +27,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   up to twice the given); an expansion at the breakpoint is not (a REF read inside its copy
   fits it as well). The count that holds a row's ALT calls is named in `gbcms_diagnostic`,
   `OBSERVED_ALLELE` or `COEXISTING_ALLELE` at the deletion's anchor (`BaseCounts.unit_count_allele`).
+- A listed other unit count is a candidate allele always, on both paths, whether or not a read
+  shows it (rule X, operator 2026-10-31): the given count's reads that end before the first
+  difference stay partial evidence at a listed count no molecule carries. That is the cost of
+  taking the input as correct, and the spike-in arm counts it (bar 7). A variant that decided
+  a listed count absent when the deciding fragments show none of it was built, measured and
+  rejected (REJ-20261031-001): it gained 141 spike-in reads but credited the other allele's
+  reads as ALT and made false-absent rows. RJ-24 and RJ-25 amended 2026-10-31.
 - `UNIT_COUNT_UNSPANNED` weighs the nearest unit count on each side (one that reads like the
   given deletion for its shift and 12 bases more), not any count past reach.
 - Where no read at the site can reach the first difference (the run longer than the longest
