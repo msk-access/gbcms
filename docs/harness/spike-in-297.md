@@ -95,10 +95,19 @@ Per class, setting, input form, alignment and path:
 2. Lost ALT: reads whose truth is "given" that do not count ALT.
 3. Partial: reads counted as partial evidence, by truth.
 4. VAF: AD / (RD + AD) against the exact molecule fraction given / (given + REF). REF keeps its
-   windows while an ALT read must reach D, so beside a present other count the VAF is expected
-   to read low by the share of ALT reads that end before D: report it by class.
+   windows while an ALT read must reach D, so beside a present other count the VAF reads low by
+   the share of ALT reads that end before D (RJ-24's named limit; the synthetic contract test
+   `test_ad_reads_low_beside_a_present_count` pins 0.379 for a true 0.5 at D = 64 with 150-bp
+   reads). **Bar:** by class and setting (S2, S3, S5 listed and found), the measured VAF lies
+   within 0.05 of the limit's prediction (the exact molecule VAF times the share of the given
+   allele's reads that reach D, over that share plus the REF reads holding the windows); a
+   larger gap is a defect, not the limit. The operator decides whether the predicted bias
+   itself is acceptable, by class.
 5. RD against develop: must be equal (the rule changes no REF call).
-6. The diagnostic: `UNIT_COUNT_UNSPANNED` on every class-U row and on no row of T1 to T3 (2×150).
+6. The diagnostics: `UNIT_COUNT_UNSPANNED` on every class-U row and on no row of T1 to T3
+   (2×150); the other count named (`OBSERVED_ALLELE` or `COEXISTING_ALLELE` at the deletion's
+   anchor) on every row where it is present (listed, or found) and on no S1 row, nor on an S6
+   row of the found form.
 7. S1 and S6 rows, and class C: counts equal to develop's.
 
 ## What this cannot see

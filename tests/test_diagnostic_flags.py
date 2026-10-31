@@ -347,3 +347,28 @@ def test_unit_count_unspanned_flag():
             counts.unit_count_unspanned = value
         _make_pipeline()._compute_diagnostics([pv], [counts])
         assert "UNIT_COUNT_UNSPANNED" not in pv.gbcms_diagnostic
+
+
+def test_a_unit_count_holding_the_alt_calls_is_named():
+    """At a long deletion, another unit count present at its breakpoint that takes ALT calls
+    is named in the OBSERVED_ALLELE form (n fragments whose ALT call it takes, m that tell the
+    given count from it): OBSERVED_ALLELE where m is 0, else COEXISTING_ALLELE; one per entry,
+    never twice for an allele the observed-allele diagnostic already names."""
+    deleted = "A" * 61
+    pv = _mock_prepared_variant(ref_allele=deleted, alt_allele="A", variant_type="DELETION")
+    counts = _mock_counts(dp=24, ad=0, partial_alt=20)
+    counts.unit_count_allele = f"100:{'C' * 73}>C:3/0+100:{'C' * 49}>C:5/2"
+    _make_pipeline()._compute_diagnostics([pv], [counts])
+    assert pv.gbcms_diagnostic.split(";") == [
+        "ZERO_ALT",
+        "PARTIAL_DOMINANT",
+        f"OBSERVED_ALLELE(chr1:100:{'C' * 73}>C:3/0)",
+        f"COEXISTING_ALLELE(chr1:100:{'C' * 49}>C:5/2)",
+    ]
+    pv = _mock_prepared_variant(ref_allele=deleted, alt_allele="A", variant_type="DELETION")
+    counts = _mock_counts(dp=24, ad=4)
+    counts.observed_reads, counts.observed_given_reads = 7, 4
+    counts.observed_pos, counts.observed_ref, counts.observed_alt = 100, "C" * 73, "C"
+    counts.unit_count_allele = f"100:{'C' * 73}>C:3/1"
+    _make_pipeline()._compute_diagnostics([pv], [counts])
+    assert pv.gbcms_diagnostic == f"COEXISTING_ALLELE(chr1:100:{'C' * 73}>C:7/4)"

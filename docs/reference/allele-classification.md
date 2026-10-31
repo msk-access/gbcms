@@ -422,10 +422,12 @@ way), so a CIGAR-only rule read VAF 0.000 at 287 of 300 heterozygous deletions.
   (one more or one fewer unit of a tandem run whose deleted copy differs from it, so
   the windows stop at the copy's differing base), that allele reads like the ALT
   through the windows and on to its first difference. Every such allele is computed
-  exactly from the reference (deletions of up to twice the given bases and insertions
-  of up to as many, at the deletion's breakpoint, and the listed rows), never by a run
-  detector. Where one is present at the site (listed, or spelled in full by its own
-  bases on 3 or more fragments and 5% of those telling the ALT from it: read on 24
+  exactly from the reference (the other deletions at the deletion's breakpoint, fewer
+  bases or more up to twice the given, and the listed rows; a reference N tells nothing),
+  never by a run detector. An insertion at the breakpoint (a tandem copy of the bases
+  before it) is not looked for: a REF read inside the copy fits it as well as REF. Where one is present at the site (listed, or spelled in full by its own
+  bases on 3 or more fragments the aligner places here (XS below AS; MAPQ above 0 where
+  it writes no XS) and 5% of those telling the ALT from it: read on 24
   bases past its first difference, fitting it but for one base past the windows, with
   its base at two or more of the bases where it and the ALT differ and the ALT's at
   none, and fitting REF worse by two) and the longest read at the
@@ -441,7 +443,8 @@ way), so a CIGAR-only rule read VAF 0.000 at 287 of 300 heterozygous deletions.
   count keeps its reads. Where the difference lies past the longest read, nothing is
   held, the counts stand and `gbcms_diagnostic` names the row,
   `UNIT_COUNT_UNSPANNED(change:bases/longest)`. Under the sequence judge the alleles
-  found so are site states, so its reads tie the same way.
+  found so are site states, so its reads tie the same way. The allele that holds the
+  calls is named, `OBSERVED_ALLELE` or `COEXISTING_ALLELE` at the deletion's anchor.
 - **RNA:** the same, after splice triage (a deletion written as a splice N stays
   excluded).
 

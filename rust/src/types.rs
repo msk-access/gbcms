@@ -556,6 +556,14 @@ pub struct BaseCounts {
     /// UNIT_COUNT_UNSPANNED); no count changes.
     #[pyo3(get)]
     pub unit_count_unspanned: String,
+    /// At a deletion of 50 bp or more: each other unit count present at its breakpoint that
+    /// takes ALT calls (listed, or found from the reads; an ALT read counts only where its
+    /// bases tell the given count from it), as `POS:REF>ALT:n/m` (1-based POS of the given
+    /// deletion's anchor; n fragments fitting the ALT's windows whose ALT call it takes, m
+    /// that tell the given count from it), several joined by `+`; empty when none. Diagnostic only (feeds
+    /// OBSERVED_ALLELE where m is 0, else COEXISTING_ALLELE); no count changes.
+    #[pyo3(get)]
+    pub unit_count_allele: String,
     /// Reads processed with the requested `--umi-tag` present. Internal only
     /// (no Python getter): summed per BAM to warn when a requested UMI tag is
     /// never seen and fragment grouping silently fell back to QNAME.

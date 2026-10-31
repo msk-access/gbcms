@@ -78,7 +78,13 @@ their base name in the run log. Examples: `ZERO_ALT`,
 | `REF_AT_OFFSET(k)` | all (FAIL rows) | A `REF_MISMATCH` row's REF (3+ bases) matches the reference exactly `k` bases from its position (every such offset within 3, nearest first, `/`-separated) | Correct the input's coordinates; the row is not moved or counted |
 
 `OBSERVED_ALLELE` and `COEXISTING_ALLELE` both need `n` ≥ 3, `n` > `m`, `n` ≥ 5%
-of the scanned reads, and an allele that is not already an input row. `n` and `m`
+of the scanned reads, and an allele that is not already an input row. One exception: at a
+deletion of 50 bp or more beside a run of its unit, another unit count present at its
+breakpoint (listed, or spelled in full on 3 or more fragments the aligner places here)
+holds the row's ALT calls (RJ-24); where it takes one, it is named in the same form at the
+deletion's anchor, listed or not, with `n` the fragments fitting the ALT's windows whose ALT
+call it takes and `m` those that tell the given count from it (`OBSERVED_ALLELE` where `m`
+is 0). `n` and `m`
 are taken over the reads the counts read (first-class reads the mapping rule
 admits: in RNA a unique mapper, `NH:i:1`, below `--min-mapq`; under strandedness
 enforcement, sense reads only), so they compare with `alt_count` and `ref_count`.

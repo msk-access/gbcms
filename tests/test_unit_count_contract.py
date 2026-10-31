@@ -444,3 +444,77 @@ def test_a_listed_neighbour_makes_no_other_count(tmp_path, judge, listed):
     got = count_checked(bam, [pv.variant for pv in pvs], read_judge=judge, **kw)[0]
     assert got.dp >= got.rd + got.ad and got.rd == got.rd_fwd + got.rd_rev
     assert (got.rd, got.ad) == ((6, 6) if listed else (6, 0) if judge == "rules" else (6, 3))
+
+
+# ── Edge cases: a reference N in the run; the named AD-low limit ───────────────────
+
+
+@pytest.mark.parametrize("judge", JUDGES)
+def test_a_reference_n_inside_the_run_tells_nothing(tmp_path, judge):
+    """The reference holds an N 30 bases into the run (the reads read a base there): an N
+    tells no allele from another, so one more unit deleted still first differs at the run's
+    copy end, and the counts are those with no N: (6, 0, 16)."""
+    ref, a, h, rows, reads = _ticket()
+    reads += _reads(a, "two", h["two"], HOLDING, size=120, k=4, tag="h")
+    g = a + 60 + 30
+    with_n = ref[:g] + "N" + ref[g + 1 :]
+    assert _count(tmp_path, with_n, [rows["one"]], reads, judge) == [((6, 0, 16, 22), "")]
+
+
+@pytest.mark.parametrize("judge", JUDGES)
+def test_ad_reads_low_beside_a_present_count(tmp_path, judge):
+    """Named limit (RJ-24, measured on the spike-in arm, D12 phase 1b): REF keeps its
+    windows while an ALT read must reach the first difference. One REF read and one carrier
+    of the given count start at every base from 144 to 4 before the junction (150 bp each;
+    REF holds its windows from all 141), and the two-unit deletion is listed: only the 86
+    carriers starting 89 bases before the junction or later reach where the counts differ,
+    so AD/(RD+AD) reads 86/227 = 0.379 for a true 0.5."""
+    ref, a, h, rows = _shape(60, 2)
+    reads = []
+    for i, s in enumerate(range(a - 144, a - 3)):
+        for name, hap in (("REF", h["REF"]), ("one", h["one"])):
+            cig = ((0, 150),) if name == "REF" else ((0, a - s), (2, 60), (0, 150 - (a - s)))
+            r = make_read(f"{name}{i}", hap[s : s + 150], s, cig)
+            r.flag = 0x1 | 0x2 | 0x20 | 0x40
+            r.next_reference_id, r.next_reference_start, r.template_length = 0, s + 250, 450
+            reads.append(r)
+    got = _count(tmp_path, ref, [rows["one"], rows["two"]], reads, judge, listed=True)
+    rd, ad = got[0][0][:2]
+    assert (rd, ad) == (141, 86)
+
+
+@pytest.mark.parametrize("judge", JUDGES)
+def test_reads_the_aligner_places_elsewhere_spell_no_count(tmp_path, judge):
+    """RJ-29's placement test: the 4 two-unit carriers holding the run (soft-clipped, so no
+    read writes that deletion) are placed elsewhere as well by their aligner (XS equal to
+    AS): they may come from another copy, so they do not make the two-unit deletion present,
+    and the site keeps its reads as before (the rules: every carrier ALT; the judge: the
+    holding two-unit carriers depth only)."""
+    ref, a, h, rows, reads = _ticket(clip=True)
+    doubted = _reads(a, "two", h["two"], HOLDING, size=120, k=4, tag="h", clip=True)
+    for r in doubted:
+        r.set_tag("AS", 230)
+        r.set_tag("XS", 230)
+    got = _count(tmp_path, ref, [rows["one"]], reads + doubted, judge)
+    assert got == [((6, 16, 0, 22) if judge == "rules" else (6, 12, 0, 22), "")]
+
+
+@pytest.mark.parametrize("judge", JUDGES)
+@pytest.mark.parametrize("given", [0, 4], ids=["alone", "beside-holding-carriers"])
+def test_the_count_that_holds_the_calls_is_named(tmp_path, judge, given):
+    """The two-unit deletion found on its 4 holding carriers takes the ALT calls of the 16
+    carriers that do not tell the given count from it, and is named for the row (the
+    OBSERVED_ALLELE form, at the deletion's anchor: 16 fragments whose ALT call it takes, and
+    0 or 4 that tell the given count from it), on both paths; a site where it is absent names
+    nothing (the no-other-count test)."""
+    ref, a, h, rows, reads = _ticket()
+    reads += _reads(a, "two", h["two"], HOLDING, size=120, k=4, tag="h")
+    reads += _reads(a, "one", h["one"], HOLDING, size=60, k=given, tag="h")
+    fa, bam = write_contig(tmp_path, ref, reads, "c")
+    (pv,) = _rs.prepare_variants(
+        [_rs.Variant("1", *rows["one"], "DEL")], fa, 5, False, 1, True, read_judge=judge
+    )
+    kw = {"reference_fasta": fa} if judge == "sequence" else {}
+    (c,) = count_checked(bam, [pv.variant], read_judge=judge, **kw)
+    p, r, al = rows["two"]
+    assert c.unit_count_allele == f"{p + 1}:{r}>{al}:16/{given}"

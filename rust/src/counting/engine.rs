@@ -1628,6 +1628,19 @@ fn count_variant_from_cache(
     if let Some((change, need, longest)) = rules.guard.and_then(|g| g.get(variant)).and_then(|g| g.unit_unspanned) {
         counts.unit_count_unspanned = format!("{change:+}:{need}/{longest}");
     }
+    // Another unit count present at a long deletion's breakpoint holds its ALT calls: named,
+    // with the fragments spelling it and those telling the given count from it; diagnostic
+    // only (OBSERVED_ALLELE / COEXISTING_ALLELE).
+    if let Some(g) = rules.guard.and_then(|g| g.get(variant)) {
+        let text = |b: &[u8]| String::from_utf8_lossy(b).into_owned();
+        counts.unit_count_allele = g
+            .unit_others
+            .iter()
+            .filter(|h| h.held > 0)
+            .map(|h| format!("{}:{}>{}:{}/{}", h.row.0 + 1, text(&h.row.1), text(&h.row.2), h.held, h.told))
+            .collect::<Vec<_>>()
+            .join("+");
+    }
     let use_baq = baq_applies(apply_baq, exon_boundary_dist);
     // The variant's own indel span that BAQ leaves alone, once per variant.
     let baq_spare = if use_baq { baq_own_span(variant) } else { None };
