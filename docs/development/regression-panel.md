@@ -116,8 +116,10 @@ count-affecting merge since the previous release, run on the changed rows only.
    skipped one is still named. Row 0 is the previous release built as a wheel, so a
    difference between its image and a wheel build is named as such; the last row is
    the commit the release ships.
-2. **The wheels.** One manylinux wheel per commit, built as the release builds it
-   (the *Checkpoint wheels* workflow; each wheel is an artifact named `wheel-<sha>`).
+2. **The wheels.** One manylinux wheel per commit, built as releases up to 6.6.0 built
+   theirs (the *Checkpoint wheels* workflow, `manylinux_2_34` with the system OpenSSL,
+   because commits before 6.7.0 still link libcurl; each wheel is an artifact named
+   `wheel-<sha>`).
    Before a release the workflow is not yet on the default branch, where GitHub
    requires a manually run workflow to be, so start it with a push: a branch
    `checkpoint-wheels/X.Y.Z` that commits the list as
