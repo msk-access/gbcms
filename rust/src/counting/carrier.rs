@@ -204,8 +204,14 @@ type SplicedWindows = (Windows, SpliceMap);
 /// RNA, a soft clip is left out when its reach crosses an exon edge or junction
 /// end in `edges` (or the aligned bases end within [`EDGE_SLACK`] of one).
 pub(crate) fn readable_range(record: &Record, rules: &ReadRules) -> Option<(usize, usize)> {
+    readable_with(record, rules.clip_edges)
+}
+
+/// [`readable_range`] for the exon edges alone (RNA; None: DNA), for what reads a record before
+/// its [`ReadRules`] are built.
+pub(crate) fn readable_with(record: &Record, clip_edges: Option<&ClipEdges>) -> Option<(usize, usize)> {
     let len = record.seq_len();
-    let Some(edges) = rules.clip_edges.map(ClipEdges::get) else {
+    let Some(edges) = clip_edges.map(ClipEdges::get) else {
         return Some((0, len));
     };
     let (first, after) = aligned_query_range(record)?;

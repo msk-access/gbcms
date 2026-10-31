@@ -748,6 +748,34 @@ const REJOIN: usize = 12;
 /// [`REJOIN`] after it.
 const PAST: usize = 2 * REJOIN;
 
+/// How the guard reads a record (F6): its base qualities as the classifiers read them (heuristic
+/// BAQ where it applies, `--apply-baq`) and the query range they may read (in RNA a soft clip
+/// reaching an exon edge is left out, [`readable_range`]); None where the record shows nothing
+/// here. The presence test of another unit count reads the reads as the hold does: one quality
+/// contract (invariant 2).
+pub(crate) type ReadAs<'a> = &'a dyn for<'r> Fn(&'r Record) -> Readable<'r>;
+
+/// A record's qualities and the query range they may read ([`ReadAs`]).
+pub(crate) type Readable<'r> = Option<(std::borrow::Cow<'r, [u8]>, (usize, usize))>;
+
+/// A record as stored: its qualities, every base readable (DNA, no BAQ).
+#[cfg(test)]
+fn as_stored(record: &Record) -> Readable<'_> {
+    Some((std::borrow::Cow::Borrowed(record.qual()), (0, record.seq_len())))
+}
+
+/// [`guard_read_as`] with the records as stored (tests).
+#[cfg(test)]
+pub(crate) fn guard_for(
+    read_cache: &[Record],
+    v: &Variant,
+    counted: &dyn Fn(&Record) -> bool,
+    min_baseq: u8,
+    siblings: &[Variant],
+) -> Option<Guard> {
+    guard_read_as(read_cache, v, counted, min_baseq, siblings, &as_stored)
+}
+
 /// The neighbouring-change guard for a long deletion (the carrier rule's, RJ-23,
 /// over the junction windows): each fragment of the reads `counted` admits that holds
 /// the windows from a read's aligned first window base (its mates' bases merged, the
@@ -777,12 +805,13 @@ const PAST: usize = 2 * REJOIN;
 /// diagnostic names (the deletion with the changes, through a run's last base past
 /// the windows), and beside any other run none is named. None when nothing is masked
 /// or named, or the variant is not judged here.
-pub(crate) fn guard_for(
+pub(crate) fn guard_read_as(
     read_cache: &[Record],
     v: &Variant,
     counted: &dyn Fn(&Record) -> bool,
     min_baseq: u8,
     siblings: &[Variant],
+    read_as: ReadAs,
 ) -> Option<Guard> {
     let j = junction(v)?;
     let (start, seq) = v.event_ref.as_ref()?;
@@ -1003,7 +1032,7 @@ pub(crate) fn guard_for(
     // Other alleles at the breakpoint that read like the ALT past the windows (#297): those
     // present at the site within a read's reach hold an ALT call to their first difference;
     // one past the longest read at the site names the row.
-    let found = present_hidden(read_cache, v, counted, min_baseq, &j, &masked, siblings);
+    let found = present_hidden(read_cache, v, counted, min_baseq, &j, &masked, siblings, read_as);
     if masked.is_empty() && larger.is_none() && found.others.is_empty() && found.absent.is_empty() && found.unspanned.is_none() {
         return None;
     }
@@ -1037,6 +1066,7 @@ pub(crate) fn guard_for(
 /// window base, as RJ-25 places them) and fit the ALT's windows (the guard's `masked`
 /// positions fitting any base) but not REF's, each up to its next splice; mates telling the
 /// two apart differently spell neither.
+#[allow(clippy::too_many_arguments)]
 fn present_hidden(
     read_cache: &[Record],
     v: &Variant,
@@ -1045,6 +1075,7 @@ fn present_hidden(
     j: &Junction,
     masked: &[i64],
     siblings: &[Variant],
+    read_as: ReadAs,
 ) -> PresentHidden {
     let (first, last) = (j.first(), j.last(true));
     let at_site = |r: &&Record| counted(r) && r.pos() <= last && crate::shared::bam_utils::ref_end(r) > first;
@@ -1082,13 +1113,15 @@ fn present_hidden(
     // per fragment, per allele in reach (`Tally`)
     let mut fragments: std::collections::HashMap<&[u8], Vec<Tally>> = std::collections::HashMap::new();
     for record in read_cache.iter().filter(at_site) {
-        let (seq, quals) = (record.seq().as_bytes(), record.qual());
+        // the qualities and the bases it may read, as `classify` reads them (F6)
+        let Some((quals, readable)) = read_as(record) else { continue };
+        let (seq, quals) = (record.seq().as_bytes(), &quals[..]);
         // placed from the left flank, as RJ-25 places a fragment that spells an allele; else
         // from the right one, as `classify` reads it, to tally the calls the hold takes only
         let left = find_read_pos(record, first);
         let Some(q) = left
             .or_else(|| find_read_pos(record, last).and_then(|q| q.checked_sub(n - 1)))
-            .filter(|&q| q + n <= seq.len() && q + n <= quals.len())
+            .filter(|&q| q >= readable.0 && q + n <= readable.1 && q + n <= seq.len() && q + n <= quals.len())
         else {
             continue;
         };
@@ -1096,7 +1129,7 @@ fn present_hidden(
         if a.mismatches > 0 || r.mismatches == 0 {
             continue;
         }
-        let end = splice_after(record, q).unwrap_or(seq.len()).min(quals.len());
+        let end = splice_after(record, q).unwrap_or(seq.len()).min(readable.1).min(quals.len());
         // a read the aligner places elsewhere as well spells no allele here (RJ-29), nor does
         // one read from the right flank
         let here = placed_here(record) && left.is_some();

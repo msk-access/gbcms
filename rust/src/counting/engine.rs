@@ -1257,11 +1257,19 @@ fn count_bin_shared(
         // alike. The decomposed form is another allele: it finds its own, beside the
         // same siblings.
         let cache = &read_cache;
+        let rna_edges = (mode == "rna").then_some(&edges);
         let guard_of = |v| {
             carrier::CarrierGuard::new(move || {
                 let counted = |r: &Record| counted_read(r, v, mode, enforce_strandedness, strandedness, min_mapq);
                 if junction::judges(v) {
-                    junction::guard_for(cache, v, &counted, min_baseq, siblings)
+                    // The presence test of another unit count reads the reads as the classifiers
+                    // do: heuristic BAQ where it applies, and in RNA a clip reaching an exon edge
+                    // left out (one quality contract).
+                    let use_baq = baq_applies(apply_baq, boundary_distance(v, annotation));
+                    let spare = if use_baq { baq_own_span(v) } else { None };
+                    junction::guard_read_as(cache, v, &counted, min_baseq, siblings, &|r: &Record| {
+                        Some((effective_quals(r, use_baq, spare), carrier::readable_with(r, rna_edges)?))
+                    })
                 } else if read_judge == judge::ReadJudge::Haplotype {
                     // the sequence judge also takes the alleles written past the masks
                     carrier::guard_for_judge(cache, v, &counted, min_baseq, siblings)

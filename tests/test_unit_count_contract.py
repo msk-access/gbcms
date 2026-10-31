@@ -717,3 +717,46 @@ def test_an_unrelated_listed_row_makes_no_tie_read_the_deletion_with_a_neighbour
         _invariants(c)
     c = got[0]
     assert (c.rd, c.ad, c.partial_alt) == (6, 0, 6)
+
+
+def _bases_next_to_other_indels(reads, first=12, period=8):
+    """Give each read a 1-bp deletion in its alignment every `period` bases from `first` bases
+    past its junction deletion on (its sequence is untouched): heuristic BAQ downgrades the
+    bases within 5 of each, so past the junction none is readable at --min-baseq 20."""
+    for r in reads:
+        cig = list(r.cigartuples)
+        k = max(i for i, (op, _) in enumerate(cig) if op == 2)
+        left = cig[k + 1][1] - first
+        new = cig[: k + 1] + [(0, first)]
+        while left > 0:
+            take = min(period, left)
+            new.append((0, take))
+            left -= take
+            if left > 0:
+                new.append((2, 1))
+        r.cigartuples = new
+    return reads
+
+
+@pytest.mark.parametrize("judge", JUDGES)
+@pytest.mark.parametrize("baq", [False, True], ids=["stored", "apply-baq"])
+def test_the_presence_test_reads_the_qualities_the_hold_reads(tmp_path, judge, baq):
+    """F6 (invariant 2: one quality contract). The two-unit deletion's 4 carriers holding the
+    run each carry an alignment indel every 8 bases past the junction, so under `--apply-baq`
+    no base they hold past it is readable (the classifiers read the downgraded qualities). The
+    presence test read the stored qualities: 4 fragments spelled the count, it was present, and
+    every ALT-fitting read was held, (RD, AD, partial) = (6, 0, 16). Read as the hold reads them,
+    no carrier spells anything: the count is not at the site and the 16 reads that cannot tell
+    stay ALT, (6, 16, 0). Stored qualities: (6, 0, 16), as before. Both paths."""
+    ref, a, h, rows, reads = _ticket()
+    reads += _bases_next_to_other_indels(
+        _reads(a, "two", h["two"], HOLDING, size=120, k=4, tag="h")
+    )
+    fa, bam = write_contig(tmp_path, ref, reads, "c")
+    (pv,) = _rs.prepare_variants(
+        [_rs.Variant("1", *rows["one"], "DEL")], fa, 5, False, 1, True, read_judge=judge
+    )
+    kw = {"reference_fasta": fa} if judge == "sequence" else {}
+    (c,) = count_checked(bam, [pv.variant], read_judge=judge, apply_baq=baq, **kw)
+    _invariants(c)
+    assert (c.rd, c.ad, c.partial_alt, c.dp) == ((6, 16, 0, 22) if baq else (6, 0, 16, 22))
