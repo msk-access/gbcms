@@ -1485,15 +1485,17 @@ impl Site {
 
     /// Where X is a pure insertion of [`LONG_EVENT`] bases or more: the columns `[a, b]`
     /// (inclusive) of `hap` a REF or ALT call on it must cover (RJ-23's equal windows, read
-    /// from the anchor): the base before X's run and as many bases on as REF's window holds,
-    /// the run and the base past it. On REF's haplotype that is the run read through; on
-    /// X's, the insert's first bases, never the whole insert, which a read is not expected
-    /// to hold.
+    /// from the anchor): the base before X's run and as many columns on as REF's window holds
+    /// (the run and the base past it, read on where masks hide that base). On REF's
+    /// haplotype that is the run read through; on X's, the insert's first bases, never the
+    /// whole insert, which a read is not expected to hold. Both are counted in columns of
+    /// the called haplotype, so a listed change the haplotype takes inside the windows (an
+    /// insertion beside X's run) lengthens neither allele's window: equal windows hold as many
+    /// bases of each read.
     pub(crate) fn equal_window(&self, hap: &Hap) -> Option<(i64, i64)> {
         let (lo, w) = self.long_ins?;
         let a = self.column_in(hap, lo - 1 - self.start);
-        let b = if hap.class == Class::Ref { self.column_in(hap, lo - 1 + w - 1 - self.start) } else { a + w - 1 };
-        Some((a, b))
+        Some((a, a + w - 1))
     }
 
     /// The equal windows' length `w` from the anchor (the base before `lo`), read on where

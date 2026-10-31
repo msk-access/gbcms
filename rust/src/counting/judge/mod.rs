@@ -1682,6 +1682,30 @@ mod tests {
     }
 
     #[test]
+    fn a_listed_insertion_inside_the_windows_lengthens_neither() {
+        use haplotypes::LongInsRule::ReadOn;
+        use Call::*;
+        // The guard masks 359 (the windows read on to 360) and the input lists a 30-base
+        // insertion after 359, inside the windows read on: a context REF's molecules may carry.
+        // The windows are counted in columns of the called haplotype, so a REF read carrying
+        // that insertion holds REF's window as soon as it holds as many of its own bases as an
+        // ALT read must (HG002's chr2:111764847 +106 beside a listed +56 three bases on).
+        let (c, x, _) = long_duplication();
+        let h = haplotype(&c, &[&x]);
+        let filler = random_seq(30, 2641);
+        let ctx = Row::new(359, &c[359..360], &[&c[359..360], &filler[..]].concat());
+        let hc = haplotype(&c, &[&ctx]);
+        assert_ne!(c[360], h[360], "360 tells the alleles apart");
+        let mut reads: Vec<ReadView> = (0..3).map(|i| read(&c, 250 + i, 150, 250 + i as i64, "150M").named(format!("r{i}").as_bytes())).collect();
+        reads.push(read(&hc, 262, 100, 262, "98M2I").named(b"rc0")); // the anchor, 359, the insertion's first bases
+        reads.push(read(&h, 262, 100, 262, "100M").named(b"c1")); // X's window read on, to 360
+        let candidates = Candidates { listed: vec![ctx.clone()], masked: vec![359], ..Candidates::default() };
+        let s = haplotypes::Site::build_ins(x.clone(), &candidates, (0, c.to_vec()), &reads, ReadOn).unwrap();
+        let got: Vec<Call> = reads.iter().map(|r| judge(&s, r, MIN_BQ, false).call).collect();
+        assert_eq!(got, vec![Ref, Ref, Ref, Ref, Alt]);
+    }
+
+    #[test]
     fn under_the_cis_option_a_change_a_ref_molecule_carries_stays_masked_on_ref() {
         use haplotypes::LongInsRule::Cis;
         use Call::*;
