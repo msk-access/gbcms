@@ -21,6 +21,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the ALT's), both windows read on to the next base telling them apart, and a read short of it
   is depth only, REF and ALT alike (RJ-27's read-on). At HG002's 98 bp duplication at
   chr22:39653046 this makes 11 REF reads depth (RD 21 → 10, AD 6).
+- Both windows are counted in bases of the called allele's sequence, so a listed change inside them
+  lengthens neither; the window check runs before another allele's call, so a read inside the
+  insert tying the ALT and another allele is depth only, not partial evidence; and the guard's
+  masks are laid on both windows by offset from the anchor, so a masked offset weighs on neither
+  allele. Where no base within reach tells the windows apart, every read is depth only and the
+  row is named `NO_TELLING_BASE` in `gbcms_diagnostic` (no column added).
 - Among the reads that hold the windows, the calls now follow the truth's allele shares on HG002
   (per-read symmetry bar); the VAF of long insertions stays below 0.5 because fewer reads over
   the anchor come from ALT molecules than from REF ones in the BAM itself.
