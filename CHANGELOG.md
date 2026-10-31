@@ -7,6 +7,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed — the Linux wheel installs on RHEL 8 (manylinux_2_28), and the extension links no OpenSSL or libcurl (#234)
+
+- The release builds its Linux wheel in the `manylinux_2_28` image (AlmaLinux 8, glibc 2.28),
+  not `manylinux_2_34`. The wheel now installs on RHEL 8 and newer; before, `pip install` on
+  RHEL 8 built the source distribution. (Python 3.11 only until the wheels of other Pythons.)
+- Why the build image had to change: the curl that rust-htslib builds in refuses OpenSSL older
+  than 3.0, and RHEL 8 ships 1.1.1. The fix is not a newer OpenSSL but none: rust-htslib is
+  built without its default `curl` feature, which only serves remote files (http, https, s3,
+  gcs), and gbcms opens only paths that exist. `curl-sys`, `openssl-sys` and `openssl-src` leave
+  `rust/Cargo.lock`, and with them the OpenSSL license question of a wheel that carries
+  OpenSSL. Counts are unchanged: a counting run on a synthetic data set (SNV, MNV, insertion,
+  deletion; two paired-end BAMs; mFSD on) writes byte-identical output with and without the
+  feature. On macOS arm64 the wheel falls from 5.77 to 3.20 MB.
+- New `Wheels` workflow and local action `.github/actions/linux-wheel` (the recipe the
+  release also uses): on a change to the build, it builds the wheel and installs it in Rocky
+  Linux 8 and 9 containers with `pip install --only-binary=:all:`, runs the test suite there,
+  and compares the output digests of a counting run (`scripts/wheel_fixture_run.py`) between
+  Rocky 8, Rocky 9 and the `manylinux_2_34` wheel that earlier releases shipped. The same
+  steps run on any RHEL machine with `scripts/check_wheel.sh`. `checkpoint-wheels.yml` is
+  unchanged: it builds older commits, which still link libcurl, so it keeps `manylinux_2_34`.
+
 ### Fixed — the docs say what the original's `--filter_non_primary` removes, and list the measured differences from 1.2.5
 
 - `docs/reference/read-filters.md` implied that the original GetBaseCountsMultiSample's single

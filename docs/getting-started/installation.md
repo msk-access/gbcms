@@ -10,9 +10,11 @@
 
     !!! info "One prebuilt wheel"
         A release publishes one wheel, for **CPython 3.11 on Linux x86_64 with glibc
-        2.34+** (Ubuntu 22.04+, RHEL 9+, Debian 12+), and the source distribution. On
-        any other platform or Python, `pip install gbcms` compiles the source
+        2.28+** (RHEL 8 and 9, Ubuntu 20.04+, Debian 10+), and the source distribution.
+        On any other platform or Python, `pip install gbcms` compiles the source
         distribution on your machine, which needs a Rust toolchain and a C compiler.
+        The wheel needs pip 20.3 or newer; on RHEL 8, install it into a virtual
+        environment of a newer Python (see [RHEL 8](#legacy-linux-rhel-8-hpc)).
         See [Platform support](#platform-support).
 
 === "Docker"
@@ -40,7 +42,7 @@
 | Component | Requirement |
 |:----------|:------------|
 | Python | 3.10+ (CI runs 3.10, 3.11 and 3.14 on every change, and 3.10 to 3.14 monthly) |
-| OS | Linux (x86_64 wheel needs glibc 2.34+), macOS (built from source), Windows through WSL2 |
+| OS | Linux (x86_64 wheel needs glibc 2.28+: RHEL 8 and newer), macOS (built from source), Windows through WSL2 |
 | Memory | 4GB+ (8GB for large BAMs) |
 
 ### For Nextflow Workflow
@@ -53,14 +55,16 @@
 ## Platform support
 
 What a release builds is exactly what `.github/workflows/release.yml` builds: the
-`linux` job (`ubuntu-latest`, `--release -i python3.11`, `manylinux_2_34`) and the
-`sdist` job. So `pip install gbcms` gives:
+`linux` job (`ubuntu-latest`, `--release -i python3.11`, in the `manylinux_2_28`
+image, which is AlmaLinux 8) and the `sdist` job. The `Wheels` workflow installs that
+wheel in Rocky Linux 8 and 9 containers and runs the test suite there. So `pip install
+gbcms` gives:
 
 | Your platform | What `pip install gbcms` does |
 |:--------------|:------------------------------|
-| Linux x86_64, glibc 2.34+, Python 3.11 | Installs the prebuilt wheel (`cp311`, `manylinux_2_34_x86_64`) |
-| Linux x86_64, glibc 2.34+, another Python (3.10, 3.12 to 3.14) | Builds the source distribution |
-| Linux with glibc below 2.34 (RHEL 8, CentOS 8), or Linux aarch64 | Builds the source distribution; see [Legacy Linux](#legacy-linux-rhel-8-hpc) |
+| Linux x86_64, glibc 2.28+ (RHEL 8 and newer), Python 3.11 | Installs the prebuilt wheel (`cp311`, `manylinux_2_28_x86_64`) |
+| Linux x86_64, glibc 2.28+, another Python (3.10, 3.12 to 3.14) | Builds the source distribution |
+| Linux with glibc below 2.28 (RHEL 7, CentOS 7), or Linux aarch64 | Builds the source distribution; see [Legacy Linux](#legacy-linux-rhel-8-hpc) |
 | macOS, Intel or Apple Silicon | Builds the source distribution (CI builds and tests it on macOS with Python 3.12) |
 | Windows (native) | Not built or tested; use WSL2, which is the Linux row |
 
@@ -75,18 +79,32 @@ Every row above that builds from source needs, on your machine:
 - a **C compiler** (the bundled htslib is compiled from C);
 - **libclang**, which `bindgen` uses for the htslib headers (set `LIBCLANG_PATH` if it
   is not found);
-- the development headers for **zlib, bzip2, xz, libcurl and OpenSSL**.
+- the development headers for **zlib, bzip2 and xz**. The build needs no libcurl and
+  no OpenSSL: gbcms reads local files only, so htslib is built without its remote-file
+  support.
 
-The release build installs `zlib-devel bzip2-devel xz-devel libcurl-devel
-openssl-devel clang llvm-devel` (the Debian names are `zlib1g-dev libbz2-dev
-liblzma-dev libcurl4-openssl-dev libssl-dev clang libclang-dev`). CI's macOS jobs
-install `htslib`, `autoconf` and `automake` with Homebrew before building.
+The release build installs `zlib-devel bzip2-devel xz-devel clang llvm-devel` (the
+Debian names are `zlib1g-dev libbz2-dev liblzma-dev clang libclang-dev`). CI's macOS
+jobs install `htslib`, `autoconf` and `automake` with Homebrew before building.
 
 ---
 
 ## Legacy Linux (RHEL 8 / HPC)
 
-For RHEL 8, CentOS 8, or HPC systems with glibc < 2.34:
+RHEL 8 (glibc 2.28) installs the prebuilt wheel with pip. RHEL 8's own Python is 3.6,
+so use a newer one, in a virtual environment (the wheel needs pip 20.3 or newer):
+
+```bash
+sudo dnf install python3.11            # or: module load python/3.11, or conda
+python3.11 -m venv gbcms_env
+source gbcms_env/bin/activate
+pip install --upgrade pip
+pip install gbcms
+gbcms --version
+```
+
+The other tabs are for Pythons without a wheel, for glibc older than 2.28, and for
+clusters that run containers.
 
 === "Micromamba (Recommended)"
     ```bash
@@ -132,10 +150,10 @@ For RHEL 8, CentOS 8, or HPC systems with glibc < 2.34:
     docker run --rm -v $(pwd):/data ghcr.io/msk-access/gbcms:X.Y.Z gbcms --help
     ```
 
-!!! note "Why not pip install?"
-    The one prebuilt wheel requires glibc 2.34+. On RHEL 8 (glibc 2.28), pip falls back
-    to source compilation, which requires Rust and clang headers. The conda environment
-    provides these dependencies.
+!!! note "When pip builds from source"
+    The one prebuilt wheel is for CPython 3.11 and glibc 2.28+. On any other Python, or
+    on glibc older than 2.28, pip falls back to source compilation, which requires
+    Rust and clang headers. The conda environments above provide these dependencies.
 
 ---
 
