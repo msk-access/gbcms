@@ -87,8 +87,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     bash \
     && rm -rf /var/lib/apt/lists/*
 
-# Runtime dependencies from the hash-pinned lock (linux/amd64, Python 3.11; refreshed
-# at each release, see the release guide), then the wheel without resolving anything,
+# Runtime dependencies from the hash-pinned lock (resolved for linux/amd64 and Python 3.11,
+# with the hashes of every platform's wheels, so the arm64 image installs the same versions;
+# refreshed at each release, see the release guide), then the wheel without resolving anything,
 # then pip check: the image holds exactly the locked versions, and they satisfy
 # gbcms's own requirements, so a lock that no longer does fails the build here.
 COPY docker/requirements.lock /app/requirements.lock
