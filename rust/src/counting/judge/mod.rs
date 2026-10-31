@@ -1733,6 +1733,72 @@ mod tests {
     }
 
     #[test]
+    fn masks_past_a_long_insertions_run_weigh_on_both_windows_alike() {
+        use haplotypes::LongInsRule::ReadOn;
+        use Call::*;
+        // Masks at 359 and 361; the windows read on to 360, the first base both haplotypes show
+        // unmasked and differ. On X's haplotype those masks lie past the insert, so X's own
+        // bases at their offsets stayed visible: a REF read whose base at 360 is unreadable, or
+        // a third base, was weighed against X there and counted REF, while the ALT read alike
+        // was depth. Laid on both windows by offset, the two are alike: depth only.
+        let (c, x, _) = long_duplication();
+        let h = haplotype(&c, &[&x]);
+        let third = *b"ACGT".iter().find(|&&b| b != c[360] && b != h[360]).unwrap();
+        let mut lowq = vec![Q; 100];
+        lowq[98] = 5; // the base at 360
+        let with = |hap: &[u8], base: u8| {
+            let mut s = hap[262..362].to_vec();
+            s[98] = base;
+            s
+        };
+        let mut reads: Vec<ReadView> = (0..3).map(|i| read(&c, 250 + i, 150, 250 + i as i64, "150M").named(format!("r{i}").as_bytes())).collect();
+        reads.push(read_q(&c[262..362], lowq.clone(), 262, "100M").named(b"refLowQ"));
+        reads.push(read_q(&h[262..362], lowq.clone(), 262, "100M").named(b"altLowQ"));
+        reads.push(read_q(&with(&c, third), vec![Q; 100], 262, "100M").named(b"refThird"));
+        reads.push(read_q(&with(&h, third), vec![Q; 100], 262, "100M").named(b"altThird"));
+        reads.push(read(&c, 262, 100, 262, "100M").named(b"refClean"));
+        reads.push(read(&h, 262, 100, 262, "100M").named(b"altClean"));
+        assert_eq!(calls_masked(&c, &x, vec![359, 361], &reads, ReadOn), vec![Ref, Ref, Ref, Depth, Depth, Depth, Depth, Ref, Alt]);
+    }
+
+    #[test]
+    fn a_mask_inside_both_windows_of_a_run_longer_than_the_insert_weighs_alike() {
+        use haplotypes::LongInsRule::ReadOn;
+        use Call::*;
+        // X inserts 10 units of a 6-base repeat 20 units long after the anchor at 300: its run
+        // (120 bases) is longer than its insert (60), so the windows (122 bases) hold a mask at
+        // 330 at offset 30 on REF's haplotype and at offset 90 on X's. Laid on both windows by
+        // offset, a third base read at either offset weighs on neither allele: REF reads and
+        // ALT reads alike are told by the base past the run.
+        let unit = b"ACGTTG";
+        let mut c = random_seq(700, 2642);
+        for k in 0..120 {
+            c[301 + k] = unit[k % 6];
+        }
+        c[300] = b'C'; // not the unit's last base: the insert does not slide left
+        c[421] = b'T'; // not the unit's next base: the run ends at 420
+        let ins: Vec<u8> = (0..60).map(|k| unit[k % 6]).collect();
+        let x = Row::new(300, &c[300..301], &[&c[300..301], &ins[..]].concat());
+        let h = haplotype(&c, &[&x]);
+        // reads from 280 to 421: the anchor, the windows and no more, told by the base past the run
+        let at = |hap: &[u8], col: usize, base: u8| {
+            let mut s = hap[280..422].to_vec();
+            s[col - 280] = base;
+            s
+        };
+        let third_of = |b: u8| *b"ACGT".iter().find(|&&t| t != b).unwrap();
+        let reads = vec![
+            read_q(&at(&c, 390, third_of(c[390])), vec![Q; 142], 280, "142M").named(b"refAt90"),
+            read_q(&at(&h, 390, third_of(h[390])), vec![Q; 142], 280, "142M").named(b"altAt90"),
+            read_q(&at(&c, 330, third_of(c[330])), vec![Q; 142], 280, "142M").named(b"refAt30"),
+            read_q(&at(&h, 330, third_of(h[330])), vec![Q; 142], 280, "142M").named(b"altAt30"),
+            read(&c, 280, 142, 280, "142M").named(b"refClean"),
+            read(&h, 280, 142, 280, "142M").named(b"altClean"),
+        ];
+        assert_eq!(calls_masked(&c, &x, vec![330], &reads, ReadOn), vec![Ref, Alt, Ref, Alt, Ref, Alt]);
+    }
+
+    #[test]
     fn under_the_cis_option_a_change_a_ref_molecule_carries_stays_masked_on_ref() {
         use haplotypes::LongInsRule::Cis;
         use Call::*;
