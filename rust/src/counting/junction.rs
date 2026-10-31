@@ -59,7 +59,7 @@ use crate::types::Variant;
 
 use super::carrier::{
     aligned_query_range, confident_weight, one_base_evidence, readable_range, score, Guard, OtherAllele, Placement,
-    is_found, ReadRules, Reading, GUARD_MIN_READS, GUARD_MIN_SHARE, GUARD_REF_SHARE, SHIFT_REACH, WILD,
+    is_found, one_error_forgiven, ReadRules, Reading, GUARD_MIN_READS, GUARD_MIN_SHARE, GUARD_REF_SHARE, SHIFT_REACH, WILD,
 };
 use super::observed::{canonical, ObservedAllele};
 use super::utils::{find_read_pos, median_qual, ClassifyPhase, ClassifyResult};
@@ -498,7 +498,7 @@ pub(crate) fn tells(seq: &[u8], quals: &[u8], min_baseq: u8, s: i64, (a, b): (&[
     }
     let need = one_base_evidence(min_baseq);
     let favours = |own: usize, other: usize, w_own: f64, w_other: f64| {
-        other >= 1 && (own == 0 || (own == 1 && other >= 3)) && w_other - w_own >= need && w_other - w_own > 0.0
+        other >= 1 && (own == 0 || one_error_forgiven(own, other)) && w_other - w_own >= need && w_other - w_own > 0.0
     };
     if favours(miss_a, miss_b, wa, wb) {
         Some(true)

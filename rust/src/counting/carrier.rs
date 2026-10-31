@@ -263,6 +263,19 @@ const GUARD_ORIENTATION_ALPHA: f64 = 1e-3;
 /// Share of the REF reads on which a change is no longer the ALT's alone.
 pub(crate) const GUARD_REF_SHARE: f64 = 0.05;
 
+/// RJ-27's tolerance, stated once: one confident error on a reading is forgiven where the other
+/// reading misses at least this many confident bases (a read of one allele whose reading of the
+/// other allele misses three or more is that allele's, one error aside). The exact-carrier rule
+/// past the windows ([`judge`]) and the junction judge's telling of two alleles
+/// (`junction::tells`) both ask [`one_error_forgiven`].
+pub(crate) const FORGIVEN_BY: usize = 3;
+
+/// Whether a reading with `own_misses` confident misses is forgiven its one error against a
+/// reading of the other allele that misses `other_misses` (RJ-27; [`FORGIVEN_BY`]).
+pub(crate) fn one_error_forgiven(own_misses: usize, other_misses: usize) -> bool {
+    own_misses == 1 && other_misses >= FORGIVEN_BY
+}
+
 /// RJ-25's presence test, stated once: an allele nobody listed is at the locus where the
 /// fragments that spell it in full number at least [`GUARD_MIN_READS`] and at least
 /// [`GUARD_REF_SHARE`] of the fragments spelling the allele it is nearest (`nearest`): an
@@ -1004,7 +1017,7 @@ fn judge(record: &Record, variant: &Variant, quals: &[u8], min_baseq: u8, rules:
                     let forgive = |own: &Reading, other: &Reading, w: &Window, held: usize, side: u8| {
                         let &[q] = own.misses.as_slice() else { return None };
                         let past = usize::try_from(q as i64 - own.start).is_ok_and(|i| i >= held);
-                        (past && tolerate(side) && other.mismatches >= 3)
+                        (past && tolerate(side) && one_error_forgiven(own.misses.len(), other.mismatches))
                             .then(|| forgiven(&seq, own, w, side))
                             .flatten()
                             .filter(|k| !rules.tolerance.is_some_and(|t| t.recurs(variant, min_baseq, rules, k)))
@@ -4050,6 +4063,15 @@ pub(crate) fn score(bases: &[u8], quals: &[u8], min_baseq: u8, hap: &[u8], span:
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn rj27_s_tolerance_is_one_error_against_three_misses() {
+        assert!(one_error_forgiven(1, 3));
+        assert!(one_error_forgiven(1, 9));
+        assert!(!one_error_forgiven(1, 2), "the other reading misses fewer than three");
+        assert!(!one_error_forgiven(2, 9), "two errors are not forgiven");
+        assert!(!one_error_forgiven(0, 9), "nothing to forgive");
+    }
 
     #[test]
     fn rj25_s_presence_test_is_three_fragments_and_a_twentieth_of_the_nearest_allele_s() {
