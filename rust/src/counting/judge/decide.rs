@@ -773,7 +773,10 @@ fn conclude_margin<'h, F: Fn(usize) -> std::rc::Rc<Hap>>(
     // cannot have.
     if let Some((a, b)) = site.equal_window(hap_w) {
         if !wa.covers().is_some_and(|(s, e)| ((s + off) as i64) <= a && b <= (e + off) as i64) {
-            trace!("haplotype judge: a {call:?} call at a long insertion holding no equal window from its anchor → depth only");
+            trace!(
+                "haplotype judge: a {call:?} call at a long insertion holding no equal window from its anchor ({a}-{b}; the read covers {:?}) → depth only",
+                wa.covers().map(|(s, e)| (s + off, e + off)),
+            );
             return Verdict { call: Call::Depth, qual: 0, best: scores, holds_anchor: false, placed: None, confirmed: false, spells: 0, spells_x: 0, clip: None, fits: FitsTrace::default(), fits_none: false, neither: nt, owngap: OwnGapTrace::default() };
         }
     }

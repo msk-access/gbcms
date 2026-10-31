@@ -1635,7 +1635,7 @@ mod tests {
 
     #[test]
     fn long_insertion_reads_hold_the_equal_windows_from_the_anchor() {
-        use haplotypes::LongInsRule::Window;
+        use haplotypes::LongInsRule::ReadOn;
         use Call::*;
         // RJ-23: a read holding the anchor and as many of X's bases as REF's window holds
         // counts ALT, not the whole insert; a read inside the insert (or holding only its far
@@ -1652,27 +1652,33 @@ mod tests {
             read(&c, 241, 100, 241, "100M"),      // REF ending inside the run
             read(&c, 330, 100, 330, "100M"),      // REF starting inside the run
         ];
-        assert_eq!(calls_masked(&c, &x, Vec::new(), &reads, Window), vec![Alt, Alt, Depth, Depth, Depth, Ref, Depth, Depth]);
+        assert_eq!(calls_masked(&c, &x, Vec::new(), &reads, ReadOn), vec![Alt, Alt, Depth, Depth, Depth, Ref, Depth, Depth]);
     }
 
     #[test]
-    fn a_masked_change_past_a_long_insertions_run_leaves_a_carrier_ending_there_depth_only() {
-        use haplotypes::LongInsRule::{Cis, Window};
+    fn a_masked_telling_base_past_a_long_insertions_run_makes_both_windows_read_on() {
+        use haplotypes::LongInsRule::{Cis, ReadOn, Window};
         use Call::*;
-        // The guard masks 359, where X's own base sits on reads written straight through it
-        // (a haplotype it found holds the change: here X's, a change in cis with it, as at
-        // HG002's chr21:41865095 and chr22:39653046). A carrier holding X's window and ending
-        // at 359 reads as either allele there, so it is depth only (decided: RJ-27, #294).
-        // The `cis` option (measurement only, not adopted: REJ-20261023-001) reads 359 on
-        // REF's haplotypes as the reference's where the REF molecules over the anchor and past
-        // 359 show they do not carry the change: then that carrier is ALT.
+        // The guard masks 359, the base past the run that tells REF's window from X's (on X's
+        // haplotype the mask lands past the insert, so X's own base sits there unmasked): read
+        // there, it would tell REF's molecules apart and never X's. Both windows read on to the
+        // next base telling them apart, 360, and a read short of it is depth only, a REF read
+        // as a carrier (RJ-27's read-on, decided 2026-10-30 for both alleles alike). The first
+        // build of the windows (`window`) left the REF read ending at 359 REF. The `cis` option
+        // (measurement only, not adopted: REJ-20261023-001) reads 359 on REF's haplotypes as the
+        // reference's where the REF molecules over the anchor and past it show they lack the
+        // change: then the carrier ending at 359 is ALT.
         let (c, x, _) = long_duplication();
         let h = haplotype(&c, &[&x]);
+        assert_ne!(c[360], h[360], "360 tells the alleles apart");
         let mut reads: Vec<ReadView> = (0..3).map(|i| read(&c, 250 + i, 150, 250 + i as i64, "150M").named(format!("r{i}").as_bytes())).collect();
         reads.push(read(&h, 260, 100, 260, "100M").named(b"c0")); // X's window, ending at 359
         reads.push(read(&c, 260, 100, 260, "100M").named(b"r9")); // REF's window, ending at 359
-        assert_eq!(calls_masked(&c, &x, vec![359], &reads, Window), vec![Ref, Ref, Ref, Depth, Ref]);
-        assert_eq!(calls_masked(&c, &x, vec![359], &reads, Cis), vec![Ref, Ref, Ref, Alt, Ref]);
+        reads.push(read(&h, 261, 100, 261, "100M").named(b"c1")); // on to 360
+        reads.push(read(&c, 261, 100, 261, "100M").named(b"r8")); // on to 360
+        assert_eq!(calls_masked(&c, &x, vec![359], &reads, ReadOn), vec![Ref, Ref, Ref, Depth, Depth, Alt, Ref]);
+        assert_eq!(calls_masked(&c, &x, vec![359], &reads, Window), vec![Ref, Ref, Ref, Depth, Ref, Alt, Ref]);
+        assert_eq!(calls_masked(&c, &x, vec![359], &reads, Cis), vec![Ref, Ref, Ref, Alt, Ref, Alt, Ref]);
     }
 
     #[test]
@@ -1681,7 +1687,7 @@ mod tests {
         use Call::*;
         // As above, with one REF molecule over the anchor and past 359 carrying X's base
         // there (a germline change on REF's haplotype): the mask stays on REF's haplotypes, so
-        // the carrier ending at 359 reads as either allele and is depth only.
+        // both windows read on and the reads ending at 359 are depth only.
         let (c, x, last) = long_duplication();
         let h = haplotype(&c, &[&x]);
         let mut germ = c.clone();
@@ -1690,6 +1696,6 @@ mod tests {
         reads.push(read(&germ, 255, 150, 255, "150M").named(b"g0"));
         reads.push(read(&h, 260, 100, 260, "100M").named(b"c0"));
         reads.push(read(&c, 260, 100, 260, "100M").named(b"r9"));
-        assert_eq!(calls_masked(&c, &x, vec![359], &reads, Cis), vec![Ref, Ref, Ref, Ref, Depth, Ref]);
+        assert_eq!(calls_masked(&c, &x, vec![359], &reads, Cis), vec![Ref, Ref, Ref, Ref, Depth, Depth]);
     }
 }

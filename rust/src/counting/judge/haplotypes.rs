@@ -445,9 +445,10 @@ pub(crate) struct Site {
     /// Of `masked`, those REF's haplotypes read as the reference's (sorted): under the `cis`
     /// option at a long insertion, a change the REF molecules do not carry ([`ref_unmasked`]).
     ref_unmasked: Vec<i64>,
-    /// X's run where X is a pure insertion of [`LONG_EVENT`] bases or more (genome,
-    /// `[lo, hi)`: the bases its insert slides over), from which a REF or ALT call holds
-    /// RJ-23's equal windows ([`Site::equal_window`]).
+    /// Where X is a pure insertion of [`LONG_EVENT`] bases or more: the first base of its run
+    /// (genome; the anchor is the base before it) and the length of RJ-23's equal windows
+    /// from the anchor, the anchor included ([`Site::equal_window`]): the run and the base
+    /// past it, read on where the guard's masks hide that base ([`Site::read_on`]).
     long_ins: Option<(i64, i64)>,
     /// X's site, `[s, e)` window coordinates: the bases it changes and, for a length
     /// change, every place it can sit and the repeat it changes, a base each side.
@@ -544,15 +545,18 @@ pub(crate) enum OwnGapRule {
 }
 
 /// RJ-23's equal windows at a long insertion (`GBCMS_JUDGE_LONG_INS`, read when a site is
-/// built): `Window`, the default (decided 2026-10-30: a REF or ALT call holds its allele's
-/// window from the anchor, [`Site::equal_window`]). Measurement only, TEMPORARY: `cis` (the
-/// windows, and REF's haplotypes reading the reference's base where a guard mask is no change
+/// built): `ReadOn`, the default (decided 2026-10-30: a REF or ALT call holds its allele's
+/// window from the anchor, [`Site::equal_window`], read on for both alleles where the guard's
+/// masks hide the base telling them apart, [`Site::read_on`]). Measurement only, TEMPORARY:
+/// `window` (the windows, never read on: the first build of the windows); `cis` (the windows
+/// read on, and REF's haplotypes reading the reference's base where a guard mask is no change
 /// of REF's molecules, [`ref_unmasked`]: a carrier's reading of a change in cis with X then
 /// counts ALT on other fragments' evidence, the cis rescue vetoed on 2026-10-23 as a default,
-/// REJ-20261023-001, so an option for the operator only); `off` (neither: the judge before
-/// the windows).
+/// REJ-20261023-001, so an option for the operator only); `off` (none of them: the judge
+/// before the windows).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum LongInsRule {
+    ReadOn,
     Window,
     Cis,
     Off,
@@ -560,9 +564,10 @@ pub(crate) enum LongInsRule {
 
 pub(crate) fn long_ins_rule() -> LongInsRule {
     match std::env::var("GBCMS_JUDGE_LONG_INS").as_deref() {
+        Ok("window") => LongInsRule::Window,
         Ok("cis") => LongInsRule::Cis,
         Ok("off") => LongInsRule::Off,
-        _ => LongInsRule::Window,
+        _ => LongInsRule::ReadOn,
     }
 }
 
@@ -1485,10 +1490,32 @@ impl Site {
     /// X's, the insert's first bases, never the whole insert, which a read is not expected
     /// to hold.
     pub(crate) fn equal_window(&self, hap: &Hap) -> Option<(i64, i64)> {
-        let (lo, hi) = self.long_ins?;
+        let (lo, w) = self.long_ins?;
         let a = self.column_in(hap, lo - 1 - self.start);
-        let b = if hap.class == Class::Ref { self.column_in(hap, hi - self.start) } else { a + (hi - lo) + 1 };
+        let b = if hap.class == Class::Ref { self.column_in(hap, lo - 1 + w - 1 - self.start) } else { a + w - 1 };
         Some((a, b))
+    }
+
+    /// The equal windows' length `w` from the anchor (the base before `lo`), read on where
+    /// the guard's masks hide every base telling REF's window from X's (RJ-27's read-on,
+    /// 2026-10-20, for REF and ALT alike): to the first base past them where REF's haplotype
+    /// and X's, read from the anchor, differ with neither masked. A read short of it holds no
+    /// window and is depth only, whichever allele its bases fit: a mask on REF's haplotype
+    /// alone (a change past an insertion's run lies, on X's, past the insert) would let REF's
+    /// molecules be told by that base while X's are not. Past the haplotypes' end, no read
+    /// holds it.
+    fn read_on(&self, lo: i64, w: i64) -> i64 {
+        let (r, x) = (Hap::build_with(self, &[], true), Hap::build(self, &[0]));
+        let (ar, ax) = (self.column_in(&r, lo - 1 - self.start), self.column_in(&x, lo - 1 - self.start));
+        let n = (r.seq.len() as i64 - ar).min(x.seq.len() as i64 - ax);
+        let tells = |k: i64| {
+            let (a, b) = (r.base((ar + k) as usize), x.base((ax + k) as usize));
+            a != WILD && b != WILD && a != b
+        };
+        if (0..w.min(n)).any(tells) {
+            return w;
+        }
+        (w..n).find(|&k| tells(k)).map_or(n + 1, |k| k + 1)
     }
 
     /// X's anchor (its first REF base) in `hap`: X's own first base where X is applied.
@@ -2640,11 +2667,13 @@ impl Site {
         // RJ-23's equal windows at a long insertion; under the `cis` option, the masks its REF
         // molecules show are no change of theirs.
         let x = &rows[0];
-        let long_ins = (ins_rule != LongInsRule::Off && pure(x) && x.alt_al.len() >= x.ref_al.len() + LONG_EVENT as usize).then(|| run(x));
-        let ref_unmasked = match long_ins {
+        let long_run = (ins_rule != LongInsRule::Off && pure(x) && x.alt_al.len() >= x.ref_al.len() + LONG_EVENT as usize).then(|| run(x));
+        let ref_unmasked = match long_run {
             Some(r) if ins_rule == LongInsRule::Cis => ref_unmasked(x, r, (start, &reference), &masked, reads),
             _ => Vec::new(),
         };
+        // the windows' first base past the anchor, and their length: the run and the base past it
+        let long_ins = long_run.map(|(lo, hi)| (lo, hi - lo + 2));
         if !ref_unmasked.is_empty() {
             log::debug!(
                 "haplotype judge {}>{} at {}: {} masked changes the REF molecules do not carry, read on REF's haplotypes as the reference's",
@@ -2733,6 +2762,13 @@ impl Site {
             .filter(|&r| site.spans[r].1 > xs - l && site.spans[r].0 < xe + l)
             .collect();
         // Every context at once: one graph per state, no enumeration.
+        if let Some((lo, w)) = site.long_ins.filter(|_| ins_rule != LongInsRule::Window) {
+            let read = site.read_on(lo, w);
+            if read != w {
+                log::debug!("haplotype judge: the guard's masks hide the base telling a long insertion's windows apart; both read on, {w} -> {read} bases from the anchor");
+            }
+            site.long_ins = Some((lo, read));
+        }
         site.graphs = site.state_graphs(&rest);
         site.drop_spelled_states(&rest);
         site.drop_graph_spellings(&found_states, reads, rule);

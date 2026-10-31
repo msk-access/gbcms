@@ -8,8 +8,11 @@ its far junction, holds none and is depth only: counting it would give the longe
 starts the shorter one cannot have. Before this the judge counted such reads ALT.
 
 A change the guard masks past the run, where the reads written straight through the insertion
-show X's own base (a haplotype it found carries it), stays masked on every haplotype (RJ-27,
-#294): a carrier ending at that base reads as either allele and is depth only. The `cis`
+show X's own base (a haplotype it found carries it), stays masked (RJ-27, #294). On X's
+haplotype the mask lands past the insert, so read there the base would tell REF's molecules
+apart and never X's: both windows read on to the next base telling them apart, and a read short
+of it is depth only, a REF read as a carrier (RJ-27's read-on, decided 2026-10-30 for both
+alleles alike). The `cis`
 option (`GBCMS_JUDGE_LONG_INS=cis`, measurement only, not adopted: it credits such a carrier
 on other fragments' evidence, the cis rescue of REJ-20261023-001) reads that base on REF's
 haplotypes as the reference's where three or more REF molecules over the anchor and past it,
@@ -43,7 +46,8 @@ N = 89  # the insert
 def _shape(germline: bool):
     """The contig, the row's ALT, and the reads: REF molecules over the anchor and past 589
     (`ref`), REF reads elsewhere (`refb`), carriers written with the insert (`thr`), carriers
-    over the anchor ending at 589 written straight (`end`), the second copy's reads placed
+    over the anchor ending at 589 written straight (`end`), REF reads over the anchor ending at
+    589 (`rend`), the second copy's reads placed
     apart with the change at 589 (`two`), and fragments starting inside the insert with its
     tail clipped, placed after the anchor (`clip`, read 1 of a proper pair). With `germline`,
     three REF molecules carrying the change at 589 too (`germ`)."""
@@ -73,6 +77,9 @@ def _shape(germline: bool):
         s = 439 + 2 * i
         seq = dup[s : A + 1 + N]
         add(f"end{i}", seq, s, ((0, len(seq)),))
+    for i in range(3):
+        s = 440 + 2 * i
+        add(f"rend{i}", contig[s : A + 1 + N], s, ((0, A + 1 + N - s),))
     for i in range(6):
         o = 10 + 10 * i
         add(f"two{i}", dup[A + 1 + N + o : A + 1 + N + o + 151], A + 1 + o, ((0, 151),))
@@ -128,13 +135,13 @@ def _run(tmp_path, caplog, germline: bool):
 
 def test_a_long_insertions_reads_are_judged_over_equal_windows_from_its_anchor(tmp_path, caplog):
     """Carriers written with the insert are ALT; fragments starting inside the insert are
-    depth only, though their pair admits them; carriers ending at the masked base past the
-    run read as either allele there and are depth only; REF molecules over the anchor and past
-    the run are REF."""
+    depth only, though their pair admits them; reads ending at the masked base past the run,
+    carriers and REF reads alike, are short of the windows read on and are depth only; REF
+    molecules over the anchor and past 589 are REF."""
     c, tally = _run(tmp_path, caplog, germline=False)
     assert tally[("thr", "ALT")] == 4, tally
     assert tally[("clip", "depth")] == 2 and tally[("clip", "ALT")] == 0, tally
-    assert tally[("end", "depth")] == 4, tally
+    assert tally[("end", "depth")] == 4 and tally[("rend", "depth")] == 3, tally
     assert tally[("ref", "REF")] == 8, tally
     assert not any(call == "ALT" for (kind, call) in tally if kind in ("ref", "refb", "two")), tally
     assert (c.rd, c.ad) == (10, 4)
@@ -145,21 +152,23 @@ def test_the_cis_option_reads_a_change_the_ref_molecules_lack_as_the_references_
 ):
     """`GBCMS_JUDGE_LONG_INS=cis` (measurement only): the REF molecules over the anchor and
     past 589 read the reference's base there, so REF's haplotypes do, and the carriers ending
-    at 589 are ALT; the rest stand."""
+    at 589 are ALT and the REF reads ending there REF; the rest stand."""
     monkeypatch.setenv("GBCMS_JUDGE_LONG_INS", "cis")
     c, tally = _run(tmp_path, caplog, germline=False)
     assert tally[("thr", "ALT")] == 4 and tally[("end", "ALT")] == 4, tally
+    assert tally[("rend", "REF")] == 3, tally
     assert tally[("clip", "depth")] == 2 and tally[("ref", "REF")] == 8, tally
-    assert (c.rd, c.ad) == (10, 8)
+    assert (c.rd, c.ad) == (13, 8)
 
 
 def test_the_cis_option_keeps_a_change_a_ref_molecule_carries_masked(tmp_path, caplog, monkeypatch):
     """Under the `cis` option, three REF molecules carrying the change at 589 too (a germline
-    change on REF's haplotype) keep the mask on REF: the carriers ending at 589 stay depth
-    only."""
+    change on REF's haplotype) keep the mask on REF: both windows read on, and the reads ending
+    at 589 stay depth only."""
     monkeypatch.setenv("GBCMS_JUDGE_LONG_INS", "cis")
     c, tally = _run(tmp_path, caplog, germline=True)
     assert tally[("end", "depth")] == 4 and tally[("end", "ALT")] == 0, tally
+    assert tally[("rend", "depth")] == 3, tally
     assert tally[("thr", "ALT")] == 4 and tally[("germ", "REF")] == 3, tally
     assert (c.rd, c.ad) == (13, 4)
 

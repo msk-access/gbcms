@@ -15,15 +15,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   is read over the insert's first bases, never the whole insert. A read lying inside the insert,
   or holding only its far junction, is depth only, as a REF read starting inside the run is.
   Before this the judge counted reads inside a long insert ALT, giving the ALT read starts REF
-  cannot have. On HG002's insertion arm, het rows of 50 bp or more whose other haplotype is REF
-  over the window: median VAF 0.483 → 0.434, 60% in 0.35–0.65 under both, rows at 0.8 or more
-  5 → 1 (80 of 88 rows keep 10 or more informative reads).
-- A change the guard masks past the run stays masked on every haplotype, so a carrier ending at
-  it is depth only where the change is in cis with the insertion (RJ-27's named limit). A
-  measurement option, `GBCMS_JUDGE_LONG_INS=cis`, reads it on REF's haplotypes as the
-  reference's where REF's molecules show they lack it; it is not adopted (it credits a read on
-  other fragments' evidence, REJ-20261023-001). `GBCMS_JUDGE_LONG_INS=off` restores the judge
-  before the windows. The rules path is unchanged; RNA does not take the sequence judge.
+  cannot have.
+- Where the guard's masks hide the base telling the two windows apart (a change past the run,
+  which on the ALT's sequence lies past the insert, so it told REF's molecules apart and never
+  the ALT's), both windows read on to the next base telling them apart, and a read short of it
+  is depth only, REF and ALT alike (RJ-27's read-on). At HG002's 98 bp duplication at
+  chr22:39653046 this makes 11 REF reads depth (RD 21 → 10, AD 6).
+- Among the reads that hold the windows, the calls now follow the truth's allele shares on HG002
+  (per-read symmetry bar); the VAF of long insertions stays below 0.5 because fewer reads over
+  the anchor come from ALT molecules than from REF ones in the BAM itself.
+- A measurement option, `GBCMS_JUDGE_LONG_INS=cis`, reads a masked change on REF's haplotypes as
+  the reference's where REF's molecules show they lack it; it is not adopted (it credits a read
+  on other fragments' evidence, REJ-20261023-001). `GBCMS_JUDGE_LONG_INS=window` keeps the
+  windows without the read-on, and `off` restores the judge before them. The rules path is
+  unchanged; RNA does not take the sequence judge.
 
 ### Fixed — the Smith-Waterman local re-scoring's `partial_alt` reads the scores that made the call (#195)
 
