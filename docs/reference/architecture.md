@@ -500,6 +500,79 @@ column and the VCF `GR`/`GD` values carry identical content.
 | Fractional depth | `--fragment_fractional_weight` | Not implemented |
 | Parallelism | OpenMP block-based | Rayon per-variant |
 
+### Known differences from GetBaseCountsMultiSample 1.2.5
+
+The table above is the design. The list below is what the counts show. Each difference was
+found by tracing every read that moves a count, with 1.2.5 built from its tag (MAPQ 20, base
+quality 20, and the duplicate, QC-failed and non-primary filters on) against gbcms's default
+rules path, on the eight HG002 benchmark arms (GIAB HG002, NovaSeq 35x, GRCh38; 400 to 14,949
+rows each). The numbers are HG002 reads and rows. Of the 53,469 reads that move a count, 2 have
+no reason yet.
+
+- **Supplementary alignments.** 1.2.5's `--filter_non_primary` removes secondary alignments only
+  (`0x100`), so a read with a supplementary segment counts twice in depth, `REF` and `ALT`; gbcms
+  never counts either as a read. HG002: 2,044 reads in the depth of 516 SNV rows, 955 `REF` reads
+  (315 rows), 1,046 `ALT` reads (226 rows); 1,920 and 1,230 reads in the depth of 396 insertion and
+  268 deletion rows. See [Filter Options](read-filters.md#filter-options).
+- **Base quality under the limit.** With a limit set, 1.2.5 leaves a read whose deciding base is
+  under it out of depth (for an indel, the base after the anchor); gbcms masks the base and keeps
+  the read in depth. HG002: 29,771 reads in 8,975 SNV rows; 1,028 reads in 395 insertion rows, 268
+  in 129 deletion rows, 93 in 30 complex rows. See [Quality Thresholds](read-filters.md#quality-thresholds).
+- **Bases past the fragment end.** gbcms clips adapter bases at the fragment end before counting
+  ([RJ-10](read-judgment.md#decided)); 1.2.5 counts them. HG002 has few (14 `REF` and 3 `ALT` reads in SNV rows, 29 depth reads
+  in insertion rows); short-insert libraries (panel, cfDNA) have more. See
+  [Filter Cascade](read-filters.md#filter-cascade).
+- **A read that holds a listed sibling's `ALT` is not `REF`.** gbcms leaves it out of this row's
+  `REF`; 1.2.5 counts bases, so the read stays `REF` ([RJ-5](read-judgment.md#decided)). HG002: 411 `REF` reads in 134 SNV
+  rows, 14 in 7 MNV rows; a sibling row takes 470 insertion and 202 deletion reads that 1.2.5 gives
+  to `ALT`. See [Sibling ALT exclusion](allele-classification.md#phase-2-sibling-alt-exclusion).
+- **The row's event plus another change is another allele.** 1.2.5 calls a read `ALT` when its
+  CIGAR holds an indel of the right length (for an insertion, the right bases) right after the
+  anchor, whatever else the read carries; gbcms judges the read's bases over the whole window
+  ([RJ-7, RJ-25](read-judgment.md#decided)). HG002, where gbcms `ALT` is lower: 367 insertion rows (2,938 reads) and 167 deletion rows
+  (1,361 reads), 79% of them this case. See [The exact-carrier rule](allele-classification.md#the-exact-carrier-rule).
+- **What 1.2.5 counts as `REF` at an indel.** A read whose block covers the anchor is `REF` when
+  the base after the anchor is the reference, even if the read holds the indel elsewhere in the
+  repeat; any other base after the anchor makes it noise (in depth, not `REF`). gbcms counts `REF`
+  only from reads that tell the alleles apart. HG002: gbcms `REF` is higher in 513 insertion rows
+  (4,587 reads, 76% with another base right after the anchor) and 141 deletion rows (355 reads), and
+  lower in 3,656 insertion and 2,310 deletion rows (reads that do not tell the alleles apart). See
+  [Informative Reads for Indels](allele-classification.md#informative-reads-for-indels).
+- **The window opens one base right of the anchor.** 1.2.5 counts a read that starts at
+  anchor+1 in the depth of an insertion or deletion; gbcms counts depth over reads that cover the
+  anchor. HG002: 9,989 reads in 2,008 insertion rows, 620 in 320 deletion rows, 16 in 10 complex
+  rows. This is most of the lower gbcms depth at insertions. See
+  [Fetch Window](read-filters.md#fetch-window).
+- **MNV.** 1.2.5 drops a read from depth when any base of the block is under the limit, needs the
+  whole block to equal `REF` or `ALT`, needs one aligned block, and counts a read that starts inside
+  the block in depth. gbcms masks each differing position on its own, ignores positions the alleles
+  share, and judges a read with an indel beside the block by the exact-carrier rule. HG002 has 21
+  padded MNV rows: 58 reads (13 rows) dropped for a low base, 23 `REF` reads (4 rows) that fail the
+  whole-block test, 32 reads (12 rows) that start inside the block. See
+  [MNP](allele-classification.md#mnp-multi-nucleotide-polymorphism).
+- **Complex rows.** 1.2.5's default path treats a delins as an insertion or deletion by length and
+  matches only the CIGAR indel, so a read whose aligner wrote the change another way is `REF`;
+  `--generic_counting` compares bases and finds some of them. gbcms always rebuilds the haplotype.
+  HG002: 446 rows differ, with gbcms `ALT` higher in 432. See
+  [Complex](allele-classification.md#complex-indel-substitution).
+- **`--generic_counting` beside an insertion.** In 1.2.5's generic mode a read's allele includes an
+  insertion directly before or after its base, so a SNV next to an insertion loses those reads from
+  `REF` and `ALT` (they stay in depth). HG002: 877 of 15,288 SNV rows differ between the two modes
+  of 1.2.5, all next to an insertion (6,604 reads before, 821 after). Do not take its generic mode
+  as the reference for `REF` there.
+- **Fragment counts.** 1.2.5 uses the majority rule, gbcms a quality-weighted consensus. Fragment
+  `REF` and `ALT` follow the read-level differences above, and the fragment total follows depth.
+  HG002: SNV fragment `REF` and `ALT` agree in 97% and 98% of rows. See
+  [Counting Metrics](counting-metrics.md).
+- **Rows.** 1.2.5 writes counts for an ALT of `*` (an overlapping deletion), and its MAF merges
+  repeats of one variant in one BAM; gbcms skips `*` and writes one row per input row. HG002: 1,807
+  `*` rows in the VCF sets. To compare row for row, drop the `*` rows and merge the repeats. See
+  [Input Formats](input-formats.md#alt-alleles).
+- **A defect of 1.2.5, not a gbcms rule.** Near a boundary of the BAM index's 16 kb bins, the
+  BamTools 2.3.0 index lookup bundled with 1.2.5 can start past reads that overlap the start of a
+  block's region, so 1.2.5's depth and counts are too low at those rows. If gbcms has the higher
+  depth at a row near a bin boundary, check this first.
+
 ---
 
 ## Related
