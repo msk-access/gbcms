@@ -33,6 +33,20 @@ regenerating a section.
 
 ---
 
+## [LRN-20261031-001] rule-body | a gate result read and a commit made in one command
+- **Status:** resolved (rule promoted).
+- **Cause:** rule-body.
+- **Summary:**
+  - The gate ran in the background. I then ran one command that printed its output and committed
+    and pushed the record branch. The output showed `pytest=1` (a stale `_rs.cpython-310-darwin.so`
+    in the main checkout shadowed the new abi3 build, which #235's test catches), but the commit had
+    already run. No PR was open; the branch was fixed and gated again before any PR.
+  - The qa-check rule said "read every exit code; never gate on a pipe", but not that reading and
+    committing must be separate steps.
+- **Promotion target:** `.agents/skills/qa-check/SKILL.md` ("Read every exit code") — `DONE:` read a
+  background gate's result in its own step; commit only in the next step.
+- **Related:** the pipe-masks-gate-exit note (now in the qa-check skill).
+
 ## [LRN-20261030-003] rule-body | the PHI sanitizer filtered stdout but not library warnings on stderr
 - **Status:** resolved (rule promoted).
 - **Cause:** rule-body.
