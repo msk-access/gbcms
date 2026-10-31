@@ -24,8 +24,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Both windows are counted in bases of the called allele's sequence, so a listed change inside them
   lengthens neither; the window check runs before another allele's call, so a read inside the
   insert tying the ALT and another allele is depth only, not partial evidence; and the guard's
-  masks are laid on both windows by offset from the anchor, so a masked offset weighs on neither
-  allele. Where no base within reach tells the windows apart, every read is depth only and the
+  masks are laid by offset from the anchor on every candidate haplotype (REF's, the ALT's and
+  each other allele's), so a masked offset weighs on none of them. Where no base within reach tells the windows apart, every read is depth only and the
   row is named `NO_TELLING_BASE` in `gbcms_diagnostic` (no column added).
 - Among the reads that hold the windows, the calls now follow the truth's allele shares on HG002
   (per-read symmetry bar); the VAF of long insertions stays below 0.5 because fewer reads over
@@ -36,6 +36,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   reference's where REF's molecules show they lack it was measured with a third option and is not
   adopted (it credits a read on other fragments' evidence, REJ-20261023-001); that option is
   removed. The rules path is unchanged; RNA does not take the sequence judge.
+- Decided 2026-10-31 (operator): the masks laid on both windows by offset are accepted and laid
+  on every candidate haplotype, so a listed allele of the ALT's length that differs from it at a
+  masked offset is told from it by no base there (the ALT's carriers and a read with a third base
+  at that offset are partial evidence of either, never ALT); the `cis` option is removed; the
+  anchor is taken from the insertion's run, wherever the row is written; the rule stays for pure
+  insertions of 50 bp or more (a delins with a longer side over 50 bp is a separate decision).
+  On HG002 this moves 4 reads in 2 rows on tr and 4 in 2 rows on nocl and sub, each from
+  partial evidence to REF (3 of the 4 on nocl and sub are true REF, none a true ALT), and no
+  other row of the four truth arms; the merge with develop's band rule (#369) moves only reads
+  on its `judge far` lines; the rules path is unchanged byte for byte.
 
 ### Added — a macOS wheel for Apple silicon (arm64) (#237)
 
