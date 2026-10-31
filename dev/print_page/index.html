@@ -14667,6 +14667,12 @@ it shows in review instead of slipping in with an unrelated fix.</p>
 <td style="text-align: left;">Under the sequence judge, a read whose best score over every one of the row's candidate sequences (REF, the ALT, the other alleles at its site, each with every context) falls below ten confident mismatches fits none of them. It is depth only where its aligner also doubts its placement (XS at least AS; <abbr title="Mapping Quality - Confidence score for read alignment">MAPQ</abbr> 0 where no XS is written); a read the aligner places here alone is judged by its bases at the row, as any other. The row names how many of its depth reads fit no candidate sequence: <code>UNEXPLAINED_READS(n/m)</code> in <code>gbcms_diagnostic</code>, so a row that may count foreign reads (a paralog's, reads placed at a homozygous deletion in a repeat) is visible without a new column.</td>
 <td style="text-align: left;">#304, operator 2026-10-25 (phase B: the fit rule, xs, with its diagnostic)</td>
 </tr>
+<tr>
+<td style="text-align: left;">RJ-30</td>
+<td style="text-align: left;">A read's body can be a copy of a stretch inside a long listed insertion (an expanded repeat, a duplication) while its aligner placed it beside the insertion; all of an insertion's bases stand at its anchor's coordinate, so a band around the read's own placement that is not widened for the insertion cannot reach that path and stands on the placement's worse score.</td>
+<td style="text-align: left;">Under the sequence judge, a listed insertion longer than the band's slack (16 bases) inside a read's reach (its span and its length each side) but past the window its band widens for (the slack and two bases each side) sends every state of the read to the full programme over its reach, and the linear aligner drops its band for the read. A deletion does not (a path to a far one pays the gap to it); insertions of 16 bases or fewer are left to the band. The site build uses the same scores.</td>
+<td style="text-align: left;">#369, operator 2026-10-30 (the whole read); <code>docs/proposals/sequence-judge.md</code> §10 item 8</td>
+</tr>
 </tbody>
 </table>
 <h3 id="reference-read-judgment-open">Open<a class="headerlink" href="#reference-read-judgment-open" title="Permanent link">¶</a></h3>
@@ -20341,6 +20347,20 @@ count-affecting merge since the previous release, run on the changed rows only.<
 <p>The format is based on <a href="https://keepachangelog.com/en/1.0.0/">Keep a Changelog</a>,
 and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semantic Versioning</a>.</p>
 <h2 id="development-changelog-unreleased">[Unreleased]<a class="headerlink" href="#development-changelog-unreleased" title="Permanent link">¶</a></h2>
+<h3 id="development-changelog-fixed-the-sequence-judge-no-longer-misses-a-reads-path-through-a-long-listed-insertion-369">Fixed — the sequence judge no longer misses a read's path through a long listed insertion (#369)<a class="headerlink" href="#development-changelog-fixed-the-sequence-judge-no-longer-misses-a-reads-path-through-a-long-listed-insertion-369" title="Permanent link">¶</a></h3>
+<ul>
+<li>Under <code>--read-judge sequence</code>, the band around a read's own placement widened only for the rows
+  within its slack and two bases of the read. A listed insertion further on but within the read's
+  length could hold the read's best path (a read copied from inside an expanded repeat or a
+  duplication), and the band stood on a worse score. A listed insertion longer than 16 bases in a
+  read's reach but past its band now sends every state of the read to the full programme, and the
+  linear aligner drops its band for the read. Deletions do not trigger it. Measured on every arm:
+  no patient read changes; on HG002 622 reads change, every one to the call the full programme
+  gives (537 to depth only: through the insertion they fit each state alike); truth and both
+  oracles unchanged. CPU +0 to +4% on HG002; on the patient arms within 1% of the build
+  without the rule.
+  <code>docs/proposals/sequence-judge.md</code> §10.</li>
+</ul>
 <h3 id="development-changelog-changed-one-wheel-for-every-python-from-310-the-extension-uses-the-stable-abi-abi3-py310-235">Changed — one wheel for every Python from 3.10: the extension uses the stable ABI (<code>abi3-py310</code>) (#235)<a class="headerlink" href="#development-changelog-changed-one-wheel-for-every-python-from-310-the-extension-uses-the-stable-abi-abi3-py310-235" title="Permanent link">¶</a></h3>
 <ul>
 <li>The Linux wheel is now <code>cp310-abi3</code>: one file that installs on CPython 3.10, 3.11, 3.12, 3.13

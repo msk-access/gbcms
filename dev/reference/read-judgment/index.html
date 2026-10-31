@@ -2309,6 +2309,12 @@ it shows in review instead of slipping in with an unrelated fix.</p>
 <td style="text-align: left;">Under the sequence judge, a read whose best score over every one of the row's candidate sequences (REF, the ALT, the other alleles at its site, each with every context) falls below ten confident mismatches fits none of them. It is depth only where its aligner also doubts its placement (XS at least AS; <abbr title="Mapping Quality - Confidence score for read alignment">MAPQ</abbr> 0 where no XS is written); a read the aligner places here alone is judged by its bases at the row, as any other. The row names how many of its depth reads fit no candidate sequence: <code>UNEXPLAINED_READS(n/m)</code> in <code>gbcms_diagnostic</code>, so a row that may count foreign reads (a paralog's, reads placed at a homozygous deletion in a repeat) is visible without a new column.</td>
 <td style="text-align: left;">#304, operator 2026-10-25 (phase B: the fit rule, xs, with its diagnostic)</td>
 </tr>
+<tr>
+<td style="text-align: left;">RJ-30</td>
+<td style="text-align: left;">A read's body can be a copy of a stretch inside a long listed insertion (an expanded repeat, a duplication) while its aligner placed it beside the insertion; all of an insertion's bases stand at its anchor's coordinate, so a band around the read's own placement that is not widened for the insertion cannot reach that path and stands on the placement's worse score.</td>
+<td style="text-align: left;">Under the sequence judge, a listed insertion longer than the band's slack (16 bases) inside a read's reach (its span and its length each side) but past the window its band widens for (the slack and two bases each side) sends every state of the read to the full programme over its reach, and the linear aligner drops its band for the read. A deletion does not (a path to a far one pays the gap to it); insertions of 16 bases or fewer are left to the band. The site build uses the same scores.</td>
+<td style="text-align: left;">#369, operator 2026-10-30 (the whole read); <code>docs/proposals/sequence-judge.md</code> §10 item 8</td>
+</tr>
 </tbody>
 </table>
 <h3 id="open">Open<a class="headerlink" href="#open" title="Permanent link">¶</a></h3>
@@ -3098,7 +3104,7 @@ with the read census's verdict next to each pure-indel case.</p>
     <span class="md-icon" title="Last update">
       <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M21 13.1c-.1 0-.3.1-.4.2l-1 1 2.1 2.1 1-1c.2-.2.2-.6 0-.8l-1.3-1.3c-.1-.1-.2-.2-.4-.2m-1.9 1.8-6.1 6V23h2.1l6.1-6.1zM12.5 7v5.2l4 2.4-1 1L11 13V7zM11 21.9c-5.1-.5-9-4.8-9-9.9C2 6.5 6.5 2 12 2c5.3 0 9.6 4.1 10 9.3-.3-.1-.6-.2-1-.2s-.7.1-1 .2C19.6 7.2 16.2 4 12 4c-4.4 0-8 3.6-8 8 0 4.1 3.1 7.5 7.1 7.9l-.1.2z"></path></svg>
     </span>
-    <span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-timeago" title="October 30, 2026 12:49:51 UTC"><span class="timeago" datetime="2026-10-30T12:49:51+00:00" locale="en"></span></span><span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-iso_date" title="October 30, 2026 12:49:51 UTC">2026-10-30</span>
+    <span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-timeago" title="October 31, 2026 01:23:29 UTC"><span class="timeago" datetime="2026-10-31T01:23:29+00:00" locale="en"></span></span><span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-iso_date" title="October 31, 2026 01:23:29 UTC">2026-10-31</span>
   </span>
 
     
