@@ -30,11 +30,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Among the reads that hold the windows, the calls now follow the truth's allele shares on HG002
   (per-read symmetry bar); the VAF of long insertions stays below 0.5 because fewer reads over
   the anchor come from ALT molecules than from REF ones in the BAM itself.
-- A measurement option, `GBCMS_JUDGE_LONG_INS=cis`, reads a masked change on REF's haplotypes as
-  the reference's where REF's molecules show they lack it; it is not adopted (it credits a read
-  on other fragments' evidence, REJ-20261023-001). `GBCMS_JUDGE_LONG_INS=window` keeps the
-  windows without the read-on, and `off` restores the judge before them. The rules path is
-  unchanged; RNA does not take the sequence judge.
+- Two measurement options: `GBCMS_JUDGE_LONG_INS=window` keeps the windows without the read-on,
+  and `off` restores the judge before them. Reading a masked change on REF's haplotypes as the
+  reference's where REF's molecules show they lack it was measured with a third option and is not
+  adopted (it credits a read on other fragments' evidence, REJ-20261023-001); that option is
+  removed. The rules path is unchanged; RNA does not take the sequence judge.
 
 ### Fixed — the Smith-Waterman local re-scoring's `partial_alt` reads the scores that made the call (#195)
 

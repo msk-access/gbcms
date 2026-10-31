@@ -20,8 +20,11 @@ Newest at the top.
   the ALT in 6 contract tests. (2) It credits a read on other fragments' evidence, so under
   invariant 7 it could only ever be an opt-in rescue; it would gain at most 6 ALT at HG002
   chr22:39653046 and nothing at chr21:41865095 or at the #294 row, where no fragment links
-  the SNV to a base that tells the insertion apart. Not built. Each option offered was
-  measured before it was decided; the record is
+  the SNV to a base that tells the insertion apart. Not built as a rule. (2) was built once, as
+  a temporary measurement option on #264 (a masked change read as the reference's on REF's
+  haplotypes where REF's molecules lack it): at HG002's two duplications it counted 18 carriers,
+  10 of them on other fragments' evidence; the option was removed on 2026-10-31. Each option
+  offered was measured before it was decided; the record is
   https://github.com/msk-access/gbcms/issues/294#issuecomment-6364311473 ("Considered and
   not adopted"), and the numbers are in docs/reference/read-judgment.md (evidence behind the
   RJ-27 amendment of 2026-10-20 to 2026-10-22).

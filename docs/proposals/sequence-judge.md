@@ -171,11 +171,11 @@ For a row X and each admitted read:
     masks hide the base telling the windows apart (a change past the run lands, on X's
     haplotype, past the insert), both read on to the next base telling them apart and a read
     short of it is depth only, REF and ALT alike (RJ-27's read-on); a carrier ending at a
-    change in cis with the insertion stays depth only (RJ-27's named limit). The
-    `GBCMS_JUDGE_LONG_INS=cis` option (measurement only, not adopted: REJ-20261023-001) reads
-    such a change on REF's haplotypes as the reference's where REF's molecules show they lack
-    it; `window` keeps the windows without the read-on and `off` restores the judge before
-    them.
+    change in cis with the insertion stays depth only (RJ-27's named limit). Reading such a
+    change on REF's haplotypes as the reference's where REF's molecules show they lack it was
+    measured with a temporary option and not adopted (REJ-20261023-001); the option is removed.
+    `GBCMS_JUDGE_LONG_INS=window` keeps the windows without the read-on and `off` restores the
+    judge before them (measurement only).
   - *An indel the reads write beside X's site* (two reads and 5%, every placement clear of
     the site, the repeat X changes included) is a context, a separate event (RJ-8), however
     a read's aligner wrote it, where the reads need it for their calls (as a respelling
