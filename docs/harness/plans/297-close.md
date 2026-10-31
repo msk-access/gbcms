@@ -42,6 +42,13 @@ The review's findings, each with the principle's answer (option A) and the alter
 | F6: the presence test reads raw qualities over the whole read (`:1024`); the hold reads BAQ-adjusted ones in the readable range (`:633`) | One condition, two quality rules (invariant 2). Matters for RNA clip edges and `--apply-baq`. | One rule: the hold's. | Not offered: it breaks invariant 2. |
 | F7: an unlisted count that first differs 4 to 23 bases before the longest read's end | In reach (`:987`) but no read can spell it in full (`:1036`): never held, never named. | Reach uses the same 24 bases as the spelling test. | Name the gap. |
 
+Added from the audit (operator, 2026-10-31: "C1 in #297's close"):
+
+| Finding | What happens now | A: the principle on both paths |
+|:--|:--|:--|
+| C1a: three presence tests for one question ("an unlisted allele the reads show") | The guard's (`carrier.rs:2675`), the judge's `told` (`haplotypes.rs:3047–3070`) and #297's `present_hidden` (`junction.rs:978–1072`) use different bars; under the judge a unit count meets two of them, and the lower bar wins. | One presence test, RJ-25's, stated once and used by all three. |
+| C1b: two copies of one tolerance | `tells` forgives "one base against three" (`junction.rs:473`), a second copy of RJ-27's "one error forgiven where the other reading misses three or more". | One tolerance, named and shared. |
+
 Routine fixes in all cases: every counting test asserts the four invariants (F5: four tests miss
 some); the judge check at `:212` becomes exact; the spike-in spec's "or one unit inserted" line goes
 (F8).

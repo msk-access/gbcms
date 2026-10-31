@@ -1,6 +1,6 @@
 # Audit: the counting conditions added in 6.7.0, by class or by row
 
-Status: approved 2026-10-31 (scope A; tools local for the trial; first run without a token budget)
+Status: decided 2026-10-31 (approved the same day: scope A; tools local for the trial; first run without a token budget)
 Rounds: 0 of 2 · New conditions: 0 of 0 (an audit adds none) · HPC batches: 0 of 0
 
 ## 1. The class
@@ -90,14 +90,28 @@ the options.
 
 ## 7. State
 
-- 2026-10-31: the plan is drafted. The baseline of #297, #264 and #369 is measured
-  (`~/test/gbcms/harness/plan670/plan-first/baseline.md`; 5.82 M agent tokens for the three, 41 HPC
-  batches). Nothing has run.
+- 2026-10-31: all layers ran. Layer 3 (`~/test/gbcms/harness/plan670/audit/layer3_clusters.md`) put
+  the 367 conditions of 26 units in 10 clusters by the reads they act on. Six are sound.
+- **Decided (operator, 2026-10-31):**
+  - **C2 (high):** reads that cannot tell X from a listed allele have two decided rules: RJ-25's
+    sibling floor (1 fragment and 5%) and rule X (a listed allele is always a candidate). Plan and
+    measure first: `plans/c2-listed-siblings.md`.
+  - **C1 (medium):** three presence tests for one question, and a second copy of RJ-27's tolerance.
+    Taken into #297's close plan.
+  - **C3 (medium, judge):** the REF tie-break for every allele type. Trace and plan before the judge
+    becomes the default (#331).
+- **Recorded for later (low):** C5, write U049's mechanism into RJ-28, and name the silent
+  `.take(32)` cap; C6, `FOUND_MIN_READS = 2` is still provisional; C8, check `GBCMS_JUDGE_BAND=full`
+  is byte-identical on every arm; C9, name the two contig-edge tests and their mechanism in RJ-3.
+- **Lessons for the next run:** fix the sorting bar on the split that decides layer 3, before the run;
+  graphify's `explain` and `path` helped, its broad `query` output did not.
 
 ## 8. Cost log
 
 | Layer | Agent and model | Tokens | Rows | Notes |
 |:--|:--|--:|--:|:--|
+| **Total** | | **1,258,000** | | below the baseline median (2.38 M); no review rounds, no HPC |
+| 3. Reason | Fable, one pass | 229,341 | 26 units, 367 conditions | 10 clusters; 1 high (C2), 2 medium (C1, C3), the rest low or sound |
 | 1. Code graph | `graphify update` and `cluster-only --no-label` (no model) | 0 | – | develop a065ab64: 1,582 nodes, 5,114 edges, 45 groups; `~/test/gbcms/harness/plan670/audit/code_develop/` |
 | 2. Sort, run 2 | Sonnet (83 units); Haiku (a fresh blind 17) | 167,330; 119,051 | 83 | **bar not met on the full tag:** 15 of 17 (88%); both differences are between two "no named rows" tags (hygiene/class, class/bug). **Met on the split that decides layer 3** (rows or unclear, against the rest): 17 of 17. Operator (2026-10-31): go on, conservatively; layer 3 takes run 2's 24 units plus every unit either run tagged rows or unclear: 26 units, 367 conditions. 19 of 83 tags changed between runs, one across the class/rows line (U083). Lesson for later runs: fix the bar on the decision-relevant split before the run |
 | 2. Sort, run 1 | Sonnet (83 units); Haiku (blind 17) | 237,119; 132,221 | 83 | agreement 12 of 17 (71%), below the 90% bar: the inputs differed (Sonnet read the full messages) and the class/rows line was unclear; rubric fixed, run 2 |
