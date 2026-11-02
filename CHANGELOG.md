@@ -92,6 +92,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     where the rules path calls it partial; and on the rules path the carriers of the deletion
     that also carry an unlisted 1-bp insertion are all held, where the judge places the insertion
     as a separate event and counts ALT those that reach the run's end (RJ-24).
+  - The review of the pull request (2026-11-02, operator: fix all three, each red first). A listed
+    deletion at the breakpoint whose REF runs past the reference held (a 600-bp deletion beside a
+    60-bp one before twelve copies of its unit) was dropped on the rules path, so the given count's
+    short carriers stayed ALT; its bases cannot be read, so it is now held as a candidate no read can
+    tell, as any listed count is, and named `UNIT_COUNT_UNSPANNED` where it is the nearest on its side:
+    (RD, AD, partial) (6, 6, 0) to (6, 0, 6) on the rules path, the sequence judge already (6, 0, 6).
+    Where the reference past it would tell the counts apart (a flank that does not repeat) the rules
+    path holds all the same and the judge counts ALT, (6, 0, 6) against (6, 6, 0): a named limit. A
+    fragment whose short mate (under 24 bases past the first difference) tells the given count while the
+    other mate spells the other count in full counts for neither, as two full mates do: (6, 3, 15) to
+    (6, 15, 3) on the rules path and (6, 15, 0) under the sequence judge, three such fragments. And the
+    alleles at the breakpoint past a read's reach keep only their length change and first difference,
+    not their bases and rows, so memory no longer grows with the square of a long deletion beside a
+    long simple repeat: a 24-kb deletion before a 24-kb (AC)n repeat peaked at 805 MB through the
+    engine and now at 101 MB, a 60-kb one at 4.0 GB (a 100-kb one now 131 MB); counts and flags are
+    the same. On HG002 (public; c246, tr, sub, nocl; both paths) no row and no read call moves for
+    any of the three. RJ-24 and RJ-25 amended 2026-11-02.
 
 ### Changed — the sequence judge reads an insertion of 50 bp or more over equal windows from its anchor (#264)
 
