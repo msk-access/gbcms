@@ -626,6 +626,20 @@ fn conclude<'h, F: Fn(usize) -> std::rc::Rc<Hap>>(
     Verdict { owngap: og, ..conclude_margin(site, read, ex, kept, min_baseq, ask_anchor) }
 }
 
+/// Where a long insertion's RJ-23 windows are missed on candidate `k`: the columns of its
+/// haplotype the read's alignment covers, None where it holds the equal window from the anchor
+/// (or the candidate has none).
+#[inline(never)]
+fn window_missed<'h, F: Fn(usize) -> std::rc::Rc<Hap>>(site: &'h Site, ex: &Examined<'h, '_, F>, k: usize) -> Option<Option<(usize, usize)>> {
+    let (hap_k, k_al) = (ex.hap(k), ex.align(k));
+    let (a, b) = site.equal_window(&hap_k)?;
+    let (wa, off) = (&k_al.0, k_al.1);
+    if wa.covers().is_some_and(|(s, e)| ((s + off) as i64) <= a && b <= (e + off) as i64) {
+        return None;
+    }
+    Some(wa.covers().map(|(s, e)| (s + off, e + off)))
+}
+
 /// [`conclude`] by the margin alone.
 fn conclude_margin<'h, F: Fn(usize) -> std::rc::Rc<Hap>>(
     site: &'h Site,
@@ -712,14 +726,17 @@ fn conclude_margin<'h, F: Fn(usize) -> std::rc::Rc<Hap>>(
     // allele's too (one tying X inside the insert is no partial evidence), so no allele gains
     // read starts another cannot have.
     if site.long_insertion() {
-        let (hap_w, w_al) = (ex.hap(w), ex.align(w));
-        if let Some((a, b)) = site.equal_window(&hap_w) {
-            let (wa, off) = (&w_al.0, w_al.1);
-            if !wa.covers().is_some_and(|(s, e)| ((s + off) as i64) <= a && b <= (e + off) as i64) {
-                trace!(
-                    "haplotype judge: a {call:?} call at a long insertion holding no equal window from its anchor ({a}-{b}; the read covers {:?}) → depth only",
-                    wa.covers().map(|(s, e)| (s + off, e + off)),
-                );
+        // The haplotypes whose windows the call needs held: the called one, and X's too where
+        // another allele ties X (REF beaten) and the call is partial evidence of that allele:
+        // the read fits X as well as it, so it counts for neither where it holds no window of
+        // X's (a read inside the insert holds the other allele's, which is REF's run).
+        let mut needs = vec![w];
+        if call == Call::Other && fit_other.is_none() && mixed_on.is_none() && tied_with(scores) == Some(Class::Alt as usize) {
+            needs.extend(best[Class::Alt as usize].map(|(_, h)| h).filter(|&h| h != w));
+        }
+        for k in needs {
+            if let Some(covers) = window_missed(site, ex, k) {
+                trace!("haplotype judge: a {call:?} call at a long insertion holding no equal window from its anchor on state {k} (the read covers {covers:?}) → depth only");
                 return Verdict { call: Call::Depth, qual: 0, best: scores, holds_anchor: false, placed: None, confirmed: false, spells: 0, spells_x: 0, clip: None, fits: FitsTrace::default(), fits_none: false, neither: NeitherTrace::default(), owngap: OwnGapTrace::default() };
             }
         }
