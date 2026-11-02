@@ -792,6 +792,109 @@
 <p>The format is based on <a href="https://keepachangelog.com/en/1.0.0/">Keep a Changelog</a>,
 and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semantic Versioning</a>.</p>
 <h2 id="unreleased">[Unreleased]<a class="headerlink" href="#unreleased" title="Permanent link">¶</a></h2>
+<h3 id="changed-a-long-deletions-alt-reads-must-tell-it-from-another-unit-count-present-at-the-site-297">Changed — a long deletion's ALT reads must tell it from another unit count present at the site (#297)<a class="headerlink" href="#changed-a-long-deletions-alt-reads-must-tell-it-from-another-unit-count-present-at-the-site-297" title="Permanent link">¶</a></h3>
+<ul>
+<li>At a deletion of 50 bp or more beside a tandem run of its unit (its deleted copy differing
+  from the run's, so the junction windows stop at that base), another unit count reads like
+  the given deletion until the run's copies end. Where such an allele is present at the site
+  (listed in the input, always: rule X, operator 2026-10-31, the input is taken as correct;
+  or, unlisted, spelled in full by its own bases on 3 or more fragments and 5% of those
+  telling the ALT from it, RJ-25's floor; a fragment spells it only where its bases fit it,
+  and fit REF worse, over 24 bases past where it and the ALT differ; only reads the aligner
+  places here, RJ-29's test), an ALT read now counts only where its confident bases where
+  the two first differ show the given count, or show it with a listed row applied (a phased
+  neighbour the input names, as RJ-24 takes a listed change); a read ending sooner is either allele: partial
+  evidence (RJ-25), not ALT. Errors where the two read alike cost both and decide nothing
+  (RJ-26). A site with no other count keeps its reads; REF reads and the sibling claim keep
+  their windows. Both paths: the rules (<code>junction</code>) and, under <code>--read-judge sequence</code>, the
+  found alleles as site states (the judge already held listed and aligner-written ones).</li>
+<li>The other counts looked for are the other deletions at the breakpoint (fewer bases, or more
+  up to twice the given); an expansion at the breakpoint is not (a REF read inside its copy
+  fits it as well). The count that holds a row's ALT calls is named in <code>gbcms_diagnostic</code>,
+  <code>OBSERVED_ALLELE</code> or <code>COEXISTING_ALLELE</code> at the deletion's anchor (<code>BaseCounts.unit_count_allele</code>).</li>
+<li>A listed other unit count is a candidate allele always, on both paths, whether or not a read
+  shows it (rule X, operator 2026-10-31): the given count's reads that end before the first
+  difference stay partial evidence at a listed count no molecule carries. That is the cost of
+  taking the input as correct, and the spike-in arm counts it (bar 7). A variant that decided
+  a listed count absent when the deciding fragments show none of it was built, measured and
+  rejected (REJ-20261031-001): it gained 141 spike-in reads but credited the other allele's
+  reads as ALT and made false-absent rows. RJ-24 and RJ-25 amended 2026-10-31.</li>
+<li><code>UNIT_COUNT_UNSPANNED</code> weighs the nearest unit count on each side (one that reads like the
+  given deletion for its shift and 12 bases more), not any count past reach.</li>
+<li>Where no read at the site can spell an unlisted count (the run longer than the longest
+  read), nothing is held for it, the counts stand, and <code>gbcms_diagnostic</code> names the row:
+  <code>UNIT_COUNT_UNSPANNED(change:bases/longest)</code>, a new <code>BaseCounts.unit_count_unspanned</code>
+  (no new column). A listed count there is held (below). Prep holds the reference a read reaches
+  past twice a long deletion's length (<code>whole_ref</code>), and the input's indel rows inside it
+  (<code>listed_indels</code>). RJ-24 amended 2026-10-30.</li>
+<li>The rule closed on one principle, on both paths (operator, 2026-10-31, option A throughout;
+  RJ-24 and RJ-25 amended): a read is ALT only where its own confident bases carry the given
+  ALT and tell it from every candidate (REF, every listed allele, each found allele that
+  passes the presence test). The final review of rule X found four places where the branch
+  departed from it, three on the rules path only; all are closed, each red first on the rules
+  path and under <code>--read-judge sequence</code>:</li>
+<li>A read is "the deletion with its listed neighbour" only where its confident bases show that
+    row's change. One input row no read carries (a 1-bp deletion 270 bases past the junction,
+    or an SNV) turned 6 tie reads into ALT on the rules path, (<abbr title="Reference Depth - Reads supporting the reference allele">RD</abbr>, <abbr title="Alternate Depth - Reads supporting the alternate allele">AD</abbr>, partial) (6, 0, 6) to
+    (6, 6, 0); the sequence judge stayed (6, 0, 6). HG002 4:3610329 is unchanged.</li>
+<li>A listed other unit count is held wherever it first differs, past every read's reach too:
+    the reads that cannot tell are partial evidence, (6, 12, 0) to (6, 0, 12) on the rules
+    path, and the row is named <code>UNIT_COUNT_UNSPANNED</code>. The cost is a row with <code>alt_count</code> 0
+    until a read can tell (HG002: two rows on the rules path, ALT 15 to 0 and 5 to 0; the
+    sequence judge already counted 0 there).</li>
+<li>A read whose own bases spell an unlisted other unit count in full is never ALT, whatever the
+    presence floor (RJ-6): partial evidence, or depth only where the aligner doubts its
+    placement (RJ-29). The floor decides only the reads that cannot tell. The sequence judge
+    leaves such reads depth only (an allele under the floor is no state), so <code>partial_alt</code>
+    differs between the paths on them, <code>alt_count</code> does not.</li>
+<li>The presence test reads each read's qualities as the hold does (<abbr title="Base Alignment Quality - Heuristic quality downgrade near indels and splice junctions">BAQ</abbr>-adjusted, inside the
+    readable range), and "within a read's reach" is the first difference and the 24 bases the
+    spelling test reads (it was 4). <code>UNIT_COUNT_UNSPANNED</code>'s <code>bases</code> is larger by 20, and a
+    count that first differs 4 to 23 bases before the longest read's end is named.</li>
+<li>One presence test, RJ-25's (<code>carrier::is_found</code>: 3 fragments and 5% of the fragments
+    spelling the allele it is nearest), asked by the exact-carrier guard, the junction guard and
+    the sequence judge's found alleles; the judge counted reads against 5% of all the site's
+    reads. This changes presence for every allele the sequence judge finds, at every event (SNVs,
+    MNVs and short indels as well), not only for #297's unit counts. On HG002 nothing moves on
+    the rules path; under the sequence judge 101 reads on 25 rows (18 distinct) move. One
+    tolerance, RJ-27's (<code>carrier::one_error_forgiven</code>), for the carrier rule and the junction
+    judge's telling; no count changes.</li>
+<li>Round 2 of the close (operator, 2026-10-31), two more places closed on the same principle:
+    a read placed from the right flank (its junction bases in a left soft clip) that spells an
+    unlisted other unit count is partial evidence like one placed from the left, not depth only
+    (only the aligner's own doubt, RJ-29, makes it depth only); and the sequence judge's
+    presence test divides by the fragments spelling the allele the found one is nearest (REF's
+    or X's, by the bases that differ over the window; the larger when as near), not by every
+    fragment either given allele beats it on, and a fragment whose mates disagree counts for
+    neither, as the junction guard's <code>conflict</code>. On HG002 the right-flank change moves no read;
+    the judge's presence test moves nothing on the rules path and, under the sequence judge, 37
+    read calls on 8 arm rows (6 distinct rows), 7 of them (5 distinct rows) in the counts: four
+    rows lose a found allele because a telling fragment's mates disagree, one (a 106-bp
+    insertion) gains one and 11 of its 79 ALT reads become partial evidence, and one read moves
+    from depth to partial evidence.</li>
+<li>Named limits until the sequence judge is the default (#331): under the judge a read that
+    spells a deletion of another length at X's anchor, below the presence floor, is depth only
+    where the rules path calls it partial; and on the rules path the carriers of the deletion
+    that also carry an unlisted 1-bp insertion are all held, where the judge places the insertion
+    as a separate event and counts ALT those that reach the run's end (RJ-24).</li>
+<li>The review of the pull request (2026-11-02, operator: fix all three, each red first). A listed
+    deletion at the breakpoint whose REF runs past the reference held (a 600-bp deletion beside a
+    60-bp one before twelve copies of its unit) was dropped on the rules path, so the given count's
+    short carriers stayed ALT; its bases cannot be read, so it is now held as a candidate no read can
+    tell, as any listed count is, and named <code>UNIT_COUNT_UNSPANNED</code> where it is the nearest on its side:
+    (<abbr title="Reference Depth - Reads supporting the reference allele">RD</abbr>, <abbr title="Alternate Depth - Reads supporting the alternate allele">AD</abbr>, partial) (6, 6, 0) to (6, 0, 6) on the rules path, the sequence judge already (6, 0, 6).
+    Where the reference past it would tell the counts apart (a flank that does not repeat) the rules
+    path holds all the same and the judge counts ALT, (6, 0, 6) against (6, 6, 0): a named limit. A
+    fragment whose short mate (under 24 bases past the first difference) tells the given count while the
+    other mate spells the other count in full counts for neither, as two full mates do: (6, 3, 15) to
+    (6, 15, 3) on the rules path and (6, 15, 0) under the sequence judge, three such fragments. And the
+    alleles at the breakpoint past a read's reach keep only their length change and first difference,
+    not their bases and rows, so memory no longer grows with the square of a long deletion beside a
+    long simple repeat: a 24-kb deletion before a 24-kb (AC)n repeat peaked at 805 MB through the
+    engine and now at 101 MB, a 60-kb one at 4.0 GB (a 100-kb one now 131 MB); counts and flags are
+    the same. On HG002 (public; c246, tr, sub, nocl; both paths) no row and no read call moves for
+    any of the three. RJ-24 and RJ-25 amended 2026-11-02.</li>
+</ul>
 <h3 id="changed-the-sequence-judge-reads-an-insertion-of-50-bp-or-more-over-equal-windows-from-its-anchor-264">Changed — the sequence judge reads an insertion of 50 bp or more over equal windows from its anchor (#264)<a class="headerlink" href="#changed-the-sequence-judge-reads-an-insertion-of-50-bp-or-more-over-equal-windows-from-its-anchor-264" title="Permanent link">¶</a></h3>
 <ul>
 <li>Under <code>--read-judge sequence</code>, a REF or ALT call at a pure insertion of 50 bp or more now
