@@ -16,7 +16,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   REF's run) and counted partial evidence. It is depth only now; no ALT count can rise.
   At HG002 (public; c246, tr, sub, nocl) 367 read calls on 82 rows move from partial evidence to
   depth only, all at pure insertions of 50 bp or more; no row's REF count, ALT count or VAF changes
-  (partial evidence falls on all 82 rows; DP falls by 42 reads on 25 rows: those reads lie off the anchor and were admitted to the depth only by their partial call, so as depth only they leave it, as the judge's design records).
+  (partial evidence falls on all 82 rows; DP falls by 42 reads on 25 rows: those reads lie off the anchor, and a read off the anchor was in DP only through its partial call, so as depth only they now count in no column).
 - The guard's masks are laid by offset from the anchor on every candidate haplotype along the
   columns of each path (RJ-23, RJ-27), not by the offsets the haplotypes have without the
   listed or found changes beside the insertion (Greptile's finding on PR #396): an insertion or
