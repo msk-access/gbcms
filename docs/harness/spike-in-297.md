@@ -105,10 +105,10 @@ Per class, setting, input form, alignment and path:
    itself is acceptable, by class.
 5. RD against develop: must be equal (the rule changes no REF call).
 6. The diagnostics: `UNIT_COUNT_UNSPANNED` on every row where the nearest count on either
-   side needs more bases than the longest read: every class-U row, and a row whose given
-   deletion removes two or more units where one fewer unit deleted reads alike a unit longer
-   than the planted one more (D + unit + 4 above the read length: 5 T3 rows at 2×151); on no
-   other row of T1 to T3; the other count named (`OBSERVED_ALLELE` or `COEXISTING_ALLELE` at the deletion's
+   side needs more bases than the longest read, counting its first difference plus the 24
+   bases the spelling test reads (F7, 2026-10-31): every class-U row, and the T1 to T3 rows
+   whose first difference lies within 24 bases of the longest read's end (on build n104, 32 of
+   the 40 T3 rows at 2×151; before F7, 5); the other count named (`OBSERVED_ALLELE` or `COEXISTING_ALLELE` at the deletion's
    anchor) on every row where it is present (listed, or found) and on no S1 row of the found
    form, nor on an S6 row of the found form.
 7. Count the S1 cost of rule X: given reads that stay partial at a listed count no molecule
