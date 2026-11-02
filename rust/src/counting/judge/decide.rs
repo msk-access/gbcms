@@ -682,6 +682,24 @@ fn window_missed<'h, F: Fn(usize) -> std::rc::Rc<Hap>>(site: &'h Site, ex: &Exam
     Some(wa.covers().map(|(s, e)| (s + off, e + off)))
 }
 
+/// The haplotypes a long insertion's call on `w` needs the equal window held on (RJ-23): `w`
+/// itself, and the best haplotype of every other class that scores within [`DELTA`] of it, the
+/// alleles the read ties. A call that beats every other class by the margin holds its own
+/// window alone; a read that ties the ALT with another allele (REF beaten), REF with another
+/// allele (the ALT beaten), or whatever the fit check or the mixed-changes check named, holds
+/// the windows of the alleles it ties as well: it fits each as well as the one it counts for.
+fn windows_to_hold(best: [Option<(i32, usize)>; 3], w: usize) -> Vec<usize> {
+    let mut needs = vec![w];
+    if let Some((s_w, _)) = best.iter().flatten().copied().find(|&(_, h)| h == w) {
+        for (s, h) in best.iter().flatten().copied() {
+            if !needs.contains(&h) && (i64::from(s) - i64::from(s_w)).abs() < i64::from(DELTA) {
+                needs.push(h);
+            }
+        }
+    }
+    needs
+}
+
 /// [`conclude`] by the margin alone.
 fn conclude_margin<'h, F: Fn(usize) -> std::rc::Rc<Hap>>(
     site: &'h Site,
@@ -768,15 +786,11 @@ fn conclude_margin<'h, F: Fn(usize) -> std::rc::Rc<Hap>>(
     // allele's too (one tying X inside the insert is no partial evidence), so no allele gains
     // read starts another cannot have.
     if site.long_insertion() {
-        // The haplotypes whose windows the call needs held: the called one, and X's too where
-        // another allele ties X (REF beaten) and the call is partial evidence of that allele:
-        // the read fits X as well as it, so it counts for neither where it holds no window of
-        // X's (a read inside the insert holds the other allele's, which is REF's run).
-        let mut needs = vec![w];
-        if call == Call::Other && fit_other.is_none() && mixed_on.is_none() && tied_with(scores) == Some(Class::Alt as usize) {
-            needs.extend(best[Class::Alt as usize].map(|(_, h)| h).filter(|&h| h != w));
-        }
-        for k in needs {
+        // The haplotypes whose windows the call needs held: the called one, and every other
+        // class's best within the margin of it (the alleles the read ties): the read fits them
+        // as well, so it counts for none of them where it holds no window of theirs (a read
+        // inside the insert holds the other allele's window, which is REF's run, and tied X).
+        for k in windows_to_hold(best, w) {
             if let Some(covers) = window_missed(site, ex, k) {
                 trace!("haplotype judge: a {call:?} call at a long insertion holding no equal window from its anchor on state {k} (the read covers {covers:?}) → depth only");
                 return Verdict { call: Call::Depth, qual: 0, best: scores, holds_anchor: false, placed: None, confirmed: false, spells: 0, spells_x: 0, clip: None, fits: FitsTrace::default(), fits_none: false, neither: NeitherTrace::default(), owngap: OwnGapTrace::default() };
@@ -1621,5 +1635,26 @@ mod tests {
         assert!(!fired(both, &noisy(12), doubted), "within 14 per 100: judged");
         assert!(fired(both, &noisy(16), doubted), "past both, doubted: depth only");
         assert!(!fired(both, &noisy(16), sure), "placed here alone: judged");
+    }
+
+    #[test]
+    fn a_long_insertions_call_holds_the_windows_of_the_alleles_it_ties() {
+        // best per class: [ALT, REF, another allele], each a (score, haplotype)
+        let best = |a: i32, r: i32, o: i32| [Some((a, 1)), Some((r, 0)), Some((o, 2))];
+        // beating the rest by the margin: its own window alone
+        assert_eq!(windows_to_hold(best(0, -20, -20), 1), vec![1], "ALT");
+        assert_eq!(windows_to_hold(best(-20, 0, -20), 0), vec![0], "REF");
+        // another allele tying the ALT, REF beaten: both (as before)
+        assert_eq!(windows_to_hold(best(-2, -20, 0), 2), vec![2, 1], "another allele ties the ALT");
+        // another allele tying REF, the ALT beaten: REF's too (it was the called allele's alone)
+        assert_eq!(windows_to_hold(best(-20, -2, 0), 2), vec![2, 0], "another allele ties REF");
+        // a call the fit check or the mixed check made on the haplotype that scores best of all,
+        // with a class within the margin of it: that one's as well
+        assert_eq!(windows_to_hold(best(-3, 0, -20), 0), vec![0, 1], "REF's haplotype, the ALT within the margin");
+        assert_eq!(windows_to_hold(best(-20, -3, 0), 2), vec![2, 0], "another allele's haplotype, REF within the margin");
+        // exactly the margin is beaten, not tied
+        assert_eq!(windows_to_hold(best(-4, 0, -20), 0), vec![0]);
+        // a class with no haplotype is not asked for
+        assert_eq!(windows_to_hold([None, Some((0, 0)), Some((-1, 2))], 2), vec![2, 0]);
     }
 }

@@ -41,6 +41,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   between the anchor and that base takes bases out of the haplotype of a read that carries it, so
   the windows hold as many fewer columns there; a REF molecule carrying it that reached the base was
   two columns short of a window measured without the deletion and was depth only.
+- The window check at a pure insertion of 50 bp or more is the class rule for every call (RJ-23): a
+  read is told only on the windows of the alleles it ties, so a call holds its own allele's equal
+  window and that of every other class within the margin of it. Before, only a tie of another allele
+  with the ALT held the ALT's window too; a tie of REF with another allele was checked on that
+  allele's window alone, and a call made by the fit check on its haplotype's alone.
 - The default rules path is unchanged.
 
 ### Changed — the sequence judge reads an insertion of 50 bp or more over equal windows from its anchor (#264)
