@@ -165,6 +165,17 @@ class BaseCounts:
     # confident mismatches, whether or not the fit rule made them depth only; 0 under the
     # rules. Diagnostic only (UNEXPLAINED_READS flag).
     unexplained_reads: int
+    # At a deletion of 50 bp or more: another allele at its breakpoint reading like the ALT
+    # past what a read can spell, as CHANGE:BASES/LONGEST (length change, deleted bases
+    # negative; bases a read must hold from the junction windows' first base: the first
+    # difference and 24 more; the longest read); empty when none. Diagnostic only
+    # (UNIT_COUNT_UNSPANNED flag).
+    unit_count_unspanned: str
+    # At a deletion of 50 bp or more: each other unit count present at its breakpoint that
+    # takes ALT calls, as POS:REF>ALT:n/m (1-based POS of the deletion's anchor; n fragments
+    # whose ALT call it takes, m that tell the given count from it), several joined by '+';
+    # empty when none. Diagnostic only (OBSERVED_ALLELE where m is 0, else COEXISTING_ALLELE).
+    unit_count_allele: str
     # Under the sequence judge, at a pure insertion of 50 bp or more: no base within the
     # haplotypes the judge reads tells REF's equal window from the ALT's once the guard's
     # masks are read, so every read is depth only. Diagnostic only (NO_TELLING_BASE flag).

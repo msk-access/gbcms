@@ -26,7 +26,7 @@ use rust_htslib::bam::record::Cigar;
 
 use super::graph::{self, Graph, GraphBuilder, GraphRead, ShortReads, Workspace};
 use super::score::{self, Alignment, Band, Placed, BAND_SLACK, DELTA, WILD};
-use crate::counting::carrier::{GUARD_MIN_READS, GUARD_REF_SHARE};
+use crate::counting::carrier::{is_found, GUARD_MIN_READS, GUARD_REF_SHARE};
 
 /// The longest repeat period looked for in a window ([`score::tandem_tracts`]): the wide band's
 /// slack (a longer one leaves the full programme to decide, as a band's own edge would).
@@ -437,6 +437,127 @@ impl Hap {
     }
 }
 
+/// The most bases apart two haplotypes are told apart by ([`edit_distance`]): a farther pair is
+/// as far as this.
+const NEAR_CAP: usize = 1024;
+
+/// The edit distance between two haplotypes (one for each base substituted, inserted or
+/// deleted), a masked base ([`WILD`]) fitting any base, at most `cap`: a farther pair is
+/// `cap + 1`. How near a found allele lies to REF and to X, as RJ-25 reads the allele it is
+/// nearest ([`Site::nearer_given`]). The bases both share at the ends are set aside and the rest
+/// is aligned in a band of `cap` either side of the diagonal.
+fn edit_distance(a: &[u8], b: &[u8], cap: usize) -> usize {
+    let fits = |x: u8, y: u8| x == y || x == WILD || y == WILD;
+    let head = a.iter().zip(b).take_while(|&(&x, &y)| fits(x, y)).count();
+    let (a, b) = (&a[head..], &b[head..]);
+    let tail = a.iter().rev().zip(b.iter().rev()).take_while(|&(&x, &y)| fits(x, y)).count();
+    let (a, b) = (&a[..a.len() - tail], &b[..b.len() - tail]);
+    let (n, m) = (a.len(), b.len());
+    if n.abs_diff(m) > cap {
+        return cap + 1;
+    }
+    if n == 0 || m == 0 {
+        return n.max(m);
+    }
+    const FAR: usize = usize::MAX / 2;
+    // row i holds the cells j in [i - cap, i + cap], cell j at index j + cap - i
+    let width = 2 * cap + 3;
+    let (mut prev, mut cur) = (vec![FAR; width], vec![FAR; width]);
+    for j in 0..=m.min(cap) {
+        prev[j + cap] = j;
+    }
+    for i in 1..=n {
+        cur.fill(FAR);
+        for j in i.saturating_sub(cap)..=(i + cap).min(m) {
+            let k = j + cap - i;
+            cur[k] = if j == 0 {
+                i
+            } else {
+                let from_left = if k >= 1 { cur[k - 1] + 1 } else { FAR };
+                (prev[k] + usize::from(!fits(a[i - 1], b[j - 1]))).min(prev[k + 1] + 1).min(from_left)
+            };
+        }
+        std::mem::swap(&mut prev, &mut cur);
+    }
+    prev[m + cap - n].min(cap + 1)
+}
+
+/// How one read bears on a found allele ([`Site::verdict`]).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Verdict {
+    /// The found allele's graph beats every given allele's by [`DELTA`].
+    Told,
+    /// A given allele's graph beats it by [`DELTA`]: the classes scoring best on the read, as bits
+    /// (REF 1, X 2; both on a tie).
+    Beaten(u8),
+    Silent,
+}
+
+/// What the reads of one fragment say of a found allele ([`FragmentTally`]).
+#[derive(Debug, Clone, Copy, Default)]
+struct FragmentCalls {
+    /// A read of it tells the found allele.
+    told: bool,
+    /// The classes of given allele that every beaten read of it agrees on (None: none beaten).
+    beaten: Option<u8>,
+}
+
+impl FragmentCalls {
+    fn with(mut self, v: Verdict) -> Self {
+        match v {
+            Verdict::Told => self.told = true,
+            Verdict::Beaten(classes) => self.beaten = Some(self.beaten.map_or(classes, |b| b & classes)),
+            Verdict::Silent => {}
+        }
+        self
+    }
+
+    /// Mates that disagree spell neither: one telling the found allele and another beaten, or
+    /// beaten by REF and by X (as the junction guard's `conflict`).
+    fn conflict(self) -> bool {
+        self.told && self.beaten.is_some() || self.beaten == Some(0)
+    }
+
+    /// What it counts for: the found allele told, and each class of given allele beating it.
+    fn counts(self) -> (usize, [usize; 2]) {
+        if self.conflict() {
+            return (0, [0, 0]);
+        }
+        match self.beaten {
+            Some(b) => (0, [usize::from(b & 1 != 0), usize::from(b & 2 != 0)]),
+            None => (usize::from(self.told), [0, 0]),
+        }
+    }
+}
+
+/// A found allele's tally over fragments: those telling it, and those each class of given allele
+/// (REF, X) beats it on, mates that disagree counted in none.
+#[derive(Debug, Default)]
+struct FragmentTally<'a> {
+    fragments: HashMap<&'a Vec<u8>, FragmentCalls>,
+    /// The fragments with a read that tells the allele, in the order they were first seen
+    /// (their mates may yet disagree).
+    told_order: Vec<&'a Vec<u8>>,
+    told: usize,
+    beaten: [usize; 2],
+}
+
+impl<'a> FragmentTally<'a> {
+    fn add(&mut self, key: &'a Vec<u8>, v: Verdict) {
+        let old = self.fragments.get(key).copied().unwrap_or_default();
+        let new = old.with(v);
+        if new.told && !old.told {
+            self.told_order.push(key);
+        }
+        self.fragments.insert(key, new);
+        let ((ot, ob), (nt, nb)) = (old.counts(), new.counts());
+        self.told = self.told - ot + nt;
+        for c in 0..2 {
+            self.beaten[c] = self.beaten[c] - ob[c] + nb[c];
+        }
+    }
+}
+
 /// The guard's masks a candidate haplotype takes by offset from the anchor, besides the guard's
 /// own ([`Site::mirror_masks`]): window positions of its reference bases, and indices into its
 /// row's ALT bases, it takes any base at. Both sorted.
@@ -719,8 +840,9 @@ pub(crate) const FOUND_MIN_READS: u32 = 2;
 pub(crate) enum FoundRule {
     /// Every found allele at X's site is a state (no token).
     All,
-    /// `told`: the found floor of reads ([`GUARD_MIN_READS`] and [`GUARD_REF_SHARE`] of the
-    /// site's) tell it; `toldK`: K reads.
+    /// `told`: RJ-25's presence test ([`is_found`]) over fragments, those a read of which tells
+    /// it against those spelling the allele it is nearest (the given allele that beats it on
+    /// them, [`Site::nearer_given`]); `toldK`: K reads.
     Told(usize),
 }
 
@@ -3308,15 +3430,30 @@ impl Site {
     }
 
     /// A found allele stays a state only where the reads tell it from X and from REF by
-    /// [`DELTA`], the state's graph beating REF's and X's, on the found floor of reads
-    /// (`told`: [`GUARD_MIN_READS`] and [`GUARD_REF_SHARE`] of the site's; `toldK`: K reads),
-    /// those that write it first, then the rest.
+    /// [`DELTA`], the state's graph beating REF's and X's. `told`: RJ-25's presence test
+    /// ([`is_found`]) over fragments: those with a read that tells it, against those spelling the
+    /// allele it is nearest ([`Site::nearer_given`]; the larger when as near), the ones with a
+    /// read that scores that given allele best, [`DELTA`] over the found one. Mates that
+    /// disagree (one telling the found allele and the other beaten, or beaten by REF and by X)
+    /// spell neither and count nowhere, as the junction guard's `conflict`. `toldK`
+    /// (measurement only): K reads. Those that write it first, then the rest.
     fn drop_graph_spellings(&mut self, found: &[(Row, &[usize])], reads: &[ReadView], rule: FoundRule) {
-        let floor = match rule {
+        let fixed = match rule {
             FoundRule::All => return,
-            FoundRule::Told(k) if k > 0 => k as f64,
-            FoundRule::Told(_) => (GUARD_REF_SHARE * reads.len() as f64).max(f64::from(GUARD_MIN_READS)),
+            FoundRule::Told(k) if k > 0 => Some(k),
+            FoundRule::Told(_) => None,
         };
+        // a read's fragment: its name (the mates share it); a read with none stands alone
+        let keys: Vec<Vec<u8>> = reads
+            .iter()
+            .enumerate()
+            .map(|(i, r)| if r.name.is_empty() { i.to_string().into_bytes() } else { r.name.clone() })
+            .collect();
+        let fragments = keys.iter().collect::<HashSet<_>>().len();
+        let mut mates: HashMap<&Vec<u8>, Vec<usize>> = HashMap::new();
+        for (i, key) in keys.iter().enumerate() {
+            mates.entry(key).or_default().push(i);
+        }
         let mut ws = Workspace::default();
         let mut dropped: Vec<usize> = Vec::new();
         let given: Vec<usize> = (0..self.graphs.len()).filter(|&k| self.graphs[k].class != Class::Other).collect();
@@ -3325,22 +3462,67 @@ impl Site {
                 continue;
             };
             let Some(k) = self.graphs.iter().position(|g| g.row == Some(o)) else { continue };
-            let mut told = 0usize;
             let rest = (0..reads.len()).filter(|i| by.binary_search(i).is_err());
-            for read in by.iter().copied().chain(rest).filter_map(|i| reads.get(i)) {
-                let gr = self.graph_read(read);
-                let own = graph::score(&ShortReads, &gr, &self.graphs[k].graph, &mut ws);
-                let tells = given.iter().all(|&g| graph::score(&ShortReads, &gr, &self.graphs[g].graph, &mut ws) <= own - DELTA);
-                if tells {
-                    told += 1;
-                    if told as f64 >= floor {
-                        break;
+            let order = by.iter().copied().chain(rest).filter(|&i| i < reads.len());
+            let (keep, told, nearest) = if let Some(min_reads) = fixed {
+                let told_reads = order
+                    .map(|i| self.verdict(&reads[i], k, &given, &mut ws))
+                    .filter(|&v| v == Verdict::Told)
+                    .take(min_reads)
+                    .count();
+                (told_reads >= min_reads, told_reads, None)
+            } else {
+                let mut tally = FragmentTally::default();
+                let mut scored = vec![false; reads.len()];
+                let mut settled = 0usize;
+                let mut present = false;
+                for i in order {
+                    if scored[i] {
+                        continue;
+                    }
+                    scored[i] = true;
+                    let v = self.verdict(&reads[i], k, &given, &mut ws);
+                    tally.add(&keys[i], v);
+                    // the fragments of the site are at least those spelling the allele it is
+                    // nearest: found against all of them is found against those. Fragments
+                    // with a telling read are settled first: a mate not yet read may disagree.
+                    if v == Verdict::Told && is_found(tally.told_order.len(), fragments) {
+                        while settled < tally.told_order.len() {
+                            let key = tally.told_order[settled];
+                            settled += 1;
+                            for &j in &mates[key] {
+                                if !scored[j] {
+                                    scored[j] = true;
+                                    let w = self.verdict(&reads[j], k, &given, &mut ws);
+                                    tally.add(&keys[j], w);
+                                }
+                            }
+                        }
+                        if is_found(tally.told, fragments) {
+                            present = true;
+                            break;
+                        }
                     }
                 }
-            }
-            let keep = told as f64 >= floor;
+                if present {
+                    (true, tally.told, None)
+                } else {
+                    // under the floor of fragments the nearest allele's are not asked for
+                    let larger = tally.beaten[0].max(tally.beaten[1]);
+                    let nearest = if tally.told < GUARD_MIN_READS as usize {
+                        larger
+                    } else {
+                        match self.nearer_given(o) {
+                            std::cmp::Ordering::Less => tally.beaten[0],
+                            std::cmp::Ordering::Greater => tally.beaten[1],
+                            std::cmp::Ordering::Equal => larger,
+                        }
+                    };
+                    (is_found(tally.told, nearest), tally.told, Some(nearest))
+                }
+            };
             log::debug!(
-                "haplotype judge: the found allele {}:{}>{} at {}:{}>{} (written by {} of {} reads, told on {told}) → {}",
+                "haplotype judge: the found allele {}:{}>{} at {}:{}>{} (written by {} of {} reads, told on {} fragments, beaten by the allele it is nearest on {}) → {}",
                 row.pos + 1,
                 String::from_utf8_lossy(&row.ref_al),
                 String::from_utf8_lossy(&row.alt_al),
@@ -3349,6 +3531,8 @@ impl Site {
                 String::from_utf8_lossy(&self.rows[0].alt_al),
                 by.len(),
                 reads.len(),
+                told,
+                nearest.map_or_else(|| "-".to_string(), |n| n.to_string()),
                 if keep { "another allele, a state" } else { "X's or REF's spelling, not a state" },
             );
             if !keep {
@@ -3367,6 +3551,37 @@ impl Site {
                 .map(|r| self.rows[r].ref_al.len().abs_diff(self.rows[r].alt_al.len()) as i64)
                 .sum();
         }
+    }
+
+    /// How one read bears on the found allele with graph `k`: its graph beats every given
+    /// allele's (`given`: the graphs of REF, X and the states holding X) by [`DELTA`] on the
+    /// read (`Told`), a given allele's beats it by [`DELTA`] (`Beaten`, by the classes of given
+    /// allele that score best on the read, both on a tie), or neither.
+    fn verdict(&self, read: &ReadView, k: usize, given: &[usize], ws: &mut Workspace) -> Verdict {
+        let gr = self.graph_read(read);
+        let own = graph::score(&ShortReads, &gr, &self.graphs[k].graph, ws);
+        let mut best: [Option<i32>; 2] = [None, None];
+        for &g in given {
+            let score = graph::score(&ShortReads, &gr, &self.graphs[g].graph, ws);
+            let class = usize::from(self.graphs[g].class != Class::Ref);
+            best[class] = best[class].max(Some(score));
+        }
+        match best.iter().flatten().max().copied() {
+            None => Verdict::Told,
+            Some(top) if top <= own - DELTA => Verdict::Told,
+            Some(top) if top >= own + DELTA => Verdict::Beaten((0..2).filter(|&c| best[c] == Some(top)).fold(0, |m, c| m | 1 << c)),
+            Some(_) => Verdict::Silent,
+        }
+    }
+
+    /// Which of REF and X the found allele with row `o` lies nearer, by the bases its haplotype
+    /// differs from each over the window ([`edit_distance`], the guard's masks fitting any
+    /// base): `Less` REF, `Greater` X, `Equal` as near (RJ-25: the allele it is nearest, the
+    /// larger when as near).
+    fn nearer_given(&self, o: usize) -> std::cmp::Ordering {
+        let found = Hap::build(self, &[o]);
+        let distance = |rows: &[usize]| edit_distance(&found.seq, &Hap::build(self, rows).seq, NEAR_CAP);
+        distance(&[]).cmp(&distance(&[0]))
     }
 
     /// Whether the genome span `[s, e)` of a read reaches a contig edge X's placements touch
@@ -3683,6 +3898,105 @@ pub(crate) mod tests {
         let candidates = Candidates { found: vec![(del.clone(), (0..6).collect())], ..Candidates::default() };
         let s = Site::build(x.clone(), &candidates, (0, c.clone()), &reads).unwrap();
         assert!(!s.rows.contains(&del), "no read needs the deletion: no context");
+    }
+
+    /// The contig, X (a 4-base insertion after base 300) and the found alleles of the
+    /// presence tests: `near_x`, X with one base more (1 base from X, 5 from REF) and `near_ref`, one
+    /// inserted base (1 from REF, 4 from X's 5-base form, which is X here).
+    fn presence_site() -> (Vec<u8>, Row, Row) {
+        let c = random_seq(600, 61);
+        let ins = |bases: &[u8]| Row::new(300, &c[300..301], &[&c[300..301], bases].concat());
+        (c.clone(), ins(b"TGCA"), ins(b"TGCAC"))
+    }
+
+    /// A 100-base read from the haplotype `c` with `n` bases inserted after base 300, starting
+    /// at base `s` (as its aligner writes it: the insertion as an I op), named `name`.
+    fn read_with_insertion(c: &[u8], bases: &[u8], s: usize, name: &str) -> ReadView {
+        let hap: Vec<u8> = [&c[..301], bases, &c[301..]].concat();
+        let (n, before) = (bases.len(), 301 - s);
+        let cigar = if n == 0 {
+            vec![Cigar::Match(100)]
+        } else {
+            vec![Cigar::Match(before as u32), Cigar::Ins(n as u32), Cigar::Match((100 - before - n) as u32)]
+        };
+        ReadView::new(&hap[s..s + 100], &[30; 100], s as i64, &cigar, (0, 100), 20).unwrap().named(name.as_bytes())
+    }
+
+    /// The graphs of the site built over `reads`, with the found allele `found` written by the
+    /// first `by` reads and kept by RJ-25's presence test.
+    fn states_with_found(c: &[u8], x: &Row, found: &Row, reads: &[ReadView], by: usize) -> usize {
+        let candidates = Candidates { found: vec![(found.clone(), (0..by).collect())], ..Candidates::default() };
+        let s = Site::build_backed(x.clone(), &candidates, (0, c.to_vec()), reads, FoundRule::Told(0), BackgroundRule::AsIs).unwrap();
+        s.graphs.len()
+    }
+
+    /// RJ-25's presence test divides by the fragments spelling the allele the found one is
+    /// nearest (C1a): a 5% site, 570 REF fragments, 30 of X and 3 of an allele one base from X
+    /// (five from REF). 3 is at least 5% of 30, so it is at the site: a state. The judge divided
+    /// by the fragments that either REF or X beats it on, 600, and dropped it.
+    #[test]
+    fn a_found_allele_near_x_is_found_against_the_fragments_of_x() {
+        let (c, x, f) = presence_site();
+        let mut reads: Vec<ReadView> = (0..3).map(|i| read_with_insertion(&c, b"TGCAC", 250 + i, &format!("f{i}"))).collect();
+        reads.extend((0..30).map(|i| read_with_insertion(&c, b"TGCA", 250 + i % 45, &format!("x{i}"))));
+        reads.extend((0..570).map(|i| read_with_insertion(&c, b"", 250 + i % 45, &format!("r{i}"))));
+        assert_eq!(states_with_found(&c, &x, &f, &reads, 3), 3, "REF, X and the found allele");
+    }
+
+    /// The mirror: an allele one base inserted (1 from REF, 4 from X's five-base form) is
+    /// nearest REF, so the fragments of REF are the bar: 30 REF fragments, 570 of X, 3 of it.
+    #[test]
+    fn a_found_allele_near_ref_is_found_against_the_fragments_of_ref() {
+        let c = random_seq(600, 61);
+        let ins = |bases: &[u8]| Row::new(300, &c[300..301], &[&c[300..301], bases].concat());
+        let (x, f) = (ins(b"TGCAC"), ins(b"T"));
+        let mut reads: Vec<ReadView> = (0..3).map(|i| read_with_insertion(&c, b"T", 250 + i, &format!("f{i}"))).collect();
+        reads.extend((0..570).map(|i| read_with_insertion(&c, b"TGCAC", 250 + i % 45, &format!("x{i}"))));
+        reads.extend((0..30).map(|i| read_with_insertion(&c, b"", 250 + i % 45, &format!("r{i}"))));
+        assert_eq!(states_with_found(&c, &x, &f, &reads, 3), 3, "REF, X and the found allele");
+    }
+
+    /// Above the share it is still not found: 3 fragments against 61 of the nearest (5% of 61 is
+    /// more than 3).
+    #[test]
+    fn a_found_allele_under_a_twentieth_of_the_nearest_is_no_state() {
+        let (c, x, f) = presence_site();
+        let mut reads: Vec<ReadView> = (0..3).map(|i| read_with_insertion(&c, b"TGCAC", 250 + i, &format!("f{i}"))).collect();
+        reads.extend((0..61).map(|i| read_with_insertion(&c, b"TGCA", 250 + i % 45, &format!("x{i}"))));
+        reads.extend((0..300).map(|i| read_with_insertion(&c, b"", 250 + i % 45, &format!("r{i}"))));
+        assert_eq!(states_with_found(&c, &x, &f, &reads, 3), 2, "REF and X only");
+    }
+
+    /// Mates that disagree spell neither (the junction guard's `conflict`): three fragments whose
+    /// first mate spells the found allele and whose second spells X are no fragments telling it,
+    /// and no fragments X beats it on; with them counted in both, the allele was found (3 of
+    /// 33). Fragments whose mates agree find it.
+    #[test]
+    fn mates_that_disagree_count_for_neither() {
+        let (c, x, f) = presence_site();
+        let site = |second: &[u8]| {
+            let mut reads: Vec<ReadView> = (0..3).map(|i| read_with_insertion(&c, b"TGCAC", 250 + i, &format!("m{i}"))).collect();
+            reads.extend((0..3).map(|i| read_with_insertion(&c, second, 260 + i, &format!("m{i}"))));
+            reads.extend((0..10).map(|i| read_with_insertion(&c, b"TGCA", 250 + i, &format!("x{i}"))));
+            reads.extend((0..20).map(|i| read_with_insertion(&c, b"", 250 + i, &format!("r{i}"))));
+            states_with_found(&c, &x, &f, &reads, 3)
+        };
+        assert_eq!(site(b"TGCAC"), 3, "mates that agree on the found allele find it");
+        assert_eq!(site(b"TGCA"), 2, "mates that disagree find nothing");
+    }
+
+    #[test]
+    fn the_edit_distance_between_haplotypes_counts_the_bases_that_differ() {
+        let a = b"ACGTACGTAC";
+        assert_eq!(edit_distance(a, a, 8), 0);
+        assert_eq!(edit_distance(a, b"ACGTTCGTAC", 8), 1, "a substitution");
+        assert_eq!(edit_distance(a, b"ACGTCGTAC", 8), 1, "a deletion");
+        assert_eq!(edit_distance(b"ACGTAACGTAC", a, 8), 1, "an insertion");
+        assert_eq!(edit_distance(a, b"ACNTACGTAC", 8), 0, "a masked base fits any base");
+        assert_eq!(edit_distance(b"ACGTACGTAC", b"ACGTAC", 8), 4, "four bases deleted");
+        assert_eq!(edit_distance(b"AAAAAAAAAAAA", b"CCCCCCCCCCCC", 5), 6, "past the cap: cap + 1");
+        assert_eq!(edit_distance(b"ACGTACGTAC", b"AC", 5), 6, "lengths further apart than the cap");
+        assert_eq!(edit_distance(b"", b"ACG", 5), 3);
     }
 }
 
