@@ -1179,6 +1179,9 @@ fn present_hidden(
             // a read the hold would take from the ALT, as `classify` holds one
             slot.held |= told_here != Some(true)
                 && !a_listed_neighbour(&seq, quals, min_baseq, q, &h.bases, (&alt, &neighbours), h.first_diff, end);
+            // (a mate that tells the ALT is recorded here, before the length check below: ending
+            // short of the allele's first difference plus 24 bases, it still disagrees with a
+            // mate that spells the allele, `Tally::disagrees`)
             slot.alt |= told_here == Some(true);
             // read in full: [`PAST`] bases on from the first difference, as the guard reads an
             // allele on past the windows before it places a fragment
@@ -1211,7 +1214,7 @@ fn present_hidden(
     }
     let (mut present, mut absent): (Vec<Hidden>, Vec<Hidden>) = (Vec::new(), Vec::new());
     for (k, h) in reach.into_iter().enumerate() {
-        let count = |want: bool| fragments.values().filter(|c| !c[k].conflict && c[k].told == Some(want)).count();
+        let count = |want: bool| fragments.values().filter(|c| !c[k].disagrees() && c[k].told == Some(want)).count();
         let (spelled, alt_told) = (count(false), count(true));
         // fragments whose ALT call it would take: a read fitting the ALT's windows that
         // tells the given count from it nowhere, its mate no better
@@ -1244,6 +1247,17 @@ struct Tally {
     alt: bool,
     /// A read of the fragment spells the allele in full, placed here or not (`spells_in_full`).
     shown: bool,
+}
+
+impl Tally {
+    /// The fragment's mates disagree: they read in full and differ (`conflict`), or one spelled
+    /// the allele in full and a mate of any length confidently told the ALT over it. A mate that
+    /// ends before it holds the allele in full still tells the ALT where it reads a base the two
+    /// differ by; the fragment then spells neither, and counts nowhere
+    /// (RJ-25).
+    fn disagrees(&self) -> bool {
+        self.conflict || (self.told == Some(false) && self.alt)
+    }
 }
 
 /// [`present_hidden`]'s finding: the ALT's bases and the present other alleles' (from the
@@ -1582,6 +1596,16 @@ mod tests {
         assert_eq!(near, vec![-30, -120], "fewer by 30 (180 >= 30 + 12) and more by 60, not the chance shifts or the far count");
         let short = [h(-120, 60)];
         assert!(nearest_counts(&short, -60).is_empty(), "60 bases alike for a 60-base shift: no copy twice over");
+    }
+
+    #[test]
+    fn mates_disagree_when_one_spells_the_allele_and_a_mate_of_any_length_tells_the_alt() {
+        let t = |told: Option<bool>, conflict: bool, alt: bool| Tally { told, conflict, alt, ..Tally::default() };
+        assert!(t(Some(false), false, true).disagrees(), "a spelling mate and a mate telling the ALT, however short");
+        assert!(t(Some(true), true, true).disagrees(), "two full mates that differ");
+        assert!(!t(Some(false), false, false).disagrees(), "the allele spelled, no mate tells the ALT");
+        assert!(!t(Some(true), false, true).disagrees(), "the ALT told, no mate spells the allele");
+        assert!(!t(None, false, true).disagrees(), "a mate telling the ALT alone");
     }
 
     #[test]

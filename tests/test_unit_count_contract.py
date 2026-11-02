@@ -975,3 +975,26 @@ def test_a_listed_deletion_elsewhere_that_runs_past_the_reference_holds_nothing(
     reads = _reads(a, "REF", h["REF"], LONG, size=0) + _reads(a, "one", h["one"], LONG, size=60)
     got = _count(tmp_path, ref, [rows["one"], far], reads, judge, listed=True)
     assert got[0] == ((6, 6, 0, 12), "-120:330/150")
+
+
+@pytest.mark.parametrize("judge", JUDGES)
+def test_a_short_mate_that_tells_the_given_count_is_a_disagreement(tmp_path, judge):
+    """Three fragments whose first mate holds the run and spells the two-unit deletion in full,
+    and whose second mate is 90 bp: it tells the given count from the other by its bases past the
+    first difference, but ends 8 to 10 bases past it, 24 short of spelling anything in full.
+    The mates disagree, so each fragment spells neither count, as in the case of two full mates
+    (above): the count is not at the site, and the 12 short carriers stay ALT with the 3 second
+    mates, (RD, AD) = (6, 15); the 3 first mates are partial evidence on the rules path, depth
+    only under the judge. Before, the short mate's disagreement was dropped with its length check,
+    each fragment spelled the count, 3 fragments found it, and the short carriers were held."""
+    ref, a, h, rows, reads = _ticket()
+    firsts = _reads(a, "two", h["two"], HOLDING, size=120, k=3, tag="h")
+    seconds = _reads(a, "one", h["one"], (90, 20), size=60, k=3, tag="h")
+    for first, second in zip(firsts, seconds, strict=True):
+        second.query_name = first.query_name
+        second.flag = 0x1 | 0x2 | 0x10 | 0x80
+    (((rd, ad, partial, _), _),) = _count(
+        tmp_path, ref, [rows["one"]], reads + firsts + seconds, judge
+    )
+    assert (rd, ad) == (6, 15)
+    assert partial == (3 if judge == "rules" else 0)
