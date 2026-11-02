@@ -217,6 +217,14 @@ pub(crate) struct Hidden {
 }
 
 impl Hidden {
+    /// A listed count whose REF runs past the reference held: the bases that follow its last
+    /// deleted base are not held, so its haplotype cannot be built and no read can be shown to
+    /// tell it from the ALT. Its `bases` are empty, and its `first_diff` is the reference held
+    /// (at least a whole read), past any read's reach (RJ-24).
+    pub(crate) fn unresolved(&self) -> bool {
+        self.listed && self.bases.is_empty()
+    }
+
     /// Bases a read must hold from the windows' first base to spell it in full: [`PAST`] bases
     /// on from its first difference, as the guard reads an allele on past the windows before it
     /// places a fragment. The same bases the reach, the spelling test and the diagnostic use (a
@@ -293,11 +301,38 @@ pub(crate) fn hidden_alleles(v: &Variant, siblings: &[Variant], reach: usize) ->
             continue;
         }
         let (r, a) = (sib.ref_allele.to_ascii_uppercase().into_bytes(), sib.alt_allele.to_ascii_uppercase().into_bytes());
-        let Some(p) = usize::try_from(sib.pos - ws).ok().filter(|&p| p + r.len() <= w.len() && w[p..p + r.len()] == r[..]) else {
+        // its REF may run past the reference held (a longer count of the run); the part held must match
+        let inside = |p: usize| (w.len() - p).min(r.len());
+        let Some(p) = usize::try_from(sib.pos - ws).ok().filter(|&p| p < w.len() && w[p..p + inside(p)] == r[..inside(p)]) else {
             continue;
         };
         if p + 1 < g0 {
             continue; // it changes bases before the windows: their flank tells it
+        }
+        if p + r.len() > w.len() {
+            // The bases after its last deleted base are not held, so where it first differs from
+            // the ALT cannot be read. Where the bases held already tell it inside the windows, a
+            // read of the ALT is told from it there, as for any allele. Otherwise it stays a
+            // candidate (the input is taken as correct, rule X) that no read can be shown to tell:
+            // past reach, held, and named (RJ-24).
+            let head: Vec<u8> = w[..p].iter().chain(&a).copied().collect();
+            let told_inside = head.get(g0..).is_some_and(|known| {
+                (0..known.len().min(alt.len()).min(n)).any(|k| known[k] != alt[k] && telling(known[k]) && telling(alt[k]))
+            });
+            if !told_inside {
+                let change = a.len() as i64 - r.len() as i64;
+                out.push(Hidden {
+                    change,
+                    bases: Vec::new(),
+                    first_diff: alt.len().max(reach).max(n),
+                    listed: true,
+                    row: (sib.pos, r, a),
+                    spelled: 0,
+                    told: 0,
+                    held: 0,
+                });
+            }
+            continue;
         }
         let hap: Vec<u8> = w[..p].iter().chain(&a).chain(&w[p + r.len()..]).copied().collect();
         let Some(other) = hap.get(g0..) else { continue };
@@ -327,7 +362,7 @@ pub(crate) fn hidden_alleles(v: &Variant, siblings: &[Variant], reach: usize) ->
     let given = -(len as i64);
     out.sort_by_key(|h| ((h.change - given).abs(), h.change));
     let mut alt = alt;
-    let far = out.iter().map(|h| h.first_diff + HIDDEN_REACH).max().unwrap_or(0);
+    let far = out.iter().filter(|h| !h.unresolved()).map(|h| h.first_diff + HIDDEN_REACH).max().unwrap_or(0);
     alt.truncate(far.max(n));
     // A substitution another input row lists on the ALT's bases is that row's allele, a
     // neighbour the carriers may hold (RJ-24): its offset tells no allele from another, so it
@@ -359,7 +394,8 @@ pub(crate) fn hidden_alleles(v: &Variant, siblings: &[Variant], reach: usize) ->
 /// lets read alike).
 fn nearest_counts(hidden: &[Hidden], given: i64) -> Vec<&Hidden> {
     let unit = |h: &Hidden| (h.change - given).unsigned_abs() as usize;
-    let count = |h: &&Hidden| h.first_diff.saturating_sub(K) >= unit(h) + REJOIN;
+    // (an unresolved count is named wherever it is nearest: nothing says it reads unlike the ALT)
+    let count = |h: &&Hidden| h.unresolved() || h.first_diff.saturating_sub(K) >= unit(h) + REJOIN;
     let more = hidden.iter().filter(|h| h.change < given).filter(count).min_by_key(|h| unit(h));
     let fewer = hidden.iter().filter(|h| h.change > given).filter(count).min_by_key(|h| unit(h));
     let mut out: Vec<&Hidden> = more.into_iter().chain(fewer).collect();
@@ -1476,6 +1512,34 @@ mod tests {
         let (_, hidden) = hidden_alleles(&v, &[two, snv, before], 151).unwrap();
         let listed: Vec<i64> = hidden.iter().filter(|h| h.listed).map(|h| h.change).collect();
         assert_eq!(listed, vec![-120]);
+    }
+
+    #[test]
+    fn a_listed_count_whose_ref_runs_past_the_reference_held_is_an_unresolved_candidate() {
+        // The reference held ends 300 bases past the junction; the listed 600-bp deletion at the
+        // same anchor ends at 700. The bases after its last deleted base are not held: it cannot
+        // be built, so it stays a candidate past any read's reach, named where it is the nearest.
+        let (ctx, v) = beside_run(12);
+        let held = Variant { event_ref: Some((0, ctx[..400].into())), ..v.clone() };
+        let (_, hidden) = hidden_alleles(&held, &[del(&ctx, 99, 600)], 151).unwrap();
+        let unresolved: Vec<&Hidden> = hidden.iter().filter(|h| h.unresolved()).collect();
+        assert_eq!(unresolved.len(), 1);
+        let h = unresolved[0];
+        assert_eq!((h.change, h.listed, h.bases.len()), (-600, true, 0));
+        assert_eq!(h.row, (99, ctx.as_bytes()[99..700].to_vec(), vec![ctx.as_bytes()[99]]));
+        assert!(h.need() > 151, "past any read's reach");
+        assert_eq!(nearest_counts(&hidden, -60).iter().filter(|h| h.unresolved()).count(), 0, "the generated one deleting a unit more is nearer");
+        let alone: Vec<Hidden> = hidden.iter().filter(|h| h.listed).cloned().collect();
+        assert_eq!(nearest_counts(&alone, -60).iter().map(|h| h.change).collect::<Vec<_>>(), vec![-600]);
+        // a listed deletion from inside the run, also running past the reference held, differs from
+        // the ALT inside the windows by the bases held: told there, nothing to hold
+        let (_, hidden) = hidden_alleles(&held, &[del(&ctx, 219, 600)], 151).unwrap();
+        assert!(hidden.iter().all(|h| !h.listed), "told inside the windows");
+        // a listed row whose held part does not match the reference is no row of this site
+        let mut wrong = del(&ctx, 99, 600);
+        wrong.ref_allele = format!("{}{}", &ctx[99..300], "A".repeat(400));
+        let (_, hidden) = hidden_alleles(&held, &[wrong], 151).unwrap();
+        assert!(hidden.iter().all(|h| !h.listed));
     }
 
     #[test]

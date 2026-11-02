@@ -937,3 +937,41 @@ def test_mates_that_disagree_find_no_other_count(tmp_path, judge):
     )
     assert (rd, ad) == (6, 15)
     assert partial == (3 if judge == "rules" else 0)
+
+
+# ── Review of the close, 2026-11-02 (RJ-24) ────────────────────────────────────────
+
+
+def _ten_units(ref, a):
+    """The 600-bp deletion at the given row's anchor: the differing copy and nine units. Its
+    601 REF bases end past the reference prep holds beside a 60-bp deletion (the row's end, its
+    length again, and a read's reach of 300: 420 bases past the junction)."""
+    return (a - 1, ref[a - 1 : a + 600], ref[a - 1])
+
+
+@pytest.mark.parametrize("judge", JUDGES)
+def test_a_listed_count_beyond_the_reference_held_holds_the_reads(tmp_path, judge):
+    """A 60-bp deletion before twelve identical 60-bp copies, 150-bp reads, and the 600-bp
+    deletion at the same anchor listed. Prep holds the reference only to 420 bases past the
+    junction, so the listed row's 601 REF bases do not fit: its haplotype cannot be built there.
+    The input is taken as correct (rule X), so the count stays a candidate: no read can tell it
+    from the given count, and each carrier is partial evidence at the one-unit row, on both
+    paths, (6, 0, 6). Before, the rules path dropped the listed row and counted every carrier ALT,
+    (6, 6, 0); the sequence judge held the reads. The nearest unlisted count names the row."""
+    ref, a, h, rows = _shape(60, 12)
+    reads = _reads(a, "REF", h["REF"], LONG, size=0) + _reads(a, "one", h["one"], LONG, size=60)
+    got = _count(tmp_path, ref, [rows["one"], _ten_units(ref, a)], reads, judge, listed=True)
+    assert got == [((6, 0, 6, 12), "-120:330/150"), ((6, 0, 6, 12), "-540:208/150")]
+
+
+@pytest.mark.parametrize("judge", JUDGES)
+def test_a_listed_deletion_elsewhere_that_runs_past_the_reference_holds_nothing(tmp_path, judge):
+    """The same shape, the 600-bp deletion listed from the run's third unit instead: its REF
+    runs past the reference held too, but its bases up to there already differ from the given
+    deletion's inside the junction windows, so a read of the one tells it. No hold, no name
+    from it: every carrier ALT, as before."""
+    ref, a, h, rows = _shape(60, 12)
+    far = (a + 119, ref[a + 119 : a + 720], ref[a + 119])
+    reads = _reads(a, "REF", h["REF"], LONG, size=0) + _reads(a, "one", h["one"], LONG, size=60)
+    got = _count(tmp_path, ref, [rows["one"], far], reads, judge, listed=True)
+    assert got[0] == ((6, 6, 0, 12), "-120:330/150")
