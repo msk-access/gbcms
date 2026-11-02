@@ -36,6 +36,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   on the changes it carries and those it spans, the same for every candidate; the candidates whose
   best path took another copy are scored again. A read carrying the deletion is told the ALT from the
   sibling at the base its copy leaves unmasked, ALT.
+- The length the windows read on to (RJ-23, RJ-27) where the masks hide the base that tells them
+  apart is counted in the columns of the path a read lies on, as the masks are. A deletion listed
+  between the anchor and that base takes bases out of the haplotype of a read that carries it, so
+  the windows hold as many fewer columns there; a REF molecule carrying it that reached the base was
+  two columns short of a window measured without the deletion and was depth only.
 - The default rules path is unchanged.
 
 ### Changed — the sequence judge reads an insertion of 50 bp or more over equal windows from its anchor (#264)

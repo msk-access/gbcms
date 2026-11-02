@@ -1998,6 +1998,46 @@ mod tests {
     }
 
     #[test]
+    fn the_windows_read_on_are_counted_in_the_columns_of_the_path_a_read_lies_on() {
+        use haplotypes::LongInsRule::ReadOn;
+        // X inserts 60 bases of new sequence after the anchor at 299 (a run of none, so the
+        // windows hold the anchor and one base). The guard masks 300, 301, 305 and 306, and X's
+        // inserted bases at the other columns up to 307 are REF's, so no base tells REF's window
+        // from X's until 308: both read on to it, 10 columns from the anchor with the anchor.
+        // A deletion listed inside them takes two bases (303, 304) out of the haplotype of a
+        // read that carries it: 308 is two columns nearer the anchor there, and the windows,
+        // counted in the columns of the path the read lies on as the masks are, hold 8 columns.
+        // A REF molecule carrying the deletion that ends at 308 holds them; counted on the
+        // haplotype without the deletion it was two columns short (depth only), while a molecule
+        // without the deletion ending at 308 was REF.
+        let c = random_seq(700, 2647);
+        let mut ins = random_seq(60, 2648);
+        // columns of X's haplotype are 1 + the inserted base's index
+        for (i, at) in [(2, 302), (3, 303), (4, 304), (5, 307), (7, 307)] {
+            ins[i] = c[at];
+        }
+        let differs = |b: u8| *b"ACGT".iter().find(|&&t| t != b).unwrap();
+        ins[6] = differs(c[308]);
+        ins[8] = differs(c[308]);
+        ins[0] = differs(c[300]);
+        ins[59] = differs(c[299]);
+        let x = Row::new(299, &c[299..300], &[&c[299..300], &ins[..]].concat());
+        let k = Row::new(302, &c[302..305], &c[302..303]);
+        let hk = haplotype(&c, &[&k]);
+        let reads = [
+            // the deletion haplotype from 290: genome 290-302, the deletion, then 305 on
+            read_q(&hk[290..307], vec![Q; 17], 290, "13M2D4M").named(b"deletion_308"),
+            read_q(&hk[290..306], vec![Q; 16], 290, "13M2D3M").named(b"deletion_307"),
+            read(&c, 290, 19, 290, "19M").named(b"plain_308"),
+            read(&c, 290, 18, 290, "18M").named(b"plain_307"),
+        ];
+        let candidates = Candidates { listed: vec![k.clone()], masked: vec![300, 301, 305, 306], ..Candidates::default() };
+        let s = haplotypes::Site::build_ins(x.clone(), &candidates, (0, c.to_vec()), &reads, ReadOn).unwrap();
+        let got: Vec<Call> = reads.iter().map(|r| judge(&s, r, MIN_BQ, false).call).collect();
+        assert_eq!(got, vec![Call::Ref, Call::Depth, Call::Ref, Call::Depth]);
+    }
+
+    #[test]
     fn a_sibling_allele_takes_the_masks_laid_on_both_windows_too() {
         use haplotypes::LongInsRule::ReadOn;
         use Call::*;

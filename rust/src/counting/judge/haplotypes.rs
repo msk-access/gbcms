@@ -324,6 +324,10 @@ pub(crate) struct Hap {
     segs: Vec<(i64, i64, i64, i64)>,
     /// The row of each of `segs`.
     seg_rows: Vec<usize>,
+    /// The listed changes the guard's masks were laid by the columns of on this haplotype
+    /// ([`Site::mirror_for`]), which also fix the length of RJ-23's windows on it
+    /// ([`Site::window_len`]); none where the masks are not laid by offset.
+    ctx: Vec<usize>,
     /// X's allele's haplotype span, where X is applied.
     x_seg: Option<(i64, i64)>,
 }
@@ -412,7 +416,8 @@ impl Hap {
         }
         let mut rows = rows.to_vec();
         rows.sort_unstable();
-        Hap { rows, class, seq, segs, seg_rows: order, x_seg }
+        let ctx = mirrored.map_or_else(Vec::new, |ctx| site.shifting(ctx));
+        Hap { rows, class, seq, segs, seg_rows: order, ctx, x_seg }
     }
 
     /// What column `c` holds: a window position's reference base, or an applied row's own.
@@ -490,6 +495,8 @@ struct MirrorLaying {
     zone: (i64, i64),
     /// The masks laid, per candidate and the shifters its path takes.
     cache: MirrorCache,
+    /// The windows' length, per set of shifters a path takes ([`Site::window_len`]).
+    windows: std::cell::RefCell<HashMap<Vec<usize>, i64>>,
 }
 
 /// X's haplotypes over its window.
@@ -524,6 +531,10 @@ pub(crate) struct Site {
     /// At a long insertion, whether no base within the haplotypes tells the equal windows
     /// apart once the guard's masks are read (every read is depth only).
     untold: bool,
+    /// At a long insertion, the windows' length before reading on where the masks hide the
+    /// base that tells them apart (the run and the base past it); `long_ins` holds the length
+    /// read on, on the haplotypes without the listed changes ([`Site::window_len`]).
+    window0: i64,
     /// Where X is a pure insertion of [`LONG_EVENT`] bases or more: the first base of its run
     /// (genome; the anchor is the base before it) and the length of RJ-23's equal windows
     /// from the anchor, the anchor included ([`Site::equal_window`]): the run and the base
@@ -1492,9 +1503,36 @@ impl Site {
     /// insertion beside X's run) lengthens neither allele's window: equal windows hold as many
     /// bases of each read.
     pub(crate) fn equal_window(&self, hap: &Hap) -> Option<(i64, i64)> {
-        let (lo, w) = self.long_ins?;
+        let (lo, _) = self.long_ins?;
+        let w = self.window_len(&hap.ctx);
         let a = self.column_in(hap, lo - 1 - self.start);
         Some((a, a + w - 1))
+    }
+
+    /// The windows' length on a haplotype whose masks are laid by the columns of the listed
+    /// changes `ctx` ([`Hap::ctx`]): the length they read on to where the masks hide the base
+    /// telling REF's window from X's ([`Site::read_on`]), counted on the haplotypes with those
+    /// changes, as the masks are. A listed deletion between the anchor and that base moves it
+    /// nearer on a haplotype that carries it, and the window with it. The length on the
+    /// haplotypes without them (the site's) where `ctx` is empty or no masks are laid.
+    fn window_len(&self, ctx: &[usize]) -> i64 {
+        let Some((lo, w)) = self.long_ins else { return 0 };
+        let Some(laying) = self.mirror.as_ref().filter(|_| !ctx.is_empty() && !self.untold) else { return w };
+        if let Some(&n) = laying.windows.borrow().get(ctx) {
+            return n;
+        }
+        let n = self.read_on(lo, self.window0, ctx).unwrap_or(i64::MAX / 4);
+        laying.windows.borrow_mut().insert(ctx.to_vec(), n);
+        n
+    }
+
+    /// Of `ctx`, the listed changes that move the guard's masks by their length
+    /// ([`MirrorLaying::shifters`]), sorted.
+    fn shifting(&self, ctx: &[usize]) -> Vec<usize> {
+        let mut ctx: Vec<usize> = self.mirror.as_ref().map_or_else(Vec::new, |m| ctx.iter().copied().filter(|r| m.shifters.contains(r)).collect());
+        ctx.sort_unstable();
+        ctx.dedup();
+        ctx
     }
 
     /// The candidate a haplotype of `rows` is: the row of X or of the other state it applies (X
@@ -1540,7 +1578,7 @@ impl Site {
             .copied()
             .filter(|&r| self.rows[r].changes_length() && self.spans[r].0 < zone.1 && self.spans[r].1 > zone.0)
             .collect();
-        self.mirror = Some(MirrorLaying { reach: l, shifters, zone, cache: Default::default() });
+        self.mirror = Some(MirrorLaying { reach: l, shifters, zone, cache: Default::default(), windows: Default::default() });
         let x = &self.rows[0];
         let mirror = self.mirror_for(None, &[]).map(|m| (m.positions.len(), m.row_bases.len()));
         log::debug!(
@@ -1563,9 +1601,7 @@ impl Site {
     fn mirror_for(&self, key: Option<usize>, ctx: &[usize]) -> Option<std::rc::Rc<Mirror>> {
         let laying = self.mirror.as_ref()?;
         let (lo, _) = self.long_ins?;
-        let mut ctx: Vec<usize> = ctx.iter().copied().filter(|r| laying.shifters.contains(r)).collect();
-        ctx.sort_unstable();
-        ctx.dedup();
+        let ctx = self.shifting(ctx);
         if let Some(m) = laying.cache.borrow().get(&(key, ctx.clone())) {
             return Some(m.clone());
         }
@@ -1620,8 +1656,14 @@ impl Site {
     /// alone (a change past an insertion's run lies, on X's, past the insert) would let REF's
     /// molecules be told by that base while X's are not. None where no base within the
     /// haplotypes tells them apart: no read holds the windows.
-    fn read_on(&self, lo: i64, w: i64) -> Option<i64> {
-        let (r, x) = (Hap::build(self, &[]), Hap::build(self, &[0]));
+    fn read_on(&self, lo: i64, w: i64, ctx: &[usize]) -> Option<i64> {
+        // the haplotypes of REF and X with the path's changes that can lie with each
+        let with = |base: Option<usize>| {
+            let mut rows: Vec<usize> = ctx.iter().copied().filter(|&c| base.is_none_or(|b| b != c && !self.conflict(b, c))).collect();
+            rows.extend(base);
+            Hap::build(self, &rows)
+        };
+        let (r, x) = (with(None), with(Some(0)));
         let (ar, ax) = (self.column_in(&r, lo - 1 - self.start), self.column_in(&x, lo - 1 - self.start));
         let n = (r.seq.len() as i64 - ar).min(x.seq.len() as i64 - ax);
         let tells = |k: i64| {
@@ -2854,6 +2896,7 @@ impl Site {
             mirror: None,
             by_copy: false,
             untold: false,
+            window0: 0,
             long_ins,
             site_window,
             graphs: Vec::new(),
@@ -2877,7 +2920,8 @@ impl Site {
             .collect();
         // Every context at once: one graph per state, no enumeration.
         if let Some((lo, w)) = site.long_ins.filter(|_| ins_rule != LongInsRule::Window) {
-            match site.read_on(lo, w) {
+            site.window0 = w;
+            match site.read_on(lo, w, &[]) {
                 Some(read) => {
                     if read != w {
                         log::debug!("haplotype judge: the guard's masks hide the base telling a long insertion's windows apart; both read on, {w} -> {read} bases from the anchor");
@@ -3247,7 +3291,7 @@ impl Site {
     /// Of `rows` (a path's), the listed changes that move the guard's masks by their length
     /// ([`MirrorLaying::shifters`]): the ones whose copy of the zone a read lies on.
     pub(crate) fn taken_changes(&self, rows: &[usize]) -> Vec<usize> {
-        self.mirror.as_ref().map_or_else(Vec::new, |m| rows.iter().copied().filter(|r| m.shifters.contains(r)).collect())
+        self.shifting(rows)
     }
 
     /// The listed changes that move the guard's masks and lie inside `reach`, the stretch of
