@@ -1,6 +1,6 @@
 # C2: is a listed allele of the ALT's length always a candidate?
 
-Status: draft, for the operator's approval
+Status: approved 2026-10-31 (operator, from the app: "Looks good")
 Rounds: 0 of 2 · New conditions: at most 1 (option B) · HPC batches: 0 of 4 (two builds, each with HG002 and patient arrays)
 
 ## 1. The class
@@ -69,10 +69,27 @@ patient arrays), plus one rerun. Stop and bring a class question if a third rule
 
 ## 7. State
 
-- 2026-10-31: drafted from the audit (layer 3, C2). Nothing is built.
+- 2026-10-31: drafted from the audit (layer 3, C2), and approved. Options A and B built behind
+  `GBCMS_SIBLING_RULE` (`floor` | `all` | `component`; branch `measure/c2-listed-siblings`, fb9c57d8;
+  never for merge). The build stopped on a question the plan did not settle: a component the reads
+  show whole on 3 or more fragments and 5%. **Operator (2026-10-31):** option B keeps RJ-25's
+  found-allele test, so such a component is a candidate, on both paths (the judge's `component` lane
+  is aligned to the rules path's (60, 30, 12)). Rows with a listed component: panel 9, ACCESS 9, gate
+  set 44; HG002 and the compound-het arm 0. Rows with a listed same-length neighbour that is not a
+  component also move under A and B (HG002 nocl 5,041), so HG002 is measured too.
+- 2026-10-31: batch c2a scored (`~/test/gbcms/harness/plan670/plan-first/c2_results.md`) and reviewed.
+  A third option appeared, so by the stop rule it went to the operator: **"A at the site"** — a listed
+  allele whose span meets X's site is always a candidate, on both paths and for REF too; one beside
+  X's site is context (the judge's site test, #304). Operator: measure it (round 2 of 2). Side issues:
+  the REF-tie split between the paths joins #394; the rules path's sibling scope is #398.
 
 ## 8. Cost log
 
 | Step | Agent and model | Tokens | Notes |
 |:--|:--|--:|:--|
-| | | | |
+| Build A and B, red-first (24 test cases) | Sonnet | 299,040 | stopped on the found-allele question |
+| B aligned on the judge; batch staged | Sonnet (same agent) | 22,649 | |
+| HPC batch c2a (6 lanes, 69 tasks) | – | – | 1 build (plus a tools job for develop's new Cargo.lock) |
+| Scoring | Sonnet | 371,649 | `~/test/gbcms/harness/plan670/plan-first/c2_results.md`: the bar's two clauses point to different options; on the rules path A and B lose 122–128 true REF reads in normals; develop leaves 79 / 161 wrong-ALT reads at rows with a listed same-length neighbour |
+| Review of the measurement (round 1) | Opus | 280,460 | sound for the main comparison; the rules path's REF loss is a scope bug (`repeat_end` grows the event onto a listed SNV past a deletion; 123 REF reads at one ACCESS normal row); develop's wrong-ALT reads are tie reads under RJ-25's floor (judge 78 of 79) plus a rules-path sibling-scope gap (#398); recommends "A at the site" |
+| Round 2: A at the site (`site`), rules lanes, trace of the 7 carriers | Sonnet (the C2 builder) | | operator approved 2026-10-31; building |

@@ -100,7 +100,7 @@ the options.
     Taken into #297's close plan.
   - **C3 (medium, judge):** the REF tie-break for every allele type. Trace and plan before the judge
     becomes the default (#331).
-- **Recorded for later (low):** C5, write U049's mechanism into RJ-28, and name the silent
+- **Recorded for later (low; one hygiene ticket, #395):** C5, write U049's mechanism into RJ-28, and name the silent
   `.take(32)` cap; C6, `FOUND_MIN_READS = 2` is still provisional; C8, check `GBCMS_JUDGE_BAND=full`
   is byte-identical on every arm; C9, name the two contig-edge tests and their mechanism in RJ-3.
 - **Lessons for the next run:** fix the sorting bar on the split that decides layer 3, before the run;

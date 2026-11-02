@@ -85,6 +85,23 @@ in this instance or in the mechanism, and does an option break an invariant?
 - **If the trial passes:** the page goes into the decision protocol and replaces text there. A
   count-changing PR must then link its plan, and the qa-check step looks for the link.
 
+## The code graph: a trial of its own (operator, 2026-10-31)
+
+graphify (0.9.12) builds a graph of the Rust code with its syntax parser, at no model cost. In the
+audit, `explain` and `path` helped; the broad `query` did not. Before it is wired into the project
+(an MCP server in `.mcp.json`, a rebuild after each merge to develop), measure it:
+
+- **Test:** in the next two plans, answer each "what already touches it" question twice: with the
+  graph (`explain`, `path`, `affected`) and with grep or a scan agent. Record the tokens of each way,
+  and any call site either way misses.
+- **Bar, fixed now:** the graph saves 30% or more of the tokens and misses no call site.
+- **If it passes:** the MCP server at project scope, pinned to 0.9.12; the free code-only rebuild
+  after each merge to develop; `graphify-out/` kept out of git; one pointer line in the decision
+  protocol, not a section in `CLAUDE.md`; a usage note (prefer `explain`, `path` and `affected`;
+  `query` only with a context filter).
+- **Until then:** the graph stays outside the repository (a `graphify-out/` in the repo would make
+  the user-level skill treat every codebase question as a graph query first).
+
 ## Skeleton
 
 ```markdown
