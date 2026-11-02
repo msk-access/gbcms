@@ -33,6 +33,24 @@ regenerating a section.
 
 ---
 
+## [LRN-20261102-002] rule-body | PRs merged on green checks with a bot review unread
+- **Status:** resolved (rule promoted); the findings are being fixed.
+- **Cause:** rule-body.
+- **Summary:**
+  - I merged #392 (macOS wheel) and #396 (#264's long-insertion windows) when their checks were
+    green, without reading Greptile's review. Each had one valid finding: #392's filename check
+    accepts any macOS minimum; #396's mirrored masks are placed without the candidates' listed
+    context changes, so a listed indel between the anchor and a masked position moves the mask.
+  - I then called #402 (the PHI read guard) ready while its review said 0 of 5, "do not merge",
+    with seven valid holes. The operator asked: "Did you read greptile bot review".
+  - The merge rule (`git-conventions.md`, "Merging") said to check the PR's checks; it said
+    nothing about the bot review.
+- **Promotion target:** `.agents/rules/git-conventions.md` ("Merging") — `DONE:` read Greptile's
+  summary and every inline comment before a PR is called ready or merged; report each finding with a
+  verdict; an unread finding blocks the merge as a failing check does. `MEMORY.md`'s merge line
+  names it.
+- **Related:** `working-agreements` ("Every failed task is reported").
+
 ## [LRN-20261031-002] rule-trigger | review fixes went back to the builder round after round, each a row-level condition
 - **Status:** resolved (rule promoted); the #297 re-frame waits for the operator.
 - **Cause:** rule-trigger.
