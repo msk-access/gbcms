@@ -565,6 +565,12 @@ pub struct BaseCounts {
     /// OBSERVED_ALLELE where m is 0, else COEXISTING_ALLELE); no count changes.
     #[pyo3(get)]
     pub unit_count_allele: String,
+    /// Under the sequence judge, at a pure insertion of 50 bp or more: no base within the
+    /// haplotypes the judge reads tells REF's equal window from the ALT's once the guard's
+    /// masks are read (a run past the reads' reach, or masks over every telling base), so
+    /// every read is depth only. Diagnostic only (feeds NO_TELLING_BASE); no count changes.
+    #[pyo3(get)]
+    pub untold_windows: bool,
     /// Reads processed with the requested `--umi-tag` present. Internal only
     /// (no Python getter): summed per BAM to warn when a requested UMI tag is
     /// never seen and fragment grouping silently fell back to QNAME.

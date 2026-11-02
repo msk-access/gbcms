@@ -1063,6 +1063,11 @@ class Pipeline:
                 whole. Those carriers count at each row that holds them (RJ-28's indel
                 twin), so one molecule can enter several rows' AD and mFSD size
                 distributions. One flag per such row. Counts stand.
+            NO_TELLING_BASE: under the sequence judge, at a pure insertion of 50 bp or
+                more, no base within the haplotypes the judge reads tells REF's equal window
+                from the ALT's once the guard's masks are read (the run reaches past the
+                reads, or masks take every base that would tell), so every read is depth
+                only: RD and AD 0 explained, not missing reads.
             UNEXPLAINED_READS(n/m): under the sequence judge, n of the row's m DP
                 reads fit none of its candidate sequences (REF, ALT, the other alleles
                 at its site, with every context) within ten confident mismatches. The
@@ -1201,6 +1206,10 @@ class Pipeline:
         unspanned = getattr(counts, "unit_count_unspanned", "")
         if unspanned:
             flags.append(f"UNIT_COUNT_UNSPANNED({unspanned})")
+
+        # A long insertion's equal windows no base tells apart: every read depth only.
+        if getattr(counts, "untold_windows", False):
+            flags.append("NO_TELLING_BASE")
 
         return flags
 

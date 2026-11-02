@@ -176,6 +176,10 @@ class BaseCounts:
     # whose ALT call it takes, m that tell the given count from it), several joined by '+';
     # empty when none. Diagnostic only (OBSERVED_ALLELE where m is 0, else COEXISTING_ALLELE).
     unit_count_allele: str
+    # Under the sequence judge, at a pure insertion of 50 bp or more: no base within the
+    # haplotypes the judge reads tells REF's equal window from the ALT's once the guard's
+    # masks are read, so every read is depth only. Diagnostic only (NO_TELLING_BASE flag).
+    untold_windows: bool
     # GTF-informed annotation (None when no GTF)
     exon_boundary_dist: int | None
     # Per-transcript counts (empty string when no GTF or no overlap)
