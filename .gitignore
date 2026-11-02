@@ -108,6 +108,9 @@ scripts/*_test/
 !tests/testdata/*.maf
 !tests/testdata/*.parquet
 
+# Exception: the example PHI list for the PHI read guard (made-up folders only)
+!.claude/hooks/phi-paths.example.txt
+
 # Logs
 *.log
 

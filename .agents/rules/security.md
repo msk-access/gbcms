@@ -55,6 +55,7 @@ of the conversation. The operator decided (2026-10-26, after asking what reaches
     send it to a file that never prints. (2026-10-30: an agent's tool output showed WES BAM names.)
   - Test the sanitizer on a made-up line holding each kind of identifier before it sees patient
     data. (2026-10-30: a masking command that did not mask printed five DMP BAM stems.)
+  - Now enforced by `.claude/hooks/phi-read-guard.py` (list: `~/.claude/phi-paths.txt`, format in `phi-paths.example.txt` beside it).
 - **cBioPortal study files** (`data_*.txt`, `meta_*.txt`, case lists: cohort-wide patient-level
   rows) stay on this machine: "I need you to only write scripts and run them here to understand
   and tease what can be used". Enforced by `.claude/hooks/protect-cbioportal.py`; the protected

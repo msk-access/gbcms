@@ -1,0 +1,36 @@
+# The PHI list for .claude/hooks/phi-read-guard.py. Copy this file to ~/.claude/phi-paths.txt and
+# put your own folders in it; the real list stays on your machine and never goes in the repo.
+# (A test can name another list with the environment variable PHI_PATHS_FILE.)
+#
+# One entry per line. `#` starts a comment. Every entry is an absolute path (`~` and $HOME are
+# read), in one of two forms:
+#
+#   1. A root: everything under it is patient data.
+#   2. A pattern with `*` for ONE folder level, or inside a folder name: a patient arm folder
+#      under any run label, or every folder of one name pattern.
+#
+# List every patient arm. A folder that is not listed is not guarded. The public arms
+# (for example the HG002 truth arms) stay off the list.
+#
+# `sanitizer <absolute path>` names one more accepted sanitizer script. The default is
+# ~/test/gbcms/harness/hpc/kit/phi_sanitize.py.
+
+# Copy-backs from the cluster: <root>/<run label>/<patient arm>
+/data/example-project/copybacks/*/panel
+/data/example-project/copybacks/*/across
+/data/example-project/copybacks/*/wes
+/data/example-project/copybacks/*/germ
+/data/example-project/copybacks/*/gatex
+
+# Local patient inputs: whole folders.
+/data/example-project/inputs/across
+/data/example-project/inputs/wes
+/data/example-project/inputs/germ
+
+# A pattern inside a folder name: every `out_<label>` folder of the panel clones.
+/data/example-project/inputs/out_*
+
+# A folder under the home folder.
+~/example-project/patient-slices
+
+# sanitizer /data/example-project/tools/phi_sanitize.py

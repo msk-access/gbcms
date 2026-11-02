@@ -33,6 +33,29 @@ regenerating a section.
 
 ---
 
+## [LRN-20261102-001] rule-permission | a prose rule left every tool free to read patient data, and it slipped three times in three days
+- **Status:** resolved (hook added); the operator's list `~/.claude/phi-paths.txt` is theirs to write.
+- **Cause:** rule-permission.
+- **Summary:**
+  - The rule "send every printed line through the sanitizer" (`security.md`, Patient BAM slices) was
+    prose. Nothing stopped `cat`, `head`, `grep`, `ls` or the Read tool on a patient file or folder.
+    It failed three times:
+    - 2026-10-29: two agents printed patient positions and a read name.
+    - 2026-10-30: BAM stems came from stderr (htslib's warning), and a masking command that did not
+      mask printed five more.
+    - 2026-10-31: an agent printed three genomic positions of one patient from a raw look at a
+      trace file.
+  - Each slip led to a sharper prose rule, and the next slip came through a path the rule did not
+    name. The tool access was too broad: the fix had to sit where the tool call is made.
+  - The operator approved a hook after the third slip (2026-11-02).
+- **Promotion target:** `.claude/hooks/phi-read-guard.py`, wired in `.claude/settings.json` for Bash
+  and for Read, Grep, Glob and NotebookRead — `DONE:` a call that names a path in the PHI list is
+  allowed only as a copy that prints nothing, a script run whose whole output passes through the
+  sanitizer, or one command whose stdout and stderr go to a file under a PHI folder; the file tools
+  are denied on those paths. Tests: `tests/test_phi_read_guard.py`; format of the list:
+  `.claude/hooks/phi-paths.example.txt`.
+- **Related:** LRN-20261030-003 (the stderr slip); `protect-cbioportal.py` (the design it follows).
+
 ## [LRN-20261031-002] rule-trigger | review fixes went back to the builder round after round, each a row-level condition
 - **Status:** resolved (rule promoted); the #297 re-frame waits for the operator.
 - **Cause:** rule-trigger.
