@@ -130,6 +130,7 @@ check | diagnostic | POSSIBLE_MINORITY_HAPLOTYPE | A change on a minority of nea
 check | diagnostic | MNV_SHARED | Under the sequence judge the SNV's ALT reads include a co-listed MNV's carriers, so one molecule counts in both rows: read the two rows together (the counts are unchanged)
 check | diagnostic | INDEL_SHARED | Under the sequence judge the ALT reads include a listed indel's carriers holding this change, so one molecule counts at several rows: read them together (counts unchanged)
 check | diagnostic | UNEXPLAINED_READS | Under the sequence judge some depth reads fit none of the row's candidate sequences: where they are a large share, foreign reads may count (the counts are unchanged)
+check | diagnostic | NO_TELLING_BASE | Under the sequence judge no base within reach tells a long insertion's REF window from its ALT's, so every read is depth only: a zero REF and ALT here is not an absence
 check | diagnostic | SW_FALLBACK | Some reads were scored by a fallback aligner or left uncounted: the row's counts came partly from another scorer
 check | diagnostic | SPLICE_SKIP_DOMINANT | More reads splice over the deleted span than confirm ALT: an alt_count of 0 may hide carriers written as junction reads
 check | diagnostic | NON_DISCRIMINATING_LOCUS | A nearby germline combination makes REF and ALT the same sequence: a zero REF and ALT here is not an absence
