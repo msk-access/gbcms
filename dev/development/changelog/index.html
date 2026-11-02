@@ -31,7 +31,7 @@
             body[data-md-color-scheme="slate"] .gslide-title { color: var(--md-default-fg-color); }
             body[data-md-color-scheme="slate"] .gslide-desc { color: var(--md-default-fg-color); }
         </style><meta name="panzoom-theme" content="material">
-<meta name="panzoom-data" content='{"selectors": [".mermaid", ".d2"], "initial_zoom_level": 1.0}'> </head>
+<meta name="panzoom-data" content='{"selectors": [".d2", ".mermaid"], "initial_zoom_level": 1.0}'> </head>
 <body data-md-color-accent="custom" data-md-color-primary="custom" data-md-color-scheme="default" dir="ltr">
 <input autocomplete="off" class="md-toggle" data-md-toggle="drawer" id="__drawer" type="checkbox">
 <input autocomplete="off" class="md-toggle" data-md-toggle="search" id="__search" type="checkbox">
@@ -794,7 +794,7 @@ and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semant
 <h2 id="unreleased">[Unreleased]<a class="headerlink" href="#unreleased" title="Permanent link">¶</a></h2>
 <h3 id="added-a-macos-wheel-for-apple-silicon-arm64-237">Added — a macOS wheel for Apple silicon (arm64) (#237)<a class="headerlink" href="#added-a-macos-wheel-for-apple-silicon-arm64-237" title="Permanent link">¶</a></h3>
 <ul>
-<li>The release builds <code>cp310-abi3-macosx_11_0_arm64</code> on <code>macos-14</code> with the new local action
+<li>The release builds <code>cp310-abi3-macosx_11_0_arm64</code> on <code>macos-latest</code> with the new local action
   <code>.github/actions/macos-wheel</code>, and publishes it to PyPI and the release page (with its
   checksum and build-provenance attestation) beside the Linux wheel. <code>pip install gbcms</code> on
   an Apple silicon Mac with macOS 11 or newer, on any Python from 3.10, now installs a wheel;
