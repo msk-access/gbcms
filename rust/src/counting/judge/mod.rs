@@ -1822,6 +1822,89 @@ mod tests {
         assert_eq!(calls_masked(&c, &x, vec![330], &reads, ReadOn), vec![Ref, Alt, Ref, Alt, Ref, Alt]);
     }
 
+    /// A description, a read and the same read with a third base at the masked base.
+    type ReadPair = (String, ReadView, ReadView);
+
+    /// The guard masks 363, right past a listed deletion of two bases after 360 (a context of
+    /// the duplication, outside its run), and reads of `long_duplication`'s contig that
+    /// carry the deletion or not, with a third base (no allele's) at the masked base's place
+    /// on their own haplotype, or the base itself: each pair differs there alone.
+    fn pairs_at_the_masked_base_past_a_listed_deletion() -> (Vec<u8>, Row, Row, Vec<ReadPair>) {
+        let (c, x, last) = long_duplication();
+        let k = Row::new(360, &c[360..363], &c[360..361]);
+        let hk = haplotype(&c, &[&k]);
+        let third = |hap: &[u8], at: usize| *b"ACGT".iter().find(|&&b| b != hap[at] && b != last).unwrap();
+        let pair = |name: &str, hap: &[u8], from: usize, len: usize, at: usize| {
+            let mut changed = hap[from..from + len].to_vec();
+            changed[at - from] = third(hap, at);
+            (
+                name.to_string(),
+                read(hap, from, len, from as i64, &format!("{len}M")).named(b"same"),
+                read_q(&changed, vec![Q; len], from as i64, &format!("{len}M")).named(b"third"),
+            )
+        };
+        // 363 is at 361 on the haplotype carrying the deletion, at 363 on REF's
+        let pairs = vec![
+            pair("a read carrying the deletion", &hk, 262, 100, 361),
+            pair("a read carrying the deletion, longer", &hk, 253, 110, 361),
+            pair("a REF read", &c, 262, 104, 363),
+        ];
+        (c, x, k, pairs)
+    }
+
+    #[test]
+    fn a_masked_base_weighs_alike_on_a_read_that_carries_a_listed_change_before_it() {
+        use haplotypes::LongInsRule::ReadOn;
+        // RJ-23's masks are laid on X's haplotype by offset from the anchor, so a base the
+        // guard masks weighs on no haplotype, whichever the read is weighed against. Through
+        // the deletion the masked base is two bases nearer the anchor, on every haplotype the
+        // read lies on: the masks were laid at the offsets of the haplotypes without it, so
+        // X's score for a read carrying the deletion and a third base at 363 was four lower
+        // (-8 against -12 for the first pair), and the read with the base itself the same
+        // against REF's. The scores of each class are now alike with and without that base.
+        let (c, x, k, pairs) = pairs_at_the_masked_base_past_a_listed_deletion();
+        for (what, same, third) in pairs {
+            let reads = [same, third];
+            let candidates = Candidates { listed: vec![k.clone()], masked: vec![363], ..Candidates::default() };
+            let s = haplotypes::Site::build_ins(x.clone(), &candidates, (0, c.to_vec()), &reads, ReadOn).unwrap();
+            let v: Vec<_> = reads.iter().map(|r| judge(&s, r, MIN_BQ, false)).collect();
+            assert_eq!(v[0].best, v[1].best, "{what}: the scores of REF, X and another allele");
+            assert_eq!((v[0].call, v[1].call), (Call::Ref, Call::Ref), "{what}");
+        }
+    }
+
+    #[test]
+    fn a_reads_alignment_is_scored_on_the_masks_of_the_path_it_ran_through() {
+        use haplotypes::LongInsRule::ReadOn;
+        // A path scores a masked base nothing, so the alignment read off it for the call is
+        // the score of its path: the same haplotype with the same masks. That includes a path
+        // that ends before the change it was laid for (the deletion lies past the read's end
+        // in the copy of the graph that masks as if the read carried it): the haplotype takes
+        // the masks of the copy, not of the changes the path took.
+        let (c, x, k, pairs) = pairs_at_the_masked_base_past_a_listed_deletion();
+        // reads of the haplotype carrying the deletion that end well before it, their last base
+        // a third base (no allele's)
+        let (hk, last) = (haplotype(&c, &[&k]), *b"ACGT".iter().find(|&&b| b != c[359] && b != c[299]).unwrap());
+        let early: Vec<ReadView> = [60usize, 80, 99]
+            .into_iter()
+            .map(|len| {
+                let mut s = hk[262..262 + len].to_vec();
+                s[len - 1] = *b"ACGT".iter().find(|&&b| b != s[len - 1] && b != last).unwrap();
+                read_q(&s, vec![Q; len], 262, &format!("{len}M"))
+            })
+            .collect();
+        let reads: Vec<ReadView> = pairs.into_iter().flat_map(|(_, a, b)| [a, b]).chain(early).collect();
+        let candidates = Candidates { listed: vec![k.clone()], masked: vec![363], ..Candidates::default() };
+        let s = haplotypes::Site::build_ins(x.clone(), &candidates, (0, c.to_vec()), &reads, ReadOn).unwrap();
+        for (i, r) in reads.iter().enumerate() {
+            for (state, (score, path, _)) in decide::examined_alignments(&s, r, None).into_iter().enumerate() {
+                if path.0.skipped_after.iter().all(|&n| n == 0) {
+                    assert_eq!(path.0.costs.iter().sum::<i32>(), score, "read {i}, state {state}: the alignment's costs on the haplotype are its path's score");
+                }
+            }
+        }
+    }
+
     #[test]
     fn a_sibling_allele_takes_the_masks_laid_on_both_windows_too() {
         use haplotypes::LongInsRule::ReadOn;

@@ -362,6 +362,9 @@ pub(crate) struct Scored {
     best: [Option<(i32, usize)>; 3],
     halves: Vec<Option<i64>>,
     rows: Vec<Vec<usize>>,
+    /// Per state, the copy of its graph's mirror zone its best path runs through
+    /// ([`graph::GraphPath::copy`]).
+    copies: Vec<u32>,
     haps: std::cell::RefCell<Vec<(usize, std::rc::Rc<Hap>)>>,
     aligns: std::cell::RefCell<Vec<(usize, Aligned)>>,
     /// Per state a call can be examined on (each class's best, and state 0), its best path read
@@ -425,7 +428,7 @@ fn judge_graph(site: &Site, read: &ReadView, min_baseq: u8, ask_anchor: bool, ke
                 if let Some((_, h)) = scored.haps.borrow().iter().find(|(j, _)| *j == k) {
                     return h.clone();
                 }
-                let h = std::rc::Rc::new(site.hap_on_path(k, &scored.rows[k]));
+                let h = std::rc::Rc::new(site.hap_on_path(k, &scored.rows[k], scored.copies[k]));
                 scored.haps.borrow_mut().push((k, h.clone()));
                 h
             },
@@ -453,16 +456,17 @@ fn score_states(site: &Site, gr: &graph::GraphRead, wss: &mut [Workspace]) -> Sc
     // The states a call can be examined on: each class's best ([`conclude`] asks for no
     // other), and state 0, which it falls back to where the class it names has none.
     let examined = |k: usize| k == 0 || best.iter().flatten().any(|&(_, h)| h == k);
-    let (mut rows, mut steps) = (Vec::with_capacity(site.graphs.len()), Vec::with_capacity(site.graphs.len()));
+    let (mut rows, mut copies, mut steps) = (Vec::with_capacity(site.graphs.len()), Vec::with_capacity(site.graphs.len()), Vec::with_capacity(site.graphs.len()));
     for k in 0..site.graphs.len() {
         let p = graph::kept_path(&ShortReads, gr, &site.graphs[k].graph, halves[k], &wss[k]);
         if best.iter().flatten().any(|&(s, h)| h == k && s != p.score) {
             trace!("haplotype judge: state {k}'s traced path scores {} against its score", p.score);
         }
         rows.push(p.rows);
+        copies.push(p.copy);
         steps.push(if examined(k) { graph::kept_steps(&ShortReads, gr, &site.graphs[k].graph, &wss[k]) } else { None });
     }
-    Scored { best, halves, rows, haps: Default::default(), aligns: Default::default(), steps }
+    Scored { best, halves, rows, copies, haps: Default::default(), aligns: Default::default(), steps }
 }
 
 /// Tests only: per state of a graph site, the state's score, the read's alignment to the
@@ -486,7 +490,7 @@ pub(crate) fn examined_alignments(site: &Site, read: &ReadView, free: Option<i64
     let scorer = Scorer::new(read);
     let on_path = |k: usize, hap: &Hap| steps[k].as_ref().map(|st| site.alignment_on_path(k, st, hap, &read.seq));
     let aligns = Default::default();
-    let ex = Examined::new(site, &scorer, |k| std::rc::Rc::new(site.hap_on_path(k, &scored.rows[k])), &aligns, &on_path);
+    let ex = Examined::new(site, &scorer, |k| std::rc::Rc::new(site.hap_on_path(k, &scored.rows[k], scored.copies[k])), &aligns, &on_path);
     (0..site.graphs.len())
         .map(|k| {
             let hap = ex.hap(k);

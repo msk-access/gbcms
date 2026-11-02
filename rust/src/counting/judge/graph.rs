@@ -83,6 +83,8 @@ pub(crate) struct Segment {
     /// Its bases, indices into the graph's bases `[first, after)`.
     first: u32,
     after: u32,
+    /// The copy of the graph's masks zone it lies in ([`Graph::copy_set`]); 0 outside one.
+    pub(crate) copy: u32,
 }
 
 /// A segment before it is laid out: its row, its reference span and its bases.
@@ -92,15 +94,42 @@ type Pending = (Option<usize>, (i64, i64), Vec<u8>);
 #[derive(Debug, Default)]
 pub(crate) struct GraphBuilder {
     segments: Vec<Pending>,
+    /// Per segment, its copy ([`Segment::copy`]).
+    copies: Vec<u32>,
+    /// The rows each copy's path takes, by copy (copy 0: none).
+    copy_sets: Vec<Vec<usize>>,
     edges: Vec<(usize, usize)>,
 }
 
 impl GraphBuilder {
     /// A segment: the bases spelled over the reference span `span` (window coordinates),
     /// for `row` (None: the reference). Its id.
+    #[cfg(test)]
     pub(crate) fn segment(&mut self, row: Option<usize>, span: (i64, i64), bases: Vec<u8>) -> usize {
+        self.segment_in(row, span, bases, 0)
+    }
+
+    /// [`GraphBuilder::segment`] in the copy `copy` of a zone ([`GraphBuilder::copy`]).
+    pub(crate) fn segment_in(&mut self, row: Option<usize>, span: (i64, i64), bases: Vec<u8>, copy: u32) -> usize {
         self.segments.push((row, span, bases));
+        self.copies.push(copy);
         self.segments.len() - 1
+    }
+
+    /// The copy of a zone laid out for the path that takes `rows` (sorted): a segment in it
+    /// says which, so a path's haplotype can be built as the copy it ran through. Copy 0 is
+    /// no zone's.
+    pub(crate) fn copy(&mut self, rows: Vec<usize>) -> u32 {
+        if self.copy_sets.is_empty() {
+            self.copy_sets.push(Vec::new());
+        }
+        match self.copy_sets.iter().position(|c| *c == rows) {
+            Some(i) => i as u32,
+            None => {
+                self.copy_sets.push(rows);
+                (self.copy_sets.len() - 1) as u32
+            }
+        }
     }
 
     /// An edge from the end of segment `from` to the start of `to`. Edges run forward: `to`
@@ -131,7 +160,7 @@ impl GraphBuilder {
                 coord.push(span.0 + (j as i64 * width) / b.len() as i64);
                 seg_of.push(k as u32);
             }
-            segments.push(Segment { row: *row, span: *span, first, after: bases.len() as u32 });
+            segments.push(Segment { row: *row, span: *span, first, after: bases.len() as u32, copy: self.copies[s] });
         }
         // Per segment, its predecessors (empty ones resolved through), the reference first.
         let mut into: Vec<Vec<usize>> = vec![Vec::new(); self.segments.len()];
@@ -207,7 +236,11 @@ impl GraphBuilder {
         }
         // every predecessor laid out before its base (edges run forward)
         let topological = (0..n).all(|v| preds[pred_off[v] as usize..pred_off[v + 1] as usize].iter().all(|&u| (u as usize) < v));
-        Graph { segments, bases, coord, seg_of, pred_off, preds, succ_off: succ_count, succs, shifts, grows, end_max, topological }
+        let mut copy_sets = self.copy_sets;
+        if copy_sets.is_empty() {
+            copy_sets.push(Vec::new());
+        }
+        Graph { segments, bases, coord, seg_of, pred_off, preds, succ_off: succ_count, succs, shifts, grows, end_max, topological, copy_sets }
     }
 }
 
@@ -233,6 +266,8 @@ pub(crate) struct Graph {
     /// columns before it, so a graph that is not (none the builder makes) is scored by
     /// [`run_reference`].
     topological: bool,
+    /// The rows the path of each copy of a zone takes ([`GraphBuilder::copy`]); copy 0, none.
+    copy_sets: Vec<Vec<usize>>,
 }
 
 impl Graph {
@@ -305,6 +340,11 @@ impl Graph {
             && self.grows == other.grows
             && self.end_max == other.end_max;
         alike.then(|| self.bases.iter().zip(&other.bases).position(|(a, b)| a != b).unwrap_or(self.bases.len()))
+    }
+
+    /// The rows the path through copy `copy` of a zone takes ([`Segment::copy`]).
+    pub(crate) fn copy_set(&self, copy: u32) -> &[usize] {
+        self.copy_sets.get(copy as usize).map_or(&[][..], |c| &c[..])
     }
 
     /// The length changes of the rows within `by` of the reference span `[lo, hi]`.
@@ -1403,6 +1443,8 @@ pub(crate) fn reach_score<M: ErrorModel>(m: &M, read: &GraphRead, g: &Graph) -> 
 pub(crate) struct GraphPath {
     pub(crate) score: i32,
     pub(crate) rows: Vec<usize>,
+    /// The copy of a zone the path runs through ([`Segment::copy`]); 0 for none.
+    pub(crate) copy: u32,
 }
 
 /// The read's best path in `g` traced back from the values `ws` still holds from
@@ -1432,7 +1474,7 @@ pub(crate) fn with_workspaces<R>(k: usize, f: impl FnOnce(&mut [Workspace]) -> R
 /// The read's best path in `g`, traced back in the band [`decided`] chose (`half`).
 pub(crate) fn path<M: ErrorModel>(m: &M, read: &GraphRead, g: &Graph, half: Option<i64>, ws: &mut Workspace) -> GraphPath {
     if read.seq.is_empty() {
-        return GraphPath { score: 0, rows: Vec::new() };
+        return GraphPath { score: 0, rows: Vec::new(), copy: 0 };
     }
     let (trim, _) = bands(g, read);
     let band = GraphBand::new(g, &read.rp, half, trim);
@@ -1453,7 +1495,7 @@ fn traceback<M: ErrorModel>(m: &M, read: &[u8], g: &Graph, band: &GraphBand, ws:
     let (open, ext) = (m.gap_open(), m.gap_extend());
     let mut visited: Vec<u32> = Vec::new();
     let Some((mut i, mut v)) = r.end else {
-        return GraphPath { score: r.score, rows: Vec::new() };
+        return GraphPath { score: r.score, rows: Vec::new(), copy: 0 };
     };
     // states: 0 D, 1 A, 2 E, 3 F
     let mut state = 0u8;
@@ -1505,7 +1547,8 @@ fn traceback<M: ErrorModel>(m: &M, read: &[u8], g: &Graph, band: &GraphBand, ws:
     let mut rows: Vec<usize> = visited.iter().filter_map(|&v| g.segment_of(v as usize).row).collect();
     rows.sort_unstable();
     rows.dedup();
-    GraphPath { score: r.score, rows }
+    let copy = visited.iter().map(|&v| g.segment_of(v as usize).copy).find(|&c| c != 0).unwrap_or(0);
+    GraphPath { score: r.score, rows, copy }
 }
 
 /// What a read's best path does with each of its bases: aligned to a graph base, inserted, or
@@ -1590,7 +1633,7 @@ pub(crate) fn kept_steps<M: ErrorModel>(m: &M, read: &GraphRead, g: &Graph, ws: 
 fn traceback_reference(g: &Graph, band: &GraphBand, ws: &Workspace, r: GraphRun) -> GraphPath {
     let mut visited: Vec<u32> = Vec::new();
     let Some((mut i, mut v)) = r.end else {
-        return GraphPath { score: r.score, rows: Vec::new() };
+        return GraphPath { score: r.score, rows: Vec::new(), copy: 0 };
     };
     // states: 0 D, 1 A, 2 E, 3 F
     let mut state = 0u8;
@@ -1628,7 +1671,8 @@ fn traceback_reference(g: &Graph, band: &GraphBand, ws: &Workspace, r: GraphRun)
     let mut rows: Vec<usize> = visited.iter().filter_map(|&v| g.segment_of(v as usize).row).collect();
     rows.sort_unstable();
     rows.dedup();
-    GraphPath { score: r.score, rows }
+    let copy = visited.iter().map(|&v| g.segment_of(v as usize).copy).find(|&c| c != 0).unwrap_or(0);
+    GraphPath { score: r.score, rows, copy }
 }
 
 /// The full programme over every base of the graph, scores only (for tests).
