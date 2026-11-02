@@ -3,7 +3,7 @@ description: >
   The recipe for the macOS wheel (maturin on the runner it is built for). The release
   workflow and the wheel checks both use it, so what the checks install is what a release
   publishes. Run actions/checkout and actions/setup-python first (the interpreter below
-  must be on the PATH). On an Apple silicon runner (macos-14) it builds the arm64 wheel.
+  must be on the PATH). On an Apple silicon runner (macos-latest) it builds the arm64 wheel.
 
 inputs:
   interpreter:
