@@ -176,7 +176,10 @@ For a row X and each admitted read:
     measured with a temporary option and not adopted (REJ-20261023-001); the option is removed.
     `GBCMS_JUDGE_LONG_INS=window` keeps the windows without the read-on and `off` restores the
     judge before them (measurement only, temporary: both go when the judge becomes the default,
-    #331, and the default behaviour stays).
+    #331, and the default behaviour stays). Two follow-ups (operator, 2026-11-02): a read tying the
+    ALT with another allele must hold the ALT's equal window too, or it is depth only; and the
+    masks are laid by the columns of each path, the listed or found changes between the anchor
+    and a masked base counted (RJ-23).
   - *An indel the reads write beside X's site* (two reads and 5%, every placement clear of
     the site, the repeat X changes included) is a context, a separate event (RJ-8), however
     a read's aligner wrote it, where the reads need it for their calls (as a respelling

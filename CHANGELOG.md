@@ -7,6 +7,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed — two follow-ups to the equal windows of an insertion of 50 bp or more (#264)
+
+- Under `--read-judge sequence`, a read that ties the ALT with another allele (REF beaten) must
+  hold the ALT's equal window as well as that allele's (RJ-23). Before, the window check ran on the
+  haplotype of the allele the call names, and a read inside the insert, or holding only its far
+  junction, held the other allele's window (a haplotype with no long insert, which looks like
+  REF's run) and counted partial evidence. It is depth only now; no ALT count can rise.
+  At HG002 (public; c246, tr, sub, nocl) 367 read calls on 82 rows move from partial evidence to
+  depth only, all at pure insertions of 50 bp or more; no row's REF count, ALT count or VAF changes
+  (partial evidence falls on all 82 rows, the depth on 25).
+- The guard's masks are laid by offset from the anchor on every candidate haplotype along the
+  columns of each path (RJ-23, RJ-27), not by the offsets the haplotypes have without the
+  listed or found changes beside the insertion (Greptile's finding on PR #396): an insertion or
+  deletion between the anchor and a masked base moves that base's offset on every haplotype a
+  read carrying it lies on. The graph holds a copy of the span where a mask can lie per set of
+  such changes that can lie together. A site with seven such changes or more in that span keeps
+  the offsets without them (a named limit).
+  At HG002 the masks are laid by the columns of up to five such changes at the rows with masks and
+  no read call moves (nor in a sweep of 12,078 synthetic read pairs); the change is in the score of a
+  read carrying such a change on a candidate (four points lower on X's haplotype with a third base at
+  the masked base, now equal).
+- The default rules path is unchanged.
+
 ### Changed — the sequence judge reads an insertion of 50 bp or more over equal windows from its anchor (#264)
 
 - Under `--read-judge sequence`, a REF or ALT call at a pure insertion of 50 bp or more now
