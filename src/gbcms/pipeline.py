@@ -1033,7 +1033,11 @@ class Pipeline:
                 the same stretch: a caveat for reading the VAF.
                 Both are named when n >= 3, n > m, n is at least 5% of the scanned
                 reads, and the allele is not already an input row. Counts stay the
-                given allele's (count the given allele).
+                given allele's (count the given allele). At a deletion of 50 bp or
+                more, each other unit count present at its breakpoint (listed, or
+                spelled on 3 or more fragments) that takes ALT calls is named the same
+                way, at the deletion's anchor: n fragments whose ALT call it takes, m
+                that tell the given count from it (OBSERVED_ALLELE where m is 0).
             SW_FALLBACK(n): under the PairHMM backend, n depth reads could not
                 be evaluated by the pangenomic haplotype matrix (reference context
                 missing — e.g. an indel near a contig end — or not containing the
@@ -1071,6 +1075,15 @@ class Pipeline:
                 elsewhere at least as well (XS >= AS); otherwise its bases at the row
                 decide it, so a row with many may count foreign reads (a paralog's, or
                 reads placed at a homozygous deletion). Counts stand.
+            UNIT_COUNT_UNSPANNED(change:bases/longest): at a deletion of 50 bp or
+                more, another allele at its breakpoint (another unit count of a run
+                beside it, `change` its length change, deleted bases negative) reads
+                like the given deletion past what a read can spell: a read must hold
+                `bases` bases from the junction windows' first base (the first difference
+                and 24 more) to spell the count in full, and the longest is `longest`.
+                A count nobody listed that no read can spell is held for nothing, so the
+                given deletion's alt_count may include its carriers; a listed one is held
+                (its reads are partial evidence). The flag changes no count.
         """
         flags: list[str] = []
 
@@ -1144,6 +1157,20 @@ class Pipeline:
                 f"{counts.observed_ref}>{counts.observed_alt}:{observed}/{given})"
             )
 
+        # At a long deletion beside a run, another unit count present at its breakpoint holds
+        # the ALT calls: a read counts ALT only where its bases tell the given count from it.
+        # Named in the same form: n fragments whose ALT call it takes, m that tell the given count
+        # (OBSERVED_ALLELE where none does). The counts stand as written.
+        held = getattr(counts, "unit_count_allele", "")
+        for entry in held.split("+") if held else ():
+            allele, tally = entry.rsplit(":", 1)
+            name = "OBSERVED_ALLELE" if tally.split("/")[1] == "0" else "COEXISTING_ALLELE"
+            named = [
+                f"{k}({variant.chrom}:{allele}:" for k in ("OBSERVED_ALLELE", "COEXISTING_ALLELE")
+            ]
+            if not any(f.startswith(p) for p in named for f in flags):
+                flags.append(f"{name}({variant.chrom}:{entry})")
+
         # A change at the ALT's shifted base the reads placed apart show on too few of
         # them (or in one pair orientation) for a haplotype's, left unmasked: a minority
         # haplotype carrying it would count ALT. The counts stand; the flag names it.
@@ -1172,6 +1199,13 @@ class Pipeline:
         unexplained = getattr(counts, "unexplained_reads", 0)
         if unexplained > 0:
             flags.append(f"UNEXPLAINED_READS({unexplained}/{counts.dp})")
+
+        # A long deletion's other unit count reading like it past what a read can spell: no
+        # read can tell an unlisted one's carriers apart, so nothing is held for it (a listed
+        # one is held); the flag names it and changes no count.
+        unspanned = getattr(counts, "unit_count_unspanned", "")
+        if unspanned:
+            flags.append(f"UNIT_COUNT_UNSPANNED({unspanned})")
 
         # A long insertion's equal windows no base tells apart: every read depth only.
         if getattr(counts, "untold_windows", False):

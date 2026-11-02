@@ -274,19 +274,40 @@ fn mark_reach_unrecorded(variants: &mut [PreparedVariant]) {
 fn assign_listed_neighbours(variants: &mut [PreparedVariant]) {
     let mut substitutions: std::collections::HashMap<String, Vec<(i64, String, String)>> =
         std::collections::HashMap::new();
+    // The indel rows too, for `Variant::listed_indels` (#297).
+    let mut indels: std::collections::HashMap<String, Vec<(i64, String, String)>> = std::collections::HashMap::new();
     for p in variants.iter().filter(|p| p.gbcms_status == "PASS") {
         let v = &p.variant;
+        let row = (v.pos, v.ref_allele.to_ascii_uppercase(), v.alt_allele.to_ascii_uppercase());
         if v.ref_allele.len() == v.alt_allele.len() && !v.ref_allele.eq_ignore_ascii_case(&v.alt_allele) {
-            substitutions.entry(v.chrom.clone()).or_default().push((
-                v.pos,
-                v.ref_allele.to_ascii_uppercase(),
-                v.alt_allele.to_ascii_uppercase(),
-            ));
+            substitutions.entry(v.chrom.clone()).or_default().push(row);
+        } else if v.ref_allele.len() != v.alt_allele.len() {
+            indels.entry(v.chrom.clone()).or_default().push(row);
         }
     }
-    for rows in substitutions.values_mut() {
+    for rows in substitutions.values_mut().chain(indels.values_mut()) {
         rows.sort();
         rows.dedup();
+    }
+    // A deletion of 50 bp or more: the indel rows inside the reference held for reads past it.
+    for p in variants.iter_mut().filter(|p| p.gbcms_status == "PASS") {
+        let v = &p.variant;
+        if crate::counting::junction::reference_past(v) == 0 {
+            continue;
+        }
+        let (Some(rows), Some((start, seq))) = (indels.get(&v.chrom), v.whole_ref.as_ref().or(v.event_ref.as_ref())) else {
+            continue;
+        };
+        let end = start + seq.len() as i64;
+        let from = rows.partition_point(|r| r.0 < *start);
+        let own = (v.pos, v.ref_allele.to_ascii_uppercase(), v.alt_allele.to_ascii_uppercase());
+        let listed: Vec<(i64, String, String)> = rows[from..]
+            .iter()
+            .take_while(|r| r.0 < end)
+            .filter(|r| r.0 + r.1.len() as i64 <= end && **r != own)
+            .cloned()
+            .collect();
+        p.variant.listed_indels = listed;
     }
     for p in variants.iter_mut().filter(|p| p.gbcms_status == "PASS") {
         let v = &p.variant;
@@ -609,14 +630,18 @@ fn event_core_ref(reader: &mut fasta::IndexedReader<File>, v: &Variant, tally: &
 
 /// The reference a whole read reaches each side of an event the exact-carrier rule
 /// judges (`Variant::whole_ref`): its change interval plus
-/// [`carrier::WHOLE_READ_REACH`] each side, and at least the event reference. None for
-/// any other variant, or when the fetch fails.
+/// [`carrier::WHOLE_READ_REACH`] each side, and at least the event reference. For a
+/// deletion of 50 bp or more (the junction judge's), as many bases again past it as it
+/// deletes: its other alleles at its breakpoint, up to twice its length, are read a whole
+/// read's reach past where they first differ from it (#297). None for any other variant,
+/// or when the fetch fails.
 fn whole_read_ref(reader: &mut fasta::IndexedReader<File>, v: &Variant) -> Option<(i64, String)> {
-    if !carrier::judges(v) {
+    let past = crate::counting::junction::reference_past(v);
+    if !carrier::judges(v) && past == 0 {
         return None;
     }
     let (c_lo, c_hi) = window::change_interval(v);
-    let (mut lo, mut hi) = ((c_lo.min(v.pos) - carrier::WHOLE_READ_REACH).max(0), c_hi.max(v.pos + v.ref_allele.len() as i64) + carrier::WHOLE_READ_REACH);
+    let (mut lo, mut hi) = ((c_lo.min(v.pos) - carrier::WHOLE_READ_REACH).max(0), c_hi.max(v.pos + v.ref_allele.len() as i64) + past + carrier::WHOLE_READ_REACH);
     if let Some((s, seq)) = &v.event_ref {
         (lo, hi) = (lo.min(*s), hi.max(s + seq.len() as i64));
     }
@@ -873,6 +898,7 @@ fn prepare_single_variant(
                 reach_rows: Vec::new(),
                 reach_unrecorded: false,
                 whole_ref: None,
+                listed_indels: Vec::new(),
             },
             gbcms_status: verdict,
             gbcms_status_reason: reason,
@@ -915,6 +941,7 @@ fn prepare_single_variant(
                 reach_rows: Vec::new(),
                 reach_unrecorded: false,
                 whole_ref: None,
+                listed_indels: Vec::new(),
             },
             gbcms_status: "FAIL".to_string(),
             gbcms_status_reason: "ALT_CONTAINS_N".to_string(),
@@ -1133,6 +1160,7 @@ fn prepare_single_variant(
                     reach_rows: Vec::new(),
                     reach_unrecorded: false,
                     whole_ref: None,
+                    listed_indels: Vec::new(),
                 }
             })
         })
@@ -1183,6 +1211,7 @@ fn prepare_single_variant(
         reach_rows: Vec::new(),
         reach_unrecorded: false,
         whole_ref: None,
+        listed_indels: Vec::new(),
     };
     prepared.event_ref = event_core_ref(reader, &prepared, tally);
     prepared.whole_ref = whole_read_ref(reader, &prepared);
