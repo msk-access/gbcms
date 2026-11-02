@@ -28,6 +28,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   no read call moves (nor in a sweep of 12,078 synthetic read pairs); the change is in the score of a
   read carrying such a change on a candidate (four points lower on X's haplotype with a third base at
   the masked base, now equal).
+- A read lies on one copy of that span for every candidate (RJ-23). A state's best path took
+  whichever copy masked its own mismatches, so a read ending in the insert, long before a listed
+  deletion, took the deletion's copy for the ALT (masking a base where the read has a third base)
+  and the other copy for a listed sibling of the ALT's length that differs at a masked offset: the
+  ALT scored 0, the sibling -4, and the read was ALT from a deletion it cannot carry. A read now lies
+  on the changes it carries and those it spans, the same for every candidate; the candidates whose
+  best path took another copy are scored again. A read carrying the deletion is told the ALT from the
+  sibling at the base its copy leaves unmasked, ALT.
 - The default rules path is unchanged.
 
 ### Changed — the sequence judge reads an insertion of 50 bp or more over equal windows from its anchor (#264)

@@ -1878,9 +1878,10 @@ mod tests {
         use haplotypes::LongInsRule::ReadOn;
         // A path scores a masked base nothing, so the alignment read off it for the call is
         // the score of its path: the same haplotype with the same masks. That includes a path
-        // that ends before the change it was laid for (the deletion lies past the read's end
-        // in the copy of the graph that masks as if the read carried it): the haplotype takes
-        // the masks of the copy, not of the changes the path took.
+        // of a state that does not take the change its read lies on (a read carrying the
+        // deletion, scored on X's graph; a read ending before the deletion, scored on the
+        // masks without it): the haplotype takes the masks of the copy the read lies on, not
+        // of the changes this state's path took.
         let (c, x, k, pairs) = pairs_at_the_masked_base_past_a_listed_deletion();
         // reads of the haplotype carrying the deletion that end well before it, their last base
         // a third base (no allele's)
@@ -1903,6 +1904,97 @@ mod tests {
                 }
             }
         }
+    }
+
+    /// The review's shape (2026-11-02): X inserts 60 bases of new sequence after the anchor at
+    /// 299 (a run of none: the equal windows hold the anchor and one base), the guard masks 340
+    /// (41 bases from the anchor, so inserted base 40 on X's haplotype and on a sibling's), a
+    /// listed sibling `y` equals X but at inserted base 40, and a 2 bp deletion `k` is listed
+    /// after 310 (a context): through it the masked base is two bases nearer, at inserted base 38.
+    /// The contig, X, the sibling, the deletion, and X's haplotype.
+    fn new_insertion_with_a_sibling_and_a_listed_deletion() -> (Vec<u8>, Row, Row, Row, Vec<u8>) {
+        let c = random_seq(700, 2645);
+        let mut ins = random_seq(60, 2646);
+        while ins[0] == c[300] || ins[59] == c[299] {
+            ins.rotate_left(1);
+        }
+        let x = Row::new(299, &c[299..300], &[&c[299..300], &ins[..]].concat());
+        let mut alt_y = x.alt_al.clone();
+        alt_y[41] = *b"ACGT".iter().find(|&&b| b != alt_y[41]).unwrap(); // inserted base 40
+        let y = Row::new(299, &c[299..300], &alt_y);
+        let k = Row::new(310, &c[310..313], &c[310..311]);
+        let hx = haplotype(&c, &[&x]);
+        (c, x, y, k, hx)
+    }
+
+    #[test]
+    fn a_read_that_never_reaches_a_listed_change_is_scored_on_the_masks_without_it() {
+        use haplotypes::LongInsRule::ReadOn;
+        // The graph holds a copy of the span the masks lie over per set of listed changes
+        // that can lie together, each copy masked by the columns of its own set, and a state's
+        // best path took whichever copy masked its own mismatches. An X read ending inside the
+        // insert, long before the deletion listed past it, took the deletion's copy for X
+        // (masking inserted base 38, where it has a third base) and the other copy for the
+        // sibling (masking inserted base 40): X scored 0, the sibling -4, and the read was
+        // ALT from a deletion it cannot carry. A read lies on the copy of the changes it
+        // carries or spans, the same for every state: this one reaches none, so X and the
+        // sibling both pay for the third base and are told apart by no base (inserted base 40
+        // is masked), partial evidence of the sibling.
+        let (c, x, y, k, hx) = new_insertion_with_a_sibling_and_a_listed_deletion();
+        let third = |at: usize| *b"ACGT".iter().find(|&&b| b != hx[at]).unwrap();
+        // X's haplotype from 290: the anchor, then inserted base i at 300 + i; a third base at 338
+        let early = |len: usize, cig: &str| {
+            let mut s = hx[290..290 + len].to_vec();
+            s[338 - 290] = third(338);
+            read_q(&s, vec![Q; len], 290, cig)
+        };
+        let reads = [
+            early(55, "55M").named(b"written_through"),
+            early(55, "10M45S").named(b"clipped"),
+            early(55, "10M45I").named(b"inserted"),
+            early(60, "10M50I").named(b"inserted_longer"),
+        ];
+        let candidates = Candidates { listed: vec![y.clone(), k.clone()], masked: vec![340], ..Candidates::default() };
+        let s = haplotypes::Site::build_ins(x.clone(), &candidates, (0, c.to_vec()), &reads, ReadOn).unwrap();
+        for r in &reads {
+            let v = judge(&s, r, MIN_BQ, false);
+            assert_eq!(v.call, Call::Other, "{}: scores X, REF and the sibling {:?}", String::from_utf8_lossy(&r.name), v.best);
+            assert_eq!((v.best[0], v.best[2]), (Some(-4), Some(-4)), "{}: X and the sibling both pay for the third base", String::from_utf8_lossy(&r.name));
+        }
+    }
+
+    #[test]
+    fn a_read_that_carries_a_listed_change_is_told_the_alleles_apart_on_its_own_masks() {
+        use haplotypes::LongInsRule::ReadOn;
+        // The same shape, reads of X's haplotype that reach the deletion. One carrying it has
+        // inserted base 38 masked (the guard's base is two nearer the anchor through the
+        // deletion) and base 40 not: it is told X from the sibling there, ALT, with or without
+        // a third base at 38. A read as long that does not carry it has base 40 masked and
+        // tells them apart by no base, partial evidence, as the shorter reads do.
+        let (c, x, y, k, hx) = new_insertion_with_a_sibling_and_a_listed_deletion();
+        let hxk = haplotype(&c, &[&x, &k]);
+        let third = |hap: &[u8], at: usize| *b"ACGT".iter().find(|&&b| b != hap[at]).unwrap();
+        let carrier = |third_at_38: bool, cig: &str| {
+            let mut s = hxk[290..400].to_vec();
+            if third_at_38 {
+                s[338 - 290] = third(&hxk, 338);
+            }
+            read_q(&s, vec![Q; 110], 290, cig)
+        };
+        let plain = {
+            let s = hx[290..390].to_vec();
+            read_q(&s, vec![Q; 100], 290, "10M60I11M2M17M")
+        };
+        let reads = [
+            carrier(false, "10M60I11M2D29M").named(b"carrier_written"),
+            carrier(true, "10M60I11M2D29M").named(b"carrier_third_at_38"),
+            carrier(false, "110M").named(b"carrier_written_through"),
+            plain.named(b"not_carrying"),
+        ];
+        let candidates = Candidates { listed: vec![y.clone(), k.clone()], masked: vec![340], ..Candidates::default() };
+        let s = haplotypes::Site::build_ins(x.clone(), &candidates, (0, c.to_vec()), &reads, ReadOn).unwrap();
+        let got: Vec<Call> = reads.iter().map(|r| judge(&s, r, MIN_BQ, false).call).collect();
+        assert_eq!(got, vec![Call::Alt, Call::Alt, Call::Alt, Call::Other]);
     }
 
     #[test]

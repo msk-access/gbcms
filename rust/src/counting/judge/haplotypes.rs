@@ -517,6 +517,10 @@ pub(crate) struct Site {
     /// guard's masks are laid on every candidate haplotype by offset from the anchor
     /// ([`Site::lay_mirror`]). None elsewhere.
     mirror: Option<MirrorLaying>,
+    /// Whether any state's graph holds copies of the masks' zone (by the listed changes that
+    /// can move a mask's offset): a read is then scored on one copy for every state
+    /// ([`Site::taken_changes`]).
+    by_copy: bool,
     /// At a long insertion, whether no base within the haplotypes tells the equal windows
     /// apart once the guard's masks are read (every read is depth only).
     untold: bool,
@@ -2848,6 +2852,7 @@ impl Site {
             max_shift,
             masked,
             mirror: None,
+            by_copy: false,
             untold: false,
             long_ins,
             site_window,
@@ -2890,6 +2895,7 @@ impl Site {
             site.lay_mirror(l, &rest);
         }
         site.graphs = site.state_graphs(&rest);
+        site.by_copy = site.graphs.iter().any(|g| g.graph.has_copies());
         site.drop_spelled_states(&rest);
         site.drop_graph_spellings(&found_states, reads, rule);
         site.link_layouts();
@@ -2952,9 +2958,10 @@ impl Site {
     /// other rows as bubbles. Where the guard's masks are laid by offset from the anchor
     /// ([`Site::lay_mirror`]), the length changes among `optional` that can move a mask's
     /// offset are laid out so too, over the zone where a mask can lie: each copy takes the
-    /// masks by the columns of its own set; a segment of a copy says which
+    /// masks by the columns of its own set (the copy of no change too, so a read can be held to
+    /// the changes it carries: [`graph::GraphRead::lies_in`]); a segment of a copy says which
     /// ([`graph::Segment::copy`]), so a path's haplotype is laid the masks of the copy it ran
-    /// through, as a path that ends before the change it was laid for still ran through it.
+    /// through, the same for every state a read is scored on.
     pub(crate) fn graph_of(&self, forced: Option<usize>, optional: &[usize]) -> Graph {
         let mut all: Vec<usize> = forced.into_iter().chain(optional.iter().copied()).collect();
         all.sort_by_key(|&r| (self.spans[r], r));
@@ -3071,6 +3078,9 @@ impl Site {
                 join(&mut gb, &mut prev, entry, exit);
             }
             let zone_rows: Vec<usize> = all.iter().copied().filter(|&r| inside(r, (*lo, *hi))).collect();
+            // a zone holding changes that move a mask's offset is laid out by copy, each one
+            // tagged (the copy of no change too), so a read can be held to one of them
+            let by_copy = self.mirror.as_ref().is_some_and(|m| zone_rows.iter().any(|r| m.shifters.contains(r)));
             let (mut entries, mut exits) = (Vec::new(), Vec::new());
             for set in alts {
                 let mut f: Vec<usize> = set.clone();
@@ -3086,7 +3096,7 @@ impl Site {
                     .collect();
                 // the copy's masks are laid by the columns of the changes it takes
                 let shifters: Vec<usize> = self.mirror.as_ref().map_or_else(Vec::new, |m| f.iter().copied().filter(|r| m.shifters.contains(r)).collect());
-                let copy = if shifters.is_empty() { 0 } else { gb.copy({ let mut c = shifters; c.sort_unstable(); c }) };
+                let copy = if by_copy { gb.copy({ let mut c = shifters; c.sort_unstable(); c }) } else { 0 };
                 let (entry, exit) = self.region(&mut gb, (*lo, *hi), &f, &o, forced, copy);
                 entries.extend(entry);
                 exits.extend(exit);
@@ -3228,6 +3238,24 @@ impl Site {
         (starting.remove(&a).unwrap_or_default(), ending.remove(&b).unwrap_or_default())
     }
 
+    /// Whether a read is scored on one copy of the masks' zone for every state
+    /// ([`Site::taken_changes`]).
+    pub(crate) fn scores_by_copy(&self) -> bool {
+        self.by_copy
+    }
+
+    /// Of `rows` (a path's), the listed changes that move the guard's masks by their length
+    /// ([`MirrorLaying::shifters`]): the ones whose copy of the zone a read lies on.
+    pub(crate) fn taken_changes(&self, rows: &[usize]) -> Vec<usize> {
+        self.mirror.as_ref().map_or_else(Vec::new, |m| rows.iter().copied().filter(|r| m.shifters.contains(r)).collect())
+    }
+
+    /// The listed changes that move the guard's masks and lie inside `reach`, the stretch of
+    /// the window a path spans: those a read on it passes, carrying them or not.
+    pub(crate) fn spanned_changes(&self, reach: (i64, i64)) -> Vec<usize> {
+        self.mirror.as_ref().map_or_else(Vec::new, |m| m.shifters.iter().copied().filter(|&r| reach.0 <= self.spans[r].0 && self.spans[r].1 <= reach.1).collect())
+    }
+
     /// The haplotype the graph of `state` spells along a path taking `rows`: the state's
     /// row with them.
     pub(crate) fn hap_on_path(&self, state: usize, rows: &[usize], copy: u32) -> Hap {
@@ -3250,7 +3278,7 @@ impl Site {
         let first = read.refpos.iter().copied().min().unwrap_or(read.ref_start).min(read.ref_start);
         let end = read.refpos.iter().copied().max().unwrap_or(read.ref_end).max(read.ref_end);
         let span = (first - self.start, end - self.start);
-        let mut gr = GraphRead { seq: &read.seq, rp, span, free_shift: self.free_shift(read), full: self.band_full, long: true };
+        let mut gr = GraphRead { seq: &read.seq, rp, span, free_shift: self.free_shift(read), full: self.band_full, long: true, lies_in: None };
         // where any state's graph holds a long insertion past the read's band, every state runs
         // the full programme: one exactness for the read's call, the found-allele check
         // and `needed_by` alike
