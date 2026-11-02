@@ -291,8 +291,21 @@ pub(crate) fn hidden_alleles(v: &Variant, siblings: &[Variant], reach: usize) ->
         if d < n {
             continue; // told inside the windows
         }
+        let change = lo as i64 - from as i64;
+        if d + PAST > reach {
+            // Past what the longest read can spell: nothing is held for it, and only its length
+            // change and where it first differs are used (the diagnostic names the nearest).
+            // Its bases are kept only up to the read's end, and only where the listed-neighbour
+            // test reads them (`spells_neighbour`: its first difference [`K`] or more before that
+            // end); its row waits until a listed row is found to be it. Building every shift's
+            // bases and row at once held memory growing with the square of the deletion (a long
+            // deletion beside a long simple repeat).
+            let bases = if d + K < reach { from_shift(from, reach) } else { Vec::new() };
+            out.push(Hidden { change, bases, first_diff: d, listed: false, row: (*ws + lo as i64 - 1, Vec::new(), Vec::new()), spelled: 0, told: 0, held: 0 });
+            continue;
+        }
         let other = from_shift(from, d + HIDDEN_REACH);
-        out.push(Hidden { change: lo as i64 - from as i64, bases: other, first_diff: d, listed: false, row: row_at(&w, *ws, lo, from), spelled: 0, told: 0, held: 0 });
+        out.push(Hidden { change, bases: other, first_diff: d, listed: false, row: row_at(&w, *ws, lo, from), spelled: 0, told: 0, held: 0 });
     }
     // The listed rows: each pure indel's haplotype over the same bases, read from the
     // windows' first base where it keeps the bases before them.
@@ -338,10 +351,26 @@ pub(crate) fn hidden_alleles(v: &Variant, siblings: &[Variant], reach: usize) ->
         let Some(other) = hap.get(g0..) else { continue };
         let Some(d) = first_diff(other).filter(|&d| d >= n) else { continue };
         let change = a.len() as i64 - r.len() as i64;
-        let mut bases = other.to_vec();
-        bases.truncate(d + HIDDEN_REACH);
-        match out.iter_mut().find(|h| h.bases == bases || (h.change == change && h.first_diff == d)) {
-            Some(h) => h.listed = true,
+        let bases = other[..(d + HIDDEN_REACH).min(other.len())].to_vec();
+        // a generated allele past reach (kept small, above) is the haplotype when it first differs
+        // here and its bases over the same stretch are
+        let from_of = |h: &Hidden| usize::try_from(lo as i64 - h.change).ok();
+        let past_reach = |h: &Hidden| !h.listed && h.need() > reach;
+        let same = |h: &Hidden| {
+            h.bases == bases
+                || (h.change == change && h.first_diff == d)
+                || (past_reach(h) && h.first_diff == d && from_of(h).is_some_and(|from| from_shift(from, d + HIDDEN_REACH) == bases))
+        };
+        match out.iter_mut().find(|h| same(h)) {
+            Some(h) => {
+                if past_reach(h) {
+                    if let Some(from) = from_of(h) {
+                        h.bases = from_shift(from, h.first_diff + HIDDEN_REACH);
+                        h.row = row_at(&w, *ws, lo, from);
+                    }
+                }
+                h.listed = true;
+            }
             None => out.push(Hidden { change, bases, first_diff: d, listed: true, row: (sib.pos, r, a), spelled: 0, told: 0, held: 0 }),
         }
     }
@@ -1606,6 +1635,67 @@ mod tests {
         assert!(!t(Some(false), false, false).disagrees(), "the allele spelled, no mate tells the ALT");
         assert!(!t(Some(true), false, true).disagrees(), "the ALT told, no mate spells the allele");
         assert!(!t(None, false, true).disagrees(), "a mate telling the ALT alone");
+    }
+
+    /// A deletion of `len` bases after the anchor at 99, then a simple repeat (AC)n of `len`
+    /// bases and a random flank: every shift by an even number of bases into the repeat reads
+    /// like the ALT up to the repeat's end.
+    fn before_a_simple_repeat(len: usize) -> (String, Variant) {
+        let (mut left, deleted) = (cgt(100, 3).into_bytes(), cgt(len, 5));
+        if left[99] == deleted.as_bytes()[len - 1] {
+            left[99] = if deleted.as_bytes()[len - 1] == b'C' { b'G' } else { b'C' };
+        }
+        let ctx = format!("{}{}{}{}", String::from_utf8(left).unwrap(), deleted, "AC".repeat(len / 2), cgt(400, 7));
+        let v = del(&ctx, 99, len);
+        (ctx, v)
+    }
+
+    #[test]
+    fn an_allele_past_a_reads_reach_keeps_a_small_record() {
+        // Every even shift into a long repeat is another allele reading like the ALT to the
+        // repeat's end: about len/2 of them, each first differing thousands of bases on, far past
+        // any read. Building each one's bases and row held memory growing with the square of the
+        // deletion (a 24-kb deletion held some 580 MB); only the alleles a read could spell, and
+        // the few whose bases the listed-neighbour test reads up to the read's end, keep any.
+        let reach = 151;
+        for (len, check) in [(2_000usize, true), (24_000, false)] {
+            let (ctx, v) = before_a_simple_repeat(len);
+            let j = junction(&v).unwrap();
+            let started = std::time::Instant::now();
+            let (alt, hidden) = hidden_alleles(&v, &[], reach).unwrap();
+            let kept: usize = hidden.iter().map(|h| h.bases.len() + h.row.1.len() + h.row.2.len()).sum();
+            // the alleles a read could spell keep a row of about the deletion's length (at most
+            // one for each base the read holds); none of the others keeps anything
+            let bound = reach * 2 * len + 1_000_000;
+            assert!(kept < bound, "{len}: {kept} bytes kept for {} alleles (bound {bound})", hidden.len());
+            assert!(started.elapsed().as_secs() < 30, "{len}: {:?}", started.elapsed());
+            assert!(hidden.len() >= (len - 4) / 2, "{len}: {} alleles", hidden.len());
+            if !check {
+                continue;
+            }
+            // each against a plain reading of the reference: where it first differs, its length
+            // change, and, where a read could spell it, its bases and row
+            let (b, lo) = (ctx.as_bytes(), j.lo as usize);
+            for h in &hidden {
+                let from = (lo as i64 - h.change) as usize;
+                let agree = (0..).take_while(|&i| lo + len + i < b.len() && from + i < b.len() && b[lo + len + i] == b[from + i]).count();
+                assert_eq!(h.first_diff, K + agree, "{:+}", h.change);
+                if h.need() <= reach {
+                    let want: Vec<u8> = b[lo - K..lo].iter().chain(&b[from..]).take(h.first_diff + HIDDEN_REACH).copied().collect();
+                    assert_eq!(h.bases, want, "{:+}", h.change);
+                    assert_eq!(h.row, (lo as i64 - 1, b[lo - 1..from].to_vec(), vec![b[lo - 1]]), "{:+}", h.change);
+                }
+            }
+            assert!(alt.len() > len, "the ALT is held as far as the reference is");
+            // a listed row that is one of them (the same haplotype) brings its bases and row back
+            let (_, hidden) = hidden_alleles(&v, &[del(&ctx, 99, len + 2)], reach).unwrap();
+            let h = hidden.iter().find(|h| h.change == -(len as i64 + 2)).expect("the listed count");
+            let from = lo + len + 2;
+            let want: Vec<u8> = b[lo - K..lo].iter().chain(&b[from..]).take(h.first_diff + HIDDEN_REACH).copied().collect();
+            assert!(h.listed && !h.unresolved());
+            assert_eq!((&h.bases, &h.row), (&want, &(lo as i64 - 1, b[lo - 1..from].to_vec(), vec![b[lo - 1]])));
+            assert_eq!(hidden.len(), hidden.iter().filter(|x| !x.listed).count() + 1, "merged, not added");
+        }
     }
 
     #[test]

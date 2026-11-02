@@ -998,3 +998,28 @@ def test_a_short_mate_that_tells_the_given_count_is_a_disagreement(tmp_path, jud
     )
     assert (rd, ad) == (6, 15)
     assert partial == (3 if judge == "rules" else 0)
+
+
+@pytest.mark.parametrize("judge", JUDGES)
+@pytest.mark.parametrize("deleted, named", [(1500, "-1502:1526/251"), (3000, "-3002:3026/251")])
+def test_a_long_deletion_before_a_simple_repeat_counts_as_it_did(tmp_path, judge, deleted, named):
+    """A deletion of 1.5 or 3 kb, then a simple repeat (AC)n as long as the deletion. Every shift
+    by an even number of bases into the repeat is another allele that reads like the given one to
+    the repeat's end, far past any read: nothing is held, the carriers are ALT, and the nearest
+    count (a shift of 2) is named with the bases a read would need. These are the counts and the
+    flag the build before gave; the alleles past a read's reach now keep only their length change
+    and first difference, where each built its bases and row, so memory grew with the square of
+    the deletion (a 24-kb deletion held some 580 MB)."""
+    rng = random.Random(404)
+    left = "".join(rng.choice("ACGT") for _ in range(400))
+    right = "".join(rng.choice("ACGT") for _ in range(400))
+    cut = "C" + "".join(rng.choice("CGT") for _ in range(deleted - 1))
+    left = left[:-1] + ("A" if cut[-1] != "A" else "G")
+    ref = left + cut + "AC" * (deleted // 2) + "G" + right
+    a = len(left)
+    one = ref[:a] + ref[a + deleted :]
+    row = (a - 1, ref[a - 1 : a + deleted], ref[a - 1])
+    reads = _reads(a, "REF", ref, LONG, size=0)
+    reads += _reads(a, "one", one, LONG, size=deleted)
+    reads += _reads(a, "one", one, HOLDING, size=deleted, k=4, tag="h")
+    assert _count(tmp_path, ref, [row], reads, judge) == [((6, 10, 0, 16), named)]
