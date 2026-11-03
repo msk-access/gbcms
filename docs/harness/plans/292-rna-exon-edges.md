@@ -1,7 +1,7 @@
 # 292: reads at exon edges — does a splice lower a base's quality?
 
 Status: measured; reviewed (Fable, "sound with conditions"); conditions met, for approval 2026-11-02
-Rounds: 1 of 2 · New conditions: 0 of 0 (option B removes one) · HPC batches: 4 of 6 (one staged, one final build)
+Rounds: 1 of 2 · New conditions: 0 of 0 (option B removes one) · HPC batches: 5 of 6 (one final build left)
 
 ## 1. The class
 
@@ -57,8 +57,8 @@ Numbers: no GTF, BAQ on, bar 20 unless said; with a GTF every option already cou
 | **A. Keep the penalty** (`penalty`) | A splice lowers the five read bases each side by 20; the exception lifts it at annotated edges with a GTF. | passes | fails in effect: strength is the quality bin and the bar | 0 (keeps 3) | its target class: the ALT sits in long anchors |
 | **B. No junction penalty on any path** (`nopenalty`; `samtools` differs by 7 ALT, 1,476 REF reads) | A splice never lowers a base's quality; the read's indels keep the indel penalty. | passes | passes | −1 | a short piece STAR writes at an annotated acceptor when the molecule spliced at a novel one 2-6 bases on (RJ-3's class) |
 | **C. Spare the exact-carrier rule only** (`spare`) | That rule judges without the penalty; every other path keeps it. | passes | fails: two gates for one base; 0 moves on every SNV row | +1 | SNVs and every read that rule does not judge |
-| *Pending:* bar 10 and 0 (local synthetic sweep) | numbers to come | | | | |
-| *Pending:* indel and delins rows at exon edges, FORTE, A and B with the DNA check (HPC) | numbers to come | | | | |
+| **Bar 10 and 0** (synthetic sweep, 2 seeds; no GTF) | Bar 10: A and B are near (het VAF error 0.0474 and 0.0467; novel-acceptor ALT 2.1% and 2.2%). Bar 0: B equals BAQ off, row for row; A differs at 8 of 1,072 rows (12 of 14,667 ALT reads). | – | – | – | Clean-row ALT at bar 0: 104 (A), 105 (B), from the evidence floor of 0 (`carrier.rs:1170`), not the penalty. B's extra read is one Q2 or Q11 base |
+| **Indel and delins rows at exon edges** (58 FORTE slices; 41,112 rows in reach; no GTF) | B against A in reach, ALT and REF reads: bar 20, −3 and +31,014; bar 30, +1,432 (+3.3%) and +1.89M (+4.5%); bar 10, +179 and +38,751; bar 0, +259 and −220. | – | – | – | Clean rows that gain ALT under B: 1, 5, 45, 96 (bars 20, 30, 10, 0); with a GTF, at most 1. No germline indel in the DNA check |
 
 **B against A, in reach** (the control band's reads move by under 0.1%):
 - 136,257 of 163,882 rows move: ALT +14,269 reads, REF +5.70M (+1.9%). Clean rows (87,441): ALT 0
@@ -78,6 +78,23 @@ Numbers: no GTF, BAQ on, bar 20 unless said; with a GTF every option already cou
 - **(c) and (d):** (c) loses 8,515 ALT reads at hets against 899 gained and misses 128 of the 133;
   (d) at N = 5 closes them (1 of 5,965) by masking 1.98M REF reads A keeps (`m292/syn/score_p292a.txt`,
   `p292a/agg/moves_by_class.tsv`).
+
+**Indel and delins rows, B against A, in reach** (85,135 rows, 88% at annotated edges; in reach: clean
+37,297, low 3,748, het 67):
+- **Bar 20.** 3,699 of 41,112 rows move; ALT up 56, down 59. Clean rows hold ALT under A too (80 reads, 46
+  rows); under B 76 reads, 43 rows: one row gains 2 reads, four lose. Low rows: ALT share 0.124% under
+  both rules, the control 0.108%. Hets: ALT 3,167 to 3,158; VAF gap to the unspliced reads 0.0730 (A),
+  0.0728 (B).
+- **Bar 30.** 23,065 rows move. The control moves too (REF +0.9%; the SNV control, under 0.1%): cause not
+  tested. Delins go the other way: ALT 280 to 173.
+- **Bars 10 and 0.** The clean-row gains are insertions (42 of 45, 96 of 96); the control gains 5 rows. At
+  bar 0 the clean rows hold 146,917 ALT reads under A, 99.9% at donors: the synthetic bar-0 shape, not the
+  penalty. The oracle counts Q20 bases only.
+- **DNA check.** 196 rows (34 slices) with ALT in spliced reads only: 173 DNA-absent, 23 unknown, 0
+  germline, 0 somatic. At the 50 DNA-absent rows in reach, A and B show 235 ALT reads at bar 20 (A hides
+  0); at bar 30 A hides 7 of 234 (3.0%).
+- **Tasks.** None missing: 58 of 58 complete at 4 bars, 0 failed (tasks 14 and 30 timed out; one rerun).
+  18 slices have no matched DNA; 6 of the 40 have no row to ask about.
 
 **Worked example** (per-row means from the DNA check; no position): a germline het SNV at an acceptor's
 third base (S).
@@ -115,19 +132,21 @@ at N = 5 it masks 1.98M REF reads A keeps, so it needs its own sweep.
 - **Data and truth:** RNA only: 58 FORTE STAR slices at bar 20 and 30 (40 with matched IMPACT DNA); the
   synthetic set (overhang 3 and 5; true and shifted GTF; the fuzz is stratum f). DNA arms are unchanged
   by construction: one DNA identity batch is owed before merge.
-- **Running or staged (placeholders):** the bar at 10 and 0 (local synthetic sweep); indel and delins
-  rows at exon edges on the FORTE slices, A and B with the DNA check (HPC).
+- **Done 2026-11-03:** the bar at 10 and 0 (local synthetic sweep); indel and delins rows at exon edges
+  on the FORTE slices, A and B with the DNA check (HPC).
 - **Still missing:** other RNA aligners (HISAT2; STAR at FORTE's overhang 1 in the synthetic set; long
-  reads); the DNA check for (c) and (d); a second RNA cohort; strandedness at one setting.
+  reads); the DNA check for (c) and (d); a second RNA cohort; strandedness at one setting; a germline
+  indel for the DNA check.
 - **Cannot see:** whether a short-anchor ALT read at a DNA-absent row is a novel-acceptor piece or a
-  pseudogene read. To build: #385's shifted-junction census; REF alternative acceptors at 5-30% usage
-  in the synthetic set.
+  pseudogene read; whether the ALT reads B adds at clean insertion rows (bars 10, 0) are base errors.
+  To build: #385's shifted-junction census; REF alternative acceptors at 5-30% usage in the synthetic
+  set.
 
 ## 5. Budget and stop rule
 
 Two review rounds (1 used). New conditions: 0; a fix that adds a junction-keyed mask or a path special
-case stops the work and brings the class question back with one option. Builds: 1. HPC: the staged
-indel batch, 1 final-build batch, 1 rerun.
+case stops the work and brings the class question back with one option. Builds: 1. HPC: the indel
+batch (done; its one rerun is used), 1 final-build batch.
 
 ## 6. Work and models
 
@@ -141,7 +160,14 @@ indel batch, 1 final-build batch, 1 rerun.
 
 2026-10-17 measure decided; 10-30 four rules built (e45a3bb3), the partial-span rule committed
 (b247db31), (c) and (d) dropped; 10-31 arm aggregated (58 of 58); 11-02 DNA check aggregated (40
-pairs), page drafted, reviewed (round 1), revised. HPC: 2 builds, 4 batches, 2 aggregations, 2 task
-reruns (jobs 5430389/90, 5438438/39, 5441284/99, 5513308/11, 5561674, 6012647). Agents: Opus
-(prototypes, rule, scorers), Fable (page, review); tokens in their usage reports. Open: approval; the
-two pending measurements; the build; #385 and the insertion gap behind it.
+pairs), page drafted, reviewed (round 1), revised; 11-03 bar-10 and 0 sweep recomputed, indel arm and
+DNA check aggregated (58 of 58 tasks; 40 DNA pairs), both rows filled. HPC before 11-03: 2 builds, 4
+batches, 2 aggregations, 2 task reruns (jobs 5430389/90, 5438438/39, 5441284/99, 5513308/11, 5561674,
+6012647). The indel batch added 1 batch, 2 aggregations, 1 rerun (jobs 6074312/406/413/447; tasks 14 and
+30: 6158990 with 6159043/61/91). Agents: Opus (prototypes, rule, scorers), Fable (page, review), Sonnet
+(11-03 rows); tokens in their usage reports.
+
+**Decided 2026-11-03 (operator): B, no junction penalty on any path.** Next: the build (this page's
+builder list; red-first; register and docs); before the PR, explain why delins ALT falls under B at
+bar 30 (280 to 173). Ticketed: the bar-0 evidence floor (#408), RJ-3's short anchors at a novel
+acceptor (#409). Still open: #385 and the insertion gap behind it.
