@@ -124,6 +124,22 @@ thread_local! {
     static CACHED: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
 }
 
+/// Charges `add` bytes a site keeps beside the row caches (the graph sets it lays per set of
+/// changes a read spans, [`haplotypes::Site::graphs_over`]) to the thread's budget: taken where
+/// they fit beside the work space and the caches alive, and refused where they do not.
+fn charge_kept(add: usize) -> bool {
+    if thread_budget().is_some_and(|budget| CACHED.with(std::cell::Cell::get) + work_bytes() + add > budget) {
+        return false;
+    }
+    CACHED.with(|c| c.set(c.get() + add));
+    true
+}
+
+/// Gives back `add` bytes [`charge_kept`] took, where the site that kept them is dropped.
+fn release_kept(add: usize) {
+    CACHED.with(|c| c.set(c.get().saturating_sub(add)));
+}
+
 /// The bytes a hash table's buckets take: its capacity's entries, each with its control byte.
 fn table_bytes<K, V, S>(m: &HashMap<K, V, S>) -> usize {
     m.capacity() * (std::mem::size_of::<(K, V)>() + 1)
@@ -2031,6 +2047,111 @@ mod tests {
         let s = haplotypes::Site::build_ins(x.clone(), &candidates, (0, c.to_vec()), &reads, ReadOn).unwrap();
         let got: Vec<Call> = reads.iter().map(|r| judge(&s, r, MIN_BQ, false).call).collect();
         assert_eq!(got, vec![Call::Alt, Call::Alt, Call::Alt, Call::Other]);
+    }
+
+    /// `new_insertion_with_a_sibling_and_a_listed_deletion`'s shape with a second 2 bp deletion
+    /// `k2` listed after 320, and reads of X's haplotype that carry neither, either or both: the
+    /// reads that span a listed change span one, the other or both.
+    fn two_listed_deletions_and_their_reads() -> (Vec<u8>, Row, Vec<Row>, Vec<ReadView>) {
+        let (c, x, y, k, hx) = new_insertion_with_a_sibling_and_a_listed_deletion();
+        let k2 = Row::new(320, &c[320..323], &c[320..321]);
+        let on = |hap: &[u8], cigar: &str, len: usize, name: &[u8]| read_q(&hap[290..290 + len], vec![Q; len], 290, cigar).named(name);
+        let reads = vec![
+            on(&haplotype(&c, &[&x, &k]), "10M60I11M2D29M", 110, b"first"),
+            on(&haplotype(&c, &[&x, &k2]), "10M60I21M2D19M", 110, b"second"),
+            on(&haplotype(&c, &[&x, &k, &k2]), "10M60I11M2D8M2D21M", 110, b"both"),
+            on(&hx, "10M60I30M", 100, b"neither"),
+            on(&haplotype(&c, &[&k]), "11M2D99M", 110, b"ref_first"),
+            on(&haplotype(&c, &[&k2]), "21M2D89M", 110, b"ref_second"),
+            // reads that end between the deletions' places, or start after the first's
+            on(&haplotype(&c, &[&x, &k]), "10M60I11M2D4M", 85, b"ends_after_first"),
+            read_q(&haplotype(&c, &[&k2])[314..360], vec![Q; 46], 314, "7M2D39M").named(b"starts_after_first"),
+        ];
+        (c, x, vec![y, k, k2], reads)
+    }
+
+    #[test]
+    fn the_graph_sets_a_site_keeps_are_charged_to_the_budget_once_and_stop_when_it_is_spent() {
+        use haplotypes::LongInsRule::ReadOn;
+        // A read that spans listed changes is scored again on graphs laid with copies of the
+        // masks' zone for those changes only; a site keeps up to 32 such sets (one per set of
+        // changes) so a read alike does not lay them again. They are caches, so the thread's
+        // budget bounds them: each set is charged once when kept, and once the budget is spent
+        // no more are kept and a read's set is laid for it alone. The budget decides only what
+        // is cached: every read's call and scores are the same with no limit, with room for
+        // one set, and with none.
+        use super::BUDGET_FOR_TESTS;
+        let (c, x, listed, reads) = two_listed_deletions_and_their_reads();
+        let candidates = Candidates { listed, masked: vec![340], ..Candidates::default() };
+        let build = || {
+            let s = haplotypes::Site::build_ins(x.clone(), &candidates, (0, c.to_vec()), &reads, ReadOn).unwrap();
+            assert!(s.scores_by_copy(), "the site lays its masks by copy");
+            s
+        };
+        let verdicts = |s: &haplotypes::Site, from: &[ReadView]| -> Vec<_> {
+            from.iter()
+                .map(|r| {
+                    let v = judge(s, r, MIN_BQ, false);
+                    (v.call, v.best)
+                })
+                .collect()
+        };
+        let limit = |budget: Option<usize>| BUDGET_FOR_TESTS.with(|b| b.set(Some(budget)));
+        let cached = || CACHED.with(std::cell::Cell::get);
+        // no limit: the sets of the three spans the reads show ([first], [second], both) are kept
+        limit(None);
+        let s = build();
+        let uncapped = verdicts(&s, &reads);
+        let (sets, bytes) = s.kept_graphs();
+        assert!(sets == 3 && bytes > 0, "no limit: {sets} sets, {bytes} bytes");
+        assert_eq!(cached(), bytes, "the thread's budget counts what the site keeps");
+        assert_eq!(verdicts(&s, &reads), uncapped, "a second pass over the reads");
+        assert_eq!(s.kept_graphs(), (sets, bytes), "a second pass adds no set");
+        drop(s);
+        assert_eq!(cached(), 0, "the site gives its bytes back when it is dropped");
+        // no room: no set is kept, and every read's call and scores are the same
+        limit(Some(0));
+        let s = build();
+        assert_eq!(verdicts(&s, &reads), uncapped, "no room");
+        assert_eq!((s.kept_graphs(), cached()), ((0, 0), 0), "no room: nothing is kept or charged");
+        drop(s);
+        // room for one set: one is kept while there is room; once the budget is spent no more
+        // are kept, and the sets kept are not charged again
+        limit(None);
+        let s = build();
+        verdicts(&s, &reads[6..7]);
+        let (one, one_bytes) = s.kept_graphs();
+        assert!(one == 1 && one_bytes < bytes, "one set kept: {one} sets, {one_bytes} bytes");
+        limit(Some(0));
+        assert_eq!(verdicts(&s, &reads), uncapped, "budget spent");
+        assert_eq!(verdicts(&s, &reads), uncapped, "budget spent, a second pass");
+        assert_eq!((s.kept_graphs(), cached()), ((one, one_bytes), one_bytes), "budget spent: the sets kept stop growing");
+        drop(s);
+        assert_eq!(cached(), 0);
+        BUDGET_FOR_TESTS.with(|b| b.set(None));
+    }
+
+    #[test]
+    fn a_graph_set_the_site_does_not_keep_is_counted_with_the_read_that_holds_it() {
+        use haplotypes::LongInsRule::ReadOn;
+        use super::BUDGET_FOR_TESTS;
+        // A read's programmes (`Scored`) hold the graphs of its second scoring. Where the site
+        // keeps them they are counted once, with the site; where it does not (no room) they are
+        // the read's own and its programmes' bytes include them, so a row's cache that keeps the
+        // read's programmes is charged for them.
+        let (c, x, listed, reads) = two_listed_deletions_and_their_reads();
+        let candidates = Candidates { listed, masked: vec![340], ..Candidates::default() };
+        let s = haplotypes::Site::build_ins(x.clone(), &candidates, (0, c.to_vec()), &reads, ReadOn).unwrap();
+        let read = &reads[0];
+        let (kept, kept_bytes) = decide::second_scoring(&s, read).expect("the read spans a listed deletion");
+        let (sets, charged) = s.kept_graphs();
+        assert!(kept && sets == 1, "no limit: the site keeps the set the read was scored on");
+        BUDGET_FOR_TESTS.with(|b| b.set(Some(Some(0))));
+        let closed = haplotypes::Site::build_ins(x.clone(), &candidates, (0, c.to_vec()), &reads, ReadOn).unwrap();
+        let (own, own_bytes) = decide::second_scoring(&closed, read).expect("the read spans a listed deletion");
+        BUDGET_FOR_TESTS.with(|b| b.set(None));
+        assert!(!own && closed.kept_graphs() == (0, 0), "no room: the set is the read's own");
+        assert!(own_bytes > kept_bytes && own_bytes - kept_bytes <= charged && own_bytes - kept_bytes + 128 >= charged, "the read's programmes hold {own_bytes} bytes against {kept_bytes}; the set was charged {charged}");
     }
 
     #[test]

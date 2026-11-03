@@ -139,6 +139,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   on the changes it carries and those it spans, the same for every candidate, and carries a change only where its bases span the change's place (a read ending on a deletion's padding base, or inside the repeat it slides over, carries nothing); a change it cannot place is a plain alternative for every candidate, with no mask moved for it, as on develop: the read is scored first on graphs with no copy of the masks' zone and again, on graphs with copies for the changes it spans only, where it spans one; the candidates whose
   best path took another copy are scored again. A read carrying the deletion is told the ALT from the
   sibling at the base its copy leaves unmasked, ALT.
+- The graph sets a site lays for the changes its reads span (up to 32 per site) count against the
+  judge's cache budget (`GBCMS_JUDGE_BUDGET_MB`), once each when kept. Past the budget no more are
+  kept and a read's set is laid for it alone. No call changes; only what is cached.
 - The length the windows read on to (RJ-23, RJ-27) where the masks hide the base that tells them
   apart is counted in the columns of the path a read lies on, as the masks are. A deletion listed
   between the anchor and that base takes bases out of the haplotype of a read that carries it, so

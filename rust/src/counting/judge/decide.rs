@@ -11,7 +11,7 @@ use rust_htslib::bam::record::{Aux, Cigar, Record};
 
 
 use super::graph::{self, ShortReads, Workspace};
-use super::haplotypes::{neither_trace, other_option, AlnTags, Class, Hap, NeitherRule, OwnGapRule, ReadView, RefBaseRule, Scorer, Site, StateGraph};
+use super::haplotypes::{graphs_bytes, neither_trace, other_option, AlnTags, Class, Hap, NeitherRule, OwnGapRule, ReadView, RefBaseRule, Scorer, Site, StateGraph};
 use super::score::{Alignment, Placed, DELTA, WILD};
 use crate::counting::carrier::{readable_range, ReadRules};
 use crate::counting::utils::{soft_clips, ClassifyPhase, ClassifyResult};
@@ -370,6 +370,9 @@ pub(crate) struct Scored {
     /// The graphs the read was scored on where not the site's first ones: those laid with
     /// copies of the masks' zone for the changes the read spans ([`Site::graphs_over`]).
     over: Option<std::rc::Rc<Vec<StateGraph>>>,
+    /// Whether the site keeps `over` (charged to the budget once, there). A set the site did not
+    /// keep is this read's own and counted with it ([`Scored::heap_bytes`]).
+    over_kept: bool,
     /// The changes the read was held to there: those it carries and those it spans without
     /// carrying ([`graph::GraphRead::lies_in`]); None on the first graphs.
     lies_in: Option<(Vec<usize>, Vec<usize>)>,
@@ -397,7 +400,8 @@ impl Scored {
             + self.steps.capacity() * std::mem::size_of::<Option<graph::PathSteps>>();
         let haps: usize = self.haps.borrow().iter().map(|(_, h)| h.heap_bytes() + std::mem::size_of::<Hap>() + 16).sum();
         let aligns: usize = self.aligns.borrow().iter().map(|(_, a)| a.0.heap_bytes() + std::mem::size_of::<Laid>() + 16).sum();
-        std::mem::size_of::<Scored>() + self.halves.capacity() * 16 + rows + steps + haps + aligns
+        let over: usize = self.over.as_ref().filter(|_| !self.over_kept).map_or(0, |g| graphs_bytes(g));
+        std::mem::size_of::<Scored>() + self.halves.capacity() * 16 + rows + steps + haps + aligns + over
     }
 }
 
@@ -470,9 +474,10 @@ fn score_states(site: &Site, gr: &graph::GraphRead, wss: &mut [Workspace]) -> Sc
     let first = score_once(site.first_graphs(), gr, wss);
     match lying_copy(site, &first) {
         Some((spanned, taken, free)) => {
-            let over = site.graphs_over(&spanned);
+            let (over, kept) = site.graphs_over(&spanned);
             let mut second = score_once(&over, &gr.lying_in(taken.clone(), free.clone()), wss);
             second.over = Some(over);
+            second.over_kept = kept;
             second.lies_in = Some((taken, free));
             second
         }
@@ -524,7 +529,17 @@ fn score_once(graphs: &[StateGraph], gr: &graph::GraphRead, wss: &mut [Workspace
         reach.push(p.reach);
         steps.push(if examined(k) { graph::kept_steps(&ShortReads, gr, &graphs[k].graph, &wss[k]) } else { None });
     }
-    Scored { best, halves, rows, copies, reach, over: None, lies_in: None, haps: Default::default(), aligns: Default::default(), steps }
+    Scored { best, halves, rows, copies, reach, over: None, over_kept: false, lies_in: None, haps: Default::default(), aligns: Default::default(), steps }
+}
+
+/// Tests only: for a read scored a second time (it spans a listed change), whether the graphs
+/// of that scoring are the site's kept ones, and the bytes its programmes hold
+/// ([`Scored::heap_bytes`]); None where the first scoring decided.
+#[cfg(test)]
+pub(crate) fn second_scoring(site: &Site, read: &ReadView) -> Option<(bool, usize)> {
+    let gr = site.graph_read(read);
+    let scored = graph::with_workspaces(site.graphs.len(), |wss| score_states(site, &gr, wss));
+    scored.over.as_ref().map(|_| (scored.over_kept, scored.heap_bytes()))
 }
 
 /// Tests only: per state of a graph site, the state's score, the read's alignment to the

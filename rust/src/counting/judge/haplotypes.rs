@@ -657,8 +657,9 @@ pub(crate) struct Site {
     /// on develop. A read is scored on these first; it is scored again on the graphs laid for
     /// the changes it spans ([`Site::graphs_over`]) only where it spans one.
     plain: Vec<StateGraph>,
-    /// The graphs laid per set of changes a read spans, by that set (a few kept).
-    over: std::cell::RefCell<HashMap<Vec<usize>, std::rc::Rc<Vec<StateGraph>>>>,
+    /// The graphs laid per set of changes a read spans, by that set (a few kept, charged once
+    /// to the thread's budget: [`KeptGraphs`]).
+    over: KeptGraphs,
     /// At a long insertion, whether no base within the haplotypes tells the equal windows
     /// apart once the guard's masks are read (every read is depth only).
     untold: bool,
@@ -830,6 +831,74 @@ pub(crate) fn respell_trace() -> bool {
 pub(crate) fn neither_trace() -> bool {
     static ON: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
     *ON.get_or_init(|| std::env::var("GBCMS_JUDGE_NEITHER_TRACE").is_ok_and(|v| v == "1"))
+}
+
+impl StateGraph {
+    /// The bytes it holds on the heap (its graph's arrays and itself).
+    fn heap_bytes(&self) -> usize {
+        self.graph.heap_bytes() + std::mem::size_of::<StateGraph>()
+    }
+}
+
+/// The bytes a set of state graphs holds.
+pub(crate) fn graphs_bytes(graphs: &[StateGraph]) -> usize {
+    graphs.iter().map(StateGraph::heap_bytes).sum::<usize>() + std::mem::size_of::<Vec<StateGraph>>()
+}
+
+/// The graph sets a site keeps, by the set of changes a read spans ([`Site::graphs_over`]): at
+/// most [`OVER_KEPT`], each charged once to the thread's budget when it is kept (a
+/// [`Scored`](super::decide::Scored) holding it again does not count it). Where a set does not
+/// fit the budget none is kept from then on: a read's set is laid for it alone and dropped. The
+/// bytes are given back when the site is dropped. A clone keeps none.
+#[derive(Debug, Default)]
+struct KeptGraphs {
+    sets: std::cell::RefCell<HashMap<Vec<usize>, std::rc::Rc<Vec<StateGraph>>>>,
+    /// The bytes charged for the sets kept.
+    bytes: std::cell::Cell<usize>,
+    /// Whether a set did not fit the budget (no more are kept).
+    closed: std::cell::Cell<bool>,
+}
+
+impl Clone for KeptGraphs {
+    fn clone(&self) -> Self {
+        Self::default()
+    }
+}
+
+impl Drop for KeptGraphs {
+    fn drop(&mut self) {
+        super::release_kept(self.bytes.get());
+    }
+}
+
+impl KeptGraphs {
+    /// The set kept for `spanned`, if any.
+    fn get(&self, spanned: &[usize]) -> Option<std::rc::Rc<Vec<StateGraph>>> {
+        self.sets.borrow().get(spanned).cloned()
+    }
+
+    /// Keeps `graphs` for `spanned` where fewer than [`OVER_KEPT`] are kept and the set fits the
+    /// thread's budget, charging it once; whether it was kept.
+    fn keep(&self, spanned: &[usize], graphs: &std::rc::Rc<Vec<StateGraph>>) -> bool {
+        let mut sets = self.sets.borrow_mut();
+        if self.closed.get() || sets.len() >= OVER_KEPT {
+            return false;
+        }
+        let add = graphs_bytes(graphs) + spanned.len() * 8 + 64;
+        if !super::charge_kept(add) {
+            self.closed.set(true);
+            return false;
+        }
+        self.bytes.set(self.bytes.get() + add);
+        sets.insert(spanned.to_vec(), graphs.clone());
+        true
+    }
+
+    /// Tests only: the sets kept and the bytes charged for them.
+    #[cfg(test)]
+    fn state(&self) -> (usize, usize) {
+        (self.sets.borrow().len(), self.bytes.get())
+    }
 }
 
 /// One state of X's site and its graph: the window with the state's row applied (none for
@@ -3029,7 +3098,7 @@ impl Site {
             by_copy: false,
             rest: Vec::new(),
             plain: Vec::new(),
-            over: Default::default(),
+            over: KeptGraphs::default(),
             untold: false,
             window0: 0,
             long_ins,
@@ -3139,17 +3208,25 @@ impl Site {
     }
 
     /// The graphs a read that spans the changes `spanned` is scored on the second time: copies
-    /// of the masks' zone for those changes only. Laid once per set (a few sets are kept).
-    pub(crate) fn graphs_over(&self, spanned: &[usize]) -> std::rc::Rc<Vec<StateGraph>> {
-        if let Some(g) = self.over.borrow().get(spanned) {
-            return g.clone();
+    /// of the masks' zone for those changes only. Laid once per set where kept.
+    ///
+    /// A set is kept (and charged to the thread's budget, once) while the site keeps fewer than
+    /// [`OVER_KEPT`] and the budget has room; otherwise it is laid for the read alone. The graphs
+    /// and whether they were kept: a set not kept is the read's own, and whoever holds it counts it.
+    pub(crate) fn graphs_over(&self, spanned: &[usize]) -> (std::rc::Rc<Vec<StateGraph>>, bool) {
+        if let Some(g) = self.over.get(spanned) {
+            return (g, true);
         }
         let g = std::rc::Rc::new(self.laid_over(spanned));
-        let mut kept = self.over.borrow_mut();
-        if kept.len() < OVER_KEPT {
-            kept.insert(spanned.to_vec(), g.clone());
-        }
-        g
+        let kept = self.over.keep(spanned, &g);
+        (g, kept)
+    }
+
+    /// Tests only: the graph sets the site keeps for the reads' spans, and the bytes charged
+    /// to the budget for them.
+    #[cfg(test)]
+    pub(crate) fn kept_graphs(&self) -> (usize, usize) {
+        self.over.state()
     }
 
     /// The graphs a read is scored on first: with no copy of the masks' zone where the site

@@ -702,8 +702,10 @@ placement, bases). Cost within 2× develop. The HPC gate.
      budget still gets it. A row's caches are freed at its end, and so is work space past a
      quarter of the budget. The bytes counted are those held: the work space's arrays and
      the band each workspace keeps for its path (a band states share, once); each cache's hash
-     table whole (its buckets are allocated as it grows); and a kept programme as later reads
-     alike grow it. `GBCMS_JUDGE_BUDGET_MB` sets the budget for measurement only
+     table whole (its buckets are allocated as it grows); a kept programme as later reads
+     alike grow it; and, at a pure insertion of 50 bp or more, the graph sets a site keeps for
+     the changes its reads span (once each, when kept; past the budget a read's set is laid for
+     it alone and counted with the read's programmes while they are kept). `GBCMS_JUDGE_BUDGET_MB` sets the budget for measurement only
      (`none`: no limit); `GBCMS_JUDGE_CACHE_TRACE=1` traces each row's cache at its end.
    - **Count-neutral.** A test judges a deletion's reads with no limit, with nothing cached and
      with budgets that close the caches part way: every call is the same. On every arm the

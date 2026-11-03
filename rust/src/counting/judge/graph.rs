@@ -276,6 +276,20 @@ impl Graph {
         self.bases.len()
     }
 
+    /// The bytes it holds on the heap (its arrays' capacities), for the budget of the graphs a
+    /// site keeps.
+    pub(crate) fn heap_bytes(&self) -> usize {
+        let u32s = self.seg_of.capacity() + self.pred_off.capacity() + self.preds.capacity() + self.succ_off.capacity() + self.succs.capacity();
+        self.segments.capacity() * std::mem::size_of::<Segment>()
+            + self.bases.capacity()
+            + (self.coord.capacity() + self.end_max.capacity()) * 8
+            + u32s * 4
+            + self.shifts.capacity() * std::mem::size_of::<(i64, i64, i64)>()
+            + self.grows.capacity()
+            + self.copy_sets.capacity() * std::mem::size_of::<Vec<usize>>()
+            + self.copy_sets.iter().map(|c| c.capacity() * 8).sum::<usize>()
+    }
+
     #[inline]
     pub(crate) fn preds(&self, v: usize) -> &[u32] {
         &self.preds[self.pred_off[v] as usize..self.pred_off[v + 1] as usize]
