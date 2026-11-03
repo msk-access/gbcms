@@ -26,7 +26,9 @@ pytest fails, because the pipeline's status is `tail`'s (it happened: a failing 
 committed). Redirect to a log and test `$?`, or `set -o pipefail`. The same holds for
 `cargo test | grep`. Read a background gate's result in a step of its own, and commit only in the
 next step: printing the result and committing in one command commits before anyone reads it (it
-happened: `cat gate.out; git commit` committed over `pytest=1`).
+happened: `cat gate.out; git commit` committed over `pytest=1`). The gate covers the tree it ran
+on: an edit made after it, docs included, needs the gate again before the commit (it happened: a
+plan paragraph added while the gate ran was committed ungated).
 
 **Lint tools** run at CI's versions. The shared `.venv`'s black (25.9) lags CI's latest and
 disagrees on some formatting; CI installs the newest from the `dev` group. A fresh scratch venv
