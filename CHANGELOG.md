@@ -7,6 +7,50 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed — a listed allele at the site is always another allele, and a read counts REF where it tells REF from the alleles it reaches (RJ-25, RJ-24; operator 2026-11-02)
+
+- **No floor for a listed allele, on both paths.** A listed allele whose span meets the ALT's site
+  is another allele there whether or not any read shows it (the input is taken as correct, as
+  rule X took it for another unit count at a long deletion). The 1-fragment-and-5% test of
+  2026-10-14 is gone for listed alleles (the rules' `other_alleles`, the sequence judge's
+  `seen_apart`); it stays for an allele nobody listed (3 fragments and 5%). A listed component of
+  an MNP that no read shows apart from it is another allele too: a carrier that reads only the
+  component's base cannot tell the MNP from it and is partial evidence (AD 14 to 10 in that
+  shape). The rules path takes any listed allele of the ALT's length that meets the site and differs
+  inside the window, not only one that differs nowhere past two bases beside the event.
+- **A REF read is told only from the alleles it reaches.** This reverses the REF clause decided
+  on 2026-10-14 (a REF read short of a REF-length allele was neither). An allele past the read's
+  end (or before its start) no longer contests it: a read ending inside a long event is judged by
+  the bases it has (RJ-9); a read that reaches the allele and cannot tell it (the base unread,
+  below `--min-baseq`, or masked) stays neither. The sequence judge already ties by reach; the
+  rules path now does too, for REF-length alleles listed or found, in the exact-carrier
+  windows and in the MNP check.
+- **Named limit, rules path: an SNV or MNV row beside a listed allele that changes the length
+  (#398's SNV and MNV rows).** A read that spells such an allele still counts ALT at the row: the
+  single-base check weighs no sibling, and the sequence judge calls the read partial evidence.
+  A claim that took these reads out of AD, on the listed allele's own exact-carrier call, was
+  built and withdrawn: it removed reads that carry X (the sibling's rule ran without the
+  sibling's guard). Routing this class of row to the judge on the rules path is being
+  measured; it is not decided. A listed allele of the row's own length that holds the row's
+  change still counts its carriers at both rows (RJ-28).
+- **RJ-24 reaches a delins.** A delins that replaces 50 REF bases or more (the changed REF bases once
+  the shared prefix and suffix are trimmed) has a core, 4 bases in from both ends: a substitution
+  wholly inside it is a context of REF's molecules, so a read that reaches and spells it is REF
+  and a sibling there claims no REF read. A 60>30 delins has a core; 5>60 does not.
+- Counts on HG002 (public, local; 27,589 rows), rules path: 87 arm-rows change and no SNV or MNV
+  row moves; against the phased truth true ALT credited is unchanged (30,455), true REF called REF
+  gains 10, and 5 true ALT reads at c246 insertions are now called REF (the reach rule; in the
+  v2db view 3 true ALT reads leave ALT). Judge: 49 arm-rows change; truth classes equal. Patient sets and the
+  normals are measured on the final build.
+- Existing expectations changed by the decision (each with its reason in the test):
+  `test_listed_sibling_floor_contract.py` (8 cases, AD 14 to 10),
+  `test_locus_alleles_contract.py` (a component never seen alone and one seen on 1 of 100
+  fragments, AD 14 to 10; an SNV among a delins's deleted bases never spelled, RD 24 to 20).
+  New contract tests: `tests/test_ref_reach_contract.py` (the SNV and MNV rows of the named limit are
+  strict xfails on the rules path).
+- Supersedes the option A of the REF-tie question on the judge (#394). #398's SNV and MNV rows
+  stay open (above); the rules path's sibling scope for exact-carrier rows is settled.
+
 ### Changed — a long deletion's ALT reads must tell it from another unit count present at the site (#297)
 
 - At a deletion of 50 bp or more beside a tandem run of its unit (its deleted copy differing

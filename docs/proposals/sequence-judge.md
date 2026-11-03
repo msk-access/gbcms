@@ -40,9 +40,13 @@ For a row X and each admitted read:
     so a read carrying X with such a change is X's.
   - A substitution inside a long (50+ bp) deletion's bases, past a 4-base junction window at
     each end, is a context on REF's side, never another allele at X's site (RJ-24); inside
-    a shorter deletion it stays another allele (RJ-5).
+    a shorter deletion it stays another allele (RJ-5). Since 2026-11-02 a delins that
+    replaces 50 REF bases or more (the changed bases after the shared prefix and suffix are
+    trimmed) has the same core; one replacing fewer has none.
   - A tie of REF with another allele, X beaten, is partial evidence only where the read
     reaches past where the two candidate sequences differ; a read short of it shows REF.
+    Written into RJ-25 and into the rules path on 2026-11-02 (the REF clause of 2026-10-14
+    is reversed for an allele the read does not reach).
   - An MNP's ALT call needs every changed base covered and none read as another base; one
     below `--min-baseq` weighs nothing (RJ-25), and `mnp_confirmed` needs all read.
   - A context row is one whose REF span meets X's span widened by the longest read, so a
@@ -142,10 +146,13 @@ For a row X and each admitted read:
     change was dropped as meeting X, a mask there taken for X's base, and an ALT call needed
     X's base there while a REF call needed none. A base X keeps now tells nothing on either
     side, and a mask there holds on X's haplotypes as on REF's.
-  - *A co-annotated sibling of X's length at X's site* is a state only where the reads'
-    own alignments spell it in full on at least one fragment and on 5% of those spelling
-    the allele it is nearest (RJ-25, 2026-10-14): a component never shown apart is part of
-    the event, and at depth one fragment is an error's share.
+  - *A co-annotated sibling of X's length at X's site* was a state only where the reads'
+    own alignments spelled it in full on at least one fragment and on 5% of those spelling
+    the allele it is nearest (RJ-25, 2026-10-14): a component never shown apart was part of
+    the event, and at depth one fragment was an error's share. **Removed 2026-11-02**
+    (operator, option B; RJ-25): a listed allele that meets X's site is a state always, as
+    rule X holds it for a long deletion's other unit counts; a read that reaches it and
+    cannot tell it from X is partial evidence. The rules path reads it alike.
   - *A pure indel whose placements touch a contig edge* (its repeat running to the edge, or,
     operator 2026-10-29, the indel itself at the contig's first or last base: a MAF insertion
     at Start 0, the base-after form at position 1, and an insertion after the last base): a

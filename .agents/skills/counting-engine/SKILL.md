@@ -52,3 +52,17 @@ Variants group into bins of at least `BIN_WINDOW` (10 kb) and at most `BIN_MAX_V
 performance only, so each bin's fetch must hold every member's full read window, anchor
 included, and its guard window (`window::guard_window`). A co-annotated sibling's ALT read is
 not REF for this row, and a tie between rows is neither row's AD (RJ-5).
+
+## Listed alleles at the site (RJ-25, 2026-11-02; both paths)
+- Every listed allele whose span meets the ALT's site is another allele, always
+  (`carrier::meets_site`, the judge's `meets`): no floor of fragments. Unlisted alleles keep
+  the presence test (`carrier::is_found`).
+- A REF read is told only from the REF-length alleles it reaches (`carrier::reached_others`,
+  `tells_others_aligned` for MNPs); one past its end does not contest it; reached and not
+  told is neither.
+- Named limit, rules path: an SNV or MNV row's ALT read that spells a listed allele that changes
+  the length still counts ALT (`check_snp` reads one base and weighs no sibling); the judge
+  weighs the allele as a state. Routing this class to the judge is being measured.
+- A delins replacing 50 REF bases or more has a core, 4 bases in from both ends
+  (`window::delins_core`, `window::in_core`; the judge's `deleted_core`): a substitution there
+  is a context of REF's molecules.
