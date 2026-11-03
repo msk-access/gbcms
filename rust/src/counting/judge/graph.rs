@@ -1629,7 +1629,7 @@ fn traceback<M: ErrorModel>(m: &M, read: &[u8], g: &Graph, band: &GraphBand, ws:
 
 /// What a read's best path does with each of its bases: aligned to a graph base, inserted, or
 /// left over at an end; and the graph bases it skips right after each (a deletion). The
-/// read's call is examined on this alignment ([`Site::alignment_on_path`]).
+/// read's call is examined on this alignment ([`Site::alignment_on_path_in`]).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct PathSteps {
     pub(crate) score: i32,

@@ -11,7 +11,7 @@ use rust_htslib::bam::record::{Aux, Cigar, Record};
 
 
 use super::graph::{self, ShortReads, Workspace};
-use super::haplotypes::{neither_trace, other_option, AlnTags, Class, Hap, NeitherRule, OwnGapRule, ReadView, RefBaseRule, Scorer, Site};
+use super::haplotypes::{neither_trace, other_option, AlnTags, Class, Hap, NeitherRule, OwnGapRule, ReadView, RefBaseRule, Scorer, Site, StateGraph};
 use super::score::{Alignment, Placed, DELTA, WILD};
 use crate::counting::carrier::{readable_range, ReadRules};
 use crate::counting::utils::{soft_clips, ClassifyPhase, ClassifyResult};
@@ -367,6 +367,12 @@ pub(crate) struct Scored {
     copies: Vec<u32>,
     /// Per state, the stretch of the window its best path spans ([`graph::GraphPath::reach`]).
     reach: Vec<(i64, i64)>,
+    /// The graphs the read was scored on where not the site's first ones: those laid with
+    /// copies of the masks' zone for the changes the read spans ([`Site::graphs_over`]).
+    over: Option<std::rc::Rc<Vec<StateGraph>>>,
+    /// The changes the read was held to there: those it carries and those it spans without
+    /// carrying ([`graph::GraphRead::lies_in`]); None on the first graphs.
+    lies_in: Option<(Vec<usize>, Vec<usize>)>,
     haps: std::cell::RefCell<Vec<(usize, std::rc::Rc<Hap>)>>,
     aligns: std::cell::RefCell<Vec<(usize, Aligned)>>,
     /// Per state a call can be examined on (each class's best, and state 0), its best path read
@@ -378,6 +384,11 @@ pub(crate) struct Scored {
 }
 
 impl Scored {
+    /// The graphs the read was scored on.
+    fn graphs<'a>(&'a self, site: &'a Site) -> &'a [StateGraph] {
+        self.over.as_deref().map_or_else(|| site.first_graphs(), |g| &g[..])
+    }
+
     /// The bytes it holds (its capacities, the path steps, and the haplotypes and alignments
     /// built so far), for the row caches' budget.
     pub(crate) fn heap_bytes(&self) -> usize {
@@ -422,7 +433,8 @@ fn judge_graph(site: &Site, read: &ReadView, min_baseq: u8, ask_anchor: bool, ke
     } else {
         let scorer = Scorer::new(read);
         // the alignment a candidate's call is examined on: its traced path's
-        let on_path = |k: usize, hap: &Hap| scored.steps[k].as_ref().map(|st| site.alignment_on_path(k, st, hap, &read.seq));
+        let graphs = scored.graphs(site);
+        let on_path = |k: usize, hap: &Hap| scored.steps[k].as_ref().map(|st| site.alignment_on_path_in(graphs, k, st, hap, &read.seq));
         let ex = Examined::new(
             site,
             &scorer,
@@ -430,7 +442,7 @@ fn judge_graph(site: &Site, read: &ReadView, min_baseq: u8, ask_anchor: bool, ke
                 if let Some((_, h)) = scored.haps.borrow().iter().find(|(j, _)| *j == k) {
                     return h.clone();
                 }
-                let h = std::rc::Rc::new(site.hap_on_path(k, &scored.rows[k], scored.copies[k]));
+                let h = std::rc::Rc::new(site.hap_on_path_in(graphs, k, &scored.rows[k], scored.copies[k]));
                 scored.haps.borrow_mut().push((k, h.clone()));
                 h
             },
@@ -446,66 +458,73 @@ fn judge_graph(site: &Site, read: &ReadView, min_baseq: u8, ask_anchor: bool, ke
 /// score, the band that decided it, and its best path traced back from the values its
 /// scoring left there ([`Scored`]).
 fn score_states(site: &Site, gr: &graph::GraphRead, wss: &mut [Workspace]) -> Scored {
-    let first = score_once(site, gr, wss);
     // Where the site lays the guard's masks by copy (a listed change moves a mask's offset on
-    // every haplotype a read carrying it lies on), a read lies on the copy of the changes it
-    // carries, the same for every state: those its best-scoring state's path takes, and
-    // those it spans without taking, which each state's alignment may shift for as the
-    // change would. A state's best path took whichever copy masked its own mismatches (a
-    // path ending before a change was laid the masks as if it carried it, and the sibling
-    // next to it the other copy), so a read that does not reach a change is scored on the
-    // masks without it. Where any state's path took a copy the read is not on, every state is
-    // scored again on the read's copy (also the states whose path was on it already).
+    // every haplotype a read carrying it lies on), a read is scored first on the graphs with no
+    // copy: the changes that move a mask's offset are plain alternatives, the masks at the
+    // offsets without them, for every state. A change the read cannot place (its bases do not
+    // span the change's place) is neither carried nor barred, so a read that spans none is
+    // scored there and nowhere else. Where the best-scoring state's path spans some, every
+    // state is scored again on graphs laid with copies for those changes only, held to the
+    // copies of the changes the path carries and those it spans without carrying, which each
+    // state's alignment may shift for as the change would; the others stay plain alternatives.
+    let first = score_once(site.first_graphs(), gr, wss);
     match lying_copy(site, &first) {
-        Some((taken, free)) => score_once(site, &gr.lying_in(taken, free), wss),
+        Some((spanned, taken, free)) => {
+            let over = site.graphs_over(&spanned);
+            let mut second = score_once(&over, &gr.lying_in(taken.clone(), free.clone()), wss);
+            second.over = Some(over);
+            second.lies_in = Some((taken, free));
+            second
+        }
         None => first,
     }
 }
 
-/// The changes of the masks' zone the read carries, and those it spans without carrying,
-/// where some state scored it on another copy ([`score_states`]); None where every state
-/// scored it on one of the read's.
-fn lying_copy(site: &Site, first: &Scored) -> Option<(Vec<usize>, Vec<usize>)> {
+/// The changes of the masks' zone the read spans, those of them it carries, and those it
+/// spans without carrying, where the best-scoring state's path spans any ([`score_states`]).
+fn lying_copy(site: &Site, first: &Scored) -> Option<(Vec<usize>, Vec<usize>, Vec<usize>)> {
     if !site.scores_by_copy() {
         return None;
     }
     // the best-scoring state, the one taking the fewest changes on a tie
     let top = first.best.iter().flatten().max_by_key(|&&(s, h)| (s, std::cmp::Reverse(site.taken_changes(&first.rows[h], first.reach[h]).len()), std::cmp::Reverse(h)))?;
+    let spanned = site.spanned_changes(first.reach[top.1]);
+    if spanned.is_empty() {
+        return None;
+    }
     let mut taken = site.taken_changes(&first.rows[top.1], first.reach[top.1]);
     taken.sort_unstable();
-    let free: Vec<usize> = site.spanned_changes(first.reach[top.1]).into_iter().filter(|r| !taken.contains(r)).collect();
-    // a path outside the zone is on none of its copies
-    let alike = site.graphs.iter().zip(&first.copies).all(|(st, &c)| st.graph.allows(c, &taken, &free));
-    (!alike).then_some((taken, free))
+    let free: Vec<usize> = spanned.iter().copied().filter(|r| !taken.contains(r)).collect();
+    Some((spanned, taken, free))
 }
 
-/// [`score_states`] without the read's copy of the masks' zone chosen: each state's best
-/// path on whichever copy scores best, unless the read is held to one ([`graph::GraphRead::lies_in`]).
-fn score_once(site: &Site, gr: &graph::GraphRead, wss: &mut [Workspace]) -> Scored {
+/// [`score_states`]'s programmes over the graphs `graphs`, each state's best path on whichever
+/// copy scores best, unless the read is held to some ([`graph::GraphRead::lies_in`]).
+fn score_once(graphs: &[StateGraph], gr: &graph::GraphRead, wss: &mut [Workspace]) -> Scored {
     let mut best: [Option<(i32, usize)>; 3] = [None; 3];
-    let graphs: Vec<&graph::Graph> = site.graphs.iter().map(|st| &st.graph).collect();
-    let shares: Vec<Option<(usize, usize)>> = site.graphs.iter().map(|st| st.share).collect();
-    let decided = graph::decided_states(&ShortReads, gr, &graphs, &shares, wss);
-    let mut halves = Vec::with_capacity(site.graphs.len());
-    for (k, (st, &(s, half))) in site.graphs.iter().zip(&decided).enumerate() {
+    let refs: Vec<&graph::Graph> = graphs.iter().map(|st| &st.graph).collect();
+    let shares: Vec<Option<(usize, usize)>> = graphs.iter().map(|st| st.share).collect();
+    let decided = graph::decided_states(&ShortReads, gr, &refs, &shares, wss);
+    let mut halves = Vec::with_capacity(graphs.len());
+    for (k, (st, &(s, half))) in graphs.iter().zip(&decided).enumerate() {
         halves.push(half);
         raise(&mut best, st.class as usize, s, k);
     }
     // The states a call can be examined on: each class's best ([`conclude`] asks for no
     // other), and state 0, which it falls back to where the class it names has none.
     let examined = |k: usize| k == 0 || best.iter().flatten().any(|&(_, h)| h == k);
-    let (mut rows, mut copies, mut reach, mut steps) = (Vec::with_capacity(site.graphs.len()), Vec::with_capacity(site.graphs.len()), Vec::with_capacity(site.graphs.len()), Vec::with_capacity(site.graphs.len()));
-    for k in 0..site.graphs.len() {
-        let p = graph::kept_path(&ShortReads, gr, &site.graphs[k].graph, halves[k], &wss[k]);
+    let (mut rows, mut copies, mut reach, mut steps) = (Vec::with_capacity(graphs.len()), Vec::with_capacity(graphs.len()), Vec::with_capacity(graphs.len()), Vec::with_capacity(graphs.len()));
+    for k in 0..graphs.len() {
+        let p = graph::kept_path(&ShortReads, gr, &graphs[k].graph, halves[k], &wss[k]);
         if best.iter().flatten().any(|&(s, h)| h == k && s != p.score) {
             trace!("haplotype judge: state {k}'s traced path scores {} against its score", p.score);
         }
         rows.push(p.rows);
         copies.push(p.copy);
         reach.push(p.reach);
-        steps.push(if examined(k) { graph::kept_steps(&ShortReads, gr, &site.graphs[k].graph, &wss[k]) } else { None });
+        steps.push(if examined(k) { graph::kept_steps(&ShortReads, gr, &graphs[k].graph, &wss[k]) } else { None });
     }
-    Scored { best, halves, rows, copies, reach, haps: Default::default(), aligns: Default::default(), steps }
+    Scored { best, halves, rows, copies, reach, over: None, lies_in: None, haps: Default::default(), aligns: Default::default(), steps }
 }
 
 /// Tests only: per state of a graph site, the state's score, the read's alignment to the
@@ -517,19 +536,24 @@ pub(crate) fn examined_alignments(site: &Site, read: &ReadView, free: Option<i64
     let gr = site.graph_read(read);
     let scored = graph::with_workspaces(site.graphs.len(), |wss| score_states(site, &gr, wss));
     // every state's score and steps (a call keeps the steps of those it can examine only)
+    let graphs = scored.graphs(site);
     let (decided, steps): (Vec<i32>, Vec<Option<graph::PathSteps>>) = {
-        let graphs: Vec<&graph::Graph> = site.graphs.iter().map(|st| &st.graph).collect();
-        let shares: Vec<Option<(usize, usize)>> = site.graphs.iter().map(|st| st.share).collect();
-        graph::with_workspaces(site.graphs.len(), |wss| {
-            let d = graph::decided_states(&ShortReads, &gr, &graphs, &shares, wss);
-            let st = (0..site.graphs.len()).map(|k| graph::kept_steps(&ShortReads, &gr, &site.graphs[k].graph, &wss[k])).collect();
+        let refs: Vec<&graph::Graph> = graphs.iter().map(|st| &st.graph).collect();
+        let shares: Vec<Option<(usize, usize)>> = graphs.iter().map(|st| st.share).collect();
+        let gr = match &scored.lies_in {
+            Some((taken, free)) => gr.lying_in(taken.clone(), free.clone()),
+            None => site.graph_read(read),
+        };
+        graph::with_workspaces(graphs.len(), |wss| {
+            let d = graph::decided_states(&ShortReads, &gr, &refs, &shares, wss);
+            let st = (0..graphs.len()).map(|k| graph::kept_steps(&ShortReads, &gr, &graphs[k].graph, &wss[k])).collect();
             (d.into_iter().map(|x| x.0).collect(), st)
         })
     };
     let scorer = Scorer::new(read);
-    let on_path = |k: usize, hap: &Hap| steps[k].as_ref().map(|st| site.alignment_on_path(k, st, hap, &read.seq));
+    let on_path = |k: usize, hap: &Hap| steps[k].as_ref().map(|st| site.alignment_on_path_in(graphs, k, st, hap, &read.seq));
     let aligns = Default::default();
-    let ex = Examined::new(site, &scorer, |k| std::rc::Rc::new(site.hap_on_path(k, &scored.rows[k], scored.copies[k])), &aligns, &on_path);
+    let ex = Examined::new(site, &scorer, |k| std::rc::Rc::new(site.hap_on_path_in(graphs, k, &scored.rows[k], scored.copies[k])), &aligns, &on_path);
     (0..site.graphs.len())
         .map(|k| {
             let hap = ex.hap(k);
