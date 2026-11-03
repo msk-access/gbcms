@@ -54,11 +54,11 @@ class question.
 | | A. Tell every candidate | B. Tell what the read reaches |
 |:--|:--|:--|
 | REF rule | REF only where a confident base tells REF from every REF-length candidate; short of it, neither (RJ-25's clause on both paths; the judge's reach and own-gap tie-breaks go) | REF where the read's confident bases tell REF from X and from every REF-length candidate whose difference its aligned span reaches; a candidate past the read's end does not contest it (RJ-9); reached and not told, neither. The judge's rule today, written into RJ-25 and into the rules path |
-| Long cores | the core of a pure deletion or delins of 50 bp or more, past the 4-base junction windows, is a context (RJ-24 extended to delins): the only thing that gives the ties back | RJ-24 as is, extended to delins of 50 bp or more (a read that reaches and spells S inside the core is REF with a context); the ties need no core rule |
+| Long cores | the core of a pure deletion or delins of 50 bp or more, past the 4-base junction windows, is a context (RJ-24 extended to delins). Measured (rtb1): it gives back none of the ties, because all 10,352 lie in a junction window. To keep them REF, A needs a rule for each junction: B's reach rule for long events, and a third REF rule, which triggers the stop rule (section 5) | RJ-24 as is, extended to delins of 50 bp or more (a read that reaches and spells S inside the core is REF with a context); the ties need no core rule |
 | Invariants 7, 2, 1; both paths | pass; alike | pass (AD equals A's); alike |
-| Conditions | −3 (the floor on listed alleles, `spells`' scope, `ref_by_reach`), +1 (the delins core); own-gap 0 or 1 by its lane | −3 (the floor, `spells`' scope, `ref_untold` for unreached candidates), +1 (the delins core); own-gap alike |
-| Expected effect, rules | c2RS, plus #398's reads out of AD (69 at one row, 1,228 at 14 SNV rows: partial), plus the 3 delins-50+ rows' REF reads back (1,232 of the 2,229 lost over 84 rows); the three v2 failures go | c2RS, plus #398's reads out of AD, plus the 1,313 reach reads back (the normals' delins RD, judge 4,303 against rules 3,558, closes); the three v2 failures go |
-| Expected effect, judge | 89 rows as c2SA, and about 600 more REF reads to neither (an estimate: the reach reads at delins 20-49, short events and MNVs; rules 997, judge 378 today; the trace lane measures it) | unchanged: c2SA (PASS 20 of 20 views; HG002 classes equal to C; 0 wrong-ALT added, 2 left) |
+| Conditions | −3 (the floor on listed alleles, `spells`' scope, `ref_by_reach`), +1 (the delins core); own-gap stays narrow (decided 2026-10-27; rtb1 confirms it) | −3 (the floor, `spells`' scope, `ref_untold` for unreached candidates), +1 (the delins core); own-gap alike |
+| Expected effect, rules | c2RS, plus #398's reads out of AD (69 at one row, 1,228 at 14 SNV rows: partial). Not as expected: the 3 delins-50+ rows' REF reads do not come back, because S is within 4 bases of the delins's end, where the core rule cannot reach it, so the three v2 failures stay | c2RS, plus #398's reads out of AD, plus the 1,313 reach reads back (the normals' delins RD, judge 4,303 against rules 3,558, closes); the three v2 failures go |
+| Expected effect, judge | 79 rows as c2SA (measured on rtbT), and **12,780 more REF reads to neither** (measured, rtb1; normals 3,927). That is about 21 times the estimate of 600: 10,352 at 50+ events' junction windows, 2,428 under 50 bp | unchanged: c2SA (PASS 20 of 20 views; HG002 classes equal to C; 0 wrong-ALT added, 2 left) |
 | Will not handle | the same geometry under 50 bp (16 rows, 673 rules-path REF reads); a component with only tie reads (46 of 57 rows) | S-spellers in a core under 50 bp stay partial (RJ-5); the component residual; the 7 carriers untellable at the run's `--min-baseq` |
 
 **C. Reach on both sides** (B, and a read fitting X that does not reach where X and an X-length
@@ -139,9 +139,22 @@ does an option break an invariant.
 
 - 2026-11-02: drafted from C2 round 2, #394, #398 and the review's delins geometry. Not approved;
   nothing built; no lane run.
+- 2026-11-02: batch 0 approved and run (rtb1: build ad64f930, never for merge; 1,641 runs; the
+  aggregation's first job failed safely, the second ran). Results:
+  `~/test/gbcms/harness/plan670/plan-first/rtb1_results.md`. Review 1 (Fable): ready with
+  conditions. They are met here: A's cost corrected to 12,780 REF reads; A's long cores give back
+  none of the ties; A's fix for long events is a third REF rule (the stop rule); own-gap general
+  struck (decided 2026-10-27; in REJECTED.md). The site edges (16 normal rows) are round 2, shared by
+  A and B. Batch 1 is not needed before the choice.
+- 2026-11-02: **the operator chose B** ("tell what the read reaches"). This reverses RJ-25's REF
+  clause explicitly; the register is rewritten in the build's PR. Next: one build for the rules path
+  behind a switch (patient sets and HG002), then the site-edge question (round 2), the final build,
+  and the delins spike-in for metric (2).
 
 ## 8. Cost log
 
 | Step | Agent and model | Tokens | Notes |
 |:--|:--|--:|:--|
 | Plan page | Fable | from the usage report | read-only; one new file, not committed |
+| Batch 0 (rtb1) | main session (HPC), scripts | 0 agent tokens | 1 build, 1,641 runs, 2 aggregation jobs (1 failed safely) |
+| Review 1 | Fable | 191,902 | ready with conditions; one high finding (A's cost and core claim) |
