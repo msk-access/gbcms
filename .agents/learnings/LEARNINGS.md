@@ -33,6 +33,20 @@ regenerating a section.
 
 ---
 
+## [LRN-20261102-003] rule-body | an edit made after the gate was committed with it
+- **Status:** resolved (rule promoted).
+- **Cause:** rule-body.
+- **Summary:**
+  - On `chore/plan-first`, the gate ran on the plan page and REJECTED.md and passed. While its
+    result was being read, the operator chose option B, and I added that paragraph to the plan page.
+    I then committed it with the gated files (f1dad1f5). No code changed. A full gate on the
+    committed tree passed afterwards, and I reported the slip.
+  - The qa-check skill said to read each exit code and to commit in a later step. It did not say
+    that the gate covers only the tree it ran on.
+- **Promotion target:** `.agents/skills/qa-check/SKILL.md` ("Read every exit code") — `DONE:` an edit
+  made after the gate, docs included, needs the gate again before the commit.
+- **Related:** LRN-20261031-001 (a gate result read and a commit made in one command).
+
 ## [LRN-20261102-002] rule-body | PRs merged on green checks with a bot review unread
 - **Status:** resolved (rule promoted); the findings are being fixed.
 - **Cause:** rule-body.
