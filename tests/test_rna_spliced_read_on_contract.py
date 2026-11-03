@@ -4,7 +4,9 @@ A read whose windows fit both alleles, or whose fit rests on too few bases, is r
 on past the windows (RJ-27). For a read spliced just past them, the bases there are
 the next exon's: judged against the genome's continuation (the intron), a REF read
 misses REF and fits a shifted allele by chance, and a read whose bases at the
-junction BAQ masks has nothing left to decide on. A read spliced within the reach of
+junction are masked has nothing left to decide on (BAQ masked them until 2026-11-03,
+when a splice stopped lowering quality, RJ-31; the counts below did not change). A
+read spliced within the reach of
 its windows' reading is judged on the reference spliced along its junctions, as a
 read spliced inside the windows is, so it counts as the same read without a junction
 does. No GTF: BAQ is suppressed only within five bases of an annotated exon edge.
@@ -103,7 +105,7 @@ NEAR_EXON_END = {
 @pytest.mark.parametrize("shape", list(NEAR_EXON_END))
 def test_spliced_reads_near_an_exon_end_read_on_into_the_next_exon(shape, apply_baq, tmp_path):
     """Spliced just past the windows: read on along the mRNA, REF reads are REF and
-    ALT reads ALT, with BAQ masking the bases at the junction or not."""
+    ALT reads ALT, with BAQ on or off."""
     assert _count(*NEAR_EXON_END[shape], apply_baq, tmp_path) == (8, 8, 0)
 
 
@@ -118,8 +120,8 @@ NEAR_EXON_START = {
 def test_spliced_reads_at_an_exon_first_base_anchor_read_on_past_the_masked_junction(
     shape, tmp_path
 ):
-    """BAQ masks the five bases each side of the junction, the whole windows: the
-    spliced reads read on along exon 2, as they do with BAQ off."""
+    """The whole windows lie within five bases of the junction (BAQ masked them until
+    2026-11-03): the spliced reads read on along exon 2, with BAQ on or off."""
     assert _count(*NEAR_EXON_START[shape], True, tmp_path) == (8, 8, 0)
     assert _count(*NEAR_EXON_START[shape], False, tmp_path) == (8, 8, 0)
 
@@ -137,8 +139,8 @@ AT_EXON_END = {
 @pytest.mark.parametrize("shape", list(AT_EXON_END))
 def test_an_exon_end_at_the_event_leaves_its_left_flank_whole(shape, apply_baq, tmp_path):
     """An exon end where the event starts cuts its right flank, not its left: the
-    windows read from the left and on along the mRNA, past the bases BAQ masks at the
-    junction, instead of from the right, where the alleles differ only there."""
+    windows read from the left and on along the mRNA, past the junction, instead of
+    from the right, where the alleles differ only there."""
     variant, counts = AT_EXON_END[shape]
     assert _count(*variant, apply_baq, tmp_path) == counts
 

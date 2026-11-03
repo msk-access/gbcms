@@ -1,6 +1,6 @@
 ---
 name: read-filters-qc
-description: "Genomic read QC: BAM flag filters, MAPQ and base-quality gating, heuristic BAQ near indels and splice junctions, QC diagnostics (mq0_count, n_count, distance to read end). Use when changing filtering or quality gating. The developer lint/test gate is qa-check."
+description: "Genomic read QC: BAM flag filters, MAPQ and base-quality gating, heuristic BAQ near indels, QC diagnostics (mq0_count, n_count, distance to read end). Use when changing filtering or quality gating. The developer lint/test gate is qa-check."
 ---
 
 # Read Filters & Quality Gating (genomic QC)
@@ -31,10 +31,12 @@ RNA does NH:i:1 rescue of low-MAPQ unique reads; `mq0_count` tracks MAPQ==0 read
 
 ## Heuristic BAQ (`shared/baq.rs`, Li 2011)
 
-- Downgrades BQ within `BAQ_RADIUS = 5` bp of any Ins/Del/RefSkip by
-  `BAQ_PENALTY = 20` (clamped at 0). Allocation-free when the read has no indel/N.
-- For RNA, the RefSkip (N) penalty substitutes for GATK SplitNCigarReads overhang
-  clipping.
+- Downgrades BQ within `BAQ_RADIUS = 5` bp of any Ins/Del by `BAQ_PENALTY = 20`
+  (clamped at 0). Allocation-free when the read has no indel. A RefSkip (N) lowers no
+  base's quality (RJ-31, 2026-11-03; it reversed the junction penalty of 4.1.0): a base
+  is judged by its own quality, as in GATK after SplitNCigarReads.
+- At a variant within 5 bp of an annotated exon edge (with a GTF) BAQ is skipped: the
+  penalty of a read's other indels is lifted there.
 - Default: **DNA off, RNA on** (`--apply-baq` / `--no-baq`). The Nextflow modules keep
   separate params: DNA passes `--apply-baq` only if `apply_baq` is true; RNA passes
   `--apply-baq` or `--no-baq` explicitly from `rna_apply_baq`.

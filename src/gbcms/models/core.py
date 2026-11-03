@@ -509,23 +509,23 @@ class GbcmsRnaConfig(GbcmsBaseConfig):
     - Gap penalties relaxed for RT stutter tolerance
     - Strandedness filtering enabled by default
     - RNA editing database support
-    - BAQ enabled by default (RNA BAMs typically lack BQSR; the
-      splice-proximity penalty reduces false positives at exon
-      boundaries — see docs/reference/rna-splice-handling.md)
+    - BAQ enabled by default (RNA BAMs typically lack BQSR; it lowers
+      qualities near a read's indels only — a splice junction lowers
+      none; see docs/reference/rna-splice-handling.md)
     """
 
     mode: str = "rna"
 
     # RNA BAMs typically do not go through GATK BQSR or consensus
     # calling (e.g., fgbio), so raw sequencer BQ values are preserved.
-    # Enabling BAQ applies a -20 BQ penalty within 5bp of indels AND
-    # splice junctions (CIGAR N/RefSkip), mimicking the effect of GATK
-    # SplitNCigarReads' overhang clipping without modifying the BAM.
+    # Enabling BAQ applies a -20 BQ penalty within 5bp of a read's
+    # insertions and deletions. A splice junction (CIGAR N/RefSkip)
+    # lowers no base's quality: a base is judged by its own quality.
     apply_baq: bool = Field(
         default=True,
         description=(
-            "Apply heuristic BAQ quality downgrade near indels and splice "
-            "junctions. On by default for RNA because upstream pipelines "
+            "Apply heuristic BAQ quality downgrade near indels. On by "
+            "default for RNA because upstream pipelines "
             "typically do not run BQSR or consensus calling. "
             "Disable with --no-baq if BAMs have already been quality-adjusted."
         ),

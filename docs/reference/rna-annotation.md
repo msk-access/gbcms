@@ -173,7 +173,8 @@ overlaps multiple transcripts with different exon structures.
    - Reads with matching splice junctions are counted toward that transcript.
 4. Alleles are classified under the same base-quality rules as the main
    counts, including the exon-boundary BAQ exception
-   ([RNA Splice-Junction Handling](rna-splice-handling.md)). For the
+   ([RNA Splice-Junction Handling](rna-splice-handling.md)); a splice lowers
+   no base's quality in either. For the
    transcript every read is compatible with, the per-transcript counts match
    the variant's counts. The exception is when the main counts took a
    decomposed form of the variant or were adjusted for sibling alleles, since
@@ -243,7 +244,7 @@ For each variant:
    deterministic: the same input always gives the same junctions and p-value.
 7. Alleles are classified under the main counts' base-quality rules, including
    the exon-boundary BAQ exception, so the spliced reads at an exon-edge
-   variant are ASJD evidence rather than masked.
+   variant are ASJD evidence, as they are in the main counts.
 
 ### Output Columns (14 ASJD)
 

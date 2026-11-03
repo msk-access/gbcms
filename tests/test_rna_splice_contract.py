@@ -375,10 +375,10 @@ def test_insertion_after_junction_is_examined(tmp_path):
     vcf = _vcf(tmp_path, rows_v)
     bam = _bam(tmp_path, ref, carriers + refs)
     fasta = _fasta(tmp_path, ref)
-    # Default RNA BAQ stacks splice + indel penalties on the inserted bases
-    # (they sit within 5bp of both the N and the I), so they read below min_baseq:
+    # Default RNA BAQ's indel penalty lowers the inserted bases (they sit within 5bp of
+    # the I; the N lowers nothing), so they read below min_baseq at Q30:
     # an unreadable insert of the ALT's length at its junction, ALT (RJ-20). The REF
-    # reads' bases at the junction are lowered too; read on into exon 2, their bases
+    # reads' bases at the junction keep their quality; read on into exon 2, their bases
     # show REF. (With --gtf, boundary suppression restores the quals at annotated
     # junctions.)
     r = _run(tmp_path, vcf, bam, fasta)[0]
@@ -804,7 +804,7 @@ def test_span_ref_survives_zero_quality_consensus(tmp_path):
     rows_v = [(anchor + 1, ref[anchor : anchor + 1 + DEL_LEN], ref[anchor])]
     e2 = intron_start + gap
     juncs = []
-    for i in range(3):  # junction REF reads with raw Q15 → BAQ-zeroed near the N
+    for i in range(3):  # junction REF reads with raw Q15, under min BQ with or without BAQ
         s = intron_start - 40 - i
         left = intron_start - s
         right = READ_LEN - left
