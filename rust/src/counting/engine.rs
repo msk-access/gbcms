@@ -2315,7 +2315,11 @@ fn mask_low_qual(seq: &mut [u8], quals: &[u8], min_baseq: u8) {
 fn ref_guard_siblings<'a>(variant: &Variant, siblings: &'a [Variant]) -> Vec<&'a Variant> {
     let (lo, hi) = window::discrimination_window(variant);
     let span = junction::ref_window_span(variant).map_or((lo, hi), |(a, b)| (a.max(lo), b.min(hi)));
-    window::siblings_in_span(span, siblings)
+    // A long delins's core is as a long deletion's deleted bases (RJ-24, extended): a
+    // substitution there changes bases only REF's molecules hold and is a context of them,
+    // so its carriers keep their REF call.
+    let core = window::delins_core(variant.pos, &variant.ref_allele, &variant.alt_allele);
+    window::siblings_in_span(span, siblings).into_iter().filter(|s| !window::in_core(core, s)).collect()
 }
 
 /// Whether a read classified REF for `variant` (or whose REF call was

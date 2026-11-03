@@ -2174,20 +2174,29 @@ impl Site {
             }
         };
         // The bases a long pure deletion X removes wherever it sits (genome, [lo, hi)), past
-        // the window its junctions are read by at each end. A substitution there changes
-        // bases only REF's molecules hold, never X's, and away from the junctions it is no
-        // allele at X's site (as RJ-24 has a co-annotated sibling claim REF reads only
-        // through REF's window): a context on REF's side, lying with REF and with any state
-        // keeping those bases, never with X. A shorter deletion's bases are all its window:
-        // a row there stays another allele, as RJ-5 has it.
-        let deleted_core: Option<(i64, i64)> =
-            (pure(&target) && target.ref_al.len() >= target.alt_al.len() + LONG_EVENT as usize)
-                .then(|| {
-                    let (lo, hi) = run(&target);
-                    let k = (target.ref_al.len() - target.alt_al.len()) as i64;
-                    (hi - k + JUNCTION_WINDOW, lo + k - JUNCTION_WINDOW)
-                })
-                .filter(|(a, b)| a < b);
+        // the window its junctions are read by at each end; for a delins replacing 50 REF
+        // bases or more, the replaced bases past [`JUNCTION_WINDOW`] at each end (RJ-24,
+        // extended 2026-11-02). A substitution there changes bases only REF's molecules
+        // hold, never X's, and away from the junctions it is no allele at X's site (as
+        // RJ-24 has a co-annotated sibling claim REF reads only through REF's window): a
+        // context on REF's side, lying with REF and with any state keeping those bases,
+        // never with X. A shorter event's bases are all its window: a row there stays
+        // another allele, as RJ-5 has it.
+        let deleted_core: Option<(i64, i64)> = (pure(&target)
+            && target.ref_al.len() >= target.alt_al.len() + LONG_EVENT as usize)
+            .then(|| {
+                let (lo, hi) = run(&target);
+                let k = (target.ref_al.len() - target.alt_al.len()) as i64;
+                (hi - k + JUNCTION_WINDOW, lo + k - JUNCTION_WINDOW)
+            })
+            .filter(|(a, b)| a < b)
+            .or_else(|| {
+                super::super::window::delins_core(
+                    target.pos,
+                    &String::from_utf8_lossy(&target.ref_al),
+                    &String::from_utf8_lossy(&target.alt_al),
+                )
+            });
         let in_deleted = |r: &Row| {
             let (on_ref, _) = telling(r);
             let (s, e) = (r.pos + on_ref.start as i64, r.pos + on_ref.end as i64);
@@ -2466,84 +2475,10 @@ impl Site {
                 );
             }
         }
-        // A co-annotated sibling of X's length at X's site is another allele only where the
-        // fragments spelling it in full (past the masks) are at least one and
-        // [`GUARD_REF_SHARE`] of those spelling the allele it is nearest, REF or X (the
-        // larger when as near): a component the reads never show apart from the event is
-        // part of it, and at depth one read spelling it is an error's share (RJ-25;
-        // operator, 2026-10-14). Read on the reads' own alignments over the sibling's and
-        // X's bases; a sibling changing the length, and one holding X's change (RJ-28), are
-        // left as they are.
-        {
-            let listed_states: Vec<Row> = candidates
-                .listed
-                .iter()
-                .map(beside)
-                .filter(|r| meets(&target, r) && !in_deleted(r) && !r.changes_length() && states.contains(r))
-                .collect();
-            let x_same = !target.changes_length();
-            for row in listed_states {
-                let holds = x_same
-                    && row.pos <= target.pos
-                    && row.end() >= target.end()
-                    && (0..target.ref_al.len()).all(|k| {
-                        target.ref_al[k] == target.alt_al[k] || row.alt_al[(target.pos + k as i64 - row.pos) as usize] == target.alt_al[k]
-                    });
-                if holds {
-                    continue;
-                }
-                let (u0, u1) = (row.pos.min(target.pos), row.end().max(target.end()));
-                let on = |allele: &Row, g: i64| -> Option<u8> {
-                    (allele.pos <= g && g < allele.end()).then(|| allele.alt_al[(g - allele.pos) as usize])
-                };
-                let ref_at = |g: i64| base(g).unwrap_or(WILD);
-                let sib_at = |g: i64| on(&row, g).unwrap_or_else(|| ref_at(g));
-                let x_at = |g: i64| if x_same { on(&target, g).unwrap_or_else(|| ref_at(g)) } else { WILD };
-                // the positions telling the three apart must be read confidently
-                let telling: Vec<i64> = (u0..u1).filter(|&g| sib_at(g) != ref_at(g) || (x_same && x_at(g) != ref_at(g))).collect();
-                let spells = |r: &ReadView, at: &dyn Fn(i64) -> u8| -> bool {
-                    (u0..u1).all(|g| match r.aligned_base(g) {
-                        Some(b) => b == at(g),
-                        None => !telling.contains(&g) && (0..r.seq.len()).any(|i| r.aligned[i] && r.refpos[i] == g),
-                    })
-                };
-                let mut by_sib: BTreeSet<Vec<u8>> = BTreeSet::new();
-                let mut by_ref: BTreeSet<Vec<u8>> = BTreeSet::new();
-                let mut by_x: BTreeSet<Vec<u8>> = BTreeSet::new();
-                let mut reading = 0usize;
-                for (n, r) in reads.iter().enumerate() {
-                    let key = if r.name.is_empty() { n.to_string().into_bytes() } else { r.name.clone() };
-                    reading += usize::from((u0..u1).all(|g| (0..r.seq.len()).any(|i| r.aligned[i] && r.refpos[i] == g)));
-                    if spells(r, &sib_at) {
-                        by_sib.insert(key);
-                    } else if spells(r, &ref_at) {
-                        by_ref.insert(key);
-                    } else if x_same && spells(r, &x_at) {
-                        by_x.insert(key);
-                    }
-                }
-                let dist = |at: &dyn Fn(i64) -> u8| (u0..u1).filter(|&g| sib_at(g) != at(g)).count();
-                let (dr, dx) = (dist(&ref_at), if x_same { dist(&x_at) } else { usize::MAX });
-                let near = match dr.cmp(&dx) {
-                    std::cmp::Ordering::Less => by_ref.len(),
-                    std::cmp::Ordering::Greater => by_x.len(),
-                    std::cmp::Ordering::Equal => by_ref.len().max(by_x.len()),
-                };
-                // with no read over the sibling's and X's bases nothing shows it absent
-                let seen_apart = reading == 0 || (!by_sib.is_empty() && by_sib.len() as f64 >= GUARD_REF_SHARE * near as f64);
-                log::debug!(
-                    "haplotype judge {}: the co-annotated {} spelled on {} fragment(s), its nearest allele on {} → {}",
-                    named(&target),
-                    named(&row),
-                    by_sib.len(),
-                    near,
-                    if seen_apart { "another allele, a state" } else { "part of the event, not a state" },
-                );
-                if !seen_apart {
-                    states.retain(|r| *r != row);
-                }
-            }
-        }
+        // A co-annotated sibling at X's site is another allele always: the input is taken as
+        // correct, so no fragment need spell it apart (the 1-fragment-and-5% floor of
+        // 2026-10-14 is gone; RJ-25, operator 2026-11-02). It stays a state above, and a
+        // read that cannot tell it from X is partial evidence, as the rules path reads it.
         // A background change at X's place cannot share a haplotype with X: crossed with
         // REF alone it would favour REF, so it is left to the reads' bases there. Under the
         // default (`respell`) an item of the guard's background or of the found contexts that

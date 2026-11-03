@@ -1,13 +1,14 @@
 """The sequence judge (`--read-judge sequence`, #304): a co-annotated sibling at X's site.
 
 Mechanism. A sibling the input lists over X's bases (an MNP's component, an SNV inside a
-delins) is another allele only where the reads show it: on at least one fragment, and
-on as many as an error's share (5%) of those spelling the allele it is nearest (REF or
-X, the larger when as near; RJ-25, operator 2026-10-14). A component the reads never
-show apart from the event is part of it, and at depth one fragment spelling it is an
-error's share. Before this the judge made every listed sibling a state, so reads that
-read only the bases it shares with X (the rest below min BQ) tied it with X and lost
-their ALT call.
+delins) is another allele at X's site, always: the input is taken as correct, so no fragment
+need spell it apart (RJ-25, amended 2026-11-02, operator: option B). A read that reads only
+the bases the sibling shares with X (the rest below min BQ) cannot tell the two apart, so it
+is neither's: partial evidence. Between 2026-10-14 and 2026-11-02 a listed sibling was another
+allele only where the reads showed it, on at least one fragment and as many as an error's
+share (5%) of those spelling the allele it is nearest (REF or X, the larger when as near);
+a component the reads never showed apart from the event was part of it. Before 2026-10-14 the
+judge made every listed sibling a state.
 
 Shapes: MNPs of 2 and 3 bases, a component at each base they change; the component
 spelled apart on 0, 1 or 5 fragments at 20 and 100 REF fragments; the masked carriers on
@@ -86,22 +87,25 @@ def _alt_count(tmp_path, name, j, alone, n_ref):
 
 
 @pytest.mark.parametrize("name, j", CASES, ids=[f"{n} component {j}" for n, j in CASES])
-def test_a_component_never_spelled_apart_is_part_of_the_mnp(tmp_path, name, j):
-    """No fragment spells the component apart from the MNP: the 4 carriers reading only
-    its base count ALT."""
-    assert _alt_count(tmp_path, name, j, 0, 20) == 14
+def test_a_component_never_spelled_apart_is_another_allele(tmp_path, name, j):
+    """No fragment spells the component apart from the MNP; it is another allele all the
+    same, so the 4 carriers reading only its base cannot tell the MNP from it: partial
+    evidence, not ALT."""
+    # B, 2026-11-02: a listed allele at the site is always a candidate; a read that reaches
+    # it and cannot tell is neither (was 14: the carriers counted ALT while it was unseen)
+    assert _alt_count(tmp_path, name, j, 0, 20) == 10
 
 
 @pytest.mark.parametrize("name, j", CASES, ids=[f"{n} component {j}" for n, j in CASES])
 @pytest.mark.parametrize(
     "alone, n_ref, ad",
-    [(1, 20, 10), (1, 100, 14), (5, 100, 10)],
+    # B, 2026-11-02: a listed allele at the site is always a candidate; a read that reaches
+    # it and cannot tell is neither (1 of 100 was 14: one fragment was an error's share)
+    [(1, 20, 10), (1, 100, 10), (5, 100, 10)],
     ids=["1 of 20", "1 of 100", "5 of 100"],
 )
-def test_a_component_is_another_allele_only_above_an_errors_share(
-    tmp_path, name, j, alone, n_ref, ad
-):
-    """Spelled apart on one fragment beside 20 REF fragments (5%) it is another allele
-    (the 4 carriers reading only its base tie it with the MNP); beside 100 one fragment is
-    an error's share and five are not."""
+def test_a_component_is_another_allele_at_any_share(tmp_path, name, j, alone, n_ref, ad):
+    """Spelled apart on one fragment beside 20 or 100 REF fragments, or on five beside 100, it
+    is another allele (the 4 carriers reading only its base tie it with the MNP): the share
+    the reads give it no longer matters."""
     assert _alt_count(tmp_path, name, j, alone, n_ref) == ad
