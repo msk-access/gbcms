@@ -790,7 +790,11 @@ fn conclude_margin<'h, F: Fn(usize) -> std::rc::Rc<Hap>>(
         // class's best within the margin of it (the alleles the read ties): the read fits them
         // as well, so it counts for none of them where it holds no window of theirs (a read
         // inside the insert holds the other allele's window, which is REF's run, and tied X).
-        for k in windows_to_hold(best, w) {
+        // A REF call the reach rule made (the tied allele is one the read never reaches, or one it
+        // writes its own indel across) holds REF's window alone, as before: the read shows REF
+        // where REF and X differ and nothing of the other allele, whose window it need not hold.
+        let needs = if ref_by_reach && call == Call::Ref { vec![w] } else { windows_to_hold(best, w) };
+        for k in needs {
             if let Some(covers) = window_missed(site, ex, k) {
                 trace!("haplotype judge: a {call:?} call at a long insertion holding no equal window from its anchor on state {k} (the read covers {covers:?}) → depth only");
                 return Verdict { call: Call::Depth, qual: 0, best: scores, holds_anchor: false, placed: None, confirmed: false, spells: 0, spells_x: 0, clip: None, fits: FitsTrace::default(), fits_none: false, neither: NeitherTrace::default(), owngap: OwnGapTrace::default() };

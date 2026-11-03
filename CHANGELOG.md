@@ -149,6 +149,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   window and that of every other class within the margin of it. Before, only a tie of another allele
   with the ALT held the ALT's window too; a tie of REF with another allele was checked on that
   allele's window alone, and a call made by the fit check on its haplotype's alone.
+  A REF call the reach rule made (REF ties another allele the read never reaches, or one it writes its own
+  indel across) holds REF's window alone, as on develop; a separate class plan decides it for every shape.
 - The default rules path is unchanged.
 
 ### Changed — the sequence judge reads an insertion of 50 bp or more over equal windows from its anchor (#264)
