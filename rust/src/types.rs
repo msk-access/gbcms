@@ -89,9 +89,10 @@ pub struct Variant {
     pub reach_unrecorded: bool,
 
     /// Prep routed this row to the sequence judge although the call is told the rules
-    /// (RJ-25, 2026-11-03): an SNV row, REF and ALT one base each, where the input lists an
-    /// indel or delins whose REF span meets the row's site (the judge's `meets`, after its
-    /// `beside` step). The rules' single-base check weighs no listed allele that changes the
+    /// (RJ-25, 2026-11-03): an SNV row (one base differing, after trimming: REF and ALT one base
+    /// each, or a same-length row kept with its padding), where the input lists an indel or
+    /// delins whose REF span meets the row's site (the judge's `meets`, after its `beside`
+    /// step). The rules' single-base check weighs no listed allele that changes the
     /// length, so a read that spells one counts ALT; the judge holds that allele as a site
     /// state and calls the read partial evidence, as a deletion of 50 bp or more already goes
     /// to a by-bases junction judge. Whole-input, so no bin geometry can change it; the row

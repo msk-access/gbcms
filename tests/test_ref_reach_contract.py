@@ -72,6 +72,13 @@ def _call(c):
     return (c.rd, c.ad, c.partial_alt)
 
 
+def _made(root, names):
+    """A folder under `root` for each name."""
+    for n in names:
+        (root / n).mkdir()
+    return names
+
+
 # ── a delins X with a listed SNV S among the bases it replaces ───────────
 
 
@@ -254,6 +261,56 @@ def test_a_read_spelling_a_listed_length_changing_allele_is_not_alt_at_an_snv_ro
 def test_a_listed_allele_of_the_same_length_that_holds_x_still_counts_at_both_rows(tmp_path, judge):
     """RJ-28: S keeps the length and holds X's change, so its readers are X's ALT too."""
     assert _call(_substitution_row(tmp_path, judge, "holds")) == (10, 20, 0)
+
+
+def _padded_row(tmp_path, judge, shape):
+    """X an SNV given with a base of padding after it (prep keeps a same-length row as given:
+    its span is two bases, one differing). 'delins': S a delins over the SNV that deletes the
+    padding base. 'insertion': S a pure insertion anchored on X's last base. 10 readers each."""
+    c = _contig(seed=1)
+    x1 = _other(c[P])
+    x = (P, c[P : P + 2], x1 + c[P + 1])
+    s = (
+        (P, c[P : P + 3], x1 + c[P + 2])
+        if shape == "delins"
+        else (P + 1, c[P + 1], c[P + 1] + "TT")
+    )
+
+    def alt_reads(tag, v, n):
+        _, r, a = v
+        out = []
+        for i in range(n):
+            st = P - 50 + (i % 40)
+            left = P - st
+            seq = (c[st:P] + a + c[P + len(r) :])[:READ] if v[0] == P else None
+            if seq is None:  # an insertion anchored one base on
+                seq = (c[st : P + 1] + a + c[P + 2 :])[:READ]
+                left += 1
+            cigar = [(0, left + min(len(a), len(r)))]
+            if len(a) > len(r):
+                cigar.append((1, len(a) - len(r)))
+            if len(a) < len(r):
+                cigar.append((2, len(r) - len(a)))
+            cigar.append((0, READ - left - len(a)))
+            out.append(make_read(f"{tag}{i}", seq, st, tuple(cigar), flag=_flag(i)))
+        return out
+
+    reads = alt_reads("x", x, 10) + alt_reads("s", s, 10) + _ref_reads(c, "ref", 10, -50, span=40)
+    return _counts(tmp_path, judge, c, [x, s], reads)[0]
+
+
+def test_an_snv_given_with_padding_is_routed_like_a_bare_one(tmp_path):
+    """The row counts as an SNV by the one base that differs, not by the length of its alleles:
+    a listed delins over it routes it to the judge (develop's rules gave (10, 10, 10), the judge
+    gives (10, 20, 0): the delins holds the row's change at its first base)."""
+    got = {j: _call(_padded_row(tmp_path / j, j, "delins")) for j in _made(tmp_path, PATHS)}
+    assert got["rules"] == got["sequence"] == (10, 20, 0), got
+
+
+def test_a_pure_insertion_anchored_on_the_last_base_of_a_padded_snv_does_not_route_it(tmp_path):
+    """The judge re-anchors it on the next base, where it no longer meets the row: the row keeps
+    the rules' count, as on develop (the judge's own count is (10, 10, 10))."""
+    assert _call(_padded_row(tmp_path, "rules", "insertion")) == (10, 10, 0)
 
 
 def _mnv_row(tmp_path, judge, shape):

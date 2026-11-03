@@ -216,22 +216,32 @@ fn grouping_reach(v: &Variant) -> (i64, i64, Option<(i64, i64)>) {
     (lo, hi, window)
 }
 
-/// Whether the listed row `s` meets the SNV row `x`'s site as the sequence judge reads it
-/// (`judge::haplotypes`, `meets` after `beside`): `s` changes the length and its REF span
-/// overlaps `x`'s base. A pure insertion or deletion anchored on `x`'s base changes no base
-/// `x` names; the judge re-anchors it on the next base, where it no longer meets `x`.
-pub(crate) fn meets_snv_site(x_pos: i64, s_pos: i64, s_ref: &str, s_alt: &str) -> bool {
-    let anchored_here = s_pos == x_pos
+/// Whether the listed row `s` meets the site of the substitution row `x` (POS `x_pos`, `x_len`
+/// bases) as the sequence judge reads it (`judge::haplotypes`, `meets` after `beside`): `s`
+/// changes the length and its REF span overlaps `x`'s. A pure insertion or deletion anchored
+/// on `x`'s last base changes no base `x` names; the judge re-anchors it on the next base,
+/// where it no longer meets `x`.
+pub(crate) fn meets_snv_site(x_pos: i64, x_len: usize, s_pos: i64, s_ref: &str, s_alt: &str) -> bool {
+    let x_end = x_pos + x_len as i64;
+    let anchored_here = s_pos == x_end - 1
         && matches!(
             crate::counting::window::allele_kind(s_ref, s_alt),
             Some(crate::counting::window::AlleleKind::Insertion | crate::counting::window::AlleleKind::Deletion)
         );
-    s_ref.len() != s_alt.len() && !anchored_here && s_pos <= x_pos && x_pos < s_pos + s_ref.len() as i64
+    s_ref.len() != s_alt.len() && !anchored_here && s_pos < x_end && x_pos < s_pos + s_ref.len() as i64
 }
 
-/// Routes to the sequence judge, under the rules, each SNV row (REF and ALT one base each)
-/// whose site an indel or delins of the same input meets (`Variant::judge_routed`; RJ-25,
-/// 2026-11-03). Whole-input, from the rows that passed prep, so no bin geometry and no
+/// Whether a row is a single-base substitution: REF and ALT of one length with one base
+/// differing (an SNV after a shared prefix and suffix are trimmed; prep keeps a same-length
+/// row's alleles as given).
+fn is_single_base_substitution(v: &Variant) -> bool {
+    let (r, a) = (v.ref_allele.as_bytes(), v.alt_allele.as_bytes());
+    r.len() == a.len() && r.iter().zip(a).filter(|(x, y)| !x.eq_ignore_ascii_case(y)).count() == 1
+}
+
+/// Routes to the sequence judge, under the rules, each SNV row (one base differing, after
+/// trimming) whose site an indel or delins of the same input meets (`Variant::judge_routed`;
+/// RJ-25, 2026-11-03). Whole-input, from the rows that passed prep, so no bin geometry and no
 /// other call can change it. The decomposed twin follows its parent.
 fn assign_judge_routing(variants: &mut [PreparedVariant]) {
     // the length-changing rows by chromosome: (POS, REF, ALT), in position order
@@ -249,12 +259,13 @@ fn assign_judge_routing(variants: &mut [PreparedVariant]) {
     let mut routed = 0usize;
     for p in variants.iter_mut().filter(|p| p.gbcms_status == "PASS") {
         let v = &p.variant;
-        let Some(rows) = changing.get(&v.chrom).filter(|_| v.ref_allele.len() == 1 && v.alt_allele.len() == 1) else {
+        let Some(rows) = changing.get(&v.chrom).filter(|_| is_single_base_substitution(v)) else {
             continue;
         };
-        // rows starting at or before the SNV and long enough to reach it
+        let x_end = v.pos + v.ref_allele.len() as i64;
+        // rows starting before the SNV's span ends and long enough to reach it
         let from = rows.partition_point(|r| r.0 < v.pos - longest);
-        if rows[from..].iter().take_while(|r| r.0 <= v.pos).any(|(pos, r, a)| meets_snv_site(v.pos, *pos, r, a)) {
+        if rows[from..].iter().take_while(|r| r.0 < x_end).any(|(pos, r, a)| meets_snv_site(v.pos, v.ref_allele.len(), *pos, r, a)) {
             p.variant.judge_routed = true;
             if let Some(twin) = p.decomposed_variant.as_mut() {
                 twin.judge_routed = true;
@@ -1320,8 +1331,8 @@ mod tests {
 
     #[test]
     fn an_snv_meets_a_listed_indel_or_delins_by_the_judges_test() {
-        // the SNV at 100
-        let meets = |pos: i64, r: &str, a: &str| meets_snv_site(100, pos, r, a);
+        // the SNV at 100, one base
+        let meets = |pos: i64, r: &str, a: &str| meets_snv_site(100, 1, pos, r, a);
         assert!(meets(95, "ACGTACGTACG", "A"), "a deletion over its base");
         assert!(meets(99, "ACG", "A"), "a deletion starting one base before");
         assert!(meets(100, "C", "TA"), "a delins whose anchor changes, at its base");
@@ -1332,6 +1343,14 @@ mod tests {
         assert!(!meets(101, "ACG", "A"), "a deletion starting past it");
         assert!(!meets(90, "ACGT", "A"), "a deletion ending before it");
         assert!(!meets(98, "ACG", "TTT"), "a substitution is no length change");
+        // a same-length row of 8 bases with one base differing keeps its span [100, 108): the
+        // judge re-anchors a pure indel on its last base, 107
+        let wide = |pos: i64, r: &str, a: &str| meets_snv_site(100, 8, pos, r, a);
+        assert!(wide(105, "ACGTAC", "A"), "a deletion over its last bases");
+        assert!(wide(100, "ACGT", "A"), "a pure deletion anchored on its first base is not re-anchored");
+        assert!(wide(107, "A", "TT"), "a delins on its last base");
+        assert!(!wide(107, "ACG", "A"), "a pure deletion anchored on its last base is re-anchored");
+        assert!(!wide(108, "ACGT", "A"), "a deletion starting past its span");
     }
 
     #[test]
@@ -1348,11 +1367,19 @@ mod tests {
             prepared("1", 900, "C", "T", "PASS"),          // 8: an SNV a failed row covers
             prepared("1", 895, "ACGTACGTAC", "A", "FAIL"), // 9
             prepared("2", 100, "C", "T", "PASS"),          // 10: the first SNV's position on another contig
+            prepared("1", 1100, "CAAAAA", "AAAAAA", "PASS"), // 11: an SNV kept with its padding, one base differing
+            prepared("1", 1098, "ACGTACGT", "A", "PASS"),  // 12: a deletion over it
+            prepared("1", 1300, "CAAAAA", "AAATAA", "PASS"), // 13: two bases differ: an MNV
+            prepared("1", 1298, "ACGTACGT", "A", "PASS"),  // 14: a deletion over it
         ];
         rows[0].decomposed_variant = Some(rows[0].variant.clone());
         assign_judge_routing(&mut rows);
         let routed: Vec<bool> = rows.iter().map(|p| p.variant.judge_routed).collect();
-        assert_eq!(routed, vec![true, false, false, false, false, false, false, false, false, false, false]);
+        assert_eq!(
+            routed,
+            vec![true, false, false, false, false, false, false, false, false, false, false, true, false, false, false],
+            "the SNV with a deletion over it, and the padded SNV: not the MNV, the anchored SNV or the failed row's"
+        );
         assert!(rows[0].decomposed_variant.as_ref().is_some_and(|t| t.judge_routed), "the twin follows its parent");
         // under the rules a routed row records the rows in its reach, and no other does
         mark_reach_unrecorded(&mut rows);
