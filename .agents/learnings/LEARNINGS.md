@@ -33,6 +33,22 @@ regenerating a section.
 
 ---
 
+## [LRN-20261103-001] rule-body | a scorer listed a patient folder, and its names are sample IDs
+- **Status:** resolved (rule promoted).
+- **Cause:** rule-body.
+- **Summary:**
+  - The z67 scorer (Sonnet, briefed by the main session) ran a mistyped `ls` on a patient run
+    root. The folder names it printed hold germline sample IDs. No position, read name or BAM name
+    was shown. Afterwards it printed patient text only through a sanitizer it had tested first. The
+    same day, the routing scorer's `ls` of a patient folder was blocked before any output.
+  - security.md covered printed lines, stderr and the sanitizer's test, but not listing a folder.
+    My briefs said "totals only" and named the rule, but not "never list".
+- **Promotion target:** `.agents/rules/security.md` ("Tool output leaves the machine") — `DONE:`
+  never list a patient folder; take paths from the manifest inside a sanitized script; every brief
+  that touches patient files says so.
+- **Related:** LRN-20261030-003 (stderr through the sanitizer); the agent-guards design (a guard
+  that refuses file tools and listings on protected roots).
+
 ## [LRN-20261102-003] rule-body | an edit made after the gate was committed with it
 - **Status:** resolved (rule promoted).
 - **Cause:** rule-body.
