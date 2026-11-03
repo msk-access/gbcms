@@ -157,6 +157,52 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     the same. On HG002 (public; c246, tr, sub, nocl; both paths) no row and no read call moves for
     any of the three. RJ-24 and RJ-25 amended 2026-11-02.
 
+### Fixed — two follow-ups to the equal windows of an insertion of 50 bp or more (#264)
+
+- Under `--read-judge sequence`, a read that ties the ALT with another allele (REF beaten) must
+  hold the ALT's equal window as well as that allele's (RJ-23). Before, the window check ran on the
+  haplotype of the allele the call names, and a read inside the insert, or holding only its far
+  junction, held the other allele's window (a haplotype with no long insert, which looks like
+  REF's run) and counted partial evidence. It is depth only now; no ALT count can rise.
+  At HG002 (public; c246, tr, sub, nocl) 367 read calls on 82 rows move from partial evidence to
+  depth only, all at pure insertions of 50 bp or more; no row's REF count, ALT count or VAF changes
+  (partial evidence falls on all 82 rows; DP falls by 42 reads on 25 rows: those reads lie off the anchor, and a read off the anchor was in DP only through its partial call, so as depth only they now count in no column).
+- The guard's masks are laid by offset from the anchor on every candidate haplotype along the
+  columns of each path (RJ-23, RJ-27), not by the offsets the haplotypes have without the
+  listed or found changes beside the insertion (Greptile's finding on PR #396): an insertion or
+  deletion between the anchor and a masked base moves that base's offset on every haplotype a
+  read carrying it lies on. The graph holds a copy of the span where a mask can lie per set of
+  such changes that can lie together. A state's graph with seven such changes or more in that span (the cap is checked per graph) keeps
+  the offsets without them (a named limit).
+  At HG002 the masks are laid by the columns of up to five such changes at the rows with masks and
+  no read call moves (nor in a sweep of 12,078 synthetic read pairs); the change is in the score of a
+  read carrying such a change on a candidate (four points lower on X's haplotype with a third base at
+  the masked base, now equal).
+- A read lies on one copy of that span for every candidate (RJ-23). A state's best path took
+  whichever copy masked its own mismatches, so a read ending in the insert, long before a listed
+  deletion, took the deletion's copy for the ALT (masking a base where the read has a third base)
+  and the other copy for a listed sibling of the ALT's length that differs at a masked offset: the
+  ALT scored 0, the sibling -4, and the read was ALT from a deletion it cannot carry. A read now lies
+  on the changes it carries and those it spans, the same for every candidate, and carries a change only where its bases span the change's place (a read ending on a deletion's padding base, or inside the repeat it slides over, carries nothing); a change it cannot place is a plain alternative for every candidate, with no mask moved for it, as on develop: the read is scored first on graphs with no copy of the masks' zone and again, on graphs with copies for the changes it spans only, where it spans one; the candidates whose
+  best path took another copy are scored again. A read carrying the deletion is told the ALT from the
+  sibling at the base its copy leaves unmasked, ALT.
+- The graph sets a site lays for the changes its reads span (up to 32 per site) count against the
+  judge's cache budget (`GBCMS_JUDGE_BUDGET_MB`), once each when kept. Past the budget no more are
+  kept and a read's set is laid for it alone. No call changes; only what is cached.
+- The length the windows read on to (RJ-23, RJ-27) where the masks hide the base that tells them
+  apart is counted in the columns of the path a read lies on, as the masks are. A deletion listed
+  between the anchor and that base takes bases out of the haplotype of a read that carries it, so
+  the windows hold as many fewer columns there; a REF molecule carrying it that reached the base was
+  two columns short of a window measured without the deletion and was depth only.
+- The window check at a pure insertion of 50 bp or more is the class rule for every call (RJ-23): a
+  read is told only on the windows of the alleles it ties, so a call holds its own allele's equal
+  window and that of every other class within the margin of it. Before, only a tie of another allele
+  with the ALT held the ALT's window too; a tie of REF with another allele was checked on that
+  allele's window alone, and a call made by the fit check on its haplotype's alone.
+  A REF call the reach rule made (REF ties another allele the read never reaches, or one it writes its own
+  indel across) holds REF's window alone, as on develop; a separate class plan decides it for every shape.
+- The default rules path is unchanged.
+
 ### Changed — the sequence judge reads an insertion of 50 bp or more over equal windows from its anchor (#264)
 
 - Under `--read-judge sequence`, a REF or ALT call at a pure insertion of 50 bp or more now

@@ -124,6 +124,22 @@ thread_local! {
     static CACHED: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
 }
 
+/// Charges `add` bytes a site keeps beside the row caches (the graph sets it lays per set of
+/// changes a read spans, [`haplotypes::Site::graphs_over`]) to the thread's budget: taken where
+/// they fit beside the work space and the caches alive, and refused where they do not.
+fn charge_kept(add: usize) -> bool {
+    if thread_budget().is_some_and(|budget| CACHED.with(std::cell::Cell::get) + work_bytes() + add > budget) {
+        return false;
+    }
+    CACHED.with(|c| c.set(c.get() + add));
+    true
+}
+
+/// Gives back `add` bytes [`charge_kept`] took, where the site that kept them is dropped.
+fn release_kept(add: usize) {
+    CACHED.with(|c| c.set(c.get().saturating_sub(add)));
+}
+
 /// The bytes a hash table's buckets take: its capacity's entries, each with its control byte.
 fn table_bytes<K, V, S>(m: &HashMap<K, V, S>) -> usize {
     m.capacity() * (std::mem::size_of::<(K, V)>() + 1)
@@ -1820,6 +1836,362 @@ mod tests {
             read(&h, 280, 142, 280, "142M").named(b"altClean"),
         ];
         assert_eq!(calls_masked(&c, &x, vec![330], &reads, ReadOn), vec![Ref, Alt, Ref, Alt, Ref, Alt]);
+    }
+
+    /// A description, a read and the same read with a third base at the masked base.
+    type ReadPair = (String, ReadView, ReadView);
+
+    /// The guard masks 363, right past a listed deletion of two bases after 360 (a context of
+    /// the duplication, outside its run), and reads of `long_duplication`'s contig that
+    /// carry the deletion or not, with a third base (no allele's) at the masked base's place
+    /// on their own haplotype, or the base itself: each pair differs there alone.
+    fn pairs_at_the_masked_base_past_a_listed_deletion() -> (Vec<u8>, Row, Row, Vec<ReadPair>) {
+        let (c, x, last) = long_duplication();
+        let k = Row::new(360, &c[360..363], &c[360..361]);
+        let hk = haplotype(&c, &[&k]);
+        let third = |hap: &[u8], at: usize| *b"ACGT".iter().find(|&&b| b != hap[at] && b != last).unwrap();
+        let pair = |name: &str, hap: &[u8], from: usize, len: usize, at: usize| {
+            let mut changed = hap[from..from + len].to_vec();
+            changed[at - from] = third(hap, at);
+            (
+                name.to_string(),
+                read(hap, from, len, from as i64, &format!("{len}M")).named(b"same"),
+                read_q(&changed, vec![Q; len], from as i64, &format!("{len}M")).named(b"third"),
+            )
+        };
+        // 363 is at 361 on the haplotype carrying the deletion, at 363 on REF's
+        let pairs = vec![
+            pair("a read carrying the deletion", &hk, 262, 100, 361),
+            pair("a read carrying the deletion, longer", &hk, 253, 110, 361),
+            pair("a REF read", &c, 262, 104, 363),
+        ];
+        (c, x, k, pairs)
+    }
+
+    #[test]
+    fn a_masked_base_weighs_alike_on_a_read_that_carries_a_listed_change_before_it() {
+        use haplotypes::LongInsRule::ReadOn;
+        // RJ-23's masks are laid on X's haplotype by offset from the anchor, so a base the
+        // guard masks weighs on no haplotype, whichever the read is weighed against. Through
+        // the deletion the masked base is two bases nearer the anchor, on every haplotype the
+        // read lies on: the masks were laid at the offsets of the haplotypes without it, so
+        // X's score for a read carrying the deletion and a third base at 363 was four lower
+        // (-8 against -12 for the first pair), and the read with the base itself the same
+        // against REF's. The scores of each class are now alike with and without that base.
+        let (c, x, k, pairs) = pairs_at_the_masked_base_past_a_listed_deletion();
+        for (what, same, third) in pairs {
+            let reads = [same, third];
+            let candidates = Candidates { listed: vec![k.clone()], masked: vec![363], ..Candidates::default() };
+            let s = haplotypes::Site::build_ins(x.clone(), &candidates, (0, c.to_vec()), &reads, ReadOn).unwrap();
+            let v: Vec<_> = reads.iter().map(|r| judge(&s, r, MIN_BQ, false)).collect();
+            assert_eq!(v[0].best, v[1].best, "{what}: the scores of REF, X and another allele");
+            assert_eq!((v[0].call, v[1].call), (Call::Ref, Call::Ref), "{what}");
+        }
+    }
+
+    #[test]
+    fn a_reads_alignment_is_scored_on_the_masks_of_the_path_it_ran_through() {
+        use haplotypes::LongInsRule::ReadOn;
+        // A path scores a masked base nothing, so the alignment read off it for the call is
+        // the score of its path: the same haplotype with the same masks. That includes a path
+        // of a state that does not take the change its read lies on (a read carrying the
+        // deletion, scored on X's graph; a read ending before the deletion, scored on the
+        // masks without it): the haplotype takes the masks of the copy the read lies on, not
+        // of the changes this state's path took.
+        let (c, x, k, pairs) = pairs_at_the_masked_base_past_a_listed_deletion();
+        // reads of the haplotype carrying the deletion that end well before it, their last base
+        // a third base (no allele's)
+        let (hk, last) = (haplotype(&c, &[&k]), *b"ACGT".iter().find(|&&b| b != c[359] && b != c[299]).unwrap());
+        let early: Vec<ReadView> = [60usize, 80, 99]
+            .into_iter()
+            .map(|len| {
+                let mut s = hk[262..262 + len].to_vec();
+                s[len - 1] = *b"ACGT".iter().find(|&&b| b != s[len - 1] && b != last).unwrap();
+                read_q(&s, vec![Q; len], 262, &format!("{len}M"))
+            })
+            .collect();
+        let reads: Vec<ReadView> = pairs.into_iter().flat_map(|(_, a, b)| [a, b]).chain(early).collect();
+        let candidates = Candidates { listed: vec![k.clone()], masked: vec![363], ..Candidates::default() };
+        let s = haplotypes::Site::build_ins(x.clone(), &candidates, (0, c.to_vec()), &reads, ReadOn).unwrap();
+        for (i, r) in reads.iter().enumerate() {
+            for (state, (score, path, _)) in decide::examined_alignments(&s, r, None).into_iter().enumerate() {
+                if path.0.skipped_after.iter().all(|&n| n == 0) {
+                    assert_eq!(path.0.costs.iter().sum::<i32>(), score, "read {i}, state {state}: the alignment's costs on the haplotype are its path's score");
+                }
+            }
+        }
+    }
+
+    /// The review's shape (2026-11-02): X inserts 60 bases of new sequence after the anchor at
+    /// 299 (a run of none: the equal windows hold the anchor and one base), the guard masks 340
+    /// (41 bases from the anchor, so inserted base 40 on X's haplotype and on a sibling's), a
+    /// listed sibling `y` equals X but at inserted base 40, and a 2 bp deletion `k` is listed
+    /// after 310 (a context): through it the masked base is two bases nearer, at inserted base 38.
+    /// The contig, X, the sibling, the deletion, and X's haplotype.
+    fn new_insertion_with_a_sibling_and_a_listed_deletion() -> (Vec<u8>, Row, Row, Row, Vec<u8>) {
+        let c = random_seq(700, 2645);
+        let mut ins = random_seq(60, 2646);
+        while ins[0] == c[300] || ins[59] == c[299] {
+            ins.rotate_left(1);
+        }
+        let x = Row::new(299, &c[299..300], &[&c[299..300], &ins[..]].concat());
+        let mut alt_y = x.alt_al.clone();
+        alt_y[41] = *b"ACGT".iter().find(|&&b| b != alt_y[41]).unwrap(); // inserted base 40
+        let y = Row::new(299, &c[299..300], &alt_y);
+        let k = Row::new(310, &c[310..313], &c[310..311]);
+        let hx = haplotype(&c, &[&x]);
+        (c, x, y, k, hx)
+    }
+
+    #[test]
+    fn a_read_that_never_reaches_a_listed_change_is_scored_on_the_masks_without_it() {
+        use haplotypes::LongInsRule::ReadOn;
+        // The graph holds a copy of the span the masks lie over per set of listed changes
+        // that can lie together, each copy masked by the columns of its own set, and a state's
+        // best path took whichever copy masked its own mismatches. An X read ending inside the
+        // insert, long before the deletion listed past it, took the deletion's copy for X
+        // (masking inserted base 38, where it has a third base) and the other copy for the
+        // sibling (masking inserted base 40): X scored 0, the sibling -4, and the read was
+        // ALT from a deletion it cannot carry. A read lies on the copy of the changes it
+        // carries or spans, the same for every state: this one reaches none, so X and the
+        // sibling both pay for the third base and are told apart by no base (inserted base 40
+        // is masked), partial evidence of the sibling.
+        let (c, x, y, k, hx) = new_insertion_with_a_sibling_and_a_listed_deletion();
+        let third = |at: usize| *b"ACGT".iter().find(|&&b| b != hx[at]).unwrap();
+        // X's haplotype from 290: the anchor, then inserted base i at 300 + i; a third base at 338
+        let early = |len: usize, cig: &str| {
+            let mut s = hx[290..290 + len].to_vec();
+            s[338 - 290] = third(338);
+            read_q(&s, vec![Q; len], 290, cig)
+        };
+        let reads = [
+            early(55, "55M").named(b"written_through"),
+            early(55, "10M45S").named(b"clipped"),
+            early(55, "10M45I").named(b"inserted"),
+            early(60, "10M50I").named(b"inserted_longer"),
+        ];
+        let candidates = Candidates { listed: vec![y.clone(), k.clone()], masked: vec![340], ..Candidates::default() };
+        let s = haplotypes::Site::build_ins(x.clone(), &candidates, (0, c.to_vec()), &reads, ReadOn).unwrap();
+        for r in &reads {
+            let v = judge(&s, r, MIN_BQ, false);
+            assert_eq!(v.call, Call::Other, "{}: scores X, REF and the sibling {:?}", String::from_utf8_lossy(&r.name), v.best);
+            assert_eq!((v.best[0], v.best[2]), (Some(-4), Some(-4)), "{}: X and the sibling both pay for the third base", String::from_utf8_lossy(&r.name));
+        }
+    }
+
+    #[test]
+    fn a_read_ending_on_a_listed_deletions_padding_base_or_inside_its_repeat_carries_nothing() {
+        use haplotypes::LongInsRule::ReadOn;
+        // The copy laid for a listed deletion cuts the reference under it and holds its
+        // padding base (the anchor), so a path that ends on that base, or inside the repeat the
+        // deletion shortens, went through the deletion's segment at no cost and was held to its
+        // copy, which masks inserted base 38. A read carries a change only where its bases span
+        // the change's place (the anchor to the end of the repeat it slides over): these reads
+        // span none, so a sequencing error at inserted base 38 weighs on X and the sibling
+        // alike and the read stays partial evidence, with the error or without it.
+        for repeat in [false, true] {
+            let (mut c, x, y, _, _) = new_insertion_with_a_sibling_and_a_listed_deletion();
+            if repeat {
+                // 311-316 one base: the deletion of 311 and 312 slides over the whole tract
+                let b = *b"ACGT".iter().find(|&&b| b != c[310] && b != c[317]).unwrap();
+                c[311..317].fill(b);
+            }
+            let k = Row::new(310, &c[310..313], &c[310..311]);
+            let hx = haplotype(&c, &[&x]);
+            let end = if repeat { 312 } else { 310 };
+            let third = *b"ACGT".iter().find(|&&b| b != hx[338]).unwrap();
+            let read_to = |error: bool| {
+                let mut s = hx[290..end + 61].to_vec();
+                if error {
+                    s[338 - 290] = third;
+                }
+                read_q(&s, vec![Q; s.len()], 290, &format!("10M60I{}M", end - 299))
+            };
+            let reads = [read_to(true).named(b"error"), read_to(false).named(b"plain")];
+            let candidates = Candidates { listed: vec![y.clone(), k.clone()], masked: vec![340], ..Candidates::default() };
+            let s = haplotypes::Site::build_ins(x.clone(), &candidates, (0, c.to_vec()), &reads, ReadOn).unwrap();
+            let v: Vec<_> = reads.iter().map(|r| judge(&s, r, MIN_BQ, false)).collect();
+            assert_eq!((v[0].call, v[1].call), (Call::Other, Call::Other), "repeat {repeat}: {:?} {:?}", v[0].best, v[1].best);
+        }
+    }
+
+    #[test]
+    fn a_read_that_carries_a_listed_change_is_told_the_alleles_apart_on_its_own_masks() {
+        use haplotypes::LongInsRule::ReadOn;
+        // The same shape, reads of X's haplotype that reach the deletion. One carrying it has
+        // inserted base 38 masked (the guard's base is two nearer the anchor through the
+        // deletion) and base 40 not: it is told X from the sibling there, ALT, with or without
+        // a third base at 38. A read as long that does not carry it has base 40 masked and
+        // tells them apart by no base, partial evidence, as the shorter reads do.
+        let (c, x, y, k, hx) = new_insertion_with_a_sibling_and_a_listed_deletion();
+        let hxk = haplotype(&c, &[&x, &k]);
+        let third = |hap: &[u8], at: usize| *b"ACGT".iter().find(|&&b| b != hap[at]).unwrap();
+        let carrier = |third_at_38: bool, cig: &str| {
+            let mut s = hxk[290..400].to_vec();
+            if third_at_38 {
+                s[338 - 290] = third(&hxk, 338);
+            }
+            read_q(&s, vec![Q; 110], 290, cig)
+        };
+        let plain = {
+            let s = hx[290..390].to_vec();
+            read_q(&s, vec![Q; 100], 290, "10M60I11M2M17M")
+        };
+        let reads = [
+            carrier(false, "10M60I11M2D29M").named(b"carrier_written"),
+            carrier(true, "10M60I11M2D29M").named(b"carrier_third_at_38"),
+            carrier(false, "110M").named(b"carrier_written_through"),
+            plain.named(b"not_carrying"),
+        ];
+        let candidates = Candidates { listed: vec![y.clone(), k.clone()], masked: vec![340], ..Candidates::default() };
+        let s = haplotypes::Site::build_ins(x.clone(), &candidates, (0, c.to_vec()), &reads, ReadOn).unwrap();
+        let got: Vec<Call> = reads.iter().map(|r| judge(&s, r, MIN_BQ, false).call).collect();
+        assert_eq!(got, vec![Call::Alt, Call::Alt, Call::Alt, Call::Other]);
+    }
+
+    /// `new_insertion_with_a_sibling_and_a_listed_deletion`'s shape with a second 2 bp deletion
+    /// `k2` listed after 320, and reads of X's haplotype that carry neither, either or both: the
+    /// reads that span a listed change span one, the other or both.
+    fn two_listed_deletions_and_their_reads() -> (Vec<u8>, Row, Vec<Row>, Vec<ReadView>) {
+        let (c, x, y, k, hx) = new_insertion_with_a_sibling_and_a_listed_deletion();
+        let k2 = Row::new(320, &c[320..323], &c[320..321]);
+        let on = |hap: &[u8], cigar: &str, len: usize, name: &[u8]| read_q(&hap[290..290 + len], vec![Q; len], 290, cigar).named(name);
+        let reads = vec![
+            on(&haplotype(&c, &[&x, &k]), "10M60I11M2D29M", 110, b"first"),
+            on(&haplotype(&c, &[&x, &k2]), "10M60I21M2D19M", 110, b"second"),
+            on(&haplotype(&c, &[&x, &k, &k2]), "10M60I11M2D8M2D21M", 110, b"both"),
+            on(&hx, "10M60I30M", 100, b"neither"),
+            on(&haplotype(&c, &[&k]), "11M2D99M", 110, b"ref_first"),
+            on(&haplotype(&c, &[&k2]), "21M2D89M", 110, b"ref_second"),
+            // reads that end between the deletions' places, or start after the first's
+            on(&haplotype(&c, &[&x, &k]), "10M60I11M2D4M", 85, b"ends_after_first"),
+            read_q(&haplotype(&c, &[&k2])[314..360], vec![Q; 46], 314, "7M2D39M").named(b"starts_after_first"),
+        ];
+        (c, x, vec![y, k, k2], reads)
+    }
+
+    #[test]
+    fn the_graph_sets_a_site_keeps_are_charged_to_the_budget_once_and_stop_when_it_is_spent() {
+        use haplotypes::LongInsRule::ReadOn;
+        // A read that spans listed changes is scored again on graphs laid with copies of the
+        // masks' zone for those changes only; a site keeps up to 32 such sets (one per set of
+        // changes) so a read alike does not lay them again. They are caches, so the thread's
+        // budget bounds them: each set is charged once when kept, and once the budget is spent
+        // no more are kept and a read's set is laid for it alone. The budget decides only what
+        // is cached: every read's call and scores are the same with no limit, with room for
+        // one set, and with none.
+        use super::BUDGET_FOR_TESTS;
+        let (c, x, listed, reads) = two_listed_deletions_and_their_reads();
+        let candidates = Candidates { listed, masked: vec![340], ..Candidates::default() };
+        let build = || {
+            let s = haplotypes::Site::build_ins(x.clone(), &candidates, (0, c.to_vec()), &reads, ReadOn).unwrap();
+            assert!(s.scores_by_copy(), "the site lays its masks by copy");
+            s
+        };
+        let verdicts = |s: &haplotypes::Site, from: &[ReadView]| -> Vec<_> {
+            from.iter()
+                .map(|r| {
+                    let v = judge(s, r, MIN_BQ, false);
+                    (v.call, v.best)
+                })
+                .collect()
+        };
+        let limit = |budget: Option<usize>| BUDGET_FOR_TESTS.with(|b| b.set(Some(budget)));
+        let cached = || CACHED.with(std::cell::Cell::get);
+        // no limit: the sets of the three spans the reads show ([first], [second], both) are kept
+        limit(None);
+        let s = build();
+        let uncapped = verdicts(&s, &reads);
+        let (sets, bytes) = s.kept_graphs();
+        assert!(sets == 3 && bytes > 0, "no limit: {sets} sets, {bytes} bytes");
+        assert_eq!(cached(), bytes, "the thread's budget counts what the site keeps");
+        assert_eq!(verdicts(&s, &reads), uncapped, "a second pass over the reads");
+        assert_eq!(s.kept_graphs(), (sets, bytes), "a second pass adds no set");
+        drop(s);
+        assert_eq!(cached(), 0, "the site gives its bytes back when it is dropped");
+        // no room: no set is kept, and every read's call and scores are the same
+        limit(Some(0));
+        let s = build();
+        assert_eq!(verdicts(&s, &reads), uncapped, "no room");
+        assert_eq!((s.kept_graphs(), cached()), ((0, 0), 0), "no room: nothing is kept or charged");
+        drop(s);
+        // room for one set: one is kept while there is room; once the budget is spent no more
+        // are kept, and the sets kept are not charged again
+        limit(None);
+        let s = build();
+        verdicts(&s, &reads[6..7]);
+        let (one, one_bytes) = s.kept_graphs();
+        assert!(one == 1 && one_bytes < bytes, "one set kept: {one} sets, {one_bytes} bytes");
+        limit(Some(0));
+        assert_eq!(verdicts(&s, &reads), uncapped, "budget spent");
+        assert_eq!(verdicts(&s, &reads), uncapped, "budget spent, a second pass");
+        assert_eq!((s.kept_graphs(), cached()), ((one, one_bytes), one_bytes), "budget spent: the sets kept stop growing");
+        drop(s);
+        assert_eq!(cached(), 0);
+        BUDGET_FOR_TESTS.with(|b| b.set(None));
+    }
+
+    #[test]
+    fn a_graph_set_the_site_does_not_keep_is_counted_with_the_read_that_holds_it() {
+        use haplotypes::LongInsRule::ReadOn;
+        use super::BUDGET_FOR_TESTS;
+        // A read's programmes (`Scored`) hold the graphs of its second scoring. Where the site
+        // keeps them they are counted once, with the site; where it does not (no room) they are
+        // the read's own and its programmes' bytes include them, so a row's cache that keeps the
+        // read's programmes is charged for them.
+        let (c, x, listed, reads) = two_listed_deletions_and_their_reads();
+        let candidates = Candidates { listed, masked: vec![340], ..Candidates::default() };
+        let s = haplotypes::Site::build_ins(x.clone(), &candidates, (0, c.to_vec()), &reads, ReadOn).unwrap();
+        let read = &reads[0];
+        let (kept, kept_bytes) = decide::second_scoring(&s, read).expect("the read spans a listed deletion");
+        let (sets, charged) = s.kept_graphs();
+        assert!(kept && sets == 1, "no limit: the site keeps the set the read was scored on");
+        BUDGET_FOR_TESTS.with(|b| b.set(Some(Some(0))));
+        let closed = haplotypes::Site::build_ins(x.clone(), &candidates, (0, c.to_vec()), &reads, ReadOn).unwrap();
+        let (own, own_bytes) = decide::second_scoring(&closed, read).expect("the read spans a listed deletion");
+        BUDGET_FOR_TESTS.with(|b| b.set(None));
+        assert!(!own && closed.kept_graphs() == (0, 0), "no room: the set is the read's own");
+        assert!(own_bytes > kept_bytes && own_bytes - kept_bytes <= charged && own_bytes - kept_bytes + 128 >= charged, "the read's programmes hold {own_bytes} bytes against {kept_bytes}; the set was charged {charged}");
+    }
+
+    #[test]
+    fn the_windows_read_on_are_counted_in_the_columns_of_the_path_a_read_lies_on() {
+        use haplotypes::LongInsRule::ReadOn;
+        // X inserts 60 bases of new sequence after the anchor at 299 (a run of none, so the
+        // windows hold the anchor and one base). The guard masks 300, 301, 305 and 306, and X's
+        // inserted bases at the other columns up to 307 are REF's, so no base tells REF's window
+        // from X's until 308: both read on to it, 10 columns from the anchor with the anchor.
+        // A deletion listed inside them takes two bases (303, 304) out of the haplotype of a
+        // read that carries it: 308 is two columns nearer the anchor there, and the windows,
+        // counted in the columns of the path the read lies on as the masks are, hold 8 columns.
+        // A REF molecule carrying the deletion that ends at 308 holds them; counted on the
+        // haplotype without the deletion it was two columns short (depth only), while a molecule
+        // without the deletion ending at 308 was REF.
+        let c = random_seq(700, 2647);
+        let mut ins = random_seq(60, 2648);
+        // columns of X's haplotype are 1 + the inserted base's index
+        for (i, at) in [(2, 302), (3, 303), (4, 304), (5, 307), (7, 307)] {
+            ins[i] = c[at];
+        }
+        let differs = |b: u8| *b"ACGT".iter().find(|&&t| t != b).unwrap();
+        ins[6] = differs(c[308]);
+        ins[8] = differs(c[308]);
+        ins[0] = differs(c[300]);
+        ins[59] = differs(c[299]);
+        let x = Row::new(299, &c[299..300], &[&c[299..300], &ins[..]].concat());
+        let k = Row::new(302, &c[302..305], &c[302..303]);
+        let hk = haplotype(&c, &[&k]);
+        let reads = [
+            // the deletion haplotype from 290: genome 290-302, the deletion, then 305 on
+            read_q(&hk[290..307], vec![Q; 17], 290, "13M2D4M").named(b"deletion_308"),
+            read_q(&hk[290..306], vec![Q; 16], 290, "13M2D3M").named(b"deletion_307"),
+            read(&c, 290, 19, 290, "19M").named(b"plain_308"),
+            read(&c, 290, 18, 290, "18M").named(b"plain_307"),
+        ];
+        let candidates = Candidates { listed: vec![k.clone()], masked: vec![300, 301, 305, 306], ..Candidates::default() };
+        let s = haplotypes::Site::build_ins(x.clone(), &candidates, (0, c.to_vec()), &reads, ReadOn).unwrap();
+        let got: Vec<Call> = reads.iter().map(|r| judge(&s, r, MIN_BQ, false).call).collect();
+        assert_eq!(got, vec![Call::Ref, Call::Depth, Call::Ref, Call::Depth]);
     }
 
     #[test]
