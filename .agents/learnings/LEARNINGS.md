@@ -61,6 +61,11 @@ regenerating a section.
     that the gate covers only the tree it ran on.
 - **Promotion target:** `.agents/skills/qa-check/SKILL.md` ("Read every exit code") — `DONE:` an edit
   made after the gate, docs included, needs the gate again before the commit.
+- **Recurred 2026-11-03:** moving this rule to its own docs branch, I cherry-picked two commits. The
+  cherry-pick made them before the gate ran on the new tree (the content had been gated on the plan
+  branch). Nothing was pushed; the gate ran before the push. `DONE:` the same skill line now says
+  that cherry-pick, merge and rebase commit too: use
+  `git cherry-pick --no-commit` or `git merge --no-commit`, run the gate, then commit.
 - **Related:** LRN-20261031-001 (a gate result read and a commit made in one command).
 
 ## [LRN-20261102-002] rule-body | PRs merged on green checks with a bot review unread
