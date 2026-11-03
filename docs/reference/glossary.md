@@ -78,7 +78,7 @@ The reasons and what each means: [QC Flags → Verdict and status reasons](qc-fl
 
 | Term | Definition |
 |:-----|:-----------|
-| **BAQ** | Base Alignment Quality — heuristic quality downgrade (−20 BQ within 5 bp) near indels and splice junctions. Off by default for DNA (upstream BQSR), on by default for RNA (no upstream BQ calibration). See [Read Filters: BAQ](read-filters.md#baq-quality-downgrade). |
+| **BAQ** | Base Alignment Quality — heuristic quality downgrade (−20 BQ within 5 bp) near a read's insertions and deletions; a splice junction lowers none. Off by default for DNA (upstream BQSR), on by default for RNA (no upstream BQ calibration). See [Read Filters: BAQ](read-filters.md#baq-quality-downgrade). |
 | **UMI** | Unique Molecular Identifier — barcode for molecule-level deduplication |
 | **Genomic binning** | Variant grouping by chromosome for cache-efficient counting (`count_bam_binned`) |
 | **Binning invariance** | The rule that counts never depend on how variants are grouped into bins (window, cap, one variant per bin or per call); checked by `tests/test_binning_invariance.py` and every `count_checked` call |
