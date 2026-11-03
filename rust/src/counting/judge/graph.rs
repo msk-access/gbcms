@@ -320,13 +320,14 @@ impl Graph {
 
     /// Where `other`'s bases first differ from this graph's (its length where none does),
     /// where the two are laid out alike: the same segments (spans, bases' places, whether
-    /// each spells a row), coordinates, edges and length changes, so a programme over them
-    /// differs only from that base on. None where they are not laid out alike (as REF's
+    /// each spells a row, the copy of a zone it lies in), coordinates, edges, length changes
+    /// and copies (the changes each is laid for), so a programme over them differs only from
+    /// that base on, and a band that bars a read from some copies bars the same bases of both. None where they are not laid out alike (as REF's
     /// graph, not cut at X's span, and X's).
     pub(crate) fn layout_until(&self, other: &Graph) -> Option<usize> {
         let segments = self.segments.len() == other.segments.len()
             && self.segments.iter().zip(&other.segments).all(|(a, b)| {
-                (a.span, a.first, a.after, a.row.is_some()) == (b.span, b.first, b.after, b.row.is_some())
+                (a.span, a.first, a.after, a.row.is_some(), a.copy) == (b.span, b.first, b.after, b.row.is_some(), b.copy)
             });
         let alike = segments
             && self.topological
@@ -339,7 +340,8 @@ impl Graph {
             && self.succs == other.succs
             && self.shifts == other.shifts
             && self.grows == other.grows
-            && self.end_max == other.end_max;
+            && self.end_max == other.end_max
+            && self.copy_sets == other.copy_sets;
         alike.then(|| self.bases.iter().zip(&other.bases).position(|(a, b)| a != b).unwrap_or(self.bases.len()))
     }
 
@@ -1897,6 +1899,23 @@ mod tests {
         // the copy laid for a change it neither carries nor spans (row 7) is barred
         assert_eq!(held(&at13, Some((vec![9], Vec::new()))), (score::MISMATCH, none));
         assert_eq!(g.barring(&[9], &[]), vec![false, true, false]);
+    }
+
+    #[test]
+    fn graphs_laid_for_other_copies_of_a_zone_share_no_columns() {
+        // A state reuses another state's band, and with it the copies a read is barred from.
+        // Two graphs with the same segments, edges and bases whose copies are laid for other
+        // changes, or tagged otherwise, bar other bases: the band of one is not the other's.
+        let (g, _, _, _) = two_copies_of_a_zone();
+        assert_eq!(g.layout_until(&g.clone()), Some(g.len()), "a graph laid out as itself");
+        let mut other = g.clone();
+        other.copy_sets[1] = vec![8];
+        assert_eq!(g.layout_until(&other), None, "the first copy laid for another change");
+        let mut swapped = g.clone();
+        for s in swapped.segments.iter_mut().filter(|s| s.copy != 0) {
+            s.copy = 3 - s.copy;
+        }
+        assert_eq!(g.layout_until(&swapped), None, "the copies tagged the other way round");
     }
 
     /// Deterministic pseudo-random numbers (xorshift), `0..n`.
