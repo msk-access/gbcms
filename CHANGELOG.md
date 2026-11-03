@@ -42,12 +42,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the shared prefix and suffix are trimmed) has a core, 4 bases in from both ends: a substitution
   wholly inside it is a context of REF's molecules, so a read that reaches and spells it is REF
   and a sibling there claims no REF read. A 60>30 delins has a core; 5>60 does not.
-- Counts on HG002 (public, local; 27,589 rows), rules path against develop: 605 arm-rows change (87
+- **Two corrections against the text above (rq1, operator 2026-11-03).** (a) The candidate test
+  reads the window the event's own windows hold: one flank base each side of a pure indel, two of
+  any other event. It read two for a pure indel too, so a listed delins that is X plus a
+  substitution at the second flank base became a candidate whose window equals X's: no read could
+  tell them apart and every carrier of a 1-base insertion in a 4-base run went to partial (AD 106
+  to 0 at one panel row, rules path). (b) The reach of a REF-length allele is measured on its
+  difference from REF before the guard's masks, so an allele that differs only at masked bases still
+  contests a read that spans them: reached and not told is neither. It had been taken to contest
+  nothing, and 91 read calls at six HG002 rows (five insertions, one deletion; 5 of them true ALT at
+  c246 INS 1-9) went from neither to REF. The MNP check measures it the same way. The rules path
+  only; the judge lane moves no row and no read call. Where the paths still differ at a delins row
+  (the rules need the read to hold X's whole window, RJ-1 and RJ-2; the judge counts what the read
+  covers) is older than this change, and closing it would be a third REF rule (#331); RJ-25 (6).
+- Counts on HG002 (public, local; 27,589 rows), rules path against develop: 598 arm-rows change (87
   without the routing); the routing changes no row that is not a class row; at the 1,302 class rows the rules lane equals the judge
   lane in every MAF field and read call. Phased truth at those rows (strict view): true ALT credited
   454 to 521, reads of the listed allele credited ALT 142 to 21; scored targets (truth v2dbq20): true
-  ALT credited 30,455 to 30,457, true REF called REF +10, and 5 true ALT reads at c246 insertions
-  are now called REF (the reach rule). Judge: 49 arm-rows change; truth classes equal. Speed on
+  ALT credited 30,455 to 30,457, true REF called REF unchanged, true ALT called REF 1,339 to 1,336.
+  Judge: 49 arm-rows change; truth classes equal. Speed on
   HG002 (4 threads, untraced): c246 1.4 times develop, tr 1.1, sub 2.1, nocl 2.5 (9.0 s against
   3.6 s); the speed work is the speed phase's. Patient sets and the normals are measured on the
   final build.

@@ -56,10 +56,14 @@ not REF for this row, and a tie between rows is neither row's AD (RJ-5).
 ## Listed alleles at the site (RJ-25, 2026-11-02; both paths)
 - Every listed allele whose span meets the ALT's site is another allele, always
   (`carrier::meets_site`, the judge's `meets`): no floor of fragments. Unlisted alleles keep
-  the presence test (`carrier::is_found`).
-- A REF read is told only from the REF-length alleles it reaches (`carrier::reached_others`,
-  `tells_others_aligned` for MNPs); one past its end does not contest it; reached and not
-  told is neither.
+  the presence test (`carrier::is_found`). A listed allele is a candidate where it differs
+  inside the window the event's own windows hold (`Event::flank`: one base each side of a pure
+  indel, two otherwise), not the wider span the found alleles are read over (2026-11-03).
+- A REF read is told only from the REF-length alleles it reaches (`carrier::contesting_others`
+  over `reached_others`, `tells_others_aligned` for MNPs); one past its end does not contest it;
+  reached and not told is neither. Reach is measured on the allele's difference before the guard's
+  masks (`Windows::ref_unmasked`): a mask hides a base from the windows, not from a read that
+  spans it (2026-11-03).
 - An SNV row where the input lists an indel or delins whose span meets its site is counted by the
   sequence judge also under the rules (`Variant::judge_routed`, set by prep:
   `normalize::engine::assign_judge_routing`, `meets_snv_site`; the count engine's `judge_of`).
