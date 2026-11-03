@@ -59,7 +59,7 @@ _Last updated: 2026-11-03_
 
 **Next:**
 1. Class plan B through rq2 to its PR.
-2. Packages 4 → 7 (table below; the clipped-bases package #212/#177 is the next plan-first item), the truth sets (#275) and the HPC gate.
+2. Package 3's rest (#293, #178), then packages 4 → 7 (table below; the clipped-bases package #212/#177 is the next plan-first item), the truth sets (#275) and the HPC gate.
 3. Speed: #335 for the judge, #412 for the routing, #406's memory, and the C++ floor on the production profile before 6.7.0 ships.
 4. Clean-up.
 5. #331 for 6.8.0.
