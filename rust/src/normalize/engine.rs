@@ -138,10 +138,13 @@ pub fn prepare_variants(
             // Post-processing: assign multi-allelic group IDs
             assign_multi_allelic_groups(&mut r);
             assign_listed_neighbours(&mut r);
+            assign_judge_routing(&mut r);
             if reach_rows {
-                assign_reach_rows(&mut r);
+                assign_reach_rows(&mut r, false);
             } else {
+                // under the rules only a routed row weighs the rows in its reach
                 mark_reach_unrecorded(&mut r);
+                assign_reach_rows(&mut r, true);
             }
 
             // Log summary
@@ -213,10 +216,62 @@ fn grouping_reach(v: &Variant) -> (i64, i64, Option<(i64, i64)>) {
     (lo, hi, window)
 }
 
+/// Whether the listed row `s` meets the SNV row `x`'s site as the sequence judge reads it
+/// (`judge::haplotypes`, `meets` after `beside`): `s` changes the length and its REF span
+/// overlaps `x`'s base. A pure insertion or deletion anchored on `x`'s base changes no base
+/// `x` names; the judge re-anchors it on the next base, where it no longer meets `x`.
+pub(crate) fn meets_snv_site(x_pos: i64, s_pos: i64, s_ref: &str, s_alt: &str) -> bool {
+    let anchored_here = s_pos == x_pos
+        && matches!(
+            crate::counting::window::allele_kind(s_ref, s_alt),
+            Some(crate::counting::window::AlleleKind::Insertion | crate::counting::window::AlleleKind::Deletion)
+        );
+    s_ref.len() != s_alt.len() && !anchored_here && s_pos <= x_pos && x_pos < s_pos + s_ref.len() as i64
+}
+
+/// Routes to the sequence judge, under the rules, each SNV row (REF and ALT one base each)
+/// whose site an indel or delins of the same input meets (`Variant::judge_routed`; RJ-25,
+/// 2026-11-03). Whole-input, from the rows that passed prep, so no bin geometry and no
+/// other call can change it. The decomposed twin follows its parent.
+fn assign_judge_routing(variants: &mut [PreparedVariant]) {
+    // the length-changing rows by chromosome: (POS, REF, ALT), in position order
+    let mut changing: std::collections::HashMap<String, Vec<(i64, String, String)>> = std::collections::HashMap::new();
+    for p in variants.iter().filter(|p| p.gbcms_status == "PASS") {
+        let v = &p.variant;
+        if v.ref_allele.len() != v.alt_allele.len() {
+            changing.entry(v.chrom.clone()).or_default().push((v.pos, v.ref_allele.clone(), v.alt_allele.clone()));
+        }
+    }
+    for rows in changing.values_mut() {
+        rows.sort();
+    }
+    let longest = changing.values().flatten().map(|r| r.1.len() as i64).max().unwrap_or(0);
+    let mut routed = 0usize;
+    for p in variants.iter_mut().filter(|p| p.gbcms_status == "PASS") {
+        let v = &p.variant;
+        let Some(rows) = changing.get(&v.chrom).filter(|_| v.ref_allele.len() == 1 && v.alt_allele.len() == 1) else {
+            continue;
+        };
+        // rows starting at or before the SNV and long enough to reach it
+        let from = rows.partition_point(|r| r.0 < v.pos - longest);
+        if rows[from..].iter().take_while(|r| r.0 <= v.pos).any(|(pos, r, a)| meets_snv_site(v.pos, *pos, r, a)) {
+            p.variant.judge_routed = true;
+            if let Some(twin) = p.decomposed_variant.as_mut() {
+                twin.judge_routed = true;
+            }
+            routed += 1;
+        }
+    }
+    if routed > 0 {
+        info!("prepare_variants: {routed} SNV row(s) beside a listed indel or delins are routed to the sequence judge");
+    }
+}
+
 /// Records on each row the input's other rows within a read's reach of it
 /// (`Variant::reach_rows`), for the haplotype judge; the decomposed twin carries its
 /// parent's. Whole-input, so the rows a read is weighed against never depend on the bin.
-fn assign_reach_rows(variants: &mut [PreparedVariant]) {
+/// With `only_routed`, on the rows routed to the judge under the rules alone.
+fn assign_reach_rows(variants: &mut [PreparedVariant], only_routed: bool) {
     let reach = crate::counting::judge::READ_REACH;
     let mut by_chrom: std::collections::HashMap<String, Vec<(i64, String, String)>> =
         std::collections::HashMap::new();
@@ -233,7 +288,7 @@ fn assign_reach_rows(variants: &mut [PreparedVariant]) {
         rows.dedup();
     }
     let longest = by_chrom.values().flatten().map(|r| r.1.len() as i64).max().unwrap_or(1);
-    for p in variants.iter_mut().filter(|p| p.gbcms_status == "PASS") {
+    for p in variants.iter_mut().filter(|p| p.gbcms_status == "PASS" && (!only_routed || p.variant.judge_routed)) {
         let v = &p.variant;
         let Some(rows) = by_chrom.get(&v.chrom) else { continue };
         let own = (v.pos, v.ref_allele.to_ascii_uppercase(), v.alt_allele.to_ascii_uppercase());
@@ -254,9 +309,9 @@ fn assign_reach_rows(variants: &mut [PreparedVariant]) {
 
 /// Marks every row prepared for the rules, and its decomposed twin, as holding no rows in
 /// reach (`Variant::reach_unrecorded`): the sequence judge refuses them, never judging a
-/// read without the rows it is weighed against.
+/// read without the rows it is weighed against. A row routed to the judge records them.
 fn mark_reach_unrecorded(variants: &mut [PreparedVariant]) {
-    for p in variants.iter_mut() {
+    for p in variants.iter_mut().filter(|p| !p.variant.judge_routed) {
         p.variant.reach_unrecorded = true;
         if let Some(twin) = p.decomposed_variant.as_mut() {
             twin.reach_unrecorded = true;
@@ -897,6 +952,7 @@ fn prepare_single_variant(
                 listed_neighbours: Vec::new(),
                 reach_rows: Vec::new(),
                 reach_unrecorded: false,
+                judge_routed: false,
                 whole_ref: None,
                 listed_indels: Vec::new(),
             },
@@ -940,6 +996,7 @@ fn prepare_single_variant(
                 listed_neighbours: Vec::new(),
                 reach_rows: Vec::new(),
                 reach_unrecorded: false,
+                judge_routed: false,
                 whole_ref: None,
                 listed_indels: Vec::new(),
             },
@@ -1159,6 +1216,7 @@ fn prepare_single_variant(
                     listed_neighbours: Vec::new(),
                     reach_rows: Vec::new(),
                     reach_unrecorded: false,
+                    judge_routed: false,
                     whole_ref: None,
                     listed_indels: Vec::new(),
                 }
@@ -1210,6 +1268,7 @@ fn prepare_single_variant(
         listed_neighbours: Vec::new(),
         reach_rows: Vec::new(),
         reach_unrecorded: false,
+        judge_routed: false,
         whole_ref: None,
         listed_indels: Vec::new(),
     };
@@ -1241,6 +1300,68 @@ fn prepare_single_variant(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn prepared(chrom: &str, pos: i64, r: &str, a: &str, status: &str) -> PreparedVariant {
+        PreparedVariant {
+            variant: Variant::new(chrom.into(), pos, r.into(), a.into(), "COMPLEX".into(), None, 0, 0, None, None, None, None),
+            gbcms_status: status.into(),
+            gbcms_status_reason: String::new(),
+            gbcms_diagnostic: String::new(),
+            gbcms_rescue: String::new(),
+            was_anchor_resolved: false,
+            was_left_aligned: false,
+            original_pos: pos,
+            original_ref: r.into(),
+            original_alt: a.into(),
+            decomposed_variant: None,
+            multi_allelic_group: None,
+        }
+    }
+
+    #[test]
+    fn an_snv_meets_a_listed_indel_or_delins_by_the_judges_test() {
+        // the SNV at 100
+        let meets = |pos: i64, r: &str, a: &str| meets_snv_site(100, pos, r, a);
+        assert!(meets(95, "ACGTACGTACG", "A"), "a deletion over its base");
+        assert!(meets(99, "ACG", "A"), "a deletion starting one base before");
+        assert!(meets(100, "C", "TA"), "a delins whose anchor changes, at its base");
+        assert!(meets(98, "ACGT", "TT"), "a delins over it");
+        assert!(!meets(100, "ACGT", "A"), "a pure deletion anchored on its base: re-anchored beside it");
+        assert!(!meets(100, "A", "ATT"), "a pure insertion anchored on its base: re-anchored beside it");
+        assert!(!meets(99, "A", "ATT"), "a pure insertion anchored before it");
+        assert!(!meets(101, "ACG", "A"), "a deletion starting past it");
+        assert!(!meets(90, "ACGT", "A"), "a deletion ending before it");
+        assert!(!meets(98, "ACG", "TTT"), "a substitution is no length change");
+    }
+
+    #[test]
+    fn only_an_snv_beside_a_listed_length_change_is_routed_to_the_judge() {
+        let mut rows = vec![
+            prepared("1", 100, "C", "T", "PASS"),          // 0: the SNV a deletion covers
+            prepared("1", 95, "ACGTACGTACG", "A", "PASS"), // 1: the deletion
+            prepared("1", 300, "C", "T", "PASS"),          // 2: an SNV with only a same-length neighbour
+            prepared("1", 299, "AC", "GT", "PASS"),        // 3: an MNV over it
+            prepared("1", 500, "C", "T", "PASS"),          // 4: an SNV a deletion anchors on
+            prepared("1", 500, "CGTA", "C", "PASS"),       // 5
+            prepared("1", 700, "AC", "GT", "PASS"),        // 6: an MNV a deletion covers
+            prepared("1", 695, "ACGTACGTAC", "A", "PASS"), // 7
+            prepared("1", 900, "C", "T", "PASS"),          // 8: an SNV a failed row covers
+            prepared("1", 895, "ACGTACGTAC", "A", "FAIL"), // 9
+            prepared("2", 100, "C", "T", "PASS"),          // 10: the first SNV's position on another contig
+        ];
+        rows[0].decomposed_variant = Some(rows[0].variant.clone());
+        assign_judge_routing(&mut rows);
+        let routed: Vec<bool> = rows.iter().map(|p| p.variant.judge_routed).collect();
+        assert_eq!(routed, vec![true, false, false, false, false, false, false, false, false, false, false]);
+        assert!(rows[0].decomposed_variant.as_ref().is_some_and(|t| t.judge_routed), "the twin follows its parent");
+        // under the rules a routed row records the rows in its reach, and no other does
+        mark_reach_unrecorded(&mut rows);
+        assign_reach_rows(&mut rows, true);
+        assert!(!rows[0].variant.reach_unrecorded, "routed: its rows recorded");
+        assert!(rows[0].variant.reach_rows.iter().any(|r| r.1 == "ACGTACGTACG"), "the deletion among them");
+        assert!(rows[2].variant.reach_unrecorded && rows[2].variant.reach_rows.is_empty(), "not routed: as the rules prepare it");
+    }
+
 
     #[test]
     fn test_variant_type_for_needs_a_shared_anchor() {

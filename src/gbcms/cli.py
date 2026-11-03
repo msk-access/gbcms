@@ -394,7 +394,8 @@ def dna(
         ReadJudge.RULES,
         "--read-judge",
         help=(
-            "Read judgment: 'rules' (the size-specific rules, default) or 'sequence' "
+            "Read judgment: 'rules' (the size-specific rules, default; an SNV row beside a "
+            "listed indel or delins is judged by 'sequence') or 'sequence' "
             "(which of the row's candidate sequences each read's own bases spell at the "
             "row; opt-in while it is measured, #304). 'haplotype' is its former name "
             "(deprecated)."

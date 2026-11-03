@@ -6,9 +6,9 @@ gone for listed alleles, on the rules and under `--read-judge sequence`. A read 
 where its confident bases tell REF from X and from every REF-length allele whose difference
 its span reaches; an allele past the read's end does not contest it (RJ-9). Reached and not
 told, the read is neither. A read counts ALT only where it tells X from every other allele
-of X's length (a tie is never credited). (At an SNV or MNV row a read that spells a listed
-allele that changes the length still counts ALT on the rules path: a named limit, below.)
-At a delins (or deletion) whose changed REF bases number 50 or more, a substitution inside
+of X's length (a tie is never credited). An SNV row where the input lists an indel or delins
+that meets its site is counted by the sequence judge also under the rules (RJ-25, 2026-11-03);
+an MNV row stays on the rules. At a delins (or deletion) whose changed REF bases number 50 or more, a substitution inside
 its core (4 bases in from both ends) is a context: a read that reaches it and spells it is
 REF.
 
@@ -25,6 +25,9 @@ from gbcms import _rs
 
 READ, P = 100, 400
 PATHS = ["rules", "sequence"]
+# develop's rules counts of X (RD, AD, partial) in the two MNV shapes below, measured on 3b63e6d0
+MNV_DELETION_ON_DEVELOP = (10, 18, 0)
+MNV_INSERTION_ON_DEVELOP = (10, 6, 18)
 
 
 def _contig(seed=7, n=1100):
@@ -235,23 +238,15 @@ def _substitution_row(tmp_path, judge, shape):
     return _counts(tmp_path, judge, contig, [x, s], reads)[0]
 
 
-RULES_SNV_ROW_LIMIT = pytest.mark.xfail(
-    strict=True,
-    reason="the rules path's SNV check reads one base, so a read that spells a listed "
-    "length-changing allele at the site counts ALT (#398's SNV rows); routing this class to "
-    "the judge is being measured",
-)
-
-
-@pytest.mark.parametrize("judge", [pytest.param("rules", marks=RULES_SNV_ROW_LIMIT), "sequence"])
-@pytest.mark.parametrize("shape", ["snv + insertion", "snv + deletion", "mnv + deletion"])
-def test_a_read_spelling_a_listed_length_changing_allele_is_not_alt_at_a_substitution_row(
+@pytest.mark.parametrize("judge", PATHS)
+@pytest.mark.parametrize("shape", ["snv + insertion", "snv + deletion"])
+def test_a_read_spelling_a_listed_length_changing_allele_is_not_alt_at_an_snv_row(
     tmp_path, judge, shape
 ):
-    """X is an SNV or an MNV and a listed allele that changes the length meets its site. Its
-    10 readers show X's bases but spell that allele whole: partial evidence, not AD. The
-    sequence judge holds the allele as a state and says so; the rules path counts the readers
-    ALT (a named limit until the class is routed to the judge or the judge is the default)."""
+    """X is an SNV and a listed allele that changes the length meets its site. Its 10 readers
+    show X's base but spell that allele whole: partial evidence, not AD. On the rules path
+    prep routes such a row to the sequence judge (RJ-25, 2026-11-03): the single-base check
+    reads one base and weighs no listed allele that changes the length."""
     assert _call(_substitution_row(tmp_path, judge, shape)) == (10, 10, 10)
 
 
@@ -259,6 +254,68 @@ def test_a_read_spelling_a_listed_length_changing_allele_is_not_alt_at_a_substit
 def test_a_listed_allele_of_the_same_length_that_holds_x_still_counts_at_both_rows(tmp_path, judge):
     """RJ-28: S keeps the length and holds X's change, so its readers are X's ALT too."""
     assert _call(_substitution_row(tmp_path, judge, "holds")) == (10, 20, 0)
+
+
+def _mnv_row(tmp_path, judge, shape):
+    """X a 2-base MNV; S a listed allele that changes the length. 'mnv + deletion': S a delins
+    from X's first base. 'mnv + insertion': S an 18-base insertion anchored on X's first base,
+    and 12 reads carry both (the first base X's, then the insertion, then X's second base)."""
+    contig = _contig(seed=1)
+    c = contig
+    x = (P, c[P : P + 2], _other(c[P]) + _other(c[P + 1]))
+    ins = "".join(_other(c[P + 1 + k]) for k in range(18))
+    if shape == "mnv + deletion":
+        end = P + 2
+        tail = c[end : end + 5]
+        s = (P, x[1] + tail, x[2] + tail[:3] + tail[4:])
+        both = None
+    else:
+        s = (P, c[P], c[P] + ins)
+        both = (c[:P] + x[2][0] + ins + x[2][1] + c[P + 2 :], P + 1, 18)
+
+    def alt_reads(tag, v, n):
+        _, r, a = v
+        out = []
+        for i in range(n):
+            st = P - 50 + (i % 40)
+            left = P - st
+            seq = (c[st:P] + a + c[P + len(r) :])[:READ]
+            cigar = [(0, left + min(len(a), len(r)))]
+            if len(a) > len(r):
+                cigar.append((1, len(a) - len(r)))
+            if len(a) < len(r):
+                cigar.append((2, len(r) - len(a)))
+            cigar.append((0, READ - left - len(a)))
+            out.append(make_read(f"{tag}{i}", seq, st, tuple(cigar), flag=_flag(i)))
+        return out
+
+    reads = alt_reads("x", x, 6) + alt_reads("s", s, 6) + _ref_reads(c, "ref", 10, -50, span=40)
+    if both:
+        hap, cut, n_ins = both
+        for i in range(12):
+            st = P - 50 + (i % 40)
+            seq = hap[st : st + READ]
+            reads.append(
+                make_read(
+                    f"b{i}",
+                    seq,
+                    st,
+                    ((0, cut - st), (1, n_ins), (0, READ - (cut - st) - n_ins)),
+                    flag=_flag(i),
+                )
+            )
+    else:
+        reads += alt_reads("y", x, 6)
+    return _counts(tmp_path, judge, contig, [x, s], reads)[0]
+
+
+@pytest.mark.parametrize("shape", ["mnv + deletion", "mnv + insertion"])
+def test_an_mnv_row_beside_a_listed_length_changing_allele_stays_on_the_rules_path(tmp_path, shape):
+    """Only an SNV row is routed to the judge: an MNV row keeps the rules' count whatever is
+    listed at its site, as on develop (beside a listed delins the readers of both count ALT; the
+    sequence judge would call 6 of them partial evidence)."""
+    want = {"mnv + deletion": MNV_DELETION_ON_DEVELOP, "mnv + insertion": MNV_INSERTION_ON_DEVELOP}
+    assert _call(_mnv_row(tmp_path, "rules", shape)) == want[shape]
 
 
 # The reference of a short tandem tract (public GRCh38, HG002 truth haplotypes): 100 bases.
