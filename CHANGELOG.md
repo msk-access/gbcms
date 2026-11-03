@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed — RNA: an exon piece holding part of a deletion's bases is depth only (#292)
+
+- A spliced read whose exon piece starts at a junction at a deletion's edge and ends inside
+  the deleted bases (or, mirrored, starts inside them and ends at a junction) holds part of
+  the deletion and no flank base of its own. The exact-carrier rule now counts it toward depth
+  only, never REF (RJ-17, amended 2026-10-30), with BAQ's junction penalty or without it.
+  Before, only that penalty hid the piece's bases: with `--no-baq`, such reads counted REF.
+  The CIGAR checks already required the whole span. DNA is unchanged (its reads have no
+  junction).
+
 ### Changed — a long deletion's ALT reads must tell it from another unit count present at the site (#297)
 
 - At a deletion of 50 bp or more beside a tandem run of its unit (its deleted copy differing

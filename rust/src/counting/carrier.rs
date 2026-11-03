@@ -789,6 +789,16 @@ fn judge(record: &Record, variant: &Variant, quals: &[u8], min_baseq: u8, rules:
         r.uninformative = true;
         return Some(r.into());
     }
+    if partial_span_piece(record, win.event) && matches!(super::window::allele_kind(&variant.ref_allele, &variant.alt_allele), Some(AlleleKind::Deletion)) {
+        // An exon piece that a junction at the deletion's edge begins and the read's end
+        // closes inside it holds part of the deleted bases and no flank base of its own:
+        // the aligner put it where its few bases fit (RJ-3), so they cannot rule the
+        // deletion out. Depth only, the REF mirror of a deletion written beside a splice.
+        trace!("carrier: an exon piece holds part of the deletion's bases and no flank base of its own → depth only");
+        let mut r = ClassifyResult::neither(ClassifyPhase::CigarRecon);
+        r.uninformative = true;
+        return Some(r.into());
+    }
     let spliced: Rc<SplicedWindows>;
     let cut;
     let separate;
@@ -3145,6 +3155,48 @@ fn foreign(ops: &[(i64, i64)], guard: Option<&Guard>) -> bool {
 /// written outside them that can sit inside the window is never a separate event
 /// (RJ-22, up to 64 junctions each way).
 const PLACE_REACH: i64 = 64;
+
+/// RNA: whether one of `record`'s exon pieces holds part, not all, of a deletion's event
+/// bases `[lo, hi)` with no flank base of its own: a junction at or inside the event's
+/// left edge begins the piece and the read's end (or its clip) closes it inside the
+/// event, or, mirrored, the read's start opens it inside the event and a junction at or
+/// inside the event's right edge ends it. Such a piece was placed by the aligner where
+/// its few bases fit, beside a splice that took the flank's place (RJ-3), so it is no
+/// REF testimony: depth only, as RJ-17's deletion written beside the splice is for ALT.
+/// A piece holding the whole event, or a flank base of its own, is judged as before.
+fn partial_span_piece(record: &Record, (lo, hi): (i64, i64)) -> bool {
+    // (start, end) of each aligned piece between junctions, and whether a junction
+    // begins (ends) it
+    let mut pieces: Vec<(i64, i64, bool, bool)> = Vec::new();
+    let (mut rp, mut open, mut after_n) = (record.pos(), None::<i64>, false);
+    for op in record.cigar().iter() {
+        match op {
+            Cigar::Match(n) | Cigar::Equal(n) | Cigar::Diff(n) | Cigar::Del(n) => {
+                open.get_or_insert(rp);
+                rp += *n as i64;
+            }
+            Cigar::RefSkip(n) => {
+                if let Some(s) = open.take() {
+                    pieces.push((s, rp, after_n, true));
+                }
+                after_n = true;
+                rp += *n as i64;
+            }
+            _ => {}
+        }
+    }
+    if let Some(s) = open {
+        pieces.push((s, rp, after_n, false));
+    }
+    if pieces.len() < 2 {
+        return false;
+    }
+    pieces.iter().any(|&(s, e, begun_by_n, ended_by_n)| {
+        let left = begun_by_n && !ended_by_n && s >= lo && s < hi && e < hi;
+        let right = ended_by_n && !begun_by_n && e <= hi && e > lo && s > lo;
+        left || right
+    })
+}
 
 /// Whether a read's own alignment writes a deletion directly beside one of its splices
 /// (an `N` op next to a `D` op) inside `span` (genome).

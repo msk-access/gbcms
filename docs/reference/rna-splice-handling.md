@@ -98,7 +98,10 @@ per-type classification):
 - A splice is not reference coverage (RJ-17, R5 #198): a pure-indel read is
   informative only when one aligned block between splices spans the window,
   REF and ALT alike. A read spliced inside an indel's change interval is
-  depth only (the event may sit in the skipped intron), and so is a deletion
+  depth only (the event may sit in the skipped intron); so is an exon piece
+  that a junction at a deletion's edge begins and the read's end closes
+  inside the deleted bases (it holds part of them and no flank base of its
+  own, with BAQ's junction penalty or without it: #292, 2026-10-30), and so is a deletion
   written right after a read's splice (its bases equal REF spliced at an
   acceptor further on).
 - An RNA read's soft clip that reaches an exon edge or a junction end
