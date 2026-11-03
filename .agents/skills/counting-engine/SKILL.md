@@ -60,9 +60,11 @@ not REF for this row, and a tie between rows is neither row's AD (RJ-5).
 - A REF read is told only from the REF-length alleles it reaches (`carrier::reached_others`,
   `tells_others_aligned` for MNPs); one past its end does not contest it; reached and not
   told is neither.
-- Named limit, rules path: an SNV or MNV row's ALT read that spells a listed allele that changes
-  the length still counts ALT (`check_snp` reads one base and weighs no sibling); the judge
-  weighs the allele as a state. Routing this class to the judge is being measured.
+- An SNV row where the input lists an indel or delins whose span meets its site is counted by the
+  sequence judge also under the rules (`Variant::judge_routed`, set by prep:
+  `normalize::engine::assign_judge_routing`, `meets_snv_site`; the count engine's `judge_of`).
+  `check_snp` reads one base and weighs no listed length-changing allele. MNV rows stay on the
+  rules.
 - A delins replacing 50 REF bases or more has a core, 4 bases in from both ends
   (`window::delins_core`, `window::in_core`; the judge's `deleted_core`): a substitution there
   is a context of REF's molecules.

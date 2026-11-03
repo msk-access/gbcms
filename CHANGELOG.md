@@ -25,14 +25,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   below `--min-baseq`, or masked) stays neither. The sequence judge already ties by reach; the
   rules path now does too, for REF-length alleles listed or found, in the exact-carrier
   windows and in the MNP check.
-- **Named limit, rules path: an SNV or MNV row beside a listed allele that changes the length
-  (#398's SNV and MNV rows).** A read that spells such an allele still counts ALT at the row: the
-  single-base check weighs no sibling, and the sequence judge calls the read partial evidence.
-  A claim that took these reads out of AD, on the listed allele's own exact-carrier call, was
-  built and withdrawn: it removed reads that carry X (the sibling's rule ran without the
-  sibling's guard). Routing this class of row to the judge on the rules path is being
-  measured; it is not decided. A listed allele of the row's own length that holds the row's
-  change still counts its carriers at both rows (RJ-28).
+- **An SNV row beside a listed indel or delins is judged by its bases, also under the rules (#398).**
+  An SNV row where the same input lists an indel or delins whose span meets the row's site (the
+  sequence judge's own test) is counted by the sequence judge, as `--read-judge sequence` would;
+  every other row, MNV rows included, keeps the rules. Prep decides it from the whole input, so
+  no bin or call changes it; no column, flag or environment variable is added. The rules still
+  count a routed-class row in two places, each with one warning per count: RNA mode, and a
+  count given no reference FASTA. The rules' single-base check weighed no listed allele that
+  changes the length, so a read that spelled one counted ALT. Measured at these rows (rules
+  lane against judge lane, 2026-11-03): patient sets, wrong-ALT reads 1,230 to 0 and wrong
+  definite calls 1,258 to 7; HG002, true ALT credited 454 to 520 and reads of the listed allele
+  credited ALT 142 to 21. Precedent: a deletion of 50 bp or more already goes to a by-bases
+  junction judge. A MNV-plus-insertion shape (67 true-ALT reads at two gate-set rows) would go to
+  partial under the judge and stays on the rules (#331).
 - **RJ-24 reaches a delins.** A delins that replaces 50 REF bases or more (the changed REF bases once
   the shared prefix and suffix are trimmed) has a core, 4 bases in from both ends: a substitution
   wholly inside it is a context of REF's molecules, so a read that reaches and spells it is REF
@@ -46,10 +51,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `test_listed_sibling_floor_contract.py` (8 cases, AD 14 to 10),
   `test_locus_alleles_contract.py` (a component never seen alone and one seen on 1 of 100
   fragments, AD 14 to 10; an SNV among a delins's deleted bases never spelled, RD 24 to 20).
-  New contract tests: `tests/test_ref_reach_contract.py` (the SNV and MNV rows of the named limit are
-  strict xfails on the rules path).
-- Supersedes the option A of the REF-tie question on the judge (#394). #398's SNV and MNV rows
-  stay open (above); the rules path's sibling scope for exact-carrier rows is settled.
+  New contract tests: `tests/test_ref_reach_contract.py`; a routed row in `tests/test_binning_invariance.py`.
+- Supersedes the option A of the REF-tie question on the judge (#394) and settles #398 (SNV rows
+  routed to the judge, above; the rules path's sibling scope for exact-carrier rows).
 
 ### Changed — a long deletion's ALT reads must tell it from another unit count present at the site (#297)
 
