@@ -67,7 +67,7 @@ Complete reference for all pipeline parameters.
 |:----------|:--------|:------------|
 | `--umi_tag` | `''` | UMI BAM tag for deduplication (e.g., `XM`, `RX`). When set, reads sharing the same UMI are grouped as a single observation. |
 | `--apply_baq` | `false` | **DNA** Base Alignment Quality downgrade (matches `gbcms dna`, off). Reduces false positives near indels. See [BAQ Options](../cli/dna.md#baq-options). |
-| `--rna_apply_baq` | `true` | **RNA** Base Alignment Quality downgrade (matches `gbcms rna`, on): RNA BAMs typically lack BQSR, and the penalty also applies near splice junctions (CIGAR `N`). Set `false` to pass `--no-baq`. |
+| `--rna_apply_baq` | `true` | **RNA** Base Alignment Quality downgrade (matches `gbcms rna`, on): RNA BAMs typically lack BQSR. The penalty applies near a read's indels only; a splice junction (CIGAR `N`) lowers no base's quality. Set `false` to pass `--no-baq`. |
 
 ## RNA-Specific Options
 

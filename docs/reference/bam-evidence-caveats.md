@@ -204,7 +204,8 @@ caveat in gbcms's output.
   recalibration, and heuristic BAQ all change which bases pass `--min-baseq`.
 - **gbcms now:**
     - one masking rule: bases below min BQ, and N, match anything;
-    - BAQ spares the variant's own indel (#166).
+    - BAQ spares the variant's own indel (#166);
+    - a splice junction lowers no base's quality, in RNA with a GTF or without (RJ-31, 2026-11-03).
 - **Should do:** done (O2 #131): the run start reports each BAM's base-quality
   values (binned when 8 or fewer) and the share of sampled bases below
   `--min-baseq`, and warns above 10%. Measured on 10 MSK BAMs: 0.8–2.1% at the

@@ -1,12 +1,13 @@
 """BAQ spares the variant's own indel evidence (#166).
 
-Heuristic BAQ lowers base quality by 20 within 5 bases of any insertion,
-deletion or splice junction in a read, to protect SNV calls near indels. When the
+Heuristic BAQ lowers base quality by 20 within 5 bases of any insertion or
+deletion in a read, to protect SNV calls near indels. When the
 read's indel IS the variant being counted, that penalty lands on the bases that
 show the allele: at Q37 they fall below min BQ and every ALT read of a small indel
 or complex variant was lost, while REF reads (no indel) kept full quality. BAQ now
 leaves a read's insertions and deletions within the variant's own event alone; it
-still penalizes splice junctions and indels elsewhere in the read.
+still penalizes indels elsewhere in the read. (A splice junction lowers nothing since
+2026-11-03, RJ-31.)
 """
 
 import pytest

@@ -7,6 +7,53 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed — RNA: a splice never lowers a base's quality (#292, RJ-31)
+
+- Heuristic BAQ (`--apply-baq`, on by default in `gbcms rna`) no longer lowers the five read
+  bases each side of a splice junction (CIGAR `N`) by 20. It still lowers by 20 the five bases
+  each side of a read's own insertion or deletion, and still spares the counted variant's own
+  indel. A base is judged by its own quality against `--min-baseq`, wherever it lies in the
+  read. This reverses the junction penalty decided on 2026-05-04 (in effect for RNA since
+  4.1.0), under which a base near a junction passed the bar only where its quality was 20
+  above it: Q40 data passed at the default bar 20 and nothing passed at 30. GATK's
+  SplitNCigarReads changes no quality at a splice and htslib's BAQ skips a spliced read whole,
+  so no surveyed tool lowered a base for lying near a junction.
+- Counts change in RNA only, and only for reads spliced within five bases of the variant's
+  bases, GTF or none (with a GTF, BAQ was already skipped within five bases of an annotated
+  exon edge). Measured on 58 FORTE STAR slices at bar 20: of 163,882 SNV rows in the first five
+  bases of exons, 136,257 move, ALT +14,269 and REF +5.70 million reads (+1.9%); clean rows
+  keep 0 ALT, and the 219 germline hets gain the 984 ALT reads (1.9%) the penalty hid (76% at
+  bar 30). DNA has no junction: unchanged.
+- At a delins, ALT can fall at bar 30 (FORTE: 280 to 173 reads in reach, reproduced exactly on
+  the builds before and after the change). That is right by bases: a base under the bar fits any
+  allele, so with a junction's ten read bases masked a read could fit the ALT on the few bases
+  left, whatever the masked bases showed. The 117 reads that lose ALT are all spliced with the
+  event 0 to 4 bases from the junction; 92 lie on a long piece (20 or more aligned bases), not a
+  short anchor. Under the change 91 of the 117 are REF and 18 partial evidence.
+- The exon-edge exception (#106) stays; it now lifts only the penalty of a read's own indels.
+- The limit (#409, RJ-3's short pieces): a piece too short to place its own bases, at a spliced
+  read's end or between two junctions, is no longer hidden by the penalty and can read as an ALT it
+  does not carry. An end piece is written at an annotated junction where its molecule spliced at a
+  novel one a few bases on (synthetic set: 2.2% of the reads at that stratum, at hom-REF rows); a
+  6-base piece between two junctions with a misplaced base counted ALT on 4 of 4 reads (develop:
+  depth only, two penalties stacked to Q0). Ticketed; two strict xfails pin them.
+- `gbcms rna --apply-baq/--no-baq` help and the `--trace` BAQ line no longer name splice
+  junctions. No flag or Nextflow parameter changes.
+- One test expectation changed, with the decision:
+  `test_baq_still_applies_to_an_mnp_ending_six_bases_from_the_edge`, (REF, ALT) from (20, 0) to
+  (20, 10): its ten carriers hold the MNP in their own bases, and the novel donor's junction
+  penalty had masked both.
+
+### Fixed — RNA: an exon piece holding part of a deletion's bases is depth only (#292)
+
+- A spliced read whose exon piece starts at a junction at a deletion's edge and ends inside
+  the deleted bases (or, mirrored, starts inside them and ends at a junction) holds part of
+  the deletion and no flank base of its own. The exact-carrier rule now counts it toward depth
+  only, never REF (RJ-17, amended 2026-10-30), with BAQ on or off. Before, only BAQ's
+  junction penalty hid the piece's bases: with `--no-baq`, such reads counted REF.
+  The CIGAR checks already required the whole span. DNA is unchanged (its reads have no
+  junction).
+
 ### Changed — a long deletion's ALT reads must tell it from another unit count present at the site (#297)
 
 - At a deletion of 50 bp or more beside a tandem run of its unit (its deleted copy differing
