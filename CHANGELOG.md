@@ -42,11 +42,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the shared prefix and suffix are trimmed) has a core, 4 bases in from both ends: a substitution
   wholly inside it is a context of REF's molecules, so a read that reaches and spells it is REF
   and a sibling there claims no REF read. A 60>30 delins has a core; 5>60 does not.
-- Counts on HG002 (public, local; 27,589 rows), rules path: 87 arm-rows change and no SNV or MNV
-  row moves; against the phased truth true ALT credited is unchanged (30,455), true REF called REF
-  gains 10, and 5 true ALT reads at c246 insertions are now called REF (the reach rule; in the
-  v2db view 3 true ALT reads leave ALT). Judge: 49 arm-rows change; truth classes equal. Patient sets and the
-  normals are measured on the final build.
+- Counts on HG002 (public, local; 27,589 rows), rules path against develop: 605 arm-rows change (87
+  without the routing); the routing changes no row that is not a class row; at the 1,302 class rows the rules lane equals the judge
+  lane in every MAF field and read call. Phased truth at those rows (strict view): true ALT credited
+  454 to 521, reads of the listed allele credited ALT 142 to 21; scored targets (truth v2dbq20): true
+  ALT credited 30,455 to 30,457, true REF called REF +10, and 5 true ALT reads at c246 insertions
+  are now called REF (the reach rule). Judge: 49 arm-rows change; truth classes equal. Speed on
+  HG002 (4 threads, untraced): c246 1.4 times develop, tr 1.1, sub 2.1, nocl 2.5 (9.0 s against
+  3.6 s); the speed work is the speed phase's. Patient sets and the normals are measured on the
+  final build.
 - Existing expectations changed by the decision (each with its reason in the test):
   `test_listed_sibling_floor_contract.py` (8 cases, AD 14 to 10),
   `test_locus_alleles_contract.py` (a component never seen alone and one seen on 1 of 100
