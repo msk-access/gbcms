@@ -368,7 +368,7 @@ In these "raw BQ" scenarios, bases near indels may retain inflated sequencer-ass
 
 ### RNA: A Splice Lowers No Base's Quality
 
-In RNA mode a CIGAR `N` (RefSkip) operation, a splice junction, lowers no base's quality: a base is judged by its own quality against `--min-baseq`, as it is in GATK after SplitNCigarReads (which changes no quality). A read's insertions and deletions keep the penalty above. Earlier versions (4.1.0 to 6.6.x) also lowered the five bases each side of every junction by 20; the rule is RJ-31 in the [read-judgment register](read-judgment.md). See [RNA Splice-Junction Handling](rna-splice-handling.md) for details.
+In RNA mode a CIGAR `N` (RefSkip) operation, a splice junction, lowers no base's quality: a base is judged by its own quality against `--min-baseq`, as it is in GATK after SplitNCigarReads (which changes no quality). A read's insertions and deletions keep the penalty above. Earlier versions (4.1.0 to 6.6.0) also lowered the five bases each side of every junction by 20; the rule is RJ-31 in the [read-judgment register](read-judgment.md). See [RNA Splice-Junction Handling](rna-splice-handling.md) for details.
 
 ---
 

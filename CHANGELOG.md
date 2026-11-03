@@ -24,15 +24,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   bases of exons, 136,257 move, ALT +14,269 and REF +5.70 million reads (+1.9%); clean rows
   keep 0 ALT, and the 219 germline hets gain the 984 ALT reads (1.9%) the penalty hid (76% at
   bar 30). DNA has no junction: unchanged.
-- At a delins, ALT can fall at bar 30 (FORTE: 280 to 173 reads in reach). That is right by
-  bases: a base under the bar fits any allele, so with a junction's ten read bases masked a
-  read whose bases fit neither allele could fit the ALT on the few bases left. Read at their
-  own quality they fit neither: partial evidence.
+- At a delins, ALT can fall at bar 30 (FORTE: 280 to 173 reads in reach, reproduced exactly on
+  the builds before and after the change). That is right by bases: a base under the bar fits any
+  allele, so with a junction's ten read bases masked a read could fit the ALT on the few bases
+  left, whatever the masked bases showed. The 117 reads that lose ALT are all spliced with the
+  event 0 to 4 bases from the junction; 92 lie on a long piece (20 or more aligned bases), not a
+  short anchor. Under the change 91 of the 117 are REF and 18 partial evidence.
 - The exon-edge exception (#106) stays; it now lifts only the penalty of a read's own indels.
-- The limit (#409, RJ-3's short anchors): a spliced read's end piece too short to place its
-  own bases, written at an annotated junction where its molecule spliced at a novel one a few
-  bases on, is no longer hidden by the penalty and can read as an ALT it does not carry (synthetic
-  set: 2.2% of the reads at that stratum, at hom-REF rows). Ticketed; a strict xfail pins it.
+- The limit (#409, RJ-3's short pieces): a piece too short to place its own bases, at a spliced
+  read's end or between two junctions, is no longer hidden by the penalty and can read as an ALT it
+  does not carry. An end piece is written at an annotated junction where its molecule spliced at a
+  novel one a few bases on (synthetic set: 2.2% of the reads at that stratum, at hom-REF rows); a
+  6-base piece between two junctions with a misplaced base counted ALT on 4 of 4 reads (develop:
+  depth only, two penalties stacked to Q0). Ticketed; two strict xfails pin them.
 - `gbcms rna --apply-baq/--no-baq` help and the `--trace` BAQ line no longer name splice
   junctions. No flag or Nextflow parameter changes.
 - One test expectation changed, with the decision:
@@ -45,8 +49,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - A spliced read whose exon piece starts at a junction at a deletion's edge and ends inside
   the deleted bases (or, mirrored, starts inside them and ends at a junction) holds part of
   the deletion and no flank base of its own. The exact-carrier rule now counts it toward depth
-  only, never REF (RJ-17, amended 2026-10-30), with BAQ's junction penalty or without it.
-  Before, only that penalty hid the piece's bases: with `--no-baq`, such reads counted REF.
+  only, never REF (RJ-17, amended 2026-10-30), with BAQ on or off. Before, only BAQ's
+  junction penalty hid the piece's bases: with `--no-baq`, such reads counted REF.
   The CIGAR checks already required the whole span. DNA is unchanged (its reads have no
   junction).
 

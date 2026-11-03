@@ -10,7 +10,7 @@ edge, so the shapes there never differed).
 
 Out of scope, pinned as they are: the penalty of a read's own indel, and the short
 piece an aligner writes at an annotated junction where the molecule spliced at a
-novel one a few bases on (a strict xfail, #409).
+novel one a few bases on, and a short piece between two junctions (strict xfails, #409).
 """
 
 import random
@@ -166,6 +166,34 @@ def test_an_snv_beside_a_junction_and_a_deletion_keeps_the_indel_penalty(tmp_pat
     assert (c.rd, c.ad) == (8, 8)
 
 
+# ── the exon-edge exception: what it still lifts ────────────────────────────────
+
+
+def _tx_counts(c) -> dict:
+    """{transcript: (AD, RD, DP)} from `T:AD,RD,DP|...`."""
+    out = {}
+    for entry in filter(None, c.transcript_read_counts.split("|")):
+        tx, nums = entry.rsplit(":", 1)
+        out[tx] = tuple(int(x) for x in nums.split(","))
+    return out
+
+
+def test_the_exon_edge_exception_lifts_a_reads_own_indel_penalty(tmp_path):
+    """The SNV sits two bases inside exon 2's first base; every read has a 1-base deletion
+    three bases on, whose own penalty reaches the SNV's base. Without a GTF BAQ applies
+    and the SNV is depth only (0, 0). With a GTF the SNV lies within five bases of an
+    annotated exon edge, BAQ is skipped, and every read counts (8, 8): in the main counts,
+    the per-transcript counts and ASJD alike. (Reads without an indel of their own show
+    nothing of the exception: a splice lowers no quality, with a GTF or without.)"""
+    reads = _snv_reads({E + 5: ""})
+    plain = _count(tmp_path, reads, SNV, True)
+    assert (plain.rd, plain.ad) == (0, 0)
+    edge = _count(tmp_path, reads, SNV, True, gtf=True)
+    assert (edge.rd, edge.ad) == (8, 8)
+    assert _tx_counts(edge) == {"T": (8, 8, 16)}
+    assert (edge.asjd_n_ref_total, edge.asjd_n_alt_total) == (8, 8)
+
+
 # ── a short piece at an annotated junction, judged at a delins ──────────────────
 # Its own contig. A hom-REF molecule splices at a novel acceptor a few bases from the
 # annotated one and holds only 6 or 8 bases past it; the aligner writes it at the
@@ -252,3 +280,42 @@ def test_short_pieces_at_an_annotated_acceptor_are_depth_only(tmp_path):
         reads.append(_spliced(f"N{i}", {E + k: CONTIG[E + 3 + k] for k in range(3)}, 57))
     c = _count(tmp_path, reads, SHORT, True)
     assert (c.rd, c.ad) == (8, 0)
+
+
+# ── the same limit for a piece between two junctions (#409) ─────────────────────
+# A piece too short to place its own bases is RJ-3's class wherever it lies in a read: at
+# its end (above) or between two junctions. Here an aligner writes a 6-base piece at
+# 500-506 between two introns; the bases it holds are misplaced, and one of them
+# (502) reads as the ALT at a hom-REF row. Ten unspliced reads show REF there. With the
+# old penalty both junctions' radii stacked on the piece and masked it whole.
+
+M1 = _bases(1, 300)
+MI = "GT" + _bases(2, 396) + "AG"  # the introns' span, [300, 700)
+M3 = _bases(3, 300)
+MCONTIG = M1 + MI + M3
+MPIECE = 500  # the written piece [500, 506)
+MPOS = MPIECE + 2
+
+
+@pytest.mark.xfail(
+    strict=True,
+    reason="#409: a 6-base piece between two junctions, its bases misplaced, counts ALT at a "
+    "hom-REF row (develop: depth only, the stacked junction penalties masked it)",
+)
+@pytest.mark.parametrize("qual,min_baseq", [(30, 20), (40, 30), (40, 20)])
+def test_a_short_piece_between_two_junctions_is_depth_only(qual, min_baseq, tmp_path):
+    """Ten unspliced REF reads and four reads `47M 200N 6M 194N 47M` whose 6-base middle
+    piece carries a base that is not the reference's. Any ALT is false."""
+    alt = next(b for b in "ACGT" if b != MCONTIG[MPOS])
+    reads = []
+    for i in range(10):
+        st = MPOS - 50 + 3 * i
+        reads.append(make_read(f"u{i}", MCONTIG[st : st + RL], st, ((0, RL),), quals=[qual] * RL))
+    for i in range(4):
+        piece = list(MCONTIG[MPIECE : MPIECE + 6])
+        piece[MPOS - MPIECE] = alt
+        seq = MCONTIG[253:300] + "".join(piece) + MCONTIG[700:747]
+        cigar = ((0, 47), (3, MPIECE - 300), (0, 6), (3, 700 - (MPIECE + 6)), (0, 47))
+        reads.append(make_read(f"m{i}", seq, 253, cigar, quals=[qual] * RL))
+    c = _count(tmp_path, reads, (MPOS, MCONTIG[MPOS], alt), True, min_baseq, contig=MCONTIG)
+    assert (c.rd, c.ad) == (10, 0)

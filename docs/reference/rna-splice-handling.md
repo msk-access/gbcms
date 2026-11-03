@@ -101,7 +101,7 @@ per-type classification):
   depth only (the event may sit in the skipped intron); so is an exon piece
   that a junction at a deletion's edge begins and the read's end closes
   inside the deleted bases (it holds part of them and no flank base of its
-  own, with BAQ's junction penalty or without it: #292, 2026-10-30), and so is a deletion
+  own, with BAQ on or off: #292, 2026-10-30), and so is a deletion
   written right after a read's splice (its bases equal REF spliced at an
   acceptor further on).
 - An RNA read's soft clip that reaches an exon edge or a junction end
@@ -219,12 +219,15 @@ own insertion or deletion by 20. A CIGAR `N`/RefSkip operation lowers none
   bases passed at `--min-baseq 20` and nothing passed at 30. Measured on 58 FORTE
   slices (#292), it hid 1.9% of the ALT reads at 219 germline hets at bar 20 and 76% at
   bar 30, and no false ALT the matched DNA showed.
-- **The limit (#409, RJ-3's short anchors).** A read with only a few bases past a
+- **The limit (#409, RJ-3's short pieces).** A piece too short to place its own bases,
+  at a read's end or between two junctions. A read with only a few bases past a
   junction is written at an annotated junction where its molecule spliced at a
-  novel one a few bases on; its bases there are mismatches. The penalty hid them
-  (and half the depth there); now they count at their own quality. In the synthetic
-  set (STAR overhang 3 and 5) 2.2% of the reads at that stratum read ALT at hom-REF
-  rows.
+  novel one a few bases on; its bases there are mismatches. A short piece between two
+  junctions (`47M 200N 6M 194N 47M`) is placed where its few bases fit. The penalty hid
+  such bases (and half the depth beside a junction); now they count at their own quality.
+  In the synthetic set (STAR overhang 3 and 5) 2.2% of the reads at the end-piece stratum
+  read ALT at hom-REF rows, and a 6-base middle piece with a misplaced base read ALT on
+  4 of 4 reads.
 
 **Exon-boundary exception (with `--gtf`).** At a variant whose REF span comes
 within 5bp of an annotated exon boundary (`exon_boundary_dist`), BAQ is skipped for
@@ -392,55 +395,49 @@ Read C:    ═════════════╗══[G]══════
                         ╚                         (CIGAR: 20M 3000N 30M)
 ```
 
-### How gbcms Catches Read B: 4 Defense Layers
+### What is left against Read B
 
-For a splice-bled base to produce a false positive, **all 4 layers
-must fail simultaneously**:
+Read B is an SNV. An SNV is read from its one base at the variant's position
+(`check_snp`): no alignment scoring (PairHMM) runs for it, so nothing weighs the
+2–3 uncertain bases against the 30+ aligned ones. **For an SNV only two things are
+left: the read's MAPQ and the base's own quality.** A third item only flags:
 
 ```
 ┌────────────────────────────────────────────────────────────────────┐
-│                       Defense Layers                               │
+│                        What is left                                │
 ├────────────────────────────────────────────────────────────────────┤
 │                                                                    │
-│  Layer 1: MAPQ filter (--min-mapq, default 1 for RNA)             │
+│  1. MAPQ filter (--min-mapq, default 1 for RNA)                   │
 │  └── STAR gives MAPQ=0 to reads it can't confidently place.       │
 │      Reads with very short exonic overlap are often multi-mapped.  │
 │                                                                    │
-│  Layer 2: Base quality filter (--min-baseq, default 20)           │
-│  └── Bled bases typically receive low BQ from the aligner because  │
-│      the alignment evidence is ambiguous near the splice site.     │
+│  2. Base quality filter (--min-baseq, default 20)                 │
+│  └── The sequencer, not the aligner, sets a base's quality. A bled │
+│      base carries the quality the instrument gave it, usually      │
+│      high. The filter cannot see that the aligner misplaced it.    │
 │                                                                    │
-│  Layer 3: PairHMM quality-weighted classification                 │
-│  └── Even if a bled base passes the BQ filter, PairHMM evaluates  │
-│      the FULL read against REF/ALT haplotypes. The 2–3 uncertain  │
-│      bases are outweighed by 30+ properly aligned bases on the     │
-│      other side. LLR typically falls below threshold → NEITHER.    │
-│                                                                    │
-│  Layer 4: splice_spanning_count (tracked in output)               │
+│  3. splice_spanning_count (tracked in output; a flag, not a filter)│
 │  └── Downstream QC can flag variants where ALL ALT evidence comes  │
 │      from splice-spanning reads (rna_splice_spanning in MAF/VCF).  │
 │                                                                    │
 └────────────────────────────────────────────────────────────────────┘
 ```
 
-A fifth layer, a BAQ penalty within 5bp of a splice junction, was removed
-(RJ-31, 2026-11-03): a splice never lowers a base's quality, so a base near a
-junction is judged by its own quality like any other. What that layer hid is the
-short anchor of #409.
+Two things once stood here and do not for an SNV. PairHMM never ran for SNVs (it
+scores indels, MNPs and complex variants). A BAQ penalty within 5bp of a splice
+junction, which hid a bled base at Q40 or below, was removed (RJ-31, 2026-11-03):
+a splice never lowers a base's quality, so a base near a junction is judged by its
+own quality like any other.
 
-### Why All 4 Layers Must Fail
-
-For a splice-bled base to cause a false ALT call:
+### What a splice-bled SNV needs to count ALT
 
 1. The variant must sit within **1–2 bp of the exon boundary**
-2. The aligner must give the bled base **MAPQ ≥ 1** (Layer 1 pass)
-3. The aligner must give the bled base **BQ ≥ `--min-baseq`** (Layer 2 pass)
-4. PairHMM must give the read **LLR ≥ 2.3** despite only 2–3 bases
-   of evidence on the bled side (Layer 3 pass)
-5. The wrong base must **happen to match** the known ALT allele
-   (1/3 chance for SNPs)
+2. The aligner must give the bled base **MAPQ ≥ 1**
+3. The sequencer must give the bled base **BQ ≥ `--min-baseq`** (usual)
+4. The wrong base must **happen to match** the known ALT allele
+   (1/3 chance for SNVs)
 
-Layer 2 alone no longer needs a base at BQ 40 to be crossed: a bled base at the
-sequencer's quality passes it. The residual is a piece with only a few bases past
-its junction, written at an annotated junction where the molecule spliced at a
-novel one (#409). Layer 4 (`rna_splice_spanning`) lets downstream QC flag such rows.
+Nothing else stops it: that is the short piece of #409 (a piece with only a few
+bases past its junction, written at an annotated junction where the molecule spliced
+at a novel one, or a short piece between two junctions). It is the known limit, and
+the rule that keeps such a piece depth only is ticketed. `rna_splice_spanning` (item 3) lets downstream QC flag such rows.

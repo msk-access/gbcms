@@ -47,9 +47,11 @@ def _hap(p: int, ref: str, alt: str) -> list:
     return out
 
 
-def _read(name: str, seg: list, ins_after_n: bool = False):
+def _read(name: str, seg: list, ins_after_n: bool = False, junction_qual: int | None = None):
     """A read of the haplotype slice `seg`, its CIGAR from the genome positions; an
-    insertion right before a splice is written after it with `ins_after_n`."""
+    insertion right before a splice is written after it with `ins_after_n`. With
+    `junction_qual` the five read bases each side of the splice have that raw quality
+    (the rest Q30)."""
     ops: list = []
     prev = None
     for _, g in seg:
@@ -66,16 +68,24 @@ def _read(name: str, seg: list, ins_after_n: bool = False):
         if ins_after_n and ops[i][0] == 1 and ops[i + 1][0] == 3:
             ops[i], ops[i + 1] = ops[i + 1], ops[i]
     start = next(g for _, g in seg if g is not None)
-    return make_read(name, "".join(b for b, _ in seg), start, tuple(map(tuple, ops)))
+    quals = [30] * len(seg)
+    if junction_qual is not None:
+        at = sum(
+            n for op, n in ops[: next(i for i, o in enumerate(ops) if o[0] == 3)] if op in (0, 1)
+        )
+        quals[max(at - 5, 0) : at + 5] = [junction_qual] * len(quals[max(at - 5, 0) : at + 5])
+    return make_read(name, "".join(b for b, _ in seg), start, tuple(map(tuple, ops)), quals=quals)
 
 
-def _count(p: int, ref: str, alt: str, apply_baq: bool, tmp_path, ins_after_n=False):
+def _count(
+    p: int, ref: str, alt: str, apply_baq: bool, tmp_path, ins_after_n=False, junction_qual=None
+):
     """Eight spliced REF and eight spliced ALT reads from exon 1 into exon 2."""
     assert CONTIG[p : p + len(ref)] == ref
     haps = {"R": _hap(p, ref, ref), "A": _hap(p, ref, alt)}
     j = next(i for i, (_, g) in enumerate(haps["R"]) if g == E)
     reads = [
-        _read(f"{k}{i}", h[j - 40 + 3 * i : j - 40 + 3 * i + RL], ins_after_n)
+        _read(f"{k}{i}", h[j - 40 + 3 * i : j - 40 + 3 * i + RL], ins_after_n, junction_qual)
         for k, h in haps.items()
         for i in range(8)
     ]
@@ -124,6 +134,17 @@ def test_spliced_reads_at_an_exon_first_base_anchor_read_on_past_the_masked_junc
     2026-11-03): the spliced reads read on along exon 2, with BAQ on or off."""
     assert _count(*NEAR_EXON_START[shape], True, tmp_path) == (8, 8, 0)
     assert _count(*NEAR_EXON_START[shape], False, tmp_path) == (8, 8, 0)
+
+
+@pytest.mark.parametrize("apply_baq", [False, True], ids=["no-baq", "baq"])
+@pytest.mark.parametrize("shape", list(NEAR_EXON_END) + list(NEAR_EXON_START))
+def test_spliced_reads_read_on_past_junction_bases_of_low_raw_quality(shape, apply_baq, tmp_path):
+    """The five read bases each side of the splice are Q10, under the default bar: the
+    windows lie in bases the quality gate masks, with BAQ on or off (a splice lowers no
+    quality since RJ-31, so only raw quality masks them now). The spliced reads read on
+    along exon 2 as they do at full quality: every REF read REF, every ALT read ALT."""
+    variant = {**NEAR_EXON_END, **NEAR_EXON_START}[shape]
+    assert _count(*variant, apply_baq, tmp_path, junction_qual=10) == (8, 8, 0)
 
 
 # at exon 1's very end: TG inserted after its last base, and its last two bases deleted

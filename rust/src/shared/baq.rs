@@ -179,7 +179,7 @@ mod tests {
 
     #[test]
     fn a_variants_own_deletion_is_spared_on_a_spliced_read() {
-        // the deletion sits at reference 1112..1113 on the spliced read (after the 100-base intron)
+        // the deletion sits at reference [1110, 1111): 20M from 980, 100N from 1000, 10M from 1100
         let rec = record(
             &[b'A'; 40],
             980,

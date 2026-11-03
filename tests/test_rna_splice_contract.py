@@ -375,12 +375,13 @@ def test_insertion_after_junction_is_examined(tmp_path):
     vcf = _vcf(tmp_path, rows_v)
     bam = _bam(tmp_path, ref, carriers + refs)
     fasta = _fasta(tmp_path, ref)
-    # Default RNA BAQ's indel penalty lowers the inserted bases (they sit within 5bp of
-    # the I; the N lowers nothing), so they read below min_baseq at Q30:
-    # an unreadable insert of the ALT's length at its junction, ALT (RJ-20). The REF
-    # reads' bases at the junction keep their quality; read on into exon 2, their bases
-    # show REF. (With --gtf, boundary suppression restores the quals at annotated
-    # junctions.)
+    # Default RNA BAQ spares the variant's own insertion (its bases are the evidence) and
+    # a splice lowers no quality (RJ-31), so the carriers' inserted bases are read at
+    # Q30 and spell the ALT: ALT because the bases say so. The REF reads' bases at the
+    # junction keep their quality; read on into exon 2, their bases show REF. (Until
+    # RJ-31 the junction penalty, not spared, stacked on the insertion's and left the
+    # inserted bases unreadable, and an unreadable insert of the ALT's length counted
+    # ALT whatever it spelled, RJ-20: see the wrong-insert test below.)
     r = _run(tmp_path, vcf, bam, fasta)[0]
     assert (int(r["ref_count"]), int(r["alt_count"])) == (5, 4)
     assert int(r["partial_alt"]) == 0
@@ -392,6 +393,41 @@ def test_insertion_after_junction_is_examined(tmp_path):
         int(r["alt_count"]) == 4
     ), f"junction-adjacent I carriers must count ALT, got ad={r['alt_count']}"
     assert int(r["alt_count_fragment"]) == 4
+
+
+@pytest.mark.parametrize("extra", [(), ("--no-baq",)], ids=["baq", "no-baq"])
+def test_a_wrong_insert_after_a_junction_is_not_alt(tmp_path, extra):
+    """M-N-I-M, as above, but the carriers' inserted bases (CCA) are not the ALT's (TG
+    plus a base): their bases say another allele, so no read counts ALT, with BAQ on or
+    off. (The junction penalty used to leave the inserted bases below the bar, and an
+    unreadable insert of the ALT's length counted ALT whatever it spelled: 4 false ALT.)"""
+    ref = _mk_ref()
+    intron_start, gap = 280, 40
+    anchor = intron_start + gap - 1
+    last = "A" if ref[anchor] != "A" else "C"
+    ins_seq = "TG" + last
+    wrong = "CCA"
+    assert wrong != ins_seq and len(wrong) == len(ins_seq)
+    rows_v = [(anchor + 1, ref[anchor], ref[anchor] + ins_seq)]
+    e2 = intron_start + gap
+    carriers = []
+    for i in range(4):
+        s = intron_start - 40 - (i % 4)
+        left = intron_start - s
+        right = READ_LEN - left - len(wrong)
+        seq = ref[s:intron_start] + wrong + ref[e2 : e2 + right]
+        carriers.append(
+            make_read(f"wc{i}", seq, s, ((0, left), (3, gap), (1, len(wrong)), (0, right)))
+        )
+    refs = _spliced_reads(ref, intron_start, gap, 5, prefix="ir")
+    r = _run(
+        tmp_path,
+        _vcf(tmp_path, rows_v),
+        _bam(tmp_path, ref, carriers + refs),
+        _fasta(tmp_path, ref),
+        extra=extra,
+    )[0]
+    assert (int(r["ref_count"]), int(r["alt_count"])) == (5, 0)
 
 
 def test_spliced_over_insertion_carries_no_information(tmp_path):

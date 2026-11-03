@@ -386,9 +386,10 @@ class GbcmsBaseConfig(BaseModel):
         default=False,
         description=(
             "Apply heuristic BAQ (Base Alignment Quality) downgrade near "
-            "indels and splice junctions. Subtracts 20 from base qualities "
-            "within 5bp of alignment indels or CIGAR N (splice junctions) to "
-            "reduce false positive variant calls from alignment artifacts. "
+            "indels. Subtracts 20 from base qualities within 5bp of a read's "
+            "insertions and deletions to reduce false positive variant calls "
+            "from alignment artifacts (a splice junction, CIGAR N, lowers "
+            "none). "
             "Off by default for DNA (upstream BQSR/consensus already "
             "recalibrates). Overridden to True for RNA mode."
         ),

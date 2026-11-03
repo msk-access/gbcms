@@ -4165,6 +4165,38 @@ mod tests {
     }
 
     #[test]
+    fn a_piece_a_junction_begins_and_the_reads_end_closes_inside_the_event_is_partial() {
+        // The event [300, 303) opens exon 2: 50M 100N 2M puts the piece at [300, 302).
+        let rec = clipped(vec![Cigar::Match(50), Cigar::RefSkip(100), Cigar::Match(2)], 150);
+        assert!(partial_span_piece(&rec, (300, 303)), "a piece holding two of the three bases");
+        // The same piece with one more base also ends inside; with three it holds the event.
+        let rec = clipped(vec![Cigar::Match(50), Cigar::RefSkip(100), Cigar::Match(3)], 150);
+        assert!(!partial_span_piece(&rec, (300, 303)), "a piece holding the whole event");
+        let rec = clipped(vec![Cigar::Match(50), Cigar::RefSkip(100), Cigar::Match(8)], 150);
+        assert!(!partial_span_piece(&rec, (300, 303)), "a piece holding the event and more");
+    }
+
+    #[test]
+    fn a_piece_the_read_opens_inside_the_event_and_a_junction_ends_is_partial() {
+        // The mirror: the event [260, 263) closes exon 1; 2M 100N 98M from 261 puts the
+        // piece at [261, 263), opened by the read's start and ended by the junction.
+        let rec = clipped(vec![Cigar::Match(2), Cigar::RefSkip(100), Cigar::Match(98)], 261);
+        assert!(partial_span_piece(&rec, (260, 263)), "a piece holding two of the three bases");
+        let rec = clipped(vec![Cigar::Match(3), Cigar::RefSkip(100), Cigar::Match(97)], 260);
+        assert!(!partial_span_piece(&rec, (260, 263)), "a piece holding the whole event");
+        let rec = clipped(vec![Cigar::Match(40), Cigar::RefSkip(100), Cigar::Match(60)], 223);
+        assert!(!partial_span_piece(&rec, (260, 263)), "a piece with a flank base of its own");
+    }
+
+    #[test]
+    fn an_unspliced_read_has_no_partial_piece() {
+        let rec = clipped(vec![Cigar::Match(100)], 230);
+        assert!(!partial_span_piece(&rec, (260, 263)));
+        let rec = clipped(vec![Cigar::Match(2)], 261);
+        assert!(!partial_span_piece(&rec, (260, 263)), "a read ending inside the event holds no junction");
+    }
+
+    #[test]
     fn an_rna_clip_is_read_unless_it_reaches_an_exon_edge() {
         // 90M10S at 200: aligned [200, 290), the clip reaching [290, 300).
         let rec = clipped(vec![Cigar::Match(90), Cigar::SoftClip(10)], 200);

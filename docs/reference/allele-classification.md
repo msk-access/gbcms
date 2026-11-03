@@ -1152,8 +1152,8 @@ A read spans a window with one aligned block, between its splices (RJ-17,
 window shows none of it past the splice, as a read ending there shows none.
 An exon piece that a junction at a pure deletion's edge begins and the read's
 end closes inside the deleted bases holds part of them and no flank base of its
-own: it is depth only, never REF, with BAQ's junction penalty or without it
-(amended 2026-10-30, #292).
+own: it is depth only, never REF, with BAQ on or off (amended 2026-10-30,
+#292).
 
 Reads that fail the rule count toward `DP` and `DPF` but are neither REF nor ALT,
 the same as GATK's AD, which counts only informative reads. The rule does not

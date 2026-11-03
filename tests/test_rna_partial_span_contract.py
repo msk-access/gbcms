@@ -1,14 +1,15 @@
 """RNA: a spliced read's exon piece that holds only part of a deletion's span is depth only.
 
 Decided (operator, 2026-10-30, #292): a read whose exon piece covers only part of a
-deletion's span must not count REF for it, with BAQ's junction penalty or without it. Mechanism: the
+deletion's span must not count REF for it, with BAQ on or off. Mechanism: the
 piece starts at a junction placed at (or inside) the event's edge and ends inside the
 event, so no flank base of its own places it (RJ-3); the aligner put it where its few
 bases fit, so they cannot tell REF from ALT spliced at another acceptor. It is the REF
 mirror of RJ-17's decided ALT rule (a deletion written right beside the read's splice
-has no aligned flank: depth only). Until now only BAQ's junction penalty hid such a
-piece's bases: with BAQ off, the exact-carrier rule counted it REF. The CIGAR checks'
-span-aligned REF testimony already required the whole span.
+has no aligned flank: depth only). Until a splice stopped lowering base quality (RJ-31,
+2026-11-03) BAQ's junction penalty hid such a piece's bases; with BAQ off, or once the
+penalty was gone, the exact-carrier rule counted it REF. The CIGAR checks' span-aligned
+REF testimony already required the whole span.
 
 Out of scope (pinned as they are): a piece that holds the whole span, a piece with a
 flank base of its own before the event (judged by its bases, as an unspliced read ending
@@ -107,12 +108,10 @@ def test_a_piece_holding_part_of_the_span_after_its_junction_is_depth_only(
 @pytest.mark.parametrize("apply_baq", [True, False], ids=["baq", "no-baq"])
 def test_a_piece_holding_the_whole_span_is_not_this_rule(apply_baq, tmp_path):
     """Out of scope: a piece holding all three deleted bases and five bases past them is
-    read as before (REF by its bases, BAQ off; with BAQ on, as the penalty leaves it)."""
+    read as before: REF by its bases, with BAQ on or off."""
     reads = _acceptor_pieces(8, 4, "w") + _unspliced(E - 5, E + 8, 4, "u")
     rd, ad, dp = _count(tmp_path, reads, DEL3, apply_baq)
-    assert (ad, dp) == (0, 8)
-    if not apply_baq:
-        assert rd == 8
+    assert (rd, ad, dp) == (8, 0, 8)
 
 
 # ── the mirror geometry: a deletion of exon 1's last bases ──────────────────────
