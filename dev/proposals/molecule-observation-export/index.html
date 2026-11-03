@@ -1958,7 +1958,7 @@ against <code>py-gbcms@develop</code> with file:line.</p>
 (a handful of loci) a consumer-side htslib pass is tractable. The real argument: the per-molecule
 allele call is the output of a classifier stack gbcms <strong>already runs and discards</strong> at the
 finalization loop (<code>engine.rs:1706</code>) — <code>hash_molecule</code> identity (<code>fragment.rs:277</code>),
-<code>FragmentEvidence::observe</code> consensus + <abbr title="Base Alignment Quality - Heuristic quality downgrade near indels and splice junctions">BAQ</abbr>/N/structural handling, <code>resolve()</code> with structural
+<code>FragmentEvidence::observe</code> consensus + <abbr title="Base Alignment Quality - Heuristic quality downgrade near a read's insertions and deletions">BAQ</abbr>/N/structural handling, <code>resolve()</code> with structural
 priority + qual-diff discard band (<code>fragment.rs:204</code>), fed by Smith-Waterman realignment. A
 consumer that <strong>re-derives</strong> allele calls produces phasing calls that need not agree with the
 <code>counts.ad/adf</code> it is phasing on — reporting cis/trans from numbers that silently disagree with

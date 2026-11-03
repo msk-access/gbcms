@@ -2846,7 +2846,7 @@ placement, bases). Cost within 2× develop. The <abbr title="High-Performance Co
  wider band or the full programme, not the reads whose calls move. The full programme for
  every read costs ×1.35 on the panel, ×2.75 on the gate subset and up to ×2.9 on HG002.
    - <strong>Other tools.</strong> GATK's <abbr title="Pair Hidden Markov Model - Probabilistic alignment using base quality scores">PairHMM</abbr> scores every read against every haplotype over the full
- matrix, so it has no band to stand on; htslib's <abbr title="Base Alignment Quality - Heuristic quality downgrade near indels and splice junctions">BAQ</abbr> uses a fixed band of 10 (realn.c). The
+ matrix, so it has no band to stand on; htslib's <abbr title="Base Alignment Quality - Heuristic quality downgrade near a read's insertions and deletions">BAQ</abbr> uses a fixed band of 10 (realn.c). The
  repeat-aware floor is the judge's own rule for when its band may stand in for the full
  programme.
 7. <strong>Decided (operator, 2026-10-29): one memory budget per thread, 128 MB.</strong>

@@ -2095,7 +2095,10 @@ per-type classification):</p>
 <li>A splice is not reference coverage (RJ-17, R5 #198): a pure-indel read is
   informative only when one aligned block between splices spans the window,
   REF and ALT alike. A read spliced inside an indel's change interval is
-  depth only (the event may sit in the skipped intron), and so is a deletion
+  depth only (the event may sit in the skipped intron); so is an exon piece
+  that a junction at a deletion's edge begins and the read's end closes
+  inside the deleted bases (it holds part of them and no flank base of its
+  own, with <abbr title="Base Alignment Quality - Heuristic quality downgrade near a read's insertions and deletions">BAQ</abbr> on or off: #292, 2026-10-30), and so is a deletion
   written right after a read's splice (its bases equal REF spliced at an
   acceptor further on).</li>
 <li>An RNA read's soft clip that reaches an exon edge or a junction end
@@ -2126,11 +2129,14 @@ calling:</p>
 <li><strong>Reassigns <abbr title="Mapping Quality - Confidence score for read alignment">MAPQ</abbr></strong> 255 → 60 for downstream caller compatibility.</li>
 </ol>
 <p>This produces a clean <abbr title="Binary Alignment Map - Compressed sequence alignment file format">BAM</abbr> where no read contains <code>N</code> operators, at the
-cost of losing the original read structure.</p>
+cost of losing the original read structure. It changes no base quality:
+HaplotypeCaller reads each piece at the quality the sequencer gave it.
+gbcms does the same at a junction (RJ-31, below).</p>
 <h2 id="gbcms-approach-no-bam-modification">gbcms Approach (No <abbr title="Binary Alignment Map - Compressed sequence alignment file format">BAM</abbr> Modification)<a class="headerlink" href="#gbcms-approach-no-bam-modification" title="Permanent link">¶</a></h2>
 <p>gbcms handles splice-junction artifacts <strong>without modifying the <abbr title="Binary Alignment Map - Compressed sequence alignment file format">BAM</abbr></strong>:
 the evidence rule above governs what a spliced read may testify to, and
-heuristic <abbr title="Base Alignment Quality - Heuristic quality downgrade near indels and splice junctions">BAQ</abbr> handles overhang misalignment.</p>
+each base is judged by its own quality: a splice never lowers it (RJ-31).
+A piece too short to place its own bases is the known limit (#409).</p>
 <div class="admonition note">
 <p class="admonition-title">Removed: consensus intron snipping of <code>ref_context</code></p>
 <p>An earlier step drained consensus introns from <code>ref_context</code> in place
@@ -2191,30 +2197,50 @@ junction against a haplotype spliced at that junction. It was closed with #94 on
   future Phase-3 scoring across a splice.</li>
 </ul>
 </div>
-<h3 id="heuristic-baq-near-splice-junctions-apply-baq">Heuristic <abbr title="Base Alignment Quality - Heuristic quality downgrade near indels and splice junctions">BAQ</abbr> Near Splice Junctions (<code>--apply-baq</code>)<a class="headerlink" href="#heuristic-baq-near-splice-junctions-apply-baq" title="Permanent link">¶</a></h3>
-<p><code>apply_heuristic_baq()</code> in <code>baq.rs</code> penalizes base qualities within
-5bp of <abbr title="Compact Idiosyncratic Gapped Alignment Report - BAM alignment operation string">CIGAR</abbr> <code>N</code>/RefSkip operations:</p>
+<h3 id="heuristic-baq-and-splice-junctions-apply-baq">Heuristic <abbr title="Base Alignment Quality - Heuristic quality downgrade near a read's insertions and deletions">BAQ</abbr> and Splice Junctions (<code>--apply-baq</code>)<a class="headerlink" href="#heuristic-baq-and-splice-junctions-apply-baq" title="Permanent link">¶</a></h3>
+<p><code>apply_heuristic_baq()</code> in <code>baq.rs</code> lowers base qualities within 5bp of a read's
+own insertion or deletion by 20. A <abbr title="Compact Idiosyncratic Gapped Alignment Report - BAM alignment operation string">CIGAR</abbr> <code>N</code>/RefSkip operation lowers none
+(RJ-31, 2026-11-03).</p>
 <ul>
-<li>Subtracts 20 from BQ at bases near splice boundaries</li>
-<li>Bases that drop below <code>--min-baseq</code> (default 20) are effectively
-  filtered from variant evidence</li>
-<li>This mimics GATK SplitNCigarReads' overhang clipping without
-  removing bases — a softer approach that preserves information</li>
+<li>A splice moves no base, so it says nothing about the quality of the bases
+  beside it. A base is judged by its own quality against <code>--min-baseq</code>.</li>
+<li>GATK's SplitNCigarReads cuts reads at every N and changes no quality; htslib's
+  <abbr title="Base Alignment Quality - Heuristic quality downgrade near a read's insertions and deletions">BAQ</abbr> skips a read with a reference skip whole. Neither lowers a base for lying
+  near a junction.</li>
+<li>From 4.1.0 to 6.6.0 the five bases each side of every junction were lowered by
+  20, as a lightweight stand-in for SplitNCigarReads' overhang clipping. Its
+  strength was the instrument's quality bin and the run's bar, not a mechanism: Q40
+  bases passed at <code>--min-baseq 20</code> and nothing passed at 30. Measured on 58 FORTE
+  slices (#292), it hid 1.9% of the ALT reads at 219 germline hets at bar 20 and 76% at
+  bar 30, and no false ALT the matched DNA showed.</li>
+<li><strong>The limit (#409, RJ-3's short pieces).</strong> A piece too short to place its own bases,
+  at a read's end or between two junctions. A read with only a few bases past a
+  junction is written at an annotated junction where its molecule spliced at a
+  novel one a few bases on; its bases there are mismatches. A short piece between two
+  junctions (<code>47M 200N 6M 194N 47M</code>) is placed where its few bases fit. The penalty hid
+  such bases (and half the depth beside a junction); now they count at their own quality.
+  In the synthetic set (<abbr title="Spliced Transcripts Alignment to a Reference - RNA-seq aligner">STAR</abbr> overhang 3 and 5) 2.2% of the reads at the end-piece stratum
+  read ALT at hom-REF rows, and a 6-base middle piece with a misplaced base read ALT on
+  4 of 4 reads.</li>
 </ul>
 <p><strong>Exon-boundary exception (with <code>--gtf</code>).</strong> At a variant whose REF span comes
-within 5bp of an annotated exon boundary (<code>exon_boundary_dist</code>), the penalty
-would land on exactly the reads that splice there, which are the evidence at an
-exon edge. <abbr title="Base Alignment Quality - Heuristic quality downgrade near indels and splice junctions">BAQ</abbr> is therefore skipped for that variant. The distance is measured
+within 5bp of an annotated exon boundary (<code>exon_boundary_dist</code>), <abbr title="Base Alignment Quality - Heuristic quality downgrade near a read's insertions and deletions">BAQ</abbr> is skipped for
+that variant: the penalty of a read's own insertions and deletions is lifted there,
+so the reads at an exon edge are counted at their stored qualities. (Before RJ-31
+the reason was the junction penalty, which would have landed on exactly the reads
+that splice there.) The distance is measured
 from the whole REF span, so an <abbr title="Multi-Nucleotide Polymorphism - Multiple adjacent base substitutions">MNP</abbr> or deletion reaching into an exon's last
 five bases is covered even when its first base is farther out. The main counts,
 the per-transcript counts, ASJD and each <code>--rescue-mnp</code> component re-count all
 use this one rule, so at an exon edge a transcript's counts match the variant's
-counts, as they do elsewhere. Away from a boundary, <abbr title="Base Alignment Quality - Heuristic quality downgrade near indels and splice junctions">BAQ</abbr> applies in every view.
+counts, as they do elsewhere. Away from a boundary, <abbr title="Base Alignment Quality - Heuristic quality downgrade near a read's insertions and deletions">BAQ</abbr> applies in every view.
 A DEBUG line names each variant form where it is skipped.</p>
 <div class="admonition info">
 <p class="admonition-title">Why the exception reads the whole REF span (measured for #106, R1)</p>
+<p>These numbers were measured while the junction penalty existed (before RJ-31); the
+REF-span distance still decides where the exception applies.</p>
 <p>Before 6.6.0 the distance was measured from the variant's first base, so a multi-base
-variant reaching an exon's right edge kept <abbr title="Base Alignment Quality - Heuristic quality downgrade near indels and splice junctions">BAQ</abbr> and lost its edge-side bases in every spliced
+variant reaching an exon's right edge kept <abbr title="Base Alignment Quality - Heuristic quality downgrade near a read's insertions and deletions">BAQ</abbr> and lost its edge-side bases in every spliced
 read. Local data, aggregates only; the numbers are from
 <a href="https://github.com/msk-access/gbcms/issues/106#issuecomment-5816857647">the measurement</a>,
 <a href="https://github.com/msk-access/gbcms/issues/106#issuecomment-5834304141">the evidence for the decision</a>
@@ -2234,7 +2260,7 @@ the rounds are in the archived plans, <code>.agents/archive/CYCLE_6.5.0_PLAN.md<
   TNP, 4bp): 139 of 183 rows changed, <abbr title="Reference Depth - Reads supporting the reference allele">RD</abbr> +0.03-0.17% (at most 1% per probe), per-transcript and
   ASJD moving alike, <abbr title="Alternate Depth - Reads supporting the alternate allele">AD</abbr> and <abbr title="Total Depth - All mapped reads overlapping the variant position">DP</abbr> unchanged.</li>
 <li><strong>Why counts barely move, and what does matter.</strong> Counted exactly with pysam, a median
-  90-92% of the reads covering such an <abbr title="Multi-Nucleotide Polymorphism - Multiple adjacent base substitutions">MNP</abbr> have a splice N within <abbr title="Base Alignment Quality - Heuristic quality downgrade near indels and splice junctions">BAQ</abbr>'s 5bp radius of an <abbr title="Multi-Nucleotide Polymorphism - Multiple adjacent base substitutions">MNP</abbr>
+  90-92% of the reads covering such an <abbr title="Multi-Nucleotide Polymorphism - Multiple adjacent base substitutions">MNP</abbr> have a splice N within <abbr title="Base Alignment Quality - Heuristic quality downgrade near a read's insertions and deletions">BAQ</abbr>'s 5bp radius of an <abbr title="Multi-Nucleotide Polymorphism - Multiple adjacent base substitutions">MNP</abbr>
   base. REF and ALT calls vote on the unmasked bases, so counts hold. But an <abbr title="Multi-Nucleotide Polymorphism - Multiple adjacent base substitutions">MNP</abbr> read counts as
   confirmed (<code>mnp_confirmed_alt</code>) only when no base is masked, so about 9 in 10 real carriers
   there could never be confirmed, and <code>--rescue-mnp</code>'s <code>haplotype_confirmed</code> safeguard was
@@ -2248,20 +2274,21 @@ the rounds are in the archived plans, <code>.agents/archive/CYCLE_6.5.0_PLAN.md<
   flips for 1. Operator decision, 2026-09-25: span distance for both.</li>
 <li><strong>Standards.</strong> No single spec. Ensembl VEP applies its splice windows by overlap (any changed
   base counts); ANNOVAR measures from the nearest end of the span and flags spans that cross
-  the boundary; SpliceAI uses POS only. There is no standard for <abbr title="Base Alignment Quality - Heuristic quality downgrade near indels and splice junctions">BAQ</abbr> near junctions: htslib
-  skips <abbr title="Base Alignment Quality - Heuristic quality downgrade near indels and splice junctions">BAQ</abbr> for spliced reads, and GATK4 does not use <abbr title="Base Alignment Quality - Heuristic quality downgrade near indels and splice junctions">BAQ</abbr>.</li>
+  the boundary; SpliceAI uses POS only. There is no standard for <abbr title="Base Alignment Quality - Heuristic quality downgrade near a read's insertions and deletions">BAQ</abbr> near junctions: htslib
+  skips <abbr title="Base Alignment Quality - Heuristic quality downgrade near a read's insertions and deletions">BAQ</abbr> for spliced reads, and GATK4 does not use <abbr title="Base Alignment Quality - Heuristic quality downgrade near a read's insertions and deletions">BAQ</abbr>.</li>
 <li><strong>Not adopted: a read-level rule</strong> (no N-penalty at annotated junctions). It would
   re-penalize novel junctions near a variant, which is ASJD's splice-creation signal, restore
   indel penalties at edges, and change the main counts more (REJ-20260925-002 in
-  <code>.agents/learnings/REJECTED.md</code>).</li>
+  <code>.agents/learnings/REJECTED.md</code>). RJ-31 (2026-11-03) is another rule: no junction penalty
+  at any junction, annotated or not.</li>
 <li><strong>Acceptance (2026-09-29).</strong> FORTE truth cohort (33 samples, 94 rows): 0 count changes, all
   68 SNV rows byte-identical, the column changes on 8 multi-base rows and 1 row flips the 5bp
   window with unchanged counts. Exon-edge probes (326 × 3 samples): counts move on 139 <abbr title="Multi-Nucleotide Polymorphism - Multiple adjacent base substitutions">MNP</abbr>
   rows, all where the window flips, and no deletion moves; summed <abbr title="Reference Depth - Reads supporting the reference allele">RD</abbr> +489, partial +6, <abbr title="Alternate Depth - Reads supporting the alternate allele">AD</abbr> −2,
   depth unchanged. In 135 of the 139 moved rows the change equals what the reads' own bases
-  predict (read at sequencer quality against emulated <abbr title="Base Alignment Quality - Heuristic quality downgrade near indels and splice junctions">BAQ</abbr>); in the other 4 every re-called read
+  predict (read at sequencer quality against emulated <abbr title="Base Alignment Quality - Heuristic quality downgrade near a read's insertions and deletions">BAQ</abbr>); in the other 4 every re-called read
   was inspected and each new call is what its bases say (mostly a Q24 REF base 4bp from the
-  junction that <abbr title="Base Alignment Quality - Heuristic quality downgrade near indels and splice junctions">BAQ</abbr> had lowered to Q4; one Q24 third-allele base <abbr title="Base Alignment Quality - Heuristic quality downgrade near indels and splice junctions">BAQ</abbr> had hidden). Column: 978
+  junction that <abbr title="Base Alignment Quality - Heuristic quality downgrade near a read's insertions and deletions">BAQ</abbr> had lowered to Q4; one Q24 third-allele base <abbr title="Base Alignment Quality - Heuristic quality downgrade near a read's insertions and deletions">BAQ</abbr> had hidden). Column: 978
   of 978 probe rows equal an independent span distance of the engine-normalized variant.
   <code>--rescue-mnp</code> on the probes: 4 of 243 <abbr title="Multi-Nucleotide Polymorphism - Multiple adjacent base substitutions">MNP</abbr> rows change outcome (1 from rescued to
   <code>haplotype_confirmed</code>, 3 newly rescued on one-read components). DNA (28 runs, 1,060 rows)
@@ -2291,34 +2318,32 @@ the rounds are in the archived plans, <code>.agents/archive/CYCLE_6.5.0_PLAN.md<
 </tbody>
 </table>
 <h2 id="when-to-use-no-baq-in-rna-mode">When to Use <code>--no-baq</code> in RNA Mode<a class="headerlink" href="#when-to-use-no-baq-in-rna-mode" title="Permanent link">¶</a></h2>
-<p>Disable <abbr title="Base Alignment Quality - Heuristic quality downgrade near indels and splice junctions">BAQ</abbr> if your upstream workflow already handles splice-boundary
-quality adjustment:</p>
+<p>Disable <abbr title="Base Alignment Quality - Heuristic quality downgrade near a read's insertions and deletions">BAQ</abbr> if your upstream workflow already recalibrates base qualities near
+a read's indels:</p>
 <ul>
-<li><strong>SplitNCigarReads</strong>: If you run GATK SplitNCigarReads before gbcms,
-  the overhang problem is already resolved. Use <code>--no-baq</code> to avoid
-  double-penalization.</li>
 <li><strong><abbr title="Base Quality Score Recalibration - GATK quality recalibration tool">BQSR</abbr></strong>: If your pipeline runs GATK Base Quality Score Recalibration,
-  base qualities are already machine-learning-calibrated. <abbr title="Base Alignment Quality - Heuristic quality downgrade near indels and splice junctions">BAQ</abbr> on top
+  base qualities are already machine-learning-calibrated. <abbr title="Base Alignment Quality - Heuristic quality downgrade near a read's insertions and deletions">BAQ</abbr> on top
   may over-penalize.</li>
 <li><strong>Consensus-based deduplication</strong>: If your pipeline uses fgbio or
   similar consensus calling (not typical for RNA), BQ values reflect
-  consensus agreement. <abbr title="Base Alignment Quality - Heuristic quality downgrade near indels and splice junctions">BAQ</abbr> is unnecessary.</li>
+  consensus agreement. <abbr title="Base Alignment Quality - Heuristic quality downgrade near a read's insertions and deletions">BAQ</abbr> is unnecessary.</li>
 </ul>
-<h2 id="when-baq-is-most-valuable">When <abbr title="Base Alignment Quality - Heuristic quality downgrade near indels and splice junctions">BAQ</abbr> Is Most Valuable<a class="headerlink" href="#when-baq-is-most-valuable" title="Permanent link">¶</a></h2>
-<p><abbr title="Base Alignment Quality - Heuristic quality downgrade near indels and splice junctions">BAQ</abbr> provides the most benefit when the upstream workflow does <strong>not</strong>
+<p>Running GATK SplitNCigarReads first does not change what <abbr title="Base Alignment Quality - Heuristic quality downgrade near a read's insertions and deletions">BAQ</abbr> does: <abbr title="Base Alignment Quality - Heuristic quality downgrade near a read's insertions and deletions">BAQ</abbr> lowers
+no quality at a splice.</p>
+<h2 id="when-baq-is-most-valuable">When <abbr title="Base Alignment Quality - Heuristic quality downgrade near a read's insertions and deletions">BAQ</abbr> Is Most Valuable<a class="headerlink" href="#when-baq-is-most-valuable" title="Permanent link">¶</a></h2>
+<p><abbr title="Base Alignment Quality - Heuristic quality downgrade near a read's insertions and deletions">BAQ</abbr> provides the most benefit when the upstream workflow does <strong>not</strong>
 run:</p>
 <ul>
-<li>GATK SplitNCigarReads (overhang clipping)</li>
 <li>GATK <abbr title="Base Quality Score Recalibration - GATK quality recalibration tool">BQSR</abbr> (quality recalibration)</li>
 <li>Consensus-based deduplication (e.g., fgbio)</li>
 </ul>
 <p>In these pipelines, raw sequencer BQ values are preserved all the way
-to gbcms. A base near a splice boundary may have BQ 30+ even if it is
-a misalignment artifact. The -20 <abbr title="Base Alignment Quality - Heuristic quality downgrade near indels and splice junctions">BAQ</abbr> penalty brings it below the
+to gbcms. A base near a read's insertion or deletion may have BQ 30+ even
+if it is a misalignment artifact. The -20 <abbr title="Base Alignment Quality - Heuristic quality downgrade near a read's insertions and deletions">BAQ</abbr> penalty brings it below the
 <code>min_baseq=20</code> threshold, effectively filtering it from variant
 evidence.</p>
 <h2 id="technical-details">Technical Details<a class="headerlink" href="#technical-details" title="Permanent link">¶</a></h2>
-<h3 id="baq-parameters"><abbr title="Base Alignment Quality - Heuristic quality downgrade near indels and splice junctions">BAQ</abbr> Parameters<a class="headerlink" href="#baq-parameters" title="Permanent link">¶</a></h3>
+<h3 id="baq-parameters"><abbr title="Base Alignment Quality - Heuristic quality downgrade near a read's insertions and deletions">BAQ</abbr> Parameters<a class="headerlink" href="#baq-parameters" title="Permanent link">¶</a></h3>
 <table>
 <thead>
 <tr>
@@ -2331,7 +2356,7 @@ evidence.</p>
 <tr>
 <td style="text-align: left;"><code>BAQ_RADIUS</code></td>
 <td style="text-align: left;">5 bp</td>
-<td style="text-align: left;">Bases within 5bp of indel/splice boundary are penalized</td>
+<td style="text-align: left;">Bases within 5bp of an indel boundary are penalized</td>
 </tr>
 <tr>
 <td style="text-align: left;"><code>BAQ_PENALTY</code></td>
@@ -2341,14 +2366,13 @@ evidence.</p>
 </tbody>
 </table>
 <h3 id="performance">Performance<a class="headerlink" href="#performance" title="Permanent link">¶</a></h3>
-<p><abbr title="Base Alignment Quality - Heuristic quality downgrade near indels and splice junctions">BAQ</abbr> is applied lazily — <code>apply_heuristic_baq()</code> returns <code>None</code> for
-reads without indels or splice junctions (no allocation). For RNA BAMs
-where most reads have splice junctions, the cost is one <abbr title="Compact Idiosyncratic Gapped Alignment Report - BAM alignment operation string">CIGAR</abbr> walk per
-read plus a quality vector copy, which is negligible compared to <abbr title="Pair Hidden Markov Model - Probabilistic alignment using base quality scores">PairHMM</abbr>
-alignment.</p>
+<p><abbr title="Base Alignment Quality - Heuristic quality downgrade near a read's insertions and deletions">BAQ</abbr> is applied lazily — <code>apply_heuristic_baq()</code> returns <code>None</code> for
+reads without insertions or deletions (no allocation), a spliced read
+included. The cost is one <abbr title="Compact Idiosyncratic Gapped Alignment Report - BAM alignment operation string">CIGAR</abbr> walk per read, which is negligible
+compared to <abbr title="Pair Hidden Markov Model - Probabilistic alignment using base quality scores">PairHMM</abbr> alignment.</p>
 <h3 id="trace-logging">Trace Logging<a class="headerlink" href="#trace-logging" title="Permanent link">¶</a></h3>
-<p>When <code>--trace</code> is enabled, <abbr title="Base Alignment Quality - Heuristic quality downgrade near indels and splice junctions">BAQ</abbr> logs per-read adjustments:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>TRACE BAQ: adjusting read A00000:123:AAAA:1:1:1234:5678 (0 indels, 2 splice junctions)
+<p>When <code>--trace</code> is enabled, <abbr title="Base Alignment Quality - Heuristic quality downgrade near a read's insertions and deletions">BAQ</abbr> logs per-read adjustments:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>TRACE BAQ: adjusting read A00000:123:AAAA:1:1:1234:5678 (1 indels)
 </code></pre></div>
 <hr>
 <h2 id="defense-in-depth-splice-bleed-protection">Defense in Depth: Splice Bleed Protection<a class="headerlink" href="#defense-in-depth-splice-bleed-protection" title="Permanent link">¶</a></h2>
@@ -2377,54 +2401,47 @@ wrong exon, creating false variant evidence at exon boundaries.</p>
 <a id="__codelineno-2-18" name="__codelineno-2-18" href="#__codelineno-2-18"></a>Read C:    ═════════════╗══[G]═══════════════     → REF ✅
 <a id="__codelineno-2-19" name="__codelineno-2-19" href="#__codelineno-2-19"></a>                        ╚                         (CIGAR: 20M 3000N 30M)
 </code></pre></div>
-<h3 id="how-gbcms-catches-read-b-5-defense-layers">How gbcms Catches Read B: 5 Defense Layers<a class="headerlink" href="#how-gbcms-catches-read-b-5-defense-layers" title="Permanent link">¶</a></h3>
-<p>For a splice-bled base to produce a false positive, <strong>all 5 layers
-must fail simultaneously</strong> — which is exceedingly rare:</p>
+<h3 id="what-is-left-against-read-b">What is left against Read B<a class="headerlink" href="#what-is-left-against-read-b" title="Permanent link">¶</a></h3>
+<p>Read B is an SNV. An SNV is read from its one base at the variant's position
+(<code>check_snp</code>): no alignment scoring (<abbr title="Pair Hidden Markov Model - Probabilistic alignment using base quality scores">PairHMM</abbr>) runs for it, so nothing weighs the
+2–3 uncertain bases against the 30+ aligned ones. <strong>For an SNV only two things are
+left: the read's <abbr title="Mapping Quality - Confidence score for read alignment">MAPQ</abbr> and the base's own quality.</strong> A third item only flags:</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a>┌────────────────────────────────────────────────────────────────────┐
-<a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a>│                       Defense Layers                               │
+<a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a>│                        What is left                                │
 <a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a>├────────────────────────────────────────────────────────────────────┤
 <a id="__codelineno-3-4" name="__codelineno-3-4" href="#__codelineno-3-4"></a>│                                                                    │
-<a id="__codelineno-3-5" name="__codelineno-3-5" href="#__codelineno-3-5"></a>│  Layer 1: MAPQ filter (--min-mapq, default 1 for RNA)             │
+<a id="__codelineno-3-5" name="__codelineno-3-5" href="#__codelineno-3-5"></a>│  1. MAPQ filter (--min-mapq, default 1 for RNA)                   │
 <a id="__codelineno-3-6" name="__codelineno-3-6" href="#__codelineno-3-6"></a>│  └── STAR gives MAPQ=0 to reads it can't confidently place.       │
 <a id="__codelineno-3-7" name="__codelineno-3-7" href="#__codelineno-3-7"></a>│      Reads with very short exonic overlap are often multi-mapped.  │
 <a id="__codelineno-3-8" name="__codelineno-3-8" href="#__codelineno-3-8"></a>│                                                                    │
-<a id="__codelineno-3-9" name="__codelineno-3-9" href="#__codelineno-3-9"></a>│  Layer 2: Base quality filter (--min-baseq, default 20)           │
-<a id="__codelineno-3-10" name="__codelineno-3-10" href="#__codelineno-3-10"></a>│  └── Bled bases typically receive low BQ from the aligner because  │
-<a id="__codelineno-3-11" name="__codelineno-3-11" href="#__codelineno-3-11"></a>│      the alignment evidence is ambiguous near the splice site.     │
-<a id="__codelineno-3-12" name="__codelineno-3-12" href="#__codelineno-3-12"></a>│                                                                    │
-<a id="__codelineno-3-13" name="__codelineno-3-13" href="#__codelineno-3-13"></a>│  Layer 3: PairHMM quality-weighted classification                 │
-<a id="__codelineno-3-14" name="__codelineno-3-14" href="#__codelineno-3-14"></a>│  └── Even if a bled base passes the BQ filter, PairHMM evaluates  │
-<a id="__codelineno-3-15" name="__codelineno-3-15" href="#__codelineno-3-15"></a>│      the FULL read against REF/ALT haplotypes. The 2–3 uncertain  │
-<a id="__codelineno-3-16" name="__codelineno-3-16" href="#__codelineno-3-16"></a>│      bases are outweighed by 30+ properly aligned bases on the     │
-<a id="__codelineno-3-17" name="__codelineno-3-17" href="#__codelineno-3-17"></a>│      other side. LLR typically falls below threshold → NEITHER.    │
-<a id="__codelineno-3-18" name="__codelineno-3-18" href="#__codelineno-3-18"></a>│                                                                    │
-<a id="__codelineno-3-19" name="__codelineno-3-19" href="#__codelineno-3-19"></a>│  Layer 4: splice_spanning_count (tracked in output)               │
-<a id="__codelineno-3-20" name="__codelineno-3-20" href="#__codelineno-3-20"></a>│  └── Downstream QC can flag variants where ALL ALT evidence comes  │
-<a id="__codelineno-3-21" name="__codelineno-3-21" href="#__codelineno-3-21"></a>│      from splice-spanning reads (rna_splice_spanning in MAF/VCF).  │
-<a id="__codelineno-3-22" name="__codelineno-3-22" href="#__codelineno-3-22"></a>│                                                                    │
-<a id="__codelineno-3-23" name="__codelineno-3-23" href="#__codelineno-3-23"></a>│  Layer 5: BAQ splice-proximity penalty (--apply-baq, on for RNA)  │
-<a id="__codelineno-3-24" name="__codelineno-3-24" href="#__codelineno-3-24"></a>│  └── Subtracts 20 from BQ within 5bp of splice junctions. A base  │
-<a id="__codelineno-3-25" name="__codelineno-3-25" href="#__codelineno-3-25"></a>│      with BQ 30 near a splice site becomes BQ 10, which is below  │
-<a id="__codelineno-3-26" name="__codelineno-3-26" href="#__codelineno-3-26"></a>│      --min-baseq 20 → excluded from allele evidence entirely.      │
-<a id="__codelineno-3-27" name="__codelineno-3-27" href="#__codelineno-3-27"></a>│                                                                    │
-<a id="__codelineno-3-28" name="__codelineno-3-28" href="#__codelineno-3-28"></a>└────────────────────────────────────────────────────────────────────┘
+<a id="__codelineno-3-9" name="__codelineno-3-9" href="#__codelineno-3-9"></a>│  2. Base quality filter (--min-baseq, default 20)                 │
+<a id="__codelineno-3-10" name="__codelineno-3-10" href="#__codelineno-3-10"></a>│  └── The sequencer, not the aligner, sets a base's quality. A bled │
+<a id="__codelineno-3-11" name="__codelineno-3-11" href="#__codelineno-3-11"></a>│      base carries the quality the instrument gave it, usually      │
+<a id="__codelineno-3-12" name="__codelineno-3-12" href="#__codelineno-3-12"></a>│      high. The filter cannot see that the aligner misplaced it.    │
+<a id="__codelineno-3-13" name="__codelineno-3-13" href="#__codelineno-3-13"></a>│                                                                    │
+<a id="__codelineno-3-14" name="__codelineno-3-14" href="#__codelineno-3-14"></a>│  3. splice_spanning_count (tracked in output; a flag, not a filter)│
+<a id="__codelineno-3-15" name="__codelineno-3-15" href="#__codelineno-3-15"></a>│  └── Downstream QC can flag variants where ALL ALT evidence comes  │
+<a id="__codelineno-3-16" name="__codelineno-3-16" href="#__codelineno-3-16"></a>│      from splice-spanning reads (rna_splice_spanning in MAF/VCF).  │
+<a id="__codelineno-3-17" name="__codelineno-3-17" href="#__codelineno-3-17"></a>│                                                                    │
+<a id="__codelineno-3-18" name="__codelineno-3-18" href="#__codelineno-3-18"></a>└────────────────────────────────────────────────────────────────────┘
 </code></pre></div>
-<h3 id="why-all-5-layers-must-fail">Why All 5 Layers Must Fail<a class="headerlink" href="#why-all-5-layers-must-fail" title="Permanent link">¶</a></h3>
-<p>For a splice-bled base to cause a false ALT call:</p>
+<p>Two things once stood here and do not for an SNV. <abbr title="Pair Hidden Markov Model - Probabilistic alignment using base quality scores">PairHMM</abbr> never ran for SNVs (it
+scores indels, MNPs and complex variants). A <abbr title="Base Alignment Quality - Heuristic quality downgrade near a read's insertions and deletions">BAQ</abbr> penalty within 5bp of a splice
+junction, which hid a bled base at Q40 or below, was removed (RJ-31, 2026-11-03):
+a splice never lowers a base's quality, so a base near a junction is judged by its
+own quality like any other.</p>
+<h3 id="what-a-splice-bled-snv-needs-to-count-alt">What a splice-bled SNV needs to count ALT<a class="headerlink" href="#what-a-splice-bled-snv-needs-to-count-alt" title="Permanent link">¶</a></h3>
 <ol>
 <li>The variant must sit within <strong>1–2 bp of the exon boundary</strong></li>
-<li>The aligner must give the bled base <strong><abbr title="Mapping Quality - Confidence score for read alignment">MAPQ</abbr> ≥ 1</strong> (Layer 1 pass)</li>
-<li>The aligner must give the bled base <strong>BQ ≥ 20</strong> (Layer 2 pass)</li>
-<li><abbr title="Base Alignment Quality - Heuristic quality downgrade near indels and splice junctions">BAQ</abbr> must fail to bring BQ below 20 — but <abbr title="Base Alignment Quality - Heuristic quality downgrade near indels and splice junctions">BAQ</abbr> subtracts 20 from
-   bases within 5bp of the splice junction, so a base needs <strong>BQ ≥ 40</strong>
-   to survive (Layer 5 pass)</li>
-<li><abbr title="Pair Hidden Markov Model - Probabilistic alignment using base quality scores">PairHMM</abbr> must give the read <strong><abbr title="Log-Likelihood Ratio - Confidence metric for PairHMM alignment">LLR</abbr> ≥ 2.3</strong> despite only 2–3 bases
-   of evidence on the bled side (Layer 3 pass)</li>
+<li>The aligner must give the bled base <strong><abbr title="Mapping Quality - Confidence score for read alignment">MAPQ</abbr> ≥ 1</strong></li>
+<li>The sequencer must give the bled base <strong>BQ ≥ <code>--min-baseq</code></strong> (usual)</li>
 <li>The wrong base must <strong>happen to match</strong> the known ALT allele
-   (1/3 chance for SNPs)</li>
+   (1/3 chance for SNVs)</li>
 </ol>
-<p>In practice, Layers 2 and 5 together require BQ ≥ 40 at the bled
-position, which is exceptionally unlikely for a 2–3 base overhang.</p>
+<p>Nothing else stops it: that is the short piece of #409 (a piece with only a few
+bases past its junction, written at an annotated junction where the molecule spliced
+at a novel one, or a short piece between two junctions). It is the known limit, and
+the rule that keeps such a piece depth only is ticketed. <code>rna_splice_spanning</code> (item 3) lets downstream QC flag such rows.</p>
 <!-- Abbreviation definitions for gbcms documentation -->
 <!-- These provide hover tooltips for technical acronyms -->
 <p><span hidden="">abbreviations</span></p></div>
@@ -2450,7 +2467,7 @@ position, which is exceptionally unlikely for a 2–3 base overhang.</p>
     <span class="md-icon" title="Last update">
       <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M21 13.1c-.1 0-.3.1-.4.2l-1 1 2.1 2.1 1-1c.2-.2.2-.6 0-.8l-1.3-1.3c-.1-.1-.2-.2-.4-.2m-1.9 1.8-6.1 6V23h2.1l6.1-6.1zM12.5 7v5.2l4 2.4-1 1L11 13V7zM11 21.9c-5.1-.5-9-4.8-9-9.9C2 6.5 6.5 2 12 2c5.3 0 9.6 4.1 10 9.3-.3-.1-.6-.2-1-.2s-.7.1-1 .2C19.6 7.2 16.2 4 12 4c-4.4 0-8 3.6-8 8 0 4.1 3.1 7.5 7.1 7.9l-.1.2z"></path></svg>
     </span>
-    <span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-timeago" title="October 27, 2026 18:31:32 UTC"><span class="timeago" datetime="2026-10-27T18:31:32+00:00" locale="en"></span></span><span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-iso_date" title="October 27, 2026 18:31:32 UTC">2026-10-27</span>
+    <span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-timeago" title="November 3, 2026 20:58:33 UTC"><span class="timeago" datetime="2026-11-03T20:58:33+00:00" locale="en"></span></span><span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-iso_date" title="November 3, 2026 20:58:33 UTC">2026-11-03</span>
   </span>
 
     

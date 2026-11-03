@@ -1755,7 +1755,7 @@ annotation). The <abbr title="Multi-Nucleotide Polymorphism - Multiple adjacent 
 matches ALT at some discriminating positions and REF at others, so it lands in
 <code>partial_alt</code>. Rescue re-counts every discriminating position as an SNV and reports the
 best-supported component. In RNA mode with <code>--gtf</code>, each component is counted over its
-<abbr title="Multi-Nucleotide Polymorphism - Multiple adjacent base substitutions">MNP</abbr>'s REF span for the exon-edge <abbr title="Base Alignment Quality - Heuristic quality downgrade near indels and splice junctions">BAQ</abbr> rule, so the components and the <abbr title="Multi-Nucleotide Polymorphism - Multiple adjacent base substitutions">MNP</abbr> row are counted
+<abbr title="Multi-Nucleotide Polymorphism - Multiple adjacent base substitutions">MNP</abbr>'s REF span for the exon-edge <abbr title="Base Alignment Quality - Heuristic quality downgrade near a read's insertions and deletions">BAQ</abbr> rule, so the components and the <abbr title="Multi-Nucleotide Polymorphism - Multiple adjacent base substitutions">MNP</abbr> row are counted
 under one rule and a rescued row reports the <abbr title="Multi-Nucleotide Polymorphism - Multiple adjacent base substitutions">MNP</abbr>'s <code>exon_boundary_dist</code>.</p>
 <h3 id="why-python-not-rust">Why Python, Not Rust?<a class="headerlink" href="#why-python-not-rust" title="Permanent link">¶</a></h3>
 <p>The original design spec proposed implementing rescue in Rust. The final implementation
@@ -1933,7 +1933,7 @@ neither-read abstain, so one fragment can be <abbr title="Multi-Nucleotide Polym
   <abbr title="Multi-Nucleotide Polymorphism - Multiple adjacent base substitutions">MNP</abbr>, rescue keeps it (criterion 5); where the <abbr title="Multi-Nucleotide Polymorphism - Multiple adjacent base substitutions">MNP</abbr> is absent (e.g. a fillout of other
   timepoints or normals), the germline component can still be adopted and the row's <abbr title="Variant Allele Frequency - Fraction of reads supporting the variant allele">VAF</abbr>
   is then the germline <abbr title="Variant Allele Frequency - Fraction of reads supporting the variant allele">VAF</abbr>. <code>gbcms_rescue</code> shows the per-position split.</li>
-<li>With <code>--apply-baq</code>, <abbr title="Base Alignment Quality - Heuristic quality downgrade near indels and splice junctions">BAQ</abbr> can lower base qualities near indels so a read carrying the
+<li>With <code>--apply-baq</code>, <abbr title="Base Alignment Quality - Heuristic quality downgrade near a read's insertions and deletions">BAQ</abbr> can lower base qualities near indels so a read carrying the
   whole <abbr title="Multi-Nucleotide Polymorphism - Multiple adjacent base substitutions">MNP</abbr> stops counting as showing it (a changed base is masked). Unobserved on the
   validation data (no candidate <abbr title="Multi-Nucleotide Polymorphism - Multiple adjacent base substitutions">MNP</abbr> sat next to an indel), but at such loci read
   <code>original_confirmed</code> in <code>gbcms_rescue</code> with care.</li>

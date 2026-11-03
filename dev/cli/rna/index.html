@@ -1396,7 +1396,7 @@ Use mouse to pan and zoom
 <h2 id="required-arguments">Required Arguments<a class="headerlink" href="#required-arguments" title="Permanent link">¶</a></h2>
 <div class="admonition info">
 <p class="admonition-title">Shared Arguments</p>
-<p>RNA mode shares all <a href="../dna/#required-arguments">required arguments</a>, <a href="../dna/#output-options">output options</a>, <a href="../dna/#filtering-options">filtering options</a>, <a href="../dna/#baq-options"><abbr title="Base Alignment Quality - Heuristic quality downgrade near indels and splice junctions">BAQ</abbr> options</a>, <a href="../dna/#umi-options"><abbr title="Unique Molecular Identifier - Molecular barcode for deduplication">UMI</abbr> options</a>, <a href="../dna/#mnp-rescue-options"><abbr title="Multi-Nucleotide Polymorphism - Multiple adjacent base substitutions">MNP</abbr> rescue options</a>, the <a href="../dna/#homopolymer-twin-option">homopolymer twin option</a>, and <a href="../dna/#debugging-options">debugging options</a> with DNA mode. See the <a href="../dna/"><code>gbcms dna</code> reference</a> for full descriptions.</p>
+<p>RNA mode shares all <a href="../dna/#required-arguments">required arguments</a>, <a href="../dna/#output-options">output options</a>, <a href="../dna/#filtering-options">filtering options</a>, <a href="../dna/#baq-options"><abbr title="Base Alignment Quality - Heuristic quality downgrade near a read's insertions and deletions">BAQ</abbr> options</a>, <a href="../dna/#umi-options"><abbr title="Unique Molecular Identifier - Molecular barcode for deduplication">UMI</abbr> options</a>, <a href="../dna/#mnp-rescue-options"><abbr title="Multi-Nucleotide Polymorphism - Multiple adjacent base substitutions">MNP</abbr> rescue options</a>, the <a href="../dna/#homopolymer-twin-option">homopolymer twin option</a>, and <a href="../dna/#debugging-options">debugging options</a> with DNA mode. See the <a href="../dna/"><code>gbcms dna</code> reference</a> for full descriptions.</p>
 </div>
 <div class="admonition tip">
 <p class="admonition-title">Provenance &amp; CRAM Support (v5.3.0+)</p>
@@ -1406,8 +1406,8 @@ comment lines in <abbr title="Mutation Annotation Format - Standard mutation ann
 transparently.  See <a href="../dna/#required-arguments">CRAM Support</a> for details.</p>
 </div>
 <div class="admonition tip">
-<p class="admonition-title"><abbr title="Base Alignment Quality - Heuristic quality downgrade near indels and splice junctions">BAQ</abbr> is On by Default in RNA Mode</p>
-<p>Unlike DNA mode, <code>--apply-baq</code> defaults to <strong>on</strong> for RNA. <abbr title="Base Alignment Quality - Heuristic quality downgrade near indels and splice junctions">BAQ</abbr> penalizes bases within 5 bp of both indels and splice junctions (<abbr title="Compact Idiosyncratic Gapped Alignment Report - BAM alignment operation string">CIGAR</abbr> <code>N</code>), serving as a lightweight alternative to GATK SplitNCigarReads. Disable with <code>--no-baq</code> if your upstream workflow already runs SplitNCigarReads or <abbr title="Base Quality Score Recalibration - GATK quality recalibration tool">BQSR</abbr>. See <a href="../../reference/rna-splice-handling/">RNA Splice-Junction Handling</a>.</p>
+<p class="admonition-title"><abbr title="Base Alignment Quality - Heuristic quality downgrade near a read's insertions and deletions">BAQ</abbr> is On by Default in RNA Mode</p>
+<p>Unlike DNA mode, <code>--apply-baq</code> defaults to <strong>on</strong> for RNA. <abbr title="Base Alignment Quality - Heuristic quality downgrade near a read's insertions and deletions">BAQ</abbr> lowers the quality of bases within 5 bp of a read's insertion or deletion. A splice junction (<abbr title="Compact Idiosyncratic Gapped Alignment Report - BAM alignment operation string">CIGAR</abbr> <code>N</code>) lowers no base's quality: a base is judged by its own quality, as GATK does after SplitNCigarReads. Disable with <code>--no-baq</code> if your upstream workflow already recalibrates base qualities. See <a href="../../reference/rna-splice-handling/">RNA Splice-Junction Handling</a>.</p>
 </div>
 <table>
 <thead>
@@ -1707,8 +1707,9 @@ The file is loaded once at startup and stored as a hash set for O(1) lookup per 
 </table>
 <p><code>--min-baseq</code> masks bases, never reads: a base below it is read as unknown, like <code>N</code>, and
 the read still counts toward depth, judged on its other bases (see <a href="../../reference/read-filters/#quality-thresholds">Read Filters → Quality
-Thresholds</a>). <abbr title="Base Alignment Quality - Heuristic quality downgrade near indels and splice junctions">BAQ</abbr>, on by default in RNA
-mode, lowers qualities near splice junctions and indels before this threshold applies.</p>
+Thresholds</a>). <abbr title="Base Alignment Quality - Heuristic quality downgrade near a read's insertions and deletions">BAQ</abbr>, on by default in RNA
+mode, lowers qualities near a read's insertions and deletions before this threshold applies; a
+splice junction lowers none.</p>
 <p>The RNA <code>--min-mapq 1</code> default keeps the primary alignments of reads <abbr title="Spliced Transcripts Alignment to a Reference - RNA-seq aligner">STAR</abbr> placed at two
 to four loci (<abbr title="Mapping Quality - Confidence score for read alignment">MAPQ</abbr> 3 or 1); the measurement behind it and the cost of unique-only
 counting are in <a href="../../reference/read-filters/#why-the-rna-default-is-min-mapq-1">Read Filters → Why the RNA default is
@@ -2072,9 +2073,9 @@ rows need a look and what to do about each, then a <code>WARNING</code> when any
 <td style="text-align: left;">on (same)</td>
 </tr>
 <tr>
-<td style="text-align: left;"><strong><abbr title="Base Alignment Quality - Heuristic quality downgrade near indels and splice junctions">BAQ</abbr> default</strong></td>
+<td style="text-align: left;"><strong><abbr title="Base Alignment Quality - Heuristic quality downgrade near a read's insertions and deletions">BAQ</abbr> default</strong></td>
 <td style="text-align: left;">off</td>
-<td style="text-align: left;"><strong>on</strong> (no upstream <abbr title="Base Quality Score Recalibration - GATK quality recalibration tool">BQSR</abbr>; splice penalty)</td>
+<td style="text-align: left;"><strong>on</strong> (no upstream <abbr title="Base Quality Score Recalibration - GATK quality recalibration tool">BQSR</abbr>; indel penalty only)</td>
 </tr>
 <tr>
 <td style="text-align: left;"><strong>Strandedness filter</strong></td>
@@ -2131,7 +2132,7 @@ rows need a look and what to do about each, then a <code>WARNING</code> when any
 <span class="md-icon" title="Last update">
 <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M21 13.1c-.1 0-.3.1-.4.2l-1 1 2.1 2.1 1-1c.2-.2.2-.6 0-.8l-1.3-1.3c-.1-.1-.2-.2-.4-.2m-1.9 1.8-6.1 6V23h2.1l6.1-6.1zM12.5 7v5.2l4 2.4-1 1L11 13V7zM11 21.9c-5.1-.5-9-4.8-9-9.9C2 6.5 6.5 2 12 2c5.3 0 9.6 4.1 10 9.3-.3-.1-.6-.2-1-.2s-.7.1-1 .2C19.6 7.2 16.2 4 12 4c-4.4 0-8 3.6-8 8 0 4.1 3.1 7.5 7.1 7.9l-.1.2z"></path></svg>
 </span>
-<span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-timeago" title="October 28, 2026 23:02:46 UTC"><span class="timeago" datetime="2026-10-28T23:02:46+00:00" locale="en"></span></span><span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-iso_date" title="October 28, 2026 23:02:46 UTC">2026-10-28</span>
+<span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-timeago" title="November 3, 2026 14:12:18 UTC"><span class="timeago" datetime="2026-11-03T14:12:18+00:00" locale="en"></span></span><span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-iso_date" title="November 3, 2026 14:12:18 UTC">2026-11-03</span>
 </span>
 <span class="md-source-file__fact">
 <span class="md-icon" title="Created">

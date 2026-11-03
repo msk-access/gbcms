@@ -770,6 +770,24 @@
 <nav aria-label="[Unreleased]" class="md-nav">
 <ul class="md-nav__list">
 <li class="md-nav__item">
+<a class="md-nav__link" href="#changed-rna-a-splice-never-lowers-a-bases-quality-292-rj-31">
+<span class="md-ellipsis">
+      
+        Changed — RNA: a splice never lowers a base's quality (#292, RJ-31)
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#fixed-rna-an-exon-piece-holding-part-of-a-deletions-bases-is-depth-only-292">
+<span class="md-ellipsis">
+      
+        Fixed — RNA: an exon piece holding part of a deletion's bases is depth only (#292)
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
 <a class="md-nav__link" href="#changed-a-long-deletions-alt-reads-must-tell-it-from-another-unit-count-present-at-the-site-297">
 <span class="md-ellipsis">
       
@@ -3116,6 +3134,53 @@
 <p>The format is based on <a href="https://keepachangelog.com/en/1.0.0/">Keep a Changelog</a>,
 and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semantic Versioning</a>.</p>
 <h2 id="unreleased">[Unreleased]<a class="headerlink" href="#unreleased" title="Permanent link">¶</a></h2>
+<h3 id="changed-rna-a-splice-never-lowers-a-bases-quality-292-rj-31">Changed — RNA: a splice never lowers a base's quality (#292, RJ-31)<a class="headerlink" href="#changed-rna-a-splice-never-lowers-a-bases-quality-292-rj-31" title="Permanent link">¶</a></h3>
+<ul>
+<li>Heuristic <abbr title="Base Alignment Quality - Heuristic quality downgrade near a read's insertions and deletions">BAQ</abbr> (<code>--apply-baq</code>, on by default in <code>gbcms rna</code>) no longer lowers the five read
+  bases each side of a splice junction (<abbr title="Compact Idiosyncratic Gapped Alignment Report - BAM alignment operation string">CIGAR</abbr> <code>N</code>) by 20. It still lowers by 20 the five bases
+  each side of a read's own insertion or deletion, and still spares the counted variant's own
+  indel. A base is judged by its own quality against <code>--min-baseq</code>, wherever it lies in the
+  read. This reverses the junction penalty decided on 2026-05-04 (in effect for RNA since
+  4.1.0), under which a base near a junction passed the bar only where its quality was 20
+  above it: Q40 data passed at the default bar 20 and nothing passed at 30. GATK's
+  SplitNCigarReads changes no quality at a splice and htslib's <abbr title="Base Alignment Quality - Heuristic quality downgrade near a read's insertions and deletions">BAQ</abbr> skips a spliced read whole,
+  so no surveyed tool lowered a base for lying near a junction.</li>
+<li>Counts change in RNA only, and only for reads spliced within five bases of the variant's
+  bases, GTF or none (with a GTF, <abbr title="Base Alignment Quality - Heuristic quality downgrade near a read's insertions and deletions">BAQ</abbr> was already skipped within five bases of an annotated
+  exon edge). Measured on 58 FORTE <abbr title="Spliced Transcripts Alignment to a Reference - RNA-seq aligner">STAR</abbr> slices at bar 20: of 163,882 SNV rows in the first five
+  bases of exons, 136,257 move, ALT +14,269 and REF +5.70 million reads (+1.9%); clean rows
+  keep 0 ALT, and the 219 germline hets gain the 984 ALT reads (1.9%) the penalty hid (76% at
+  bar 30). DNA has no junction: unchanged.</li>
+<li>At a delins, ALT can fall at bar 30 (FORTE: 280 to 173 reads in reach, reproduced exactly on
+  the builds before and after the change). That is right by bases: a base under the bar fits any
+  allele, so with a junction's ten read bases masked a read could fit the ALT on the few bases
+  left, whatever the masked bases showed. The 117 reads that lose ALT are all spliced with the
+  event 0 to 4 bases from the junction; 92 lie on a long piece (20 or more aligned bases), not a
+  short anchor. Under the change 91 of the 117 are REF and 18 partial evidence.</li>
+<li>The exon-edge exception (#106) stays; it now lifts only the penalty of a read's own indels.</li>
+<li>The limit (#409, RJ-3's short pieces): a piece too short to place its own bases, at a spliced
+  read's end or between two junctions, is no longer hidden by the penalty and can read as an ALT it
+  does not carry. An end piece is written at an annotated junction where its molecule spliced at a
+  novel one a few bases on (synthetic set: 2.2% of the reads at that stratum, at hom-REF rows); a
+  6-base piece between two junctions with a misplaced base counted ALT on 4 of 4 reads (develop:
+  depth only, two penalties stacked to Q0). Ticketed; two strict xfails pin them.</li>
+<li><code>gbcms rna --apply-baq/--no-baq</code> help and the <code>--trace</code> <abbr title="Base Alignment Quality - Heuristic quality downgrade near a read's insertions and deletions">BAQ</abbr> line no longer name splice
+  junctions. No flag or Nextflow parameter changes.</li>
+<li>One test expectation changed, with the decision:
+  <code>test_baq_still_applies_to_an_mnp_ending_six_bases_from_the_edge</code>, (REF, ALT) from (20, 0) to
+  (20, 10): its ten carriers hold the <abbr title="Multi-Nucleotide Polymorphism - Multiple adjacent base substitutions">MNP</abbr> in their own bases, and the novel donor's junction
+  penalty had masked both.</li>
+</ul>
+<h3 id="fixed-rna-an-exon-piece-holding-part-of-a-deletions-bases-is-depth-only-292">Fixed — RNA: an exon piece holding part of a deletion's bases is depth only (#292)<a class="headerlink" href="#fixed-rna-an-exon-piece-holding-part-of-a-deletions-bases-is-depth-only-292" title="Permanent link">¶</a></h3>
+<ul>
+<li>A spliced read whose exon piece starts at a junction at a deletion's edge and ends inside
+  the deleted bases (or, mirrored, starts inside them and ends at a junction) holds part of
+  the deletion and no flank base of its own. The exact-carrier rule now counts it toward depth
+  only, never REF (RJ-17, amended 2026-10-30), with <abbr title="Base Alignment Quality - Heuristic quality downgrade near a read's insertions and deletions">BAQ</abbr> on or off. Before, only <abbr title="Base Alignment Quality - Heuristic quality downgrade near a read's insertions and deletions">BAQ</abbr>'s
+  junction penalty hid the piece's bases: with <code>--no-baq</code>, such reads counted REF.
+  The <abbr title="Compact Idiosyncratic Gapped Alignment Report - BAM alignment operation string">CIGAR</abbr> checks already required the whole span. DNA is unchanged (its reads have no
+  junction).</li>
+</ul>
 <h3 id="changed-a-long-deletions-alt-reads-must-tell-it-from-another-unit-count-present-at-the-site-297">Changed — a long deletion's ALT reads must tell it from another unit count present at the site (#297)<a class="headerlink" href="#changed-a-long-deletions-alt-reads-must-tell-it-from-another-unit-count-present-at-the-site-297" title="Permanent link">¶</a></h3>
 <ul>
 <li>At a deletion of 50 bp or more beside a tandem run of its unit (its deleted copy differing
@@ -3171,7 +3236,7 @@ and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semant
     placement (RJ-29). The floor decides only the reads that cannot tell. The sequence judge
     leaves such reads depth only (an allele under the floor is no state), so <code>partial_alt</code>
     differs between the paths on them, <code>alt_count</code> does not.</li>
-<li>The presence test reads each read's qualities as the hold does (<abbr title="Base Alignment Quality - Heuristic quality downgrade near indels and splice junctions">BAQ</abbr>-adjusted, inside the
+<li>The presence test reads each read's qualities as the hold does (<abbr title="Base Alignment Quality - Heuristic quality downgrade near a read's insertions and deletions">BAQ</abbr>-adjusted, inside the
     readable range), and "within a read's reach" is the first difference and the 24 bases the
     spelling test reads (it was 4). <code>UNIT_COUNT_UNSPANNED</code>'s <code>bases</code> is larger by 20, and a
     count that first differs 4 to 23 bases before the longest read's end is named.</li>
@@ -3270,6 +3335,10 @@ and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semant
   installs it on Python 3.10 and 3.14 with <code>pip install --only-binary=:all:</code>. The suite runs
   there, and the counting run's output digests must equal the Linux ones. The same steps run
   on a Mac with <code>scripts/check_wheel.sh</code>.</li>
+<li>The action then checks that the wheel needs no newer macOS than 11.0: its platform tag, and
+  the minimum macOS in each binary's load commands (<code>otool -l</code>). The tests run on
+  <code>macos-latest</code>, so they would accept a wheel that needs a newer macOS; the Linux build checks
+  its glibc floor the same way.</li>
 <li>Intel Macs (x86_64) still build the source distribution: nothing in <abbr title="Continuous Integration - Automated build and test system">CI</abbr> uses an Intel Mac,
   and a wheel for one would be a second entry in the same two jobs (or a cross build on the
   arm64 runner) if a user asks for it.</li>
@@ -3585,7 +3654,7 @@ and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semant
   made introns that exist nowhere and missed the real ones, and the whole transcript sat on
   the first chromosome seen. A spliced read over a real intron then matched none of them
   and was left out of the transcript's counts; the same introns fed the intron boundaries
-  (<code>RETENTION_DOMINANT</code>, the exon-edge <abbr title="Base Alignment Quality - Heuristic quality downgrade near indels and splice junctions">BAQ</abbr> rule, RNA clip edges) and ASJD's known-junction
+  (<code>RETENTION_DOMINANT</code>, the exon-edge <abbr title="Base Alignment Quality - Heuristic quality downgrade near a read's insertions and deletions">BAQ</abbr> rule, RNA clip edges) and ASJD's known-junction
   check. A transcript is now an ID at one chromosome and strand, as the strand spans
   already were (#185): its exons, introns, boundaries and <code>transcript_read_counts</code> /
   <code>transcript_fragment_counts</code> entries are its own. The parser warns once when a GTF
@@ -3677,7 +3746,7 @@ and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semant
   bases there are all N as REF. Such a read is now neither (N class), as the
   exact-carrier rule counts it elsewhere. No existing test's counts change.</li>
 <li><strong>Nextflow RNA tasks pass the RNA <abbr title="Command Line Interface - Terminal-based program interface">CLI</abbr> defaults.</strong> The RNA module passed DNA's
-  <abbr title="Pair Hidden Markov Model - Probabilistic alignment using base quality scores">PairHMM</abbr> gap penalties (1e-4/0.1 over RNA's 5e-3/0.25) and <code>--no-baq</code> (<abbr title="Base Alignment Quality - Heuristic quality downgrade near indels and splice junctions">BAQ</abbr> is on in
+  <abbr title="Pair Hidden Markov Model - Probabilistic alignment using base quality scores">PairHMM</abbr> gap penalties (1e-4/0.1 over RNA's 5e-3/0.25) and <code>--no-baq</code> (<abbr title="Base Alignment Quality - Heuristic quality downgrade near a read's insertions and deletions">BAQ</abbr> is on in
   <code>gbcms rna</code>). RNA now reads its own params, <code>rna_gap_*</code> and <code>rna_apply_baq</code> (on), as
   it already did <code>rna_min_mapq</code>; a test pins every module's param defaults to its
   <abbr title="Command Line Interface - Terminal-based program interface">CLI</abbr>'s. Measured on the 33 local FORTE slices (94 rows), old module arguments against
@@ -3982,9 +4051,9 @@ and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semant
   count alike (an ALT-only miscount at an exon-start A run, present on develop). A
   read spliced just past the windows reads on along its own mRNA, not the intron:
   spliced reads at pure indels two to four bases before an exon's end had lost their
-  call (REF reads neither, or partial under <abbr title="Base Alignment Quality - Heuristic quality downgrade near indels and splice junctions">BAQ</abbr>) where develop counted them, and with
-  <abbr title="Base Alignment Quality - Heuristic quality downgrade near indels and splice junctions">BAQ</abbr> masking the bases at a junction (the RNA default, without a GTF) spliced reads
-  beside an exon edge count as with <abbr title="Base Alignment Quality - Heuristic quality downgrade near indels and splice junctions">BAQ</abbr> off. The exon edges are typed: an exon end
+  call (REF reads neither, or partial under <abbr title="Base Alignment Quality - Heuristic quality downgrade near a read's insertions and deletions">BAQ</abbr>) where develop counted them, and with
+  <abbr title="Base Alignment Quality - Heuristic quality downgrade near a read's insertions and deletions">BAQ</abbr> masking the bases at a junction (the RNA default, without a GTF) spliced reads
+  beside an exon edge count as with <abbr title="Base Alignment Quality - Heuristic quality downgrade near a read's insertions and deletions">BAQ</abbr> off. The exon edges are typed: an exon end
   where the event starts leaves its left flank whole (#291). On the FORTE slices one
   row changes, with the GTF or without: <abbr title="Reference Depth - Reads supporting the reference allele">RD</abbr> +1, a spliced REF read the intron had left
   undecided.</li>
@@ -5104,7 +5173,7 @@ FORTE RNA, WES) are byte-identical to the previous build, every <abbr title="Mut
 <li><code>tests/test_binning_invariance.py</code> compares every field under the per-variant
     fetch (window 1, cap 1), tiny windows, small caps, one call per row, shuffled
     input on 4 threads, and decoy rows. Each geometry is asserted to split the bins.
-    Its fixtures are synthetic DNA (plain, and <abbr title="Base Alignment Quality - Heuristic quality downgrade near indels and splice junctions">BAQ</abbr>+<abbr title="Unique Molecular Identifier - Molecular barcode for deduplication">UMI</abbr>+<abbr title="Mutant Fragment Size Distribution - Insert-size analysis for REF vs ALT fragments">mFSD</abbr>; siblings, a decomposed
+    Its fixtures are synthetic DNA (plain, and <abbr title="Base Alignment Quality - Heuristic quality downgrade near a read's insertions and deletions">BAQ</abbr>+<abbr title="Unique Molecular Identifier - Molecular barcode for deduplication">UMI</abbr>+<abbr title="Mutant Fragment Size Distribution - Insert-size analysis for REF vs ALT fragments">mFSD</abbr>; siblings, a decomposed
     twin, overlapping mates), clip carriers past a long anchor, an RNA locus with a
     GTF and antisense reads, and the real test <abbr title="Binary Alignment Map - Compressed sequence alignment file format">BAM</abbr>.</li>
 <li>Every counting test now runs through <code>count_checked</code>, which also counts with
@@ -5316,13 +5385,13 @@ FORTE RNA, WES) are byte-identical to the previous build, every <abbr title="Mut
   <code>--no-filter-secondary</code> or a primary in a stripped <abbr title="Binary Alignment Map - Compressed sequence alignment file format">BAM</abbr>, is now dropped where
   every read enters counting. It counts in neither depth, fragments nor
   <code>mq0_count</code>. Each counting pass logs one WARNING when any were skipped.</li>
-<li>Before: the SNV check panicked on such a record, and so did heuristic <abbr title="Base Alignment Quality - Heuristic quality downgrade near indels and splice junctions">BAQ</abbr> (RNA,
+<li>Before: the SNV check panicked on such a record, and so did heuristic <abbr title="Base Alignment Quality - Heuristic quality downgrade near a read's insertions and deletions">BAQ</abbr> (RNA,
     or DNA with <code>--apply-baq</code>). The insertion and deletion checks counted it as REF
     and depth (or as a fragment) from its <abbr title="Compact Idiosyncratic Gapped Alignment Report - BAM alignment operation string">CIGAR</abbr> alone.</li>
 <li>Counts change only where such records reach counting. With the default
     filters, that means primary records without bases.</li>
 </ul>
-<h3 id="changed-the-exon-edge-baq-rule-and-exon_boundary_dist-measure-from-the-ref-span-106">Changed — the exon-edge <abbr title="Base Alignment Quality - Heuristic quality downgrade near indels and splice junctions">BAQ</abbr> rule and <code>exon_boundary_dist</code> measure from the REF span (#106)<a class="headerlink" href="#changed-the-exon-edge-baq-rule-and-exon_boundary_dist-measure-from-the-ref-span-106" title="Permanent link">¶</a></h3>
+<h3 id="changed-the-exon-edge-baq-rule-and-exon_boundary_dist-measure-from-the-ref-span-106">Changed — the exon-edge <abbr title="Base Alignment Quality - Heuristic quality downgrade near a read's insertions and deletions">BAQ</abbr> rule and <code>exon_boundary_dist</code> measure from the REF span (#106)<a class="headerlink" href="#changed-the-exon-edge-baq-rule-and-exon_boundary_dist-measure-from-the-ref-span-106" title="Permanent link">¶</a></h3>
 <ul>
 <li><code>exon_boundary_dist</code> (<abbr title="Variant Call Format - Standard variant call file format">VCF</abbr> <code>EBD</code>) is now the distance from the nearest annotated
   exon boundary to any base of the variant's REF span, and <code>0</code> when a boundary lies
@@ -5332,13 +5401,13 @@ FORTE RNA, WES) are byte-identical to the previous build, every <abbr title="Mut
   its anchor base (VEP drops the anchor, so its distance to a boundary on the left
   is one more). This is a column change for multi-base variants: the distance is
   smaller for about 4 in 10 signed-out multi-base variants and indels.</li>
-<li>RNA mode with <code>--gtf</code>: the <abbr title="Base Alignment Quality - Heuristic quality downgrade near indels and splice junctions">BAQ</abbr> exception at exon edges uses the same distance, so
-  a multi-base variant reaching into an exon's last five bases skips <abbr title="Base Alignment Quality - Heuristic quality downgrade near indels and splice junctions">BAQ</abbr>, as an SNV
+<li>RNA mode with <code>--gtf</code>: the <abbr title="Base Alignment Quality - Heuristic quality downgrade near a read's insertions and deletions">BAQ</abbr> exception at exon edges uses the same distance, so
+  a multi-base variant reaching into an exon's last five bases skips <abbr title="Base Alignment Quality - Heuristic quality downgrade near a read's insertions and deletions">BAQ</abbr>, as an SNV
   there does. The main counts, per-transcript counts, ASJD and each <code>--rescue-mnp</code>
   component re-count resolve the rule the same way: a component is counted over
   its <abbr title="Multi-Nucleotide Polymorphism - Multiple adjacent base substitutions">MNP</abbr>'s span, and a rescued row reports the <abbr title="Multi-Nucleotide Polymorphism - Multiple adjacent base substitutions">MNP</abbr>'s distance (it reported the
   adopted component's).</li>
-<li>Why: heuristic <abbr title="Base Alignment Quality - Heuristic quality downgrade near indels and splice junctions">BAQ</abbr> lowers the five bases before every splice junction, below
+<li>Why: heuristic <abbr title="Base Alignment Quality - Heuristic quality downgrade near a read's insertions and deletions">BAQ</abbr> lowers the five bases before every splice junction, below
     <code>--min-baseq</code> at Q30 or Q37. An <abbr title="Multi-Nucleotide Polymorphism - Multiple adjacent base substitutions">MNP</abbr> starting more than 5bp from a right exon
     edge but reaching into those bases lost its edge-side bases in every spliced
     read. So no spliced carrier showed the whole <abbr title="Multi-Nucleotide Polymorphism - Multiple adjacent base substitutions">MNP</abbr> (<code>--rescue-mnp</code> then adopted a
@@ -5392,7 +5461,7 @@ FORTE RNA, WES) are byte-identical to the previous build, every <abbr title="Mut
   exact-carrier rule decides from its own bases, inside a well-defined fragment
   (past the fragment end a clip is adapter), now counts in <abbr title="Total Depth - All mapped reads overlapping the variant position">DP</abbr> and REF/ALT;
   undecided clipped reads stay out. Not in RNA mode (#167).</li>
-<li><abbr title="Base Alignment Quality - Heuristic quality downgrade near indels and splice junctions">BAQ</abbr> (the RNA default, and DNA with <code>--apply-baq</code>) no longer penalizes a read's
+<li><abbr title="Base Alignment Quality - Heuristic quality downgrade near a read's insertions and deletions">BAQ</abbr> (the RNA default, and DNA with <code>--apply-baq</code>) no longer penalizes a read's
   own insertion or deletion when that indel is the variant being counted. At Q37
   the penalty put every ALT read of a small indel or delins below min BQ while
   REF reads kept full quality; FORTE's Q40 bins hid it. Splice junctions and
@@ -5586,12 +5655,12 @@ skipped ALTs) change. Re-genotype every flavor
   input's rows as it lists them, then rows only a later input has, in that
   input's order. Row contents are unchanged.</li>
 </ul>
-<h3 id="fixed-one-baq-rule-across-rna-views-deterministic-asjd-junctions">Fixed — one <abbr title="Base Alignment Quality - Heuristic quality downgrade near indels and splice junctions">BAQ</abbr> rule across RNA views; deterministic ASJD junctions<a class="headerlink" href="#fixed-one-baq-rule-across-rna-views-deterministic-asjd-junctions" title="Permanent link">¶</a></h3>
+<h3 id="fixed-one-baq-rule-across-rna-views-deterministic-asjd-junctions">Fixed — one <abbr title="Base Alignment Quality - Heuristic quality downgrade near a read's insertions and deletions">BAQ</abbr> rule across RNA views; deterministic ASJD junctions<a class="headerlink" href="#fixed-one-baq-rule-across-rna-views-deterministic-asjd-junctions" title="Permanent link">¶</a></h3>
 <ul>
-<li>Per-transcript counts and ASJD now apply the main counts' exon-boundary <abbr title="Base Alignment Quality - Heuristic quality downgrade near indels and splice junctions">BAQ</abbr>
-  exception: <abbr title="Base Alignment Quality - Heuristic quality downgrade near indels and splice junctions">BAQ</abbr> is skipped at variants within 5bp of an annotated exon boundary,
+<li>Per-transcript counts and ASJD now apply the main counts' exon-boundary <abbr title="Base Alignment Quality - Heuristic quality downgrade near a read's insertions and deletions">BAQ</abbr>
+  exception: <abbr title="Base Alignment Quality - Heuristic quality downgrade near a read's insertions and deletions">BAQ</abbr> is skipped at variants within 5bp of an annotated exon boundary,
   where its <abbr title="Compact Idiosyncratic Gapped Alignment Report - BAM alignment operation string">CIGAR</abbr>-N penalty lands on exactly the reads that splice there.
-  Before, both applied <abbr title="Base Alignment Quality - Heuristic quality downgrade near indels and splice junctions">BAQ</abbr> regardless. Measured on three junction-rich RNA
+  Before, both applied <abbr title="Base Alignment Quality - Heuristic quality downgrade near a read's insertions and deletions">BAQ</abbr> regardless. Measured on three junction-rich RNA
   samples at 2010 exon-edge probes:</li>
 <li>per-transcript REF counts were ~3% low overall, and some transcripts lost
     all their spliced REF reads. The median gap to the main counts drops from
@@ -5759,7 +5828,7 @@ spliced RNA positions — the minor version bump this release delivers.</p>
 <li>
 <p><strong>Structural REF evidence survives fragment consensus at quality zero.</strong>
   Span-aligned REF's carried quality is the first exon base after the
-  junction — exactly where <abbr title="Base Alignment Quality - Heuristic quality downgrade near indels and splice junctions">BAQ</abbr> can zero it — and <code>FragmentEvidence</code> gated
+  junction — exactly where <abbr title="Base Alignment Quality - Heuristic quality downgrade near a read's insertions and deletions">BAQ</abbr> can zero it — and <code>FragmentEvidence</code> gated
   REF existence on quality &gt; 0, silently dropping such fragments from
   <code>rdf</code> (the mirror of the structural-ALT divergence fixed in the
   splice-aware change below). Span-REF observations now carry a structural
@@ -5846,7 +5915,7 @@ spliced RNA positions — the minor version bump this release delivers.</p>
   the scan window (repeat-tract shift) is deferred to the windowed scans
   instead of being excluded.</li>
 <li><strong>Fragment consensus recognizes structural ALT independent of base
-  quality.</strong> <abbr title="Base Alignment Quality - Heuristic quality downgrade near indels and splice junctions">BAQ</abbr> can stack splice and indel penalties to quality 0 on the
+  quality.</strong> <abbr title="Base Alignment Quality - Heuristic quality downgrade near a read's insertions and deletions">BAQ</abbr> can stack splice and indel penalties to quality 0 on the
   base carried with a junction-adjacent I/D op; <code>FragmentEvidence::resolve</code>
   previously treated qual-0 ALT evidence as no evidence, reporting <code>ad &gt; 0</code>
   with <code>adf = 0</code> at the same locus.</li>
@@ -6721,10 +6790,10 @@ This major release changes several output behaviours:
 <li><strong>Theme toggle</strong>: Light/dark mode switching in HTML reports.</li>
 <li><strong>Print compliance</strong>: Reports render audit-ready when printed (navigator hidden,
   all variants at full opacity, branded footer included).</li>
-<li><strong>RNA <abbr title="Base Alignment Quality - Heuristic quality downgrade near indels and splice junctions">BAQ</abbr> default</strong>: <code>--apply-baq</code> now defaults to <code>True</code> for <code>gbcms rna</code>.
-  RNA pipelines typically lack upstream <abbr title="Base Quality Score Recalibration - GATK quality recalibration tool">BQSR</abbr>, so <abbr title="Base Alignment Quality - Heuristic quality downgrade near indels and splice junctions">BAQ</abbr> penalizes bases near
+<li><strong>RNA <abbr title="Base Alignment Quality - Heuristic quality downgrade near a read's insertions and deletions">BAQ</abbr> default</strong>: <code>--apply-baq</code> now defaults to <code>True</code> for <code>gbcms rna</code>.
+  RNA pipelines typically lack upstream <abbr title="Base Quality Score Recalibration - GATK quality recalibration tool">BQSR</abbr>, so <abbr title="Base Alignment Quality - Heuristic quality downgrade near a read's insertions and deletions">BAQ</abbr> penalizes bases near
   splice junctions and indels to reduce false-positive variant calls.</li>
-<li><strong><abbr title="Base Alignment Quality - Heuristic quality downgrade near indels and splice junctions">BAQ</abbr> trace logging</strong>: Per-read <abbr title="Base Alignment Quality - Heuristic quality downgrade near indels and splice junctions">BAQ</abbr> adjustments logged at <code>trace</code> level,
+<li><strong><abbr title="Base Alignment Quality - Heuristic quality downgrade near a read's insertions and deletions">BAQ</abbr> trace logging</strong>: Per-read <abbr title="Base Alignment Quality - Heuristic quality downgrade near a read's insertions and deletions">BAQ</abbr> adjustments logged at <code>trace</code> level,
   showing indel and splice junction counts per read.</li>
 <li><strong>Nextflow <code>cache = 'lenient'</code></strong>: Ensures <code>-resume</code> works correctly on
   GPFS/Spectrum Scale filesystems where inode metadata changes during file
@@ -6744,15 +6813,15 @@ This major release changes several output behaviours:
 <li><strong>Dual-axis gridline artifact</strong>: Fixed Plotly <code>yaxis2</code> overlay creating a
   duplicate x-axis line in <abbr title="Mutant Fragment Size Distribution - Insert-size analysis for REF vs ALT fragments">mFSD</abbr> histograms by standardizing <code>mirror: false</code>,
   <code>rangemode: 'tozero'</code>, and <code>showline</code> controls.</li>
-<li><strong><abbr title="Base Alignment Quality - Heuristic quality downgrade near indels and splice junctions">BAQ</abbr> RefSkip early-exit bug</strong>: <code>apply_heuristic_baq()</code> silently skipped
+<li><strong><abbr title="Base Alignment Quality - Heuristic quality downgrade near a read's insertions and deletions">BAQ</abbr> RefSkip early-exit bug</strong>: <code>apply_heuristic_baq()</code> silently skipped
   reads containing only splice junctions (<abbr title="Compact Idiosyncratic Gapped Alignment Report - BAM alignment operation string">CIGAR</abbr> <code>N</code>) but no indels. The
   early-exit gate now includes <code>Cigar::RefSkip</code>, ensuring splice-spanning
-  reads receive the <abbr title="Base Alignment Quality - Heuristic quality downgrade near indels and splice junctions">BAQ</abbr> quality penalty.</li>
+  reads receive the <abbr title="Base Alignment Quality - Heuristic quality downgrade near a read's insertions and deletions">BAQ</abbr> quality penalty.</li>
 <li><strong>Nextflow config defaults</strong>: Aligned <code>nextflow.config</code> with <abbr title="Command Line Interface - Terminal-based program interface">CLI</abbr> defaults —
   <code>filter_secondary</code>, <code>filter_supplementary</code>, <code>filter_qc_failed</code> corrected
   to <code>true</code>; <code>enforce_strandedness</code> corrected to <code>true</code>; <code>alignment_backend</code>
   corrected to <code>pairhmm</code>.</li>
-<li><strong>Nextflow RNA <abbr title="Base Alignment Quality - Heuristic quality downgrade near indels and splice junctions">BAQ</abbr> wiring</strong>: Added <code>--no-baq</code> / <code>--apply-baq</code> argument
+<li><strong>Nextflow RNA <abbr title="Base Alignment Quality - Heuristic quality downgrade near a read's insertions and deletions">BAQ</abbr> wiring</strong>: Added <code>--no-baq</code> / <code>--apply-baq</code> argument
   to RNA module (<code>rna/main.nf</code>), which was previously missing entirely.</li>
 <li><strong>Nextflow RNA strandedness</strong>: Fixed <code>strandedness_arg</code> logic — now passes
   <code>--no-strandedness</code> only when disabled (was incorrectly passing
@@ -6764,18 +6833,18 @@ This major release changes several output behaviours:
   covering Fragment Origin Signal classification, interactive features, output
   columns, and print compliance.</li>
 <li><strong>[NEW]</strong> <code>docs/reference/rna-splice-handling.md</code> — RNA splice-junction handling
-  guide with dual-mechanism comparison (consensus intron snipping vs <abbr title="Base Alignment Quality - Heuristic quality downgrade near indels and splice junctions">BAQ</abbr>), GATK
+  guide with dual-mechanism comparison (consensus intron snipping vs <abbr title="Base Alignment Quality - Heuristic quality downgrade near a read's insertions and deletions">BAQ</abbr>), GATK
   SplitNCigarReads comparison, defense-in-depth analysis (5 layers), and visual
   splice bleed examples.</li>
-<li><strong>Updated</strong> <abbr title="Base Alignment Quality - Heuristic quality downgrade near indels and splice junctions">BAQ</abbr> documentation across 7 files: <code>read-filters.md</code>, <code>cli/dna.md</code>,
+<li><strong>Updated</strong> <abbr title="Base Alignment Quality - Heuristic quality downgrade near a read's insertions and deletions">BAQ</abbr> documentation across 7 files: <code>read-filters.md</code>, <code>cli/dna.md</code>,
   <code>cli/rna.md</code>, <code>glossary.md</code>, <code>abbreviations.md</code>, <code>nextflow/parameters.md</code>,
   <code>architecture.md</code> — all now include BAQ_RADIUS/BAQ_PENALTY constants,
-  mode-specific defaults, and guidance on when to enable <abbr title="Base Alignment Quality - Heuristic quality downgrade near indels and splice junctions">BAQ</abbr> for DNA.</li>
+  mode-specific defaults, and guidance on when to enable <abbr title="Base Alignment Quality - Heuristic quality downgrade near a read's insertions and deletions">BAQ</abbr> for DNA.</li>
 <li><strong>Updated</strong> <code>mkdocs.yml</code> — added "RNA Splice Handling" to navigation.</li>
 <li><strong>Updated</strong> <code>docs/cli/dna.md</code> — added <code>--mfsd-report</code>, <code>--mfsd-report-min-alt</code>,
   <code>--mfsd-report-max-variants</code> to <abbr title="Command Line Interface - Terminal-based program interface">CLI</abbr> reference.</li>
 <li><strong>Updated</strong> <code>docs/nextflow/parameters.md</code> — added Nextflow params for <abbr title="Mutant Fragment Size Distribution - Insert-size analysis for REF vs ALT fragments">mFSD</abbr> report;
-  <abbr title="Base Alignment Quality - Heuristic quality downgrade near indels and splice junctions">BAQ</abbr> default now shows mode-specific values.</li>
+  <abbr title="Base Alignment Quality - Heuristic quality downgrade near a read's insertions and deletions">BAQ</abbr> default now shows mode-specific values.</li>
 <li><strong>Updated</strong> <code>docs/development/release-guide.md</code> — version locations table corrected
   from 5 to 7 references (reflecting v4.0.0 Nextflow module split).</li>
 <li><strong>Updated</strong> <code>nextflow/nextflow.config</code> — added <code>mfsd_report</code>, <code>mfsd_report_min_alt</code>,
@@ -6790,7 +6859,7 @@ This major release changes several output behaviours:
   cards, min_alt/max_variants filtering, and error handling. Uses synthetic test
   fixtures with no patient identifiers.</li>
 <li><code>mfsd_report.py</code> coverage: 0% → 91%.</li>
-<li><strong>[NEW]</strong> <code>tests/test_config_isolation.py</code> — <abbr title="Base Alignment Quality - Heuristic quality downgrade near indels and splice junctions">BAQ</abbr> default assertions for RNA
+<li><strong>[NEW]</strong> <code>tests/test_config_isolation.py</code> — <abbr title="Base Alignment Quality - Heuristic quality downgrade near a read's insertions and deletions">BAQ</abbr> default assertions for RNA
   (<code>apply_baq=True</code>) and DNA (<code>apply_baq=False</code>) modes.</li>
 </ul>
 <h3 id="chores">🧹 Chores<a class="headerlink" href="#chores" title="Permanent link">¶</a></h3>
@@ -6893,7 +6962,7 @@ This major release changes several output behaviours:
   modules — <code>dna/main.nf</code>, <code>rna/main.nf</code>, <code>normalize/main.nf</code>. Consumer
   pipelines must update <code>include</code> paths and use <code>GBCMS_DNA</code>, <code>GBCMS_RNA</code>, or
   <code>GBCMS_NORMALIZE</code> process names.</li>
-<li><strong>Rust <code>shared/</code> module</strong>: Common <abbr title="Binary Alignment Map - Compressed sequence alignment file format">BAM</abbr> utilities, <abbr title="Base Alignment Quality - Heuristic quality downgrade near indels and splice junctions">BAQ</abbr>, filters, fragment
+<li><strong>Rust <code>shared/</code> module</strong>: Common <abbr title="Binary Alignment Map - Compressed sequence alignment file format">BAM</abbr> utilities, <abbr title="Base Alignment Quality - Heuristic quality downgrade near a read's insertions and deletions">BAQ</abbr>, filters, fragment
   logic, and statistics extracted from <code>counting/</code> into <code>shared/</code>. Any Rust
   consumer crate linking against gbcms internals must update import paths.</li>
 </ul>
