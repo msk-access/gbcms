@@ -10,6 +10,22 @@ Newest at the top.
 
 ---
 
+## [REJ-20261102-001] The judge's own-gap rule for every state (`GBCMS_JUDGE_OWNGAP=all`)
+- **Target:** the sequence judge's own-gap tie-break: a read that reaches a state only through an
+  indel of its own at that state's change does not carry it.
+- **Proposed:** apply the rule to every state, in wins and ties (`all`), not only in the decided
+  narrow tie. It was proposed again as part of the site-candidates class plan
+  (`docs/harness/plans/site-candidates-ref.md`, "own-gap 0 or 1 by its lane").
+- **Reason vetoed:** operator, 2026-10-27 (`docs/proposals/sequence-judge.md`, "The own gap"): it
+  breaks four decided contracts and fails classes on every patient arm. When REF or X is dropped in
+  their own tie, the read goes to the other allele by elimination, although its bases show neither
+  allele where the two differ (invariant 7). The class plan's lane rtbG measured it again on
+  2026-11-02. On the patient sets, it changes 3.5% of gate rows. It adds about 330 ALT reads that
+  tied REF and X and reached REF only through their own gap. A read whose bases spell X beats REF by
+  the margin and does not tie it. The Fable review struck it from the plan.
+- **What would change it:** a read-level check that the read's own bases spell X at the bases that
+  tell X from REF. That is not elimination, and it would be a new rule.
+
 ## [REJ-20261031-001] Decide a listed other unit count absent when the deciding fragments show none of it (#297 option (b))
 - **Target:** a long deletion's other unit count that the input lists (RJ-24 and RJ-25 amended
   2026-10-31, rule X): whether a listed count always holds the given count's short carriers

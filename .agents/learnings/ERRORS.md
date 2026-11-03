@@ -11,6 +11,17 @@ Newest at the top.
 
 ---
 
+## [ERR-20261103-001] CI's macOS build got no hosted arm64 runner
+- **What happened:** on PR #407, `Build (macOS arm64)` (`wheels.yml`, `runs-on: macos-latest`) ended as
+  cancelled after 15 minutes with no runner and no steps: "The job was not acquired by Runner of type
+  hosted even after multiple attempts", with the notice "Due to capacity constraints, jobs targeting
+  macOS arm64 runners may experience longer queue times". `gh pr checks` lists it as a failure. The
+  macOS test job in the Tests workflow passed on the same commit; the PR's code was not at fault.
+- **Rule/hook involved:** none at fault.
+- **Environment fix:** rerun the failed jobs (`gh run rerun <run> --failed`). If it repeats, read the job's
+  annotations (`gh api repos/<owner>/<repo>/check-runs/<job>/annotations`) before changing any workflow.
+- **Date:** 2026-11-03
+
 ## [ERR-20261031-001] CI's macOS build cancelled by a GitHub runner-image brownout
 - **What happened:** on PR #396, `Build (macOS arm64)` (`wheels.yml`, `runs-on: macos-14`) was cancelled
   with no steps run: "This job failed because of a scheduled macOS 14 runner image brownout. macOS 14
