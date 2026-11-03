@@ -370,6 +370,21 @@ impl Graph {
         }
     }
 
+    /// The stretch of the window the bases `visited` span: the least reference coordinate they
+    /// stand at to the greatest. A base of an allele longer than the span it replaces (an
+    /// insertion's inserted bases) stands one coordinate further on for each base past the
+    /// first, up to the end of the span: a path that reads inserted bases has passed the
+    /// anchor, where the bases themselves all stand at the anchor's coordinate.
+    pub(crate) fn reach_of(&self, visited: &[u32]) -> (i64, i64) {
+        visited.iter().fold((i64::MAX, i64::MIN), |(lo, hi), &v| {
+            let v = v as usize;
+            let seg = self.segment_of(v);
+            let (width, len) = (seg.span.1 - seg.span.0, (seg.after - seg.first) as i64);
+            let at = if seg.row.is_some() && len > width { seg.span.0 + (self.offset_in_segment(v) as i64).min(width) } else { self.coord[v] };
+            (lo.min(self.coord[v]), hi.max(at))
+        })
+    }
+
     /// Whether the graph holds copies of a zone ([`Segment::copy`]).
     pub(crate) fn has_copies(&self) -> bool {
         self.copy_sets.len() > 1
@@ -1501,7 +1516,7 @@ pub(crate) struct GraphPath {
     /// The copy of a zone the path runs through ([`Segment::copy`]); 0 for none.
     pub(crate) copy: u32,
     /// The least and greatest reference coordinate of the bases it visits (`i64::MAX` and
-    /// `i64::MIN` for none): the stretch of the window it spans.
+    /// `i64::MIN` for none; [`Graph::reach_of`]): the stretch of the window it spans.
     pub(crate) reach: (i64, i64),
 }
 
@@ -1606,7 +1621,7 @@ fn traceback<M: ErrorModel>(m: &M, read: &[u8], g: &Graph, band: &GraphBand, ws:
     rows.sort_unstable();
     rows.dedup();
     let copy = visited.iter().map(|&v| g.segment_of(v as usize).copy).find(|&c| c != 0).unwrap_or(0);
-    let reach = visited.iter().fold((i64::MAX, i64::MIN), |(lo, hi), &v| (lo.min(g.coord[v as usize]), hi.max(g.coord[v as usize])));
+    let reach = g.reach_of(&visited);
     GraphPath { score: r.score, rows, copy, reach }
 }
 
@@ -1731,7 +1746,7 @@ fn traceback_reference(g: &Graph, band: &GraphBand, ws: &Workspace, r: GraphRun)
     rows.sort_unstable();
     rows.dedup();
     let copy = visited.iter().map(|&v| g.segment_of(v as usize).copy).find(|&c| c != 0).unwrap_or(0);
-    let reach = visited.iter().fold((i64::MAX, i64::MIN), |(lo, hi), &v| (lo.min(g.coord[v as usize]), hi.max(g.coord[v as usize])));
+    let reach = g.reach_of(&visited);
     GraphPath { score: r.score, rows, copy, reach }
 }
 

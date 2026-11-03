@@ -3411,15 +3411,29 @@ impl Site {
     }
 
     /// Of `rows` (a path's), the listed changes that move the guard's masks by their length
-    /// ([`MirrorLaying::shifters`]): the ones whose copy of the zone a read lies on.
-    pub(crate) fn taken_changes(&self, rows: &[usize]) -> Vec<usize> {
-        self.shifting(rows)
+    /// ([`MirrorLaying::shifters`]) and that the path carries: it takes the change's segment
+    /// and its bases span the change's place ([`Site::spans_place`]). A path that only touches
+    /// the place carries nothing: in the copy laid for a deletion the reference under it is cut
+    /// and its segment holds the padding base, so a path ending on that base, or inside the
+    /// repeat the deletion slides over, goes through the segment at no cost, and a read's
+    /// sequencing error would be hidden by the masks of a change its bases cannot show.
+    pub(crate) fn taken_changes(&self, rows: &[usize], reach: (i64, i64)) -> Vec<usize> {
+        self.shifting(rows).into_iter().filter(|&r| self.spans_place(r, reach)).collect()
     }
 
-    /// The listed changes that move the guard's masks and lie inside `reach`, the stretch of
-    /// the window a path spans: those a read on it passes, carrying them or not.
+    /// The listed changes that move the guard's masks and whose place lies inside `reach`, the
+    /// stretch of the window a path spans: those a read on it passes, carrying them or not.
     pub(crate) fn spanned_changes(&self, reach: (i64, i64)) -> Vec<usize> {
-        self.mirror.as_ref().map_or_else(Vec::new, |m| m.shifters.iter().copied().filter(|&r| reach.0 <= self.spans[r].0 && self.spans[r].1 <= reach.1).collect())
+        self.mirror.as_ref().map_or_else(Vec::new, |m| m.shifters.iter().copied().filter(|&r| self.spans_place(r, reach)).collect())
+    }
+
+    /// Whether `reach` (the least and greatest reference coordinate of the bases a path visits)
+    /// holds the whole place of change `r`: from the anchor before the first place it can sit
+    /// to the base past the last (the repeat it slides over). Short of that a read cannot tell
+    /// the change from its absence.
+    fn spans_place(&self, r: usize, reach: (i64, i64)) -> bool {
+        let (s, e) = (self.places[r].0.min(self.spans[r].0), self.places[r].1.max(self.spans[r].1));
+        reach.0 <= s && e <= reach.1
     }
 
     /// The haplotype the graph of `state` spells along a path taking `rows`: the state's

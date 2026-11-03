@@ -469,8 +469,8 @@ fn lying_copy(site: &Site, first: &Scored) -> Option<(Vec<usize>, Vec<usize>)> {
         return None;
     }
     // the best-scoring state, the one taking the fewest changes on a tie
-    let top = first.best.iter().flatten().max_by_key(|&&(s, h)| (s, std::cmp::Reverse(site.taken_changes(&first.rows[h]).len()), std::cmp::Reverse(h)))?;
-    let mut taken = site.taken_changes(&first.rows[top.1]);
+    let top = first.best.iter().flatten().max_by_key(|&&(s, h)| (s, std::cmp::Reverse(site.taken_changes(&first.rows[h], first.reach[h]).len()), std::cmp::Reverse(h)))?;
+    let mut taken = site.taken_changes(&first.rows[top.1], first.reach[top.1]);
     taken.sort_unstable();
     let free: Vec<usize> = site.spanned_changes(first.reach[top.1]).into_iter().filter(|r| !taken.contains(r)).collect();
     // a path outside the zone is on none of its copies

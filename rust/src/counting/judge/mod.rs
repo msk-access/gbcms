@@ -1964,6 +1964,42 @@ mod tests {
     }
 
     #[test]
+    fn a_read_ending_on_a_listed_deletions_padding_base_or_inside_its_repeat_carries_nothing() {
+        use haplotypes::LongInsRule::ReadOn;
+        // The copy laid for a listed deletion cuts the reference under it and holds its
+        // padding base (the anchor), so a path that ends on that base, or inside the repeat the
+        // deletion shortens, went through the deletion's segment at no cost and was held to its
+        // copy, which masks inserted base 38. A read carries a change only where its bases span
+        // the change's place (the anchor to the end of the repeat it slides over): these reads
+        // span none, so a sequencing error at inserted base 38 weighs on X and the sibling
+        // alike and the read stays partial evidence, with the error or without it.
+        for repeat in [false, true] {
+            let (mut c, x, y, _, _) = new_insertion_with_a_sibling_and_a_listed_deletion();
+            if repeat {
+                // 311-316 one base: the deletion of 311 and 312 slides over the whole tract
+                let b = *b"ACGT".iter().find(|&&b| b != c[310] && b != c[317]).unwrap();
+                c[311..317].fill(b);
+            }
+            let k = Row::new(310, &c[310..313], &c[310..311]);
+            let hx = haplotype(&c, &[&x]);
+            let end = if repeat { 312 } else { 310 };
+            let third = *b"ACGT".iter().find(|&&b| b != hx[338]).unwrap();
+            let read_to = |error: bool| {
+                let mut s = hx[290..end + 61].to_vec();
+                if error {
+                    s[338 - 290] = third;
+                }
+                read_q(&s, vec![Q; s.len()], 290, &format!("10M60I{}M", end - 299))
+            };
+            let reads = [read_to(true).named(b"error"), read_to(false).named(b"plain")];
+            let candidates = Candidates { listed: vec![y.clone(), k.clone()], masked: vec![340], ..Candidates::default() };
+            let s = haplotypes::Site::build_ins(x.clone(), &candidates, (0, c.to_vec()), &reads, ReadOn).unwrap();
+            let v: Vec<_> = reads.iter().map(|r| judge(&s, r, MIN_BQ, false)).collect();
+            assert_eq!((v[0].call, v[1].call), (Call::Other, Call::Other), "repeat {repeat}: {:?} {:?}", v[0].best, v[1].best);
+        }
+    }
+
+    #[test]
     fn a_read_that_carries_a_listed_change_is_told_the_alleles_apart_on_its_own_masks() {
         use haplotypes::LongInsRule::ReadOn;
         // The same shape, reads of X's haplotype that reach the deletion. One carrying it has

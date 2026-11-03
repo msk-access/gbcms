@@ -24,6 +24,7 @@ import collections
 import random
 import re
 
+import pytest
 from helpers import count_bam_checked, make_read, write_contig
 
 from gbcms import _rs
@@ -39,10 +40,16 @@ DEL = A + 5  # the listed deletion removes the two bases after this one
 SNP = A + 20  # the germline change the guard masks
 
 
-def _shape():
-    """The contig, the rows' (REF, ALT) alleles (X, the sibling, the deletion), and the reads."""
+def _shape(repeat: bool = False):
+    """The contig, the rows' (REF, ALT) alleles (X, the sibling, the deletion), and the reads.
+    With `repeat`, the six bases after the deletion's padding base are one base, a tract the
+    deletion slides over."""
     rng = random.Random(2645)
-    contig = "".join(rng.choice("ACGT") for _ in range(1200))
+    bases = [rng.choice("ACGT") for _ in range(1200)]
+    if repeat:
+        tract = next(b for b in "ACGT" if b != bases[DEL] and b != bases[DEL + 7])
+        bases[DEL + 1 : DEL + 7] = [tract] * 6
+    contig = "".join(bases)
     ins = "".join(rng.choice("ACGT") for _ in range(N))
     while ins[0] == contig[A + 1] or ins[-1] == contig[A]:
         ins = ins[1:] + ins[0]
@@ -100,7 +107,7 @@ def test_a_read_lies_on_the_masks_of_the_changes_it_carries_or_spans(tmp_path, c
     """X reads ending in the insert, with a third base at the base the deletion's copy masks, are
     partial evidence of X and the sibling, whichever way the aligner wrote them (they were ALT:
     X took the deletion's copy, the sibling the other). Carriers of X and the deletion are told X
-    from the sibling at inserted base 40, which their copy leaves unmasked: ALT. REF molecules
+    from the sibling at inserted base 19, which their copy leaves unmasked: ALT. REF molecules
     are REF, with the germline change or without it. Counts are binning invariant."""
     contig, ins, sibling, reads = _shape()
     fa, bam = write_contig(tmp_path, contig, reads, "copies")
@@ -151,3 +158,73 @@ def test_a_read_lies_on_the_masks_of_the_changes_it_carries_or_spans(tmp_path, c
         assert row[(kind, "REF")] == 4, (kind, row)
     x = counts[0]
     assert (x.rd, x.ad) == (8, 4), (x.rd, x.ad, x.partial_alt)
+
+
+@pytest.mark.parametrize("repeat", [False, True], ids=["unique", "repeat"])
+def test_a_read_touching_a_listed_deletions_place_carries_nothing(tmp_path, caplog, repeat):
+    """The copy laid for the deletion cuts the reference under it and holds its padding base, so
+    a read of X ending on that base (or, with a tract after it, two bases into the tract) went
+    through the deletion's segment at no cost and was held to its copy, which masks inserted base
+    17: a sequencing error there was hidden, X scored 0 and the sibling -4, and the read was ALT
+    (3 of 3 in both shapes). A read carries a change only where its bases span the change's
+    place (the anchor to the base past the repeat it slides over), so these reads lie on the
+    masks without it, and the error weighs on X and the sibling alike: partial evidence, with
+    the error or without it. A sequencing error never raises a read's class."""
+    contig, ins, sibling, shape_reads = _shape(repeat)
+    reads = [r for r in shape_reads if r.query_name.startswith("ref")]
+    hx = contig[: A + 1] + ins + contig[A + 1 :]
+    third = next(b for b in "ACGT" if b != hx[A + 1 + 17])
+    end = DEL + 2 if repeat else DEL  # the last genome base of the reads
+    for i in range(3):
+        start = 488 - i
+        seq = hx[start : A + 1 + N + end - A]
+        cigar = ((0, A + 1 - start), (1, N), (0, end - A))
+        at = A + 1 + 17 - start
+        reads.append(make_read(f"padplain{i}", seq, start, cigar))
+        reads.append(make_read(f"padthird{i}", seq[:at] + third + seq[at + 1 :], start, cigar))
+    fa, bam = write_contig(tmp_path, contig, reads, "pad")
+    x_alt = contig[A] + ins
+    variants = [
+        _rs.Variant("1", A, contig[A], x_alt, "INDEL"),
+        _rs.Variant("1", A, contig[A], contig[A] + sibling, "INDEL"),
+        _rs.Variant("1", DEL, contig[DEL : DEL + 3], contig[DEL], "INDEL"),
+    ]
+    pvs = _rs.prepare_variants(variants, fa, 5, False, 1, True, read_judge="sequence")
+    caplog.clear()
+    with caplog.at_level(5, logger="_rs"):
+        _rs.reset_log_caching()
+        counts = count_bam_checked(
+            bam,
+            [pv.variant for pv in pvs],
+            [None] * len(pvs),
+            *ARGS,
+            read_judge="sequence",
+            reference_fasta=fa,
+        )
+    for c in counts:
+        assert c.dp >= c.rd + c.ad and c.dpf >= c.rdf + c.adf
+        assert c.rd == c.rd_fwd + c.rd_rev and c.ad == c.ad_fwd + c.ad_rev
+    messages = [r.getMessage() for r in caplog.records]
+    assert any(
+        "the guard's masks laid on every candidate haplotype by offset" in m for m in messages
+    )
+    seen = {}  # the read calls are logged by both counts (production bins, one variant per bin)
+    for m in messages:
+        if g := CALL.search(m):
+            _, alt_, kind, mate, is_ref, is_alt, partial = g.groups()
+            call = (
+                "ALT"
+                if is_alt == "true"
+                else "REF" if is_ref == "true" else "partial" if partial != "0" else "depth"
+            )
+            seen[(alt_, m.split(" read=")[1].split()[0], mate)] = (kind, call)
+    calls = collections.defaultdict(collections.Counter)
+    for (alt_, _, _), kind_call in seen.items():
+        calls[alt_][kind_call] += 1
+    row = calls[x_alt]
+    assert row[("padthird", "ALT")] == 0 and row[("padplain", "ALT")] == 0, row
+    assert row[("padthird", "partial")] == 3 and row[("padplain", "partial")] == 3, row
+    for kind in ("ref", "refsnp"):
+        assert row[(kind, "REF")] == 4, (kind, row)
+    x = counts[0]
+    assert (x.rd, x.ad) == (8, 0), (x.rd, x.ad, x.partial_alt)
