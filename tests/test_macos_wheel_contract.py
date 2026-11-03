@@ -61,6 +61,18 @@ def test_the_action_targets_macos_11_and_records_the_commit():
     assert action["inputs"]["interpreter"]["default"] == "python3.10"
 
 
+def test_the_action_checks_the_wheel_needs_no_newer_macos_than_its_target():
+    # the tests run on macos-latest and would install a wheel that needs a newer macOS
+    action = yaml.safe_load(ACTION.read_text())
+    steps = action["runs"]["steps"]
+    build = next(i for i, s in enumerate(steps) if "maturin-action" in s.get("uses", ""))
+    (check,) = [s for s in steps[build + 1 :] if s.get("name") == "Check the wheel's macOS floor"]
+    assert check["env"]["FLOOR"] == steps[build]["env"]["MACOSX_DEPLOYMENT_TARGET"]
+    assert check["env"]["OUT"] == "${{ inputs.out }}"
+    # the tag and every binary's load commands
+    assert "tag <= floor" in check["run"] and "otool" in check["run"], check["run"]
+
+
 def test_the_wheel_checks_install_the_macos_wheel_at_both_ends_of_the_range():
     jobs = _jobs("wheels.yml")
     assert jobs["macos-build"]["runs-on"] == "macos-latest"
