@@ -90,8 +90,18 @@ pub struct Variant {
 
     /// Reference bases a whole read reaches each side of an event the exact-carrier rule
     /// judges, with their 0-based start (covering `event_ref`): a read the aligner placed
-    /// a unit off in a repeat is read whole over all its bases. Prep's; None otherwise.
+    /// a unit off in a repeat is read whole over all its bases. For a deletion of 50 bp or
+    /// more, as many bases again past it as it deletes: its other alleles at its breakpoint
+    /// are read past where they first differ from it (#297). Prep's; None otherwise.
     pub whole_ref: Option<(i64, String)>,
+
+    /// The input's other insertion, deletion and delins rows (PASS) inside the reference
+    /// prep holds for a deletion of 50 bp or more (`whole_ref`, else `event_ref`): 0-based
+    /// POS, REF, ALT, upper case. Another allele at the deletion's breakpoint whose bases are
+    /// the ALT's with one of them applied is the deletion with that listed neighbour, never
+    /// another allele (#297; `listed_neighbours` holds the substitution rows). Empty for any
+    /// other variant. Prep's; not exposed to Python.
+    pub listed_indels: Vec<(i64, String, String)>,
 }
 
 #[pymethods]
@@ -130,6 +140,7 @@ impl Variant {
             reach_rows: Vec::new(),
             reach_unrecorded: false,
             whole_ref: None,
+            listed_indels: Vec::new(),
         }
     }
 }
@@ -536,6 +547,30 @@ pub struct BaseCounts {
     /// changes.
     #[pyo3(get)]
     pub unexplained_reads: u32,
+    /// At a deletion of 50 bp or more: another allele at its breakpoint (another unit count
+    /// of a run beside it, #297) that reads like the ALT past what a read can spell, as
+    /// `CHANGE:BASES/LONGEST` (its length change, deleted bases negative; the bases a read
+    /// must hold from the junction windows' first base to spell it in full: the first
+    /// difference and 24 more; the longest read); empty when none. No read can tell an
+    /// unlisted one's carriers from the ALT's, so the rule holds nothing for it (a listed one
+    /// is held wherever it first differs). Diagnostic only (feeds UNIT_COUNT_UNSPANNED); no
+    /// count changes.
+    #[pyo3(get)]
+    pub unit_count_unspanned: String,
+    /// At a deletion of 50 bp or more: each other unit count present at its breakpoint that
+    /// takes ALT calls (listed, or found from the reads; an ALT read counts only where its
+    /// bases tell the given count from it), as `POS:REF>ALT:n/m` (1-based POS of the given
+    /// deletion's anchor; n fragments fitting the ALT's windows whose ALT call it takes, m
+    /// that tell the given count from it), several joined by `+`; empty when none. Diagnostic only (feeds
+    /// OBSERVED_ALLELE where m is 0, else COEXISTING_ALLELE); no count changes.
+    #[pyo3(get)]
+    pub unit_count_allele: String,
+    /// Under the sequence judge, at a pure insertion of 50 bp or more: no base within the
+    /// haplotypes the judge reads tells REF's equal window from the ALT's once the guard's
+    /// masks are read (a run past the reads' reach, or masks over every telling base), so
+    /// every read is depth only. Diagnostic only (feeds NO_TELLING_BASE); no count changes.
+    #[pyo3(get)]
+    pub untold_windows: bool,
     /// Reads processed with the requested `--umi-tag` present. Internal only
     /// (no Python getter): summed per BAM to warn when a requested UMI tag is
     /// never seen and fragment grouping silently fell back to QNAME.

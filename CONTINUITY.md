@@ -43,23 +43,49 @@ builds byte for byte; up to 300 jobs at once across our arrays (operator, 2026-1
 one at a time, the work-folder copies in parallel; containers through Singularity
 (`module load singularity`), cached in the work folder.
 
-**In flight (counts):**
-- #297, the narrow unit-run rule (fix/297-narrow-unit-run, three review fixes in 8be9f3c7, HPC n99):
-  ties stay partial evidence; merges after the spike-in truth (phase 1b, #275) shows its benefit.
-- #264, RJ-23's equal windows in the judge with RJ-27's symmetric read-on (fix/264-equal-windows,
-  HPC y64); the per-read symmetry bar replaces the 0.5 VAF bar; the cis option stays opt-in; REF
-  credited on large unscored clips is its own fix before #331.
-- RNA package 3 (#292): (c) and (d) dropped; the partial-span carrier rule committed; the DNA check
-  of spliced-only ALT rows running on HPC; #385 (RJ-17 exon-start deletions) and the ALT-side
-  insertion gap queued.
-- Recorded, not fixed: the rules path's masked-comparison false ALT (on #331); the band miss for
-  listed insertions inside a long deletion's span (draft, not filed).
+**Where we left off (end of 2026-10-31; resume Monday).** The working method changed today: decide by
+class, not by row (`.agents/rules/decision-protocol.md` §3, merged in #393), and **plan first**, a
+one-page plan before a count-changing build, on trial (`docs/harness/plan-first.md` and
+`docs/harness/plans/` on branch `chore/plan-first`, local, not pushed; the baseline and the audit's
+files are in `~/test/gbcms/harness/plan670/{plan-first,audit}/`).
+- **#297, the unit-run rule** (`fix/297-narrow-unit-run`, local; plan `plans/297-close.md`): rule X
+  (operator: a listed allele is always a candidate; option (b) rejected, REJ-20261031-001), the close
+  plan's F1–F7 and C1, and round 2's two fixes (90bb36b2). Both review rounds are used. **Running on
+  HPC:** batch n104 (5601198, 5601227, 5601232) and the spike-in rerun (5601246, 5601261). Monday: copy
+  back, score (patient oracles, HG002 truth, spike-in bar 7), look at chr4:660975 (AD 79 → 68 under the
+  judge: a 4-bp insertion found on 3 fragments against 2 REF fragments), then the PR. Limits named in
+  RJ-24 for #331: the judge's wrong-length read (depth, not partial) and F4.
+- **#264, long-insertion windows:** PR #396, measured on z65 (patient sets 0 rows against the previous
+  head; reviewed twice). Its only failing check is the macOS build, cancelled by GitHub's macOS 14
+  brownout (ERR-20261031-001): merge the runner PR (`ci/macos-latest-runner`, operator: `macos-latest`)
+  first, rerun the check, then merge #396. Long delins under the judge: #397.
+- **C2, a listed allele of the ALT's length** (plan `plans/c2-listed-siblings.md`; branch
+  `measure/c2-listed-siblings`, never for merge): A, B and C measured (batch c2a); the review found the
+  rules path's REF loss is a scope bug and recommends **"A at the site"** (a listed allele whose span
+  meets X's site is a candidate, on both paths and for REF; one beside it is context; the judge's site
+  test). Operator: measure it. Monday: build it as a fourth switch value, run the rules lanes, trace the
+  7 "true carriers lost", then the decision (round 2 of 2).
+- **Tickets from the audit and C2:** #394 (the judge's REF tie-break, before #331; with the REF-tie
+  split found by C2), #395 (four low hygiene items), #398 (rules path: reads that spell a listed
+  allele reaching past the event count ALT).
+- **RNA package 3 (#292):** the exon-edge aggregates are back (`~/test/gbcms/harness/hpc/out/p292a/agg`,
+  58 of 58 tasks at Q20 and Q30, sanitized). The DNA check (5441299) was at pair 24 of 26; when it ends,
+  run `kit/rna292_agg.sbatch p292b dna` (operator approved the aggregation job), then write #292's plan
+  page with the measured junction rules and the DNA truth.
+- **PHI read guard** (operator approved after a third slip of patient positions): branch
+  `chore/phi-read-guard`; a PR for review; the operator creates `~/.claude/phi-paths.txt` (content
+  proposed in the PR).
+- **graphify:** a trial with its own bar inside plan-first (30% fewer tokens, no missed call site);
+  until then the graph stays outside the repo.
+- Disk: about 70 GB free after the Trash was emptied; 51 old frozen builds (11 GB) were moved to the
+  Trash afterwards and wait for the next emptying.
 
 **Open:** the guard's masks depend on `--min-baseq` (#374); the SNV tie rule with a confident third
 base (#367); Nextflow resources wait for the sweep (branch `feature/nextflow-resources`, local).
 
-**Next (package 2):** #297 and #264 to their decisions; then packages 3→7 (table below), the truth
-sets and the HPC gate; then speed (#335) and clean-up; #331 for 6.8.0.
+**Next (package 2):** #297 and #264 merged, C2 decided; then packages 3→7 (table below; RNA #292 and
+the clipped-bases package #212/#177 as the next plan-first trial items), the truth sets and the HPC
+gate; then speed (#335; the #150 profile proposes one cache slice per row) and clean-up; #331 for 6.8.0.
 
 ## Next — 6.7.0 work packages (operator, 2026-10-23: the recommended order; #304 in 6.7.0)
 Tickets that answer the same question, or share code paths and measurements, land together.

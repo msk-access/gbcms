@@ -1611,4 +1611,253 @@ mod tests {
         let deep: Vec<ReadView> = [writer(220), writer(230)].into_iter().chain((0..60).map(|i| plain(200 + i))).collect();
         assert!(found(&deep).is_empty(), "2 of 62 is below the share");
     }
+
+    /// A 60 bp duplication after the anchor at 0-based 299: a copy of the 60 bases after it
+    /// but its last, so its run (the bases it slides over) is 300-358 and the base past it,
+    /// 359, tells the alleles apart. RJ-23's equal windows from the anchor hold 61 bases:
+    /// REF's 299-359, X's anchor and its first 60 bases. The contig, X, and X's base at 359.
+    fn long_duplication() -> (Vec<u8>, Row, u8) {
+        let c = random_seq(700, 264);
+        let last = *b"ACGT".iter().find(|&&b| b != c[359] && b != c[299]).unwrap();
+        let mut ins = c[300..360].to_vec();
+        ins[59] = last;
+        let x = Row::new(299, &c[299..300], &[&c[299..300], &ins[..]].concat());
+        (c, x, last)
+    }
+
+    /// Calls on `x`'s site built from `reads` under the long-insertion rule `ins`, with the
+    /// guard's masks `masked` (genome).
+    fn calls_masked(c: &[u8], x: &Row, masked: Vec<i64>, reads: &[ReadView], ins: haplotypes::LongInsRule) -> Vec<Call> {
+        let candidates = Candidates { masked, ..Candidates::default() };
+        let s = haplotypes::Site::build_ins(x.clone(), &candidates, (0, c.to_vec()), reads, ins).unwrap();
+        reads.iter().map(|r| judge(&s, r, MIN_BQ, false).call).collect()
+    }
+
+    #[test]
+    fn long_insertion_reads_hold_the_equal_windows_from_the_anchor() {
+        use haplotypes::LongInsRule::ReadOn;
+        use Call::*;
+        // RJ-23: a read holding the anchor and as many of X's bases as REF's window holds
+        // counts ALT, not the whole insert; a read inside the insert (or holding only its far
+        // junction) holds no window and is depth only, as a REF read starting inside the run.
+        let (c, x, _) = long_duplication();
+        let h = haplotype(&c, &[&x]);
+        let reads = vec![
+            read(&h, 280, 100, 280, "20M60I20M"), // over the anchor, through the insert
+            read(&h, 260, 100, 260, "100M"),      // the anchor and X's window, ending at its last base
+            read(&h, 241, 100, 241, "100M"),      // the anchor, ending inside the window: the run alone
+            read(&h, 330, 100, 330, "100M"),      // inside the insert, through its far junction
+            read(&h, 320, 40, 320, "40M"),        // inside the insert only
+            read(&c, 260, 100, 260, "100M"),      // REF: the anchor, the run and the base past it
+            read(&c, 241, 100, 241, "100M"),      // REF ending inside the run
+            read(&c, 330, 100, 330, "100M"),      // REF starting inside the run
+        ];
+        assert_eq!(calls_masked(&c, &x, Vec::new(), &reads, ReadOn), vec![Alt, Alt, Depth, Depth, Depth, Ref, Depth, Depth]);
+    }
+
+    #[test]
+    fn a_masked_telling_base_past_a_long_insertions_run_makes_both_windows_read_on() {
+        use haplotypes::LongInsRule::{ReadOn, Window};
+        use Call::*;
+        // The guard masks 359, the base past the run that tells REF's window from X's (on X's
+        // haplotype the mask lands past the insert, so X's own base sits there unmasked): read
+        // there, it would tell REF's molecules apart and never X's. Both windows read on to the
+        // next base telling them apart, 360, and a read short of it is depth only, a REF read
+        // as a carrier (RJ-27's read-on, decided 2026-10-30 for both alleles alike). The first
+        // build of the windows (`window`) left the REF read ending at 359 REF.
+        let (c, x, _) = long_duplication();
+        let h = haplotype(&c, &[&x]);
+        assert_ne!(c[360], h[360], "360 tells the alleles apart");
+        let mut reads: Vec<ReadView> = (0..3).map(|i| read(&c, 250 + i, 150, 250 + i as i64, "150M").named(format!("r{i}").as_bytes())).collect();
+        reads.push(read(&h, 260, 100, 260, "100M").named(b"c0")); // X's window, ending at 359
+        reads.push(read(&c, 260, 100, 260, "100M").named(b"r9")); // REF's window, ending at 359
+        reads.push(read(&h, 261, 100, 261, "100M").named(b"c1")); // on to 360
+        reads.push(read(&c, 261, 100, 261, "100M").named(b"r8")); // on to 360
+        assert_eq!(calls_masked(&c, &x, vec![359], &reads, ReadOn), vec![Ref, Ref, Ref, Depth, Depth, Alt, Ref]);
+        assert_eq!(calls_masked(&c, &x, vec![359], &reads, Window), vec![Ref, Ref, Ref, Depth, Ref, Alt, Ref]);
+    }
+
+    #[test]
+    fn a_listed_insertion_inside_the_windows_lengthens_neither() {
+        use haplotypes::LongInsRule::ReadOn;
+        use Call::*;
+        // The guard masks 359 (the windows read on to 360) and the input lists a 30-base
+        // insertion after 359, inside the windows read on: a context REF's molecules may carry.
+        // The windows are counted in columns of the called haplotype, so a REF read carrying
+        // that insertion holds REF's window as soon as it holds as many of its own bases as an
+        // ALT read must (HG002's chr2:111764847 +106 beside a listed +56 three bases on).
+        let (c, x, _) = long_duplication();
+        let h = haplotype(&c, &[&x]);
+        let filler = random_seq(30, 2641);
+        let ctx = Row::new(359, &c[359..360], &[&c[359..360], &filler[..]].concat());
+        let hc = haplotype(&c, &[&ctx]);
+        assert_ne!(c[360], h[360], "360 tells the alleles apart");
+        let mut reads: Vec<ReadView> = (0..3).map(|i| read(&c, 250 + i, 150, 250 + i as i64, "150M").named(format!("r{i}").as_bytes())).collect();
+        reads.push(read(&hc, 262, 100, 262, "98M2I").named(b"rc0")); // the anchor, 359, the insertion's first bases
+        reads.push(read(&h, 262, 100, 262, "100M").named(b"c1")); // X's window read on, to 360
+        let candidates = Candidates { listed: vec![ctx.clone()], masked: vec![359], ..Candidates::default() };
+        let s = haplotypes::Site::build_ins(x.clone(), &candidates, (0, c.to_vec()), &reads, ReadOn).unwrap();
+        let got: Vec<Call> = reads.iter().map(|r| judge(&s, r, MIN_BQ, false).call).collect();
+        assert_eq!(got, vec![Ref, Ref, Ref, Ref, Alt]);
+    }
+
+    #[test]
+    fn reads_inside_a_long_insert_tying_another_allele_are_depth_only() {
+        use haplotypes::LongInsRule::ReadOn;
+        use Call::*;
+        // A listed allele of X's length at X's anchor, its insert differing from X's at its
+        // 11th base. Reads lying inside the insert past that base hold no window from the
+        // anchor on either allele: depth only (RJ-23), not another allele's partial evidence;
+        // reads holding the windows keep their calls.
+        let (c, x, _) = long_duplication();
+        let mut ins2 = x.alt_al.clone();
+        ins2[11] = *b"ACGT".iter().find(|&&b| b != ins2[11]).unwrap();
+        let sib = Row::new(299, &c[299..300], &ins2);
+        let (h, hs) = (haplotype(&c, &[&x]), haplotype(&c, &[&sib]));
+        let reads = vec![
+            read(&h, 330, 100, 330, "100M"),  // inside X's insert, through its far junction
+            read(&h, 320, 40, 320, "40M"),    // inside the insert only
+            read(&hs, 330, 100, 330, "100M"), // inside the other allele's insert
+            read(&c, 330, 100, 330, "100M"),  // REF, starting inside the run
+            read(&h, 260, 100, 260, "100M"),  // X's window from the anchor
+            read(&hs, 260, 100, 260, "100M"), // the other allele's window from the anchor
+        ];
+        let candidates = Candidates { listed: vec![sib.clone()], ..Candidates::default() };
+        let s = haplotypes::Site::build_ins(x.clone(), &candidates, (0, c.to_vec()), &reads, ReadOn).unwrap();
+        let got: Vec<Call> = reads.iter().map(|r| judge(&s, r, MIN_BQ, false).call).collect();
+        assert_eq!(got, vec![Depth, Depth, Depth, Depth, Alt, Other]);
+    }
+
+    /// Reads over the anchor to 361 of `long_duplication`'s alleles (`c` REF, `h` the ALT's
+    /// haplotype), three REF reads behind them: with the base at 360 unreadable or a third
+    /// base (no allele's), and clean.
+    fn reads_with_the_base_at_360_unreadable_or_a_third(c: &[u8], h: &[u8]) -> Vec<ReadView> {
+        let third = *b"ACGT".iter().find(|&&b| b != c[360] && b != h[360]).unwrap();
+        let mut lowq = vec![Q; 100];
+        lowq[98] = 5; // the base at 360
+        let with = |hap: &[u8], base: u8| {
+            let mut s = hap[262..362].to_vec();
+            s[98] = base;
+            s
+        };
+        let mut reads: Vec<ReadView> = (0..3).map(|i| read(c, 250 + i, 150, 250 + i as i64, "150M").named(format!("r{i}").as_bytes())).collect();
+        reads.push(read_q(&c[262..362], lowq.clone(), 262, "100M").named(b"refLowQ"));
+        reads.push(read_q(&h[262..362], lowq.clone(), 262, "100M").named(b"altLowQ"));
+        reads.push(read_q(&with(c, third), vec![Q; 100], 262, "100M").named(b"refThird"));
+        reads.push(read_q(&with(h, third), vec![Q; 100], 262, "100M").named(b"altThird"));
+        reads.push(read(c, 262, 100, 262, "100M").named(b"refClean"));
+        reads.push(read(h, 262, 100, 262, "100M").named(b"altClean"));
+        reads
+    }
+
+    #[test]
+    fn masks_past_a_long_insertions_run_weigh_on_both_windows_alike() {
+        use haplotypes::LongInsRule::ReadOn;
+        use Call::*;
+        // Masks at 359 and 361; the windows read on to 360, the first base both haplotypes show
+        // unmasked and differ. On X's haplotype those masks lie past the insert, so X's own
+        // bases at their offsets stayed visible: a REF read whose base at 360 is unreadable, or
+        // a third base, was weighed against X there and counted REF, while the ALT read alike
+        // was depth. Laid on both windows by offset, the two are alike: depth only.
+        let (c, x, _) = long_duplication();
+        let h = haplotype(&c, &[&x]);
+        let reads = reads_with_the_base_at_360_unreadable_or_a_third(&c, &h);
+        assert_eq!(calls_masked(&c, &x, vec![359, 361], &reads, ReadOn), vec![Ref, Ref, Ref, Depth, Depth, Depth, Depth, Ref, Alt]);
+    }
+
+    #[test]
+    fn an_insertion_written_right_of_its_runs_anchor_takes_the_masks_by_offset_too() {
+        use haplotypes::LongInsRule::ReadOn;
+        use Call::*;
+        // The same haplotype as above, with X written three bases right of its run's anchor
+        // (its insert rotated by three): a row normalization could not left-align, though none
+        // reaches this today. The anchor is the run's, not X's position, so the masks are laid
+        // by offset from it as for the left-aligned row, and the calls are the same.
+        let (c, x, _) = long_duplication();
+        let ins = &x.alt_al[1..];
+        let rotated = [&ins[3..], &ins[..3]].concat();
+        let right = Row::new(302, &c[302..303], &[&c[302..303], &rotated[..]].concat());
+        let h = haplotype(&c, &[&x]);
+        assert_eq!(haplotype(&c, &[&right]), h, "the same haplotype");
+        let reads = reads_with_the_base_at_360_unreadable_or_a_third(&c, &h);
+        let want = vec![Ref, Ref, Ref, Depth, Depth, Depth, Depth, Ref, Alt];
+        assert_eq!(calls_masked(&c, &x, vec![359, 361], &reads, ReadOn), want, "left-aligned");
+        assert_eq!(calls_masked(&c, &right, vec![359, 361], &reads, ReadOn), want, "written three bases right");
+    }
+
+    #[test]
+    fn a_mask_inside_both_windows_of_a_run_longer_than_the_insert_weighs_alike() {
+        use haplotypes::LongInsRule::ReadOn;
+        use Call::*;
+        // X inserts 10 units of a 6-base repeat 20 units long after the anchor at 300: its run
+        // (120 bases) is longer than its insert (60), so the windows (122 bases) hold a mask at
+        // 330 at offset 30 on REF's haplotype and at offset 90 on X's. Laid on both windows by
+        // offset, a third base read at either offset weighs on neither allele: REF reads and
+        // ALT reads alike are told by the base past the run.
+        let unit = b"ACGTTG";
+        let mut c = random_seq(700, 2642);
+        for k in 0..120 {
+            c[301 + k] = unit[k % 6];
+        }
+        c[300] = b'C'; // not the unit's last base: the insert does not slide left
+        c[421] = b'T'; // not the unit's next base: the run ends at 420
+        let ins: Vec<u8> = (0..60).map(|k| unit[k % 6]).collect();
+        let x = Row::new(300, &c[300..301], &[&c[300..301], &ins[..]].concat());
+        let h = haplotype(&c, &[&x]);
+        // reads from 280 to 421: the anchor, the windows and no more, told by the base past the run
+        let at = |hap: &[u8], col: usize, base: u8| {
+            let mut s = hap[280..422].to_vec();
+            s[col - 280] = base;
+            s
+        };
+        let third_of = |b: u8| *b"ACGT".iter().find(|&&t| t != b).unwrap();
+        let reads = vec![
+            read_q(&at(&c, 390, third_of(c[390])), vec![Q; 142], 280, "142M").named(b"refAt90"),
+            read_q(&at(&h, 390, third_of(h[390])), vec![Q; 142], 280, "142M").named(b"altAt90"),
+            read_q(&at(&c, 330, third_of(c[330])), vec![Q; 142], 280, "142M").named(b"refAt30"),
+            read_q(&at(&h, 330, third_of(h[330])), vec![Q; 142], 280, "142M").named(b"altAt30"),
+            read(&c, 280, 142, 280, "142M").named(b"refClean"),
+            read(&h, 280, 142, 280, "142M").named(b"altClean"),
+        ];
+        assert_eq!(calls_masked(&c, &x, vec![330], &reads, ReadOn), vec![Ref, Alt, Ref, Alt, Ref, Alt]);
+    }
+
+    #[test]
+    fn a_sibling_allele_takes_the_masks_laid_on_both_windows_too() {
+        use haplotypes::LongInsRule::ReadOn;
+        use Call::*;
+        // The guard masks 359, 60 bases from the anchor: REF's base there, and (laid by offset)
+        // X's last inserted base. A listed allele of X's length at X's anchor, differing from X
+        // at that base alone, is a haplotype a read is weighed against too, so it takes the
+        // mask at that offset as REF and X do (RJ-27: the masks are read on every haplotype
+        // alike). No base then tells X from the sibling, and a read with a third base there
+        // (no allele's) weighs on neither: partial evidence, X or the sibling, never ALT
+        // (RJ-25). Left unmasked on the sibling alone, that third base was an error against
+        // the sibling and none against X, so the read counted ALT, and a clean X carrier did
+        // too while the sibling's own carriers were partial evidence: [Ref, Ref, Ref, Alt,
+        // Other, Alt, Ref, Ref] for the reads below.
+        let (c, x, last) = long_duplication();
+        let other = *b"ACGT".iter().find(|&&b| b != last && b != c[359]).unwrap();
+        let third = *b"ACGT".iter().find(|&&b| b != last && b != c[359] && b != other).unwrap();
+        let mut ins2 = x.alt_al.clone();
+        *ins2.last_mut().unwrap() = other;
+        let sib = Row::new(299, &c[299..300], &ins2);
+        let (h, hs) = (haplotype(&c, &[&x]), haplotype(&c, &[&sib]));
+        assert_eq!((h[359], hs[359]), (last, other), "the alleles differ at the masked offset alone");
+        let with = |hap: &[u8], base: u8| {
+            let mut v = hap[262..362].to_vec();
+            v[97] = base; // the base at 359
+            v
+        };
+        let mut reads: Vec<ReadView> = (0..3).map(|i| read(&c, 250 + i, 150, 250 + i as i64, "150M").named(format!("r{i}").as_bytes())).collect();
+        reads.push(read(&h, 262, 100, 262, "100M").named(b"altClean"));
+        reads.push(read(&hs, 262, 100, 262, "100M").named(b"sibClean"));
+        reads.push(read_q(&with(&h, third), vec![Q; 100], 262, "100M").named(b"third"));
+        reads.push(read(&c, 262, 100, 262, "100M").named(b"refClean"));
+        reads.push(read_q(&with(&c, third), vec![Q; 100], 262, "100M").named(b"refThird"));
+        let candidates = Candidates { listed: vec![sib.clone()], masked: vec![359], ..Candidates::default() };
+        let s = haplotypes::Site::build_ins(x.clone(), &candidates, (0, c.to_vec()), &reads, ReadOn).unwrap();
+        let got: Vec<Call> = reads.iter().map(|r| judge(&s, r, MIN_BQ, false).call).collect();
+        assert_eq!(got, vec![Ref, Ref, Ref, Other, Other, Other, Ref, Ref], "{got:?}");
+    }
 }

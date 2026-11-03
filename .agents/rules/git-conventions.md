@@ -83,6 +83,13 @@ merge commit, as for earlier PRs); if they are pending, say so and wait to be as
 poll CI from the session. Keep Auto-fix on, so failures, conflicts and review comments wake the
 session. After a merge, run the retirement checklist (`docs/harness/measurement-harness.md`).
 
+**Read the bot review as well as the checks** (operator, 2026-11-02: "Did you read greptile bot
+review"). Before you call a PR ready or merge it, read Greptile's summary and every inline comment
+(`gh api --paginate repos/msk-access/gbcms/pulls/<n>/comments`; the summary is an issue comment). Report each
+finding to the operator with your verdict: valid and fixed, valid and ticketed, or not valid and why.
+A finding left unread blocks the merge as a failing check does. (Two PRs, #392 and #396, were merged
+on green checks with a valid finding unread; #402 was called ready with a 0 of 5 review.)
+
 ## Shared checkout hazards
 
 - **Review and workflow subagents may change git state.** They run in the session's current

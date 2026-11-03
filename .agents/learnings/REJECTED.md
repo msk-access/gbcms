@@ -10,6 +10,31 @@ Newest at the top.
 
 ---
 
+## [REJ-20261031-001] Decide a listed other unit count absent when the deciding fragments show none of it (#297 option (b))
+- **Target:** a long deletion's other unit count that the input lists (RJ-24 and RJ-25 amended
+  2026-10-31, rule X): whether a listed count always holds the given count's short carriers
+- **Proposed:** option (b), built in 5104d22d, 0fc106ba and 8c1a742d: a listed count is present
+  only where at least 1 fragment shows it and 5% of those showing either do (RJ-25's sibling
+  rule); with 3 or more deciding fragments that tell the two counts apart and none or under 5%
+  showing it, it is decided absent, holds no ALT call on either path (the sequence judge drops
+  its state) and is named `UNIT_COUNT_ABSENT` in `gbcms_diagnostic`.
+- **Reason vetoed:** operator, 2026-10-31: rule X, a listed count is always a candidate (the
+  input is taken as correct, invariant 7); the presence test (3 fragments, 5%) is for found
+  alleles nobody listed. Measured against the batch of 444ce886 (rule X): on the patient sets
+  and HG002 it changed no count; on the spike-in arm it gained 141 S1 reads, but credited the
+  other allele's reads as ALT (4 to 12 reads) and made false-absent rows (chance at 3 deciding
+  fragments, 2^-n at equal haplotypes; BWA soft-clipped deciders failing the placement test,
+  spike-in row p1b_022). It added about eight conditions (a presence test for listed counts,
+  "shown" in place of "spelled", the judge dropping absent states, the 3-fragment floor, depth
+  for a read that shows an absent count, placement on both sides of the share, the flag, a
+  soft-clip placement fix) and decided that a listed input allele was absent. Reverted; the S1
+  cost of rule X is counted instead (`docs/harness/spike-in-297.md`, bar 7), and pinned by
+  `tests/test_unit_count_contract.py` (the last section). The soft-clip placement fix written
+  for it is parked, not built:
+  `plan670/parked/297_softclip_placement_fix_on_8c1a742d.patch` (in the operator's harness).
+  Breaks invariant 7.
+- **Date:** 2026-10-31
+
 ## [REJ-20261023-001] Choose the guard's rule by whether the ALT is present; a cis rescue for SNP-only reads (#294)
 - **Target:** the exact-carrier rule's repair of the neighbouring-change guard at a one-unit
   insertion in a VNTR whose units differ at single bases (RJ-27 amendment of 2026-10-20)
@@ -20,8 +45,11 @@ Newest at the top.
   the ALT in 6 contract tests. (2) It credits a read on other fragments' evidence, so under
   invariant 7 it could only ever be an opt-in rescue; it would gain at most 6 ALT at HG002
   chr22:39653046 and nothing at chr21:41865095 or at the #294 row, where no fragment links
-  the SNV to a base that tells the insertion apart. Not built. Each option offered was
-  measured before it was decided; the record is
+  the SNV to a base that tells the insertion apart. Not built as a rule. (2) was built once, as
+  a temporary measurement option on #264 (a masked change read as the reference's on REF's
+  haplotypes where REF's molecules lack it): at HG002's two duplications it counted 18 carriers,
+  10 of them on other fragments' evidence; the option was removed on 2026-10-31. Each option
+  offered was measured before it was decided; the record is
   https://github.com/msk-access/gbcms/issues/294#issuecomment-6364311473 ("Considered and
   not adopted"), and the numbers are in docs/reference/read-judgment.md (evidence behind the
   RJ-27 amendment of 2026-10-20 to 2026-10-22).

@@ -50,6 +50,19 @@ The full text is in `read-judgment.md`. Additions:
   that before you narrow further. (The judge's second fix round: 3 of 6 fixes reverted, a tie rule
   narrowed to substitution rows and reverted anyway, a 20 bp cut placed where the measurements
   split.)
+- Count the conditions before a second fix round (operator, 2026-10-31: "i feel we regressed and
+  made certain row level decisions vs category level"). Before you send a review's fixes to a
+  builder a second time on one rule, list each condition the rule gained since its first build (a
+  threshold, an exception, a path special case, a new name). Next to each, write its reason: a class
+  of reads, or named rows.
+  - When a fix adds a condition that only named rows justify, stop. Write the class question: which
+    reads, which evidence, which invariant. Give one class-level option with its cost. Take both to
+    the operator before more code.
+  - Ask each adversarial reviewer the same: is the defect in this instance, or in the mechanism?
+  - Test each option against the invariants before it goes to the operator, above all "input taken
+    as correct" (invariant 7).
+  - (#297, 2026-10-30/31: about ten conditions in four rounds, each from named rows. Its presence
+    test also decided that a listed input allele was absent, against invariant 7, and nobody said so.)
 - Sweep any constant users can change (section 7).
 - Report each fix as mechanism, general rule, this instance, what else it touches (section 2).
 

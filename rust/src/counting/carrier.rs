@@ -204,8 +204,14 @@ type SplicedWindows = (Windows, SpliceMap);
 /// RNA, a soft clip is left out when its reach crosses an exon edge or junction
 /// end in `edges` (or the aligned bases end within [`EDGE_SLACK`] of one).
 pub(crate) fn readable_range(record: &Record, rules: &ReadRules) -> Option<(usize, usize)> {
+    readable_with(record, rules.clip_edges)
+}
+
+/// [`readable_range`] for the exon edges alone (RNA; None: DNA), for what reads a record before
+/// its [`ReadRules`] are built.
+pub(crate) fn readable_with(record: &Record, clip_edges: Option<&ClipEdges>) -> Option<(usize, usize)> {
     let len = record.seq_len();
-    let Some(edges) = rules.clip_edges.map(ClipEdges::get) else {
+    let Some(edges) = clip_edges.map(ClipEdges::get) else {
         return Some((0, len));
     };
     let (first, after) = aligned_query_range(record)?;
@@ -262,6 +268,30 @@ const GUARD_APART_SHARE: f64 = 0.03;
 const GUARD_ORIENTATION_ALPHA: f64 = 1e-3;
 /// Share of the REF reads on which a change is no longer the ALT's alone.
 pub(crate) const GUARD_REF_SHARE: f64 = 0.05;
+
+/// RJ-27's tolerance, stated once: one confident error on a reading is forgiven where the other
+/// reading misses at least this many confident bases (a read of one allele whose reading of the
+/// other allele misses three or more is that allele's, one error aside). The exact-carrier rule
+/// past the windows ([`judge`]) and the junction judge's telling of two alleles
+/// (`junction::tells`) both ask [`one_error_forgiven`].
+pub(crate) const FORGIVEN_BY: usize = 3;
+
+/// Whether a reading with `own_misses` confident misses is forgiven its one error against a
+/// reading of the other allele that misses `other_misses` (RJ-27; [`FORGIVEN_BY`]).
+pub(crate) fn one_error_forgiven(own_misses: usize, other_misses: usize) -> bool {
+    own_misses == 1 && other_misses >= FORGIVEN_BY
+}
+
+/// RJ-25's presence test, stated once: an allele nobody listed is at the locus where the
+/// fragments that spell it in full number at least [`GUARD_MIN_READS`] and at least
+/// [`GUARD_REF_SHARE`] of the fragments spelling the allele it is nearest (`nearest`): an
+/// allele recurs above the errors of the molecules it could be an error of. Every place that
+/// decides whether the reads show an unlisted allele asks it: the guard's other alleles
+/// ([`other_alleles`]), the other unit counts at a long deletion (the junction guard), and the
+/// found alleles the sequence judge keeps as states.
+pub(crate) fn is_found(spelling: usize, nearest: usize) -> bool {
+    spelling >= GUARD_MIN_READS as usize && spelling as f64 >= GUARD_REF_SHARE * nearest as f64
+}
 /// Longest tandem-repeat unit the event is grown through (besides the length change).
 const MAX_UNIT: usize = 6;
 /// Masked base: matches any haplotype base.
@@ -993,7 +1023,7 @@ fn judge(record: &Record, variant: &Variant, quals: &[u8], min_baseq: u8, rules:
                     let forgive = |own: &Reading, other: &Reading, w: &Window, held: usize, side: u8| {
                         let &[q] = own.misses.as_slice() else { return None };
                         let past = usize::try_from(q as i64 - own.start).is_ok_and(|i| i >= held);
-                        (past && tolerate(side) && other.mismatches >= 3)
+                        (past && tolerate(side) && one_error_forgiven(own.misses.len(), other.mismatches))
                             .then(|| forgiven(&seq, own, w, side))
                             .flatten()
                             .filter(|k| !rules.tolerance.is_some_and(|t| t.recurs(variant, min_baseq, rules, k)))
@@ -2049,6 +2079,28 @@ pub(crate) struct Guard {
     /// carriers among the reads placed apart (the most carried, where several are).
     /// Diagnostic only (POSSIBLE_MINORITY_HAPLOTYPE).
     pub minority: Option<(i64, u8, u8, u32, u32)>,
+    /// A long deletion's other alleles at its breakpoint that read like the ALT through
+    /// its junction windows and on (another unit count of a run beside it, #297), present
+    /// at the site (listed, or spelled in full on [`GUARD_MIN_READS`] fragments and
+    /// [`GUARD_REF_SHARE`] of those spelling the ALT there) and within a read's reach: an
+    /// ALT call must tell the ALT from each by its bases ([`super::junction::Hidden`]).
+    pub unit_others: Vec<super::junction::Hidden>,
+    /// The ALT's bases from the junction windows' first base, as far as `unit_others`'s.
+    pub unit_alt: Vec<u8>,
+    /// Those bases with each listed row past the junction applied: a read fitting one carries
+    /// the deletion with a listed neighbour, never another of `unit_others` (RJ-24).
+    pub unit_neighbours: Vec<Vec<u8>>,
+    /// The other alleles at the breakpoint within a read's reach that are not present at the
+    /// site (nobody listed them and under the floor of fragments spell them), and REF's bases
+    /// from the junction windows' first base: a read that spells one in full is no ALT, partial
+    /// evidence (RJ-6); the floor decides only the reads that cannot tell.
+    pub unit_absent: Vec<super::junction::Hidden>,
+    pub unit_ref: Vec<u8>,
+    /// Another allele at the breakpoint that reads like the ALT past what the longest read
+    /// at the site holds: its length change (deleted bases negative), the bases a read must
+    /// hold from the windows' first base to tell the two, and that read's length. Nothing is
+    /// held for it; diagnostic only (UNIT_COUNT_UNSPANNED).
+    pub unit_unspanned: Option<super::junction::Unspanned>,
 }
 
 impl Guard {
@@ -2066,6 +2118,12 @@ impl Guard {
             judge_ref_others: Vec::new(),
             indels: Vec::new(),
             minority: None,
+            unit_others: Vec::new(),
+            unit_alt: Vec::new(),
+            unit_neighbours: Vec::new(),
+            unit_absent: Vec::new(),
+            unit_ref: Vec::new(),
+            unit_unspanned: None,
         }
     }
 }
@@ -2643,10 +2701,8 @@ fn other_alleles(
     let mut others: Vec<OtherAllele> = placed.spellings[if side == Side::Ref { 0 } else { 1 }]
         .iter()
         .filter(|(b, f)| {
-            let n = f.len() as u32;
             counter_spelling.is_none_or(|r| apart(b, r, masked_counter) > 0)
-                && n >= GUARD_MIN_READS
-                && n as f64 >= GUARD_REF_SHARE * source(b) as f64
+                && is_found(f.len(), source(b) as usize)
                 && !separate(b)
         })
         // the spelling in place of REF's window bases (either allele's window starts at
@@ -4013,6 +4069,27 @@ pub(crate) fn score(bases: &[u8], quals: &[u8], min_baseq: u8, hap: &[u8], span:
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn rj27_s_tolerance_is_one_error_against_three_misses() {
+        assert!(one_error_forgiven(1, 3));
+        assert!(one_error_forgiven(1, 9));
+        assert!(!one_error_forgiven(1, 2), "the other reading misses fewer than three");
+        assert!(!one_error_forgiven(2, 9), "two errors are not forgiven");
+        assert!(!one_error_forgiven(0, 9), "nothing to forgive");
+    }
+
+    #[test]
+    fn rj25_s_presence_test_is_three_fragments_and_a_twentieth_of_the_nearest_allele_s() {
+        // 3 fragments and 5% of those spelling the allele it is nearest
+        assert!(!is_found(2, 0), "two fragments are under the floor");
+        assert!(is_found(3, 0));
+        assert!(is_found(3, 60), "5% of 60 is 3");
+        assert!(!is_found(3, 61), "and 5% of 61 is more");
+        assert!(is_found(5, 100));
+        assert!(!is_found(5, 101));
+        assert!(!is_found(0, 0));
+    }
     use rust_htslib::bam::record::CigarString;
 
     /// An unpaired read of `cigar` at `pos`.

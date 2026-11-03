@@ -33,6 +33,46 @@ regenerating a section.
 
 ---
 
+## [LRN-20261102-002] rule-body | PRs merged on green checks with a bot review unread
+- **Status:** resolved (rule promoted); the findings are being fixed.
+- **Cause:** rule-body.
+- **Summary:**
+  - I merged #392 (macOS wheel) and #396 (#264's long-insertion windows) when their checks were
+    green, without reading Greptile's review. Each had one valid finding: #392's filename check
+    accepts any macOS minimum; #396's mirrored masks are placed without the candidates' listed
+    context changes, so a listed indel between the anchor and a masked position moves the mask.
+  - I then called #402 (the PHI read guard) ready while its review said 0 of 5, "do not merge",
+    with seven valid holes. The operator asked: "Did you read greptile bot review".
+  - The merge rule (`git-conventions.md`, "Merging") said to check the PR's checks; it said
+    nothing about the bot review.
+- **Promotion target:** `.agents/rules/git-conventions.md` ("Merging") — `DONE:` read Greptile's
+  summary and every inline comment before a PR is called ready or merged; report each finding with a
+  verdict; an unread finding blocks the merge as a failing check does. `MEMORY.md`'s merge line
+  names it.
+- **Related:** `working-agreements` ("Every failed task is reported").
+
+## [LRN-20261031-002] rule-trigger | review fixes went back to the builder round after round, each a row-level condition
+- **Status:** resolved (rule promoted); the #297 re-frame waits for the operator.
+- **Cause:** rule-trigger.
+- **Summary:**
+  - On #297 (the narrow unit-run rule) I sent each adversarial review's findings to the builder as a
+    fix list, four rounds in two days. The rule gained about ten conditions: the narrow run, deletions
+    only, the placement test, the nearest-count diagnostic, option (b)'s presence test, a 3-fragment
+    floor, a placement test on both sides of the 5% share, a depth rule, a new diagnostic name. Each
+    was justified by named rows (10:11885357, p1b_022 and others). The spike-in then found the next
+    boundary row (soft-clipped deciders).
+  - `decision-protocol.md` §3 already said "a narrowing made to pass a bar is a signal that the
+    mechanism was wrong", but nothing triggered it: it was not part of the step where I forward
+    review findings, and the reviewer briefs did not ask "instance or mechanism?".
+  - Option (b) also decided that a listed input allele was absent, against invariant 7 ("input
+    alleles are taken as correct"). I presented it without saying so. The operator saw the drift
+    (2026-10-31: "i feel we regressed and made certain row level decisions vs category level").
+- **Promotion target:** `.agents/rules/decision-protocol.md` §3 — `DONE:` count the conditions before
+  a second fix round; a condition only named rows justify stops the loop and goes to the operator
+  as a class question with one class-level option; reviewers are asked "instance or mechanism?";
+  options are tested against invariant 7 before they reach the operator.
+- **Related:** `working-agreements` ("Also standing"); `genotyper-not-caller`.
+
 ## [LRN-20261031-001] rule-body | a gate result read and a commit made in one command
 - **Status:** resolved (rule promoted).
 - **Cause:** rule-body.

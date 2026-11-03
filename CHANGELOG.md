@@ -7,9 +7,152 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed — a long deletion's ALT reads must tell it from another unit count present at the site (#297)
+
+- At a deletion of 50 bp or more beside a tandem run of its unit (its deleted copy differing
+  from the run's, so the junction windows stop at that base), another unit count reads like
+  the given deletion until the run's copies end. Where such an allele is present at the site
+  (listed in the input, always: rule X, operator 2026-10-31, the input is taken as correct;
+  or, unlisted, spelled in full by its own bases on 3 or more fragments and 5% of those
+  telling the ALT from it, RJ-25's floor; a fragment spells it only where its bases fit it,
+  and fit REF worse, over 24 bases past where it and the ALT differ; only reads the aligner
+  places here, RJ-29's test), an ALT read now counts only where its confident bases where
+  the two first differ show the given count, or show it with a listed row applied (a phased
+  neighbour the input names, as RJ-24 takes a listed change); a read ending sooner is either allele: partial
+  evidence (RJ-25), not ALT. Errors where the two read alike cost both and decide nothing
+  (RJ-26). A site with no other count keeps its reads; REF reads and the sibling claim keep
+  their windows. Both paths: the rules (`junction`) and, under `--read-judge sequence`, the
+  found alleles as site states (the judge already held listed and aligner-written ones).
+- The other counts looked for are the other deletions at the breakpoint (fewer bases, or more
+  up to twice the given); an expansion at the breakpoint is not (a REF read inside its copy
+  fits it as well). The count that holds a row's ALT calls is named in `gbcms_diagnostic`,
+  `OBSERVED_ALLELE` or `COEXISTING_ALLELE` at the deletion's anchor (`BaseCounts.unit_count_allele`).
+- A listed other unit count is a candidate allele always, on both paths, whether or not a read
+  shows it (rule X, operator 2026-10-31): the given count's reads that end before the first
+  difference stay partial evidence at a listed count no molecule carries. That is the cost of
+  taking the input as correct, and the spike-in arm counts it (bar 7). A variant that decided
+  a listed count absent when the deciding fragments show none of it was built, measured and
+  rejected (REJ-20261031-001): it gained 141 spike-in reads but credited the other allele's
+  reads as ALT and made false-absent rows. RJ-24 and RJ-25 amended 2026-10-31.
+- `UNIT_COUNT_UNSPANNED` weighs the nearest unit count on each side (one that reads like the
+  given deletion for its shift and 12 bases more), not any count past reach.
+- Where no read at the site can spell an unlisted count (the run longer than the longest
+  read), nothing is held for it, the counts stand, and `gbcms_diagnostic` names the row:
+  `UNIT_COUNT_UNSPANNED(change:bases/longest)`, a new `BaseCounts.unit_count_unspanned`
+  (no new column). A listed count there is held (below). Prep holds the reference a read reaches
+  past twice a long deletion's length (`whole_ref`), and the input's indel rows inside it
+  (`listed_indels`). RJ-24 amended 2026-10-30.
+- The rule closed on one principle, on both paths (operator, 2026-10-31, option A throughout;
+  RJ-24 and RJ-25 amended): a read is ALT only where its own confident bases carry the given
+  ALT and tell it from every candidate (REF, every listed allele, each found allele that
+  passes the presence test). The final review of rule X found four places where the branch
+  departed from it, three on the rules path only; all are closed, each red first on the rules
+  path and under `--read-judge sequence`:
+  - A read is "the deletion with its listed neighbour" only where its confident bases show that
+    row's change. One input row no read carries (a 1-bp deletion 270 bases past the junction,
+    or an SNV) turned 6 tie reads into ALT on the rules path, (RD, AD, partial) (6, 0, 6) to
+    (6, 6, 0); the sequence judge stayed (6, 0, 6). HG002 4:3610329 is unchanged.
+  - A listed other unit count is held wherever it first differs, past every read's reach too:
+    the reads that cannot tell are partial evidence, (6, 12, 0) to (6, 0, 12) on the rules
+    path, and the row is named `UNIT_COUNT_UNSPANNED`. The cost is a row with `alt_count` 0
+    until a read can tell (HG002: two rows on the rules path, ALT 15 to 0 and 5 to 0; the
+    sequence judge already counted 0 there).
+  - A read whose own bases spell an unlisted other unit count in full is never ALT, whatever the
+    presence floor (RJ-6): partial evidence, or depth only where the aligner doubts its
+    placement (RJ-29). The floor decides only the reads that cannot tell. The sequence judge
+    leaves such reads depth only (an allele under the floor is no state), so `partial_alt`
+    differs between the paths on them, `alt_count` does not.
+  - The presence test reads each read's qualities as the hold does (BAQ-adjusted, inside the
+    readable range), and "within a read's reach" is the first difference and the 24 bases the
+    spelling test reads (it was 4). `UNIT_COUNT_UNSPANNED`'s `bases` is larger by 20, and a
+    count that first differs 4 to 23 bases before the longest read's end is named.
+  - One presence test, RJ-25's (`carrier::is_found`: 3 fragments and 5% of the fragments
+    spelling the allele it is nearest), asked by the exact-carrier guard, the junction guard and
+    the sequence judge's found alleles; the judge counted reads against 5% of all the site's
+    reads. This changes presence for every allele the sequence judge finds, at every event (SNVs,
+    MNVs and short indels as well), not only for #297's unit counts. On HG002 nothing moves on
+    the rules path; under the sequence judge 101 reads on 25 rows (18 distinct) move. One
+    tolerance, RJ-27's (`carrier::one_error_forgiven`), for the carrier rule and the junction
+    judge's telling; no count changes.
+  - Round 2 of the close (operator, 2026-10-31), two more places closed on the same principle:
+    a read placed from the right flank (its junction bases in a left soft clip) that spells an
+    unlisted other unit count is partial evidence like one placed from the left, not depth only
+    (only the aligner's own doubt, RJ-29, makes it depth only); and the sequence judge's
+    presence test divides by the fragments spelling the allele the found one is nearest (REF's
+    or X's, by the bases that differ over the window; the larger when as near), not by every
+    fragment either given allele beats it on, and a fragment whose mates disagree counts for
+    neither, as the junction guard's `conflict`. On HG002 the right-flank change moves no read;
+    the judge's presence test moves nothing on the rules path and, under the sequence judge, 37
+    read calls on 8 arm rows (6 distinct rows), 7 of them (5 distinct rows) in the counts: four
+    rows lose a found allele because a telling fragment's mates disagree, one (a 106-bp
+    insertion) gains one and 11 of its 79 ALT reads become partial evidence, and one read moves
+    from depth to partial evidence.
+  - Named limits until the sequence judge is the default (#331): under the judge a read that
+    spells a deletion of another length at X's anchor, below the presence floor, is depth only
+    where the rules path calls it partial; and on the rules path the carriers of the deletion
+    that also carry an unlisted 1-bp insertion are all held, where the judge places the insertion
+    as a separate event and counts ALT those that reach the run's end (RJ-24).
+  - The review of the pull request (2026-11-02, operator: fix all three, each red first). A listed
+    deletion at the breakpoint whose REF runs past the reference held (a 600-bp deletion beside a
+    60-bp one before twelve copies of its unit) was dropped on the rules path, so the given count's
+    short carriers stayed ALT; its bases cannot be read, so it is now held as a candidate no read can
+    tell, as any listed count is, and named `UNIT_COUNT_UNSPANNED` where it is the nearest on its side:
+    (RD, AD, partial) (6, 6, 0) to (6, 0, 6) on the rules path, the sequence judge already (6, 0, 6).
+    Where the reference past it would tell the counts apart (a flank that does not repeat) the rules
+    path holds all the same and the judge counts ALT, (6, 0, 6) against (6, 6, 0): a named limit. A
+    fragment whose short mate (under 24 bases past the first difference) tells the given count while the
+    other mate spells the other count in full counts for neither, as two full mates do: (6, 3, 15) to
+    (6, 15, 3) on the rules path and (6, 15, 0) under the sequence judge, three such fragments. And the
+    alleles at the breakpoint past a read's reach keep only their length change and first difference,
+    not their bases and rows, so memory no longer grows with the square of a long deletion beside a
+    long simple repeat: a 24-kb deletion before a 24-kb (AC)n repeat peaked at 805 MB through the
+    engine and now at 101 MB, a 60-kb one at 4.0 GB (a 100-kb one now 131 MB); counts and flags are
+    the same. On HG002 (public; c246, tr, sub, nocl; both paths) no row and no read call moves for
+    any of the three. RJ-24 and RJ-25 amended 2026-11-02.
+
+### Changed — the sequence judge reads an insertion of 50 bp or more over equal windows from its anchor (#264)
+
+- Under `--read-judge sequence`, a REF or ALT call at a pure insertion of 50 bp or more now
+  holds RJ-23's equal windows from the anchor, as the rules read it: the anchor and as many
+  bases on as REF's window holds (the run the insert slides over and the base past it). The ALT
+  is read over the insert's first bases, never the whole insert. A read lying inside the insert,
+  or holding only its far junction, is depth only, as a REF read starting inside the run is.
+  Before this the judge counted reads inside a long insert ALT, giving the ALT read starts REF
+  cannot have.
+- Where the guard's masks hide the base telling the two windows apart (a change past the run,
+  which on the ALT's sequence lies past the insert, so it told REF's molecules apart and never
+  the ALT's), both windows read on to the next base telling them apart, and a read short of it
+  is depth only, REF and ALT alike (RJ-27's read-on). At HG002's 98 bp duplication at
+  chr22:39653046 this makes 11 REF reads depth (RD 21 → 10, AD 6).
+- Both windows are counted in bases of the called allele's sequence, so a listed change inside them
+  lengthens neither; the window check runs before another allele's call, so a read inside the
+  insert tying the ALT and another allele is depth only, not partial evidence; and the guard's
+  masks are laid by offset from the anchor on every candidate haplotype (REF's, the ALT's and
+  each other allele's), so a masked offset weighs on none of them. Where no base within reach tells the windows apart, every read is depth only and the
+  row is named `NO_TELLING_BASE` in `gbcms_diagnostic` (no column added).
+- Among the reads that hold the windows, the calls now follow the truth's allele shares on HG002
+  (per-read symmetry bar); the VAF of long insertions stays below 0.5 because fewer reads over
+  the anchor come from ALT molecules than from REF ones in the BAM itself.
+- Two measurement options, temporary and retired when the sequence judge becomes the default
+  (#331): `GBCMS_JUDGE_LONG_INS=window` keeps the windows without the read-on, and `off`
+  restores the judge before them. Reading a masked change on REF's haplotypes as the
+  reference's where REF's molecules show they lack it was measured with a third option and is not
+  adopted (it credits a read on other fragments' evidence, REJ-20261023-001); that option is
+  removed. The rules path is unchanged; RNA does not take the sequence judge.
+- Decided 2026-10-31 (operator): the masks laid on both windows by offset are accepted and laid
+  on every candidate haplotype, so a listed allele of the ALT's length that differs from it at a
+  masked offset is told from it by no base there (the ALT's carriers and a read with a third base
+  at that offset are partial evidence of either, never ALT); the `cis` option is removed; the
+  anchor is taken from the insertion's run, wherever the row is written; the rule stays for pure
+  insertions of 50 bp or more (a delins with a longer side over 50 bp is a separate decision).
+  On HG002 this moves 4 reads in 2 rows on tr and 4 in 2 rows on nocl and sub, each from
+  partial evidence to REF (3 of the 4 on nocl and sub are true REF, none a true ALT), and no
+  other row of the four truth arms; the merge with develop's band rule (#369) moves only reads
+  on its `judge far` lines; the rules path is unchanged byte for byte.
+
 ### Added — a macOS wheel for Apple silicon (arm64) (#237)
 
-- The release builds `cp310-abi3-macosx_11_0_arm64` on `macos-14` with the new local action
+- The release builds `cp310-abi3-macosx_11_0_arm64` on `macos-latest` with the new local action
   `.github/actions/macos-wheel`, and publishes it to PyPI and the release page (with its
   checksum and build-provenance attestation) beside the Linux wheel. `pip install gbcms` on
   an Apple silicon Mac with macOS 11 or newer, on any Python from 3.10, now installs a wheel;

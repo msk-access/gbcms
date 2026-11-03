@@ -1257,11 +1257,19 @@ fn count_bin_shared(
         // alike. The decomposed form is another allele: it finds its own, beside the
         // same siblings.
         let cache = &read_cache;
+        let rna_edges = (mode == "rna").then_some(&edges);
         let guard_of = |v| {
             carrier::CarrierGuard::new(move || {
                 let counted = |r: &Record| counted_read(r, v, mode, enforce_strandedness, strandedness, min_mapq);
                 if junction::judges(v) {
-                    junction::guard_for(cache, v, &counted, min_baseq)
+                    // The presence test of another unit count reads the reads as the classifiers
+                    // do: heuristic BAQ where it applies, and in RNA a clip reaching an exon edge
+                    // left out (one quality contract).
+                    let use_baq = baq_applies(apply_baq, boundary_distance(v, annotation));
+                    let spare = if use_baq { baq_own_span(v) } else { None };
+                    junction::guard_read_as(cache, v, &counted, min_baseq, siblings, &|r: &Record| {
+                        Some((effective_quals(r, use_baq, spare), carrier::readable_with(r, rna_edges)?))
+                    })
                 } else if read_judge == judge::ReadJudge::Haplotype {
                     // the sequence judge also takes the alleles written past the masks
                     carrier::guard_for_judge(cache, v, &counted, min_baseq, siblings)
@@ -1622,6 +1630,24 @@ fn count_variant_from_cache(
     // haplotype's, left unmasked: diagnostic only (POSSIBLE_MINORITY_HAPLOTYPE).
     if let Some((pos, r, b, c, n)) = rules.guard.and_then(|g| g.get(variant)).and_then(|g| g.minority) {
         counts.possible_minority = format!("{}:{}>{}:{c}/{n}", pos + 1, r as char, b as char);
+    }
+    // Another allele at a long deletion's breakpoint reading like the ALT past what the
+    // longest read here holds: nothing is held for it; diagnostic only (UNIT_COUNT_UNSPANNED).
+    if let Some((change, need, longest)) = rules.guard.and_then(|g| g.get(variant)).and_then(|g| g.unit_unspanned) {
+        counts.unit_count_unspanned = format!("{change:+}:{need}/{longest}");
+    }
+    // Another unit count present at a long deletion's breakpoint holds its ALT calls: named,
+    // with the fragments spelling it and those telling the given count from it; diagnostic
+    // only (OBSERVED_ALLELE / COEXISTING_ALLELE).
+    if let Some(g) = rules.guard.and_then(|g| g.get(variant)) {
+        let text = |b: &[u8]| String::from_utf8_lossy(b).into_owned();
+        counts.unit_count_allele = g
+            .unit_others
+            .iter()
+            .filter(|h| h.held > 0)
+            .map(|h| format!("{}:{}>{}:{}/{}", h.row.0 + 1, text(&h.row.1), text(&h.row.2), h.held, h.told))
+            .collect::<Vec<_>>()
+            .join("+");
     }
     let use_baq = baq_applies(apply_baq, exon_boundary_dist);
     // The variant's own indel span that BAQ leaves alone, once per variant.
@@ -2071,6 +2097,8 @@ fn count_variant_from_cache(
             .join("+");
     }
     counts.ref_dist_end_median = compute_median_u32(&mut ref_dists);
+    // a long insertion whose equal windows no base tells apart (every read depth only)
+    counts.untold_windows = rules.haplotypes.and_then(|h| h.get(variant, rules)).is_some_and(|site| site.windows_untold());
 
     // ── RNA editing site flag (DB-only) ────────────────────────────
     // Flag is True ONLY when a REDIportal database is provided AND this
@@ -4172,6 +4200,7 @@ mod tests {
             reach_rows: Vec::new(),
             reach_unrecorded: false,
             whole_ref: None,
+            listed_indels: Vec::new(),
         }
     }
 
@@ -4902,6 +4931,7 @@ mod tests {
             reach_rows: Vec::new(),
             reach_unrecorded: false,
             whole_ref: None,
+            listed_indels: Vec::new(),
         }
     }
 
