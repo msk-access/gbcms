@@ -2130,7 +2130,10 @@ The sequences a read is weighed against are the row's <em>candidate sequences</e
     measured with a temporary option and not adopted (REJ-20261023-001); the option is removed.
     <code>GBCMS_JUDGE_LONG_INS=window</code> keeps the windows without the read-on and <code>off</code> restores the
     judge before them (measurement only, temporary: both go when the judge becomes the default,
-    #331, and the default behaviour stays).
+    #331, and the default behaviour stays). Two follow-ups (operator, 2026-11-02): a read tying the
+    ALT with another allele must hold the ALT's equal window too, or it is depth only; and the
+    masks are laid by the columns of each path, the listed or found changes between the anchor
+    and a masked base counted (RJ-23).
   - <em>An indel the reads write beside X's site</em> (two reads and 5%, every placement clear of
     the site, the repeat X changes included) is a context, a separate event (RJ-8), however
     a read's aligner wrote it, where the reads need it for their calls (as a respelling
@@ -2861,8 +2864,10 @@ placement, bases). Cost within 2× develop. The <abbr title="High-Performance Co
  budget still gets it. A row's caches are freed at its end, and so is work space past a
  quarter of the budget. The bytes counted are those held: the work space's arrays and
  the band each workspace keeps for its path (a band states share, once); each cache's hash
- table whole (its buckets are allocated as it grows); and a kept programme as later reads
- alike grow it. <code>GBCMS_JUDGE_BUDGET_MB</code> sets the budget for measurement only
+ table whole (its buckets are allocated as it grows); a kept programme as later reads
+ alike grow it; and, at a pure insertion of 50 bp or more, the graph sets a site keeps for
+ the changes its reads span (once each, when kept; past the budget a read's set is laid for
+ it alone and counted with the read's programmes while they are kept). <code>GBCMS_JUDGE_BUDGET_MB</code> sets the budget for measurement only
  (<code>none</code>: no limit); <code>GBCMS_JUDGE_CACHE_TRACE=1</code> traces each row's cache at its end.
    - <strong>Count-neutral.</strong> A test judges a deletion's reads with no limit, with nothing cached and
  with budgets that close the caches part way: every call is the same. On every arm the
@@ -3204,7 +3209,7 @@ flip (#331): the default rules path keeps today's behaviour.
     <span class="md-icon" title="Last update">
       <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M21 13.1c-.1 0-.3.1-.4.2l-1 1 2.1 2.1 1-1c.2-.2.2-.6 0-.8l-1.3-1.3c-.1-.1-.2-.2-.4-.2m-1.9 1.8-6.1 6V23h2.1l6.1-6.1zM12.5 7v5.2l4 2.4-1 1L11 13V7zM11 21.9c-5.1-.5-9-4.8-9-9.9C2 6.5 6.5 2 12 2c5.3 0 9.6 4.1 10 9.3-.3-.1-.6-.2-1-.2s-.7.1-1 .2C19.6 7.2 16.2 4 12 4c-4.4 0-8 3.6-8 8 0 4.1 3.1 7.5 7.1 7.9l-.1.2z"></path></svg>
     </span>
-    <span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-timeago" title="October 31, 2026 17:03:04 UTC"><span class="timeago" datetime="2026-10-31T17:03:04+00:00" locale="en"></span></span><span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-iso_date" title="October 31, 2026 17:03:04 UTC">2026-10-31</span>
+    <span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-timeago" title="November 3, 2026 21:25:35 UTC"><span class="timeago" datetime="2026-11-03T21:25:35+00:00" locale="en"></span></span><span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-iso_date" title="November 3, 2026 21:25:35 UTC">2026-11-03</span>
   </span>
 
     
