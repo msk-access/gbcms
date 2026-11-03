@@ -204,6 +204,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   installs it on Python 3.10 and 3.14 with `pip install --only-binary=:all:`. The suite runs
   there, and the counting run's output digests must equal the Linux ones. The same steps run
   on a Mac with `scripts/check_wheel.sh`.
+- The action then checks that the wheel needs no newer macOS than 11.0: its platform tag, and
+  the minimum macOS in each binary's load commands (`otool -l`). The tests run on
+  `macos-latest`, so they would accept a wheel that needs a newer macOS; the Linux build checks
+  its glibc floor the same way.
 - Intel Macs (x86_64) still build the source distribution: nothing in CI uses an Intel Mac,
   and a wheel for one would be a second entry in the same two jobs (or a cross build on the
   arm64 runner) if a user asks for it.
