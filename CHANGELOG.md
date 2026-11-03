@@ -125,7 +125,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   listed or found changes beside the insertion (Greptile's finding on PR #396): an insertion or
   deletion between the anchor and a masked base moves that base's offset on every haplotype a
   read carrying it lies on. The graph holds a copy of the span where a mask can lie per set of
-  such changes that can lie together. A site with seven such changes or more in that span keeps
+  such changes that can lie together. A state's graph with seven such changes or more in that span (the cap is checked per graph) keeps
   the offsets without them (a named limit).
   At HG002 the masks are laid by the columns of up to five such changes at the rows with masks and
   no read call moves (nor in a sweep of 12,078 synthetic read pairs); the change is in the score of a

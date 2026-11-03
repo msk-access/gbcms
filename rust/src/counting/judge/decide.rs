@@ -454,7 +454,8 @@ fn score_states(site: &Site, gr: &graph::GraphRead, wss: &mut [Workspace]) -> Sc
     // change would. A state's best path took whichever copy masked its own mismatches (a
     // path ending before a change was laid the masks as if it carried it, and the sibling
     // next to it the other copy), so a read that does not reach a change is scored on the
-    // masks without it. States whose path took another copy are scored again.
+    // masks without it. Where any state's path took a copy the read is not on, every state is
+    // scored again on the read's copy (also the states whose path was on it already).
     match lying_copy(site, &first) {
         Some((taken, free)) => score_once(site, &gr.lying_in(taken, free), wss),
         None => first,
