@@ -479,3 +479,98 @@ def test_outside_the_core_a_listed_substitution_still_makes_its_readers_partial(
     """No core (under 50 REF bases replaced, or S at a junction): the 6 readers of S are S's,
     partial evidence, as before."""
     assert _call(_core(tmp_path, judge, ref_len, alt_len, at)) == (30, 20, 6), why
+
+
+# ── a listed allele is a candidate by the window the read is judged on ───
+#
+# B's candidate test ("the listed allele differs from X inside the window") reads the
+# window X's own windows hold: one flank base each side of a pure indel, two of any other
+# event. A listed allele that differs from X only past that is weighed by the whole read,
+# not by the window. Read through a wider window, it was admitted as a candidate whose
+# window equals X's, so no read could tell X from it and every carrier went to partial
+# (rq1: 106 carriers at one panel row, AD 106 to 0).
+
+FLANK_P = 400
+
+
+def _flank_locus(seed, starts, s_back=2, s_ref_len=2, mid="anchor"):
+    """X: one A inserted into a clean 4-base A run, anchored on the base before it. S: a
+    listed delins ending on X's anchor whose ALT is X plus a substitution `s_back` bases
+    before the anchor (the second flank base when `s_back` is 2). 30 reads carry X, 20 are
+    REF; `starts` places the carriers' first bases (long: well before S; near: 8 bases
+    before the run; at: on the anchor or the base before it)."""
+    rng = random.Random(seed)
+    c = [rng.choice("CGT") for _ in range(1100)]
+    for k in range(4):
+        c[FLANK_P + k] = "A"
+    c = "".join(c)
+    x = (FLANK_P - 1, c[FLANK_P - 1], c[FLANK_P - 1] + "A")
+    s_pos = FLANK_P - s_back
+    s_ref = c[s_pos:FLANK_P]
+    s_alt = _other(s_ref[0]) + (c[FLANK_P - 1] if s_ref_len == 2 else s_ref[1:-1]) + "A"
+    s = (s_pos, s_ref, s_alt)
+    reads = []
+    for i in range(30):
+        st = {
+            "long": FLANK_P - 60 + (i % 40),
+            "near": FLANK_P - 8 + (i % 6),
+            "at": FLANK_P - 2 + (i % 2),
+        }[starts]
+        hap = c[st:FLANK_P] + "A" + c[FLANK_P:]
+        left = FLANK_P - st
+        cigar = ((0, left), (1, 1), (0, READ - left - 1))
+        reads.append(make_read(f"x{i}", hap[:READ], st, cigar, flag=_flag(i)))
+    for i in range(20):
+        st = FLANK_P - 60 + (i % 40)
+        reads.append(make_read(f"r{i}", c[st : st + READ], st, ((0, READ),), flag=_flag(i)))
+    return c, x, s, reads
+
+
+@pytest.mark.parametrize("judge", PATHS)
+@pytest.mark.parametrize("seed", [11, 23], ids=["contig 11", "contig 23"])
+@pytest.mark.parametrize(
+    "starts, want",
+    [("long", (20, 30, 0)), ("near", (20, 30, 0)), ("at", (20, 15, 15))],
+    ids=["reads from far before", "reads from near", "reads from the anchor"],
+)
+def test_a_listed_delins_that_differs_from_x_past_the_window_is_not_a_candidate(
+    tmp_path, judge, seed, starts, want
+):
+    """S = X plus a substitution at the second flank base before X's anchor. The window of a
+    pure insertion holds one flank base, so S's window equals X's and is no candidate there
+    (the reads that reach S's base are told apart by it, as the sequence judge does). Develop's
+    counts of X: the reads that start on the anchor do not reach the substitution (15 are
+    partial evidence, as before); the others are ALT."""
+    c, x, s, reads = _flank_locus(seed, starts)
+    assert _call(_counts(tmp_path, judge, c, [x, s], reads)[0]) == want
+
+
+@pytest.mark.parametrize("judge", PATHS)
+def test_a_listed_delins_inside_the_window_still_makes_the_reads_that_cannot_tell_it_partial(
+    tmp_path, judge
+):
+    """The guard for B's effect. S = a 3>3 substitution two bases before X's anchor, listed
+    and spelled by no read: with no floor it is another allele at X's site, so the 15 carriers
+    that start on the anchor cannot tell X from it and are partial evidence on both paths
+    (develop's sequence judge dropped it by its floor and counted all 30 ALT)."""
+    rng = random.Random(11)
+    c = [rng.choice("CGT") for _ in range(1100)]
+    for k in range(4):
+        c[FLANK_P + k] = "A"
+    c = "".join(c)
+    x = (FLANK_P - 1, c[FLANK_P - 1], c[FLANK_P - 1] + "A")
+    s = (FLANK_P - 3, c[FLANK_P - 3 : FLANK_P], _other(c[FLANK_P - 3]) + c[FLANK_P - 1] + "A")
+    reads = []
+    for i in range(30):
+        st = FLANK_P - 2 + (i % 2)
+        hap = c[st:FLANK_P] + "A" + c[FLANK_P:]
+        left = FLANK_P - st
+        reads.append(
+            make_read(
+                f"x{i}", hap[:READ], st, ((0, left), (1, 1), (0, READ - left - 1)), flag=_flag(i)
+            )
+        )
+    for i in range(20):
+        st = FLANK_P - 60 + (i % 40)
+        reads.append(make_read(f"r{i}", c[st : st + READ], st, ((0, READ),), flag=_flag(i)))
+    assert _call(_counts(tmp_path, judge, c, [x, s], reads)[0]) == (20, 15, 15)
