@@ -10,8 +10,12 @@ Contracts:
   Linux ones.
 """
 
+import os
+import subprocess
+import zipfile
 from pathlib import Path
 
+import pytest
 import yaml
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -59,6 +63,63 @@ def test_the_action_targets_macos_11_and_records_the_commit():
     assert step["env"]["MACOSX_DEPLOYMENT_TARGET"] == "11.0"
     assert step["env"]["GBCMS_BUILD_COMMIT"] == "${{ inputs.commit }}"
     assert action["inputs"]["interpreter"]["default"] == "python3.10"
+
+
+def test_the_action_checks_the_wheel_needs_no_newer_macos_than_its_target():
+    # the tests run on macos-latest and would install a wheel that needs a newer macOS
+    action = yaml.safe_load(ACTION.read_text())
+    steps = action["runs"]["steps"]
+    build = next(i for i, s in enumerate(steps) if "maturin-action" in s.get("uses", ""))
+    (check,) = [s for s in steps[build + 1 :] if s.get("name") == "Check the wheel's macOS floor"]
+    assert check["env"]["FLOOR"] == steps[build]["env"]["MACOSX_DEPLOYMENT_TARGET"]
+    assert check["env"]["OUT"] == "${{ inputs.out }}"
+    # the tag and every binary's load commands
+    assert "tag <= floor" in check["run"] and "otool" in check["run"], check["run"]
+
+
+def _load_commands(minos):
+    # what `otool -l` prints for a Mach-O binary's minimum macOS (None: no such command)
+    if minos is None:
+        return "Load command 0\n      cmd LC_SEGMENT_64\n  cmdsize 72\n"
+    return f"Load command 9\n      cmd LC_BUILD_VERSION\n  cmdsize 32\n platform 1\n    minos {minos}\n      sdk 15.0\n"
+
+
+@pytest.mark.parametrize(
+    "platform, minos, passes, why",
+    [
+        ("macosx_11_0_arm64", "11.0", True, None),
+        ("macosx_14_0_arm64", "11.0", False, "macosx_14_0_arm64"),  # the tag needs a newer macOS
+        ("macosx_11_0_arm64", "14.0", False, "(14, 0)"),  # the binary needs a newer macOS
+        ("macosx_11_0_arm64", None, False, "no minimum macOS"),  # the binary names no minimum
+    ],
+)
+def test_the_floor_check_rejects_a_wheel_that_needs_a_newer_macos(
+    tmp_path, platform, minos, passes, why
+):
+    # the action's own script, on a made-up wheel, with a stand-in for otool (so it runs off macOS too)
+    action = yaml.safe_load(ACTION.read_text())
+    (check,) = [
+        s for s in action["runs"]["steps"] if s.get("name") == "Check the wheel's macOS floor"
+    ]
+    dist = tmp_path / "dist"
+    dist.mkdir()
+    with zipfile.ZipFile(dist / f"gbcms-0.0.0-cp310-abi3-{platform}.whl", "w") as whl:
+        whl.writestr("gbcms/_rs.abi3.so", b"made up")
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    otool = bin_dir / "otool"
+    otool.write_text("#!/bin/sh\ncat <<'EOF'\n" + _load_commands(minos) + "EOF\n")
+    otool.chmod(0o755)
+    env = {
+        **os.environ,
+        "OUT": str(dist),
+        "FLOOR": check["env"]["FLOOR"],
+        "PATH": f"{bin_dir}{os.pathsep}{os.environ['PATH']}",
+    }
+    run = subprocess.run(["bash", "-c", check["run"]], env=env, capture_output=True, text=True)
+    assert (run.returncode == 0) == passes, (run.returncode, run.stdout, run.stderr)
+    if why:
+        assert why in run.stderr, run.stderr
 
 
 def test_the_wheel_checks_install_the_macos_wheel_at_both_ends_of_the_range():
