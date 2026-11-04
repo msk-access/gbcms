@@ -1051,13 +1051,15 @@ class Pipeline:
                 few (or in one pair orientation) for a haplotype's, so it was left
                 unmasked; a minority haplotype carrying it would count ALT where its
                 reads read as the ALT. Counts stand.
-            MNV_SHARED(chrom:pos:REF>ALT:n/m): under the sequence judge, at a
+            MNV_SHARED(chrom:pos:REF>ALT:n/m): under the sequence judge (also at an SNV
+                row routed to it under the rules), at a
                 substitution (an SNV) with a co-listed row holding its change (an MNV
                 containing it): n of the row's m ALT reads spell that MNV whole. Those
                 carriers count at both rows (a read carrying the SNV's base is its ALT,
                 whatever else is listed), so one molecule can enter both rows' AD and
                 mFSD size distributions. One flag per such MNV. Counts stand.
-            INDEL_SHARED(chrom:pos:REF>ALT:n/m): under the sequence judge, at a row with
+            INDEL_SHARED(chrom:pos:REF>ALT:n/m): under the sequence judge (also at a routed
+                SNV row), at a row with
                 a listed row that is its ALT with listed neighbours (a delins that is two
                 listed deletions together): n of the row's m ALT reads spell that row
                 whole. Those carriers count at each row that holds them (RJ-28's indel

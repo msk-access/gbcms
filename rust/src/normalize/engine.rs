@@ -49,8 +49,9 @@ use super::repeat::{find_tandem_repeat, compute_adaptive_padding, first_change_o
 ///   (`decomposed_variant`) for dual-counting; off, no twin is built
 /// * `read_judge` — The read judgment the rows will be counted with (`rules`, the
 ///   default, or `sequence`, as `count_bam_binned` takes it). Each row's rows within a
-///   read's reach (`Variant::reach_rows`) are recorded for the sequence judge only, which
-///   alone reads them; prepared for the rules, a row is marked so the judge refuses it
+///   read's reach (`Variant::reach_rows`) are recorded for the sequence judge, and under the
+///   rules for the SNV rows routed to it (`Variant::judge_routed`), which read them;
+///   prepared for the rules, a row is marked so the judge refuses it
 ///
 /// # Returns
 /// One `PreparedVariant` per input variant, in the same order.
@@ -68,7 +69,7 @@ pub fn prepare_variants(
     rescue_homopolymer: bool,
     read_judge: &str,
 ) -> PyResult<Vec<PreparedVariant>> {
-    // The rows in reach serve the sequence judge alone: under the rules none is recorded.
+    // The rows in reach serve the sequence judge, and under the rules the SNV rows routed to it.
     let reach_rows = crate::counting::judge::parse_read_judge(read_judge).map_err(pyo3::exceptions::PyValueError::new_err)?
         == crate::counting::judge::ReadJudge::Haplotype;
     info!(

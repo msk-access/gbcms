@@ -42,13 +42,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the shared prefix and suffix are trimmed) has a core, 4 bases in from both ends: a substitution
   wholly inside it is a context of REF's molecules, so a read that reaches and spells it is REF
   and a sibling there claims no REF read. A 60>30 delins has a core; 5>60 does not.
+- **Routing can raise AD.** At a routed SNV row the judge counts a read that carries a listed allele
+  holding X's change as ALT (RJ-28), and a read whose clipped bases carry X. In rq2, 349 reads enter AD
+  at SNV rows, 254 of them off the oracle's anchor; HG002 truth at the routed rows shows no new
+  wrong-ALT. `--alignment-backend` has no effect at routed rows (the judge scores them). The judge's
+  diagnostics (UNEXPLAINED_READS, MNV_SHARED, INDEL_SHARED) can appear on routed rows.
+  Named limit (#418, as on develop): the rules path's REF side weighs only listed alleles that differ
+  inside X's window (RJ-25 (5)(a)).
 - **Two corrections against the text above (rq1, operator 2026-11-03).** (a) The candidate test
   reads the window the event's own windows hold: one flank base each side of a pure indel, two of
   any other event. It read two for a pure indel too, so a listed delins that is X plus a
   substitution at the second flank base became a candidate whose window equals X's: no read could
   tell them apart and every carrier of a 1-base insertion in a 4-base run went to partial (AD 106
   to 0 at one panel row, rules path). (b) The reach of a REF-length allele is measured on its
-  difference from REF before the guard's masks, so an allele that differs only at masked bases still
+  difference from REF before the guard's masks, in every branch (a found allele's background bases at a
+  mask do not widen it), so an allele that differs only at masked bases still
   contests a read that spans them: reached and not told is neither. It had been taken to contest
   nothing, and 91 read calls at six HG002 rows (five insertions, one deletion; 5 of them true ALT at
   c246 INS 1-9) went from neither to REF. The MNP check measures it the same way. The rules path
@@ -60,10 +68,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   lane in every MAF field and read call. Phased truth at those rows (strict view): true ALT credited
   454 to 521, reads of the listed allele credited ALT 142 to 21; scored targets (truth v2dbq20): true
   ALT credited 30,455 to 30,457, true REF called REF unchanged, true ALT called REF 1,339 to 1,336.
-  Judge: 49 arm-rows change; truth classes equal. Speed on
-  HG002 (4 threads, untraced): c246 1.4 times develop, tr 1.1, sub 2.1, nocl 2.5 (9.0 s against
-  3.6 s); the speed work is the speed phase's. Patient sets and the normals are measured on the
-  final build.
+  Judge: 49 arm-rows change; truth classes equal. Speed (rq2, on HPC): patient wall time 1.02 times develop; HG002 CPU 1.28 times; nocl peak memory
+  411 to 905 MiB. Inputs that can be much slower: a long listed deletion with many SNVs inside it,
+  and dense cohort lists (#412).
 - Existing expectations changed by the decision (each with its reason in the test):
   `test_listed_sibling_floor_contract.py` (8 cases, AD 14 to 10),
   `test_locus_alleles_contract.py` (a component never seen alone and one seen on 1 of 100
