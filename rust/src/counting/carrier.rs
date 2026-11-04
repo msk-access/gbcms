@@ -466,13 +466,14 @@ impl Windows {
             (Window { allele, hold: w.hold, tail: w.tail, left, right, before, after, past, outer, event_at }, dl, dr)
         };
         let ((mut r, dl, dr), (mut a, adl, adr)) = (cut(&self.pair.0), cut(&self.pair.1));
+        let ref_len = r.allele.len() as i64;
         let hold = r.hold.saturating_sub(if r.tail { dr } else { dl }).min(r.allele.len()).min(a.allele.len());
         r.hold = hold;
         a.hold = hold;
         // the other alleles share their allele's span: cut as it is
         let others = self.others.iter().map(|w| w[adl..w.len() - adr].to_vec()).collect();
         let ref_others = self.ref_others.iter().map(|w| w[dl..w.len() - dr].to_vec()).collect();
-        Windows { pair: (r, a), event: self.event, own: self.own, others, ref_others, ref_unmasked: self.ref_unmasked.iter().map(|&(a, b)| (a - dl as i64, b - dl as i64)).collect(), masked_hold: None }
+        Windows { pair: (r, a), event: self.event, own: self.own, others, ref_others, ref_unmasked: self.ref_unmasked.iter().map(|&(a, b)| clamp_span((a - dl as i64, b - dl as i64), ref_len)).collect(), masked_hold: None }
     }
 
     /// The windows read on past their right end by the reference's next bases, both
@@ -564,7 +565,7 @@ impl Windows {
             own: self.own,
             others: self.others.iter().map(|o| edit(o, ia)).collect(),
             ref_others: self.ref_others.iter().map(|o| edit(o, i)).collect(),
-            ref_unmasked: self.ref_unmasked.clone(),
+            ref_unmasked: self.ref_unmasked.iter().map(|&sp| edit_span(sp, i as i64, ins.len() as i64, del as i64, edited_len(r, i) as i64)).collect(),
             masked_hold: None,
         })
     }
@@ -1326,20 +1327,39 @@ fn reached_others(w: &Window, others: &[Vec<u8>], start: i64, (first, after): (u
         .collect()
 }
 
-/// [`reached_others`], and the alleles whose difference from REF over the window the masks
-/// hide altogether (`unmasked`: its first to one past its last, window positions) that the
-/// read's span overlaps. The window shows such an allele as REF's own, but the read spans
-/// the difference and cannot read it: reached and not told, so it contests the read (RJ-25,
-/// 2026-11-03). One with no difference over the window contests nothing.
+/// The other alleles of REF's length that contest a read (RJ-25, REF's side): those whose
+/// difference from REF over the window the read's span overlaps, measured before the guard's
+/// masks (`unmasked`: first to one past last, window positions). A mask hides a base from the
+/// window, not from the read that spans it: reached and not told contests (2026-11-03). One with
+/// no difference over the window contests nothing. Without `unmasked` for every allele, by the
+/// differences the window shows ([`reached_others`]).
 fn contesting_others(w: &Window, others: &[Vec<u8>], unmasked: &[(i64, i64)], start: i64, span: (usize, usize)) -> Vec<Vec<u8>> {
-    let mut reached = reached_others(w, others, start, span);
-    for (other, &(a, b)) in others.iter().zip(unmasked) {
-        let shows = other.iter().zip(&w.allele).any(|(&o, &x)| takes(x) & !takes(o) != 0);
-        if !shows && a < b && start + b > span.0 as i64 && start + a < span.1 as i64 {
-            reached.push(other.clone());
-        }
+    if unmasked.len() != others.len() {
+        return reached_others(w, others, start, span);
     }
-    reached
+    others
+        .iter()
+        .zip(unmasked)
+        .filter(|(_, &(a, b))| a < b && start + b > span.0 as i64 && start + a < span.1 as i64)
+        .map(|(o, _)| o.clone())
+        .collect()
+}
+
+/// A span of window positions after `del` bases are removed at `k` and `ins` inserted there,
+/// within a window of `len` bases; `(0, 0)` when no difference is left.
+fn edit_span((a, b): (i64, i64), k: i64, ins: i64, del: i64, len: i64) -> (i64, i64) {
+    if a >= b {
+        return (0, 0);
+    }
+    let a2 = if a < k { a } else if a >= k + del { a - del + ins } else { k + ins };
+    let b2 = if b - 1 < k { b } else if b > k + del { b - del + ins } else { k };
+    clamp_span((a2, b2), len)
+}
+
+/// A span kept inside a window of `len` bases; `(0, 0)` when it is empty.
+fn clamp_span((a, b): (i64, i64), len: i64) -> (i64, i64) {
+    let (a, b) = (a.clamp(0, len), b.clamp(0, len));
+    if a < b { (a, b) } else { (0, 0) }
 }
 
 /// Whether a read, as aligned, reads for every other allele of `guard` beside REF or
@@ -1562,6 +1582,13 @@ fn spliced_windows(
             background,
             others: in_place(&layout.others),
             ref_others: in_place(&layout.ref_others),
+            ref_found: layout
+                .ref_others
+                .iter()
+                .enumerate()
+                .filter(|(_, o)| in_place(std::slice::from_ref(o)).len() == 1)
+                .map(|(k, _)| layout.ref_found.get(k).copied().unwrap_or(false))
+                .collect(),
             from_right: layout.from_right && !own_edge,
             cut_left: layout.cut_left.filter(|_| !own_edge),
         };
@@ -1903,6 +1930,7 @@ struct Layout {
     background: Vec<(i64, Bases)>,
     others: Vec<OtherAllele>,
     ref_others: Vec<OtherAllele>,
+    ref_found: Vec<bool>,
 }
 
 impl Layout {
@@ -1920,6 +1948,7 @@ impl Layout {
                 background: g.background.clone(),
                 others: g.others.clone(),
                 ref_others: g.ref_others.clone(),
+                ref_found: g.ref_found.clone(),
             });
         if let (Some(clip), Some((lo, hi))) = (rules.clip_edges, grown_event(v)) {
             let flank = FLANK as i64;
@@ -1979,8 +2008,14 @@ fn windows_on(v: &Variant, start: i64, reference: Vec<u8>, layout: &Layout) -> O
     // does not hold, or of another length, is not read here).
     let other_haps: Vec<Vec<u8>> =
         layout.others.iter().filter_map(|o| o.on(start, &reference)).filter(|h| h.len() == ev.hap.len()).collect();
-    let ref_other_haps: Vec<Vec<u8>> =
-        layout.ref_others.iter().filter_map(|o| o.on(start, &reference)).filter(|h| h.len() == reference.len()).collect();
+    let ref_other_found: Vec<(Vec<u8>, bool)> = layout
+        .ref_others
+        .iter()
+        .enumerate()
+        .filter_map(|(k, o)| Some((o.on(start, &reference)?, layout.ref_found.get(k).copied().unwrap_or(false))))
+        .filter(|(h, _)| h.len() == reference.len())
+        .collect();
+    let ref_other_haps: Vec<Vec<u8>> = ref_other_found.iter().map(|(h, _)| h.clone()).collect();
     // A masked base matches any read base where a change recurs beside the event, and
     // only the reference's base or the change's where the REF molecules carry one inside
     // the repeat it was grown through, or at a base an MNP keeps (a third base there is
@@ -2047,10 +2082,20 @@ fn windows_on(v: &Variant, start: i64, reference: Vec<u8>, layout: &Layout) -> O
     };
     let (others, ref_others) = (kept(&other_haps, alt_win, (lo, alt_hi)), kept(&ref_other_haps, ref_win, (lo, hi)));
     // where each REF-length allele differs from REF over the window before the masks
-    let ref_unmasked: Vec<(i64, i64)> = ref_other_haps
+    // (a found allele's carriers hold the background at a mask, no difference of the allele's own:
+    // past the masks for it; a listed allele is as the input gives it)
+    let set_at = |i: usize| {
+        let p = start + i as i64;
+        layout.masked.contains(&p).then(|| layout.background.iter().find(|&&(q, _)| q == p).map_or(ANY, |&(_, s)| s))
+    };
+    let ref_unmasked: Vec<(i64, i64)> = ref_other_found
         .iter()
-        .map(|h| {
-            let apart = |&i: &usize| h.get(i).is_some_and(|&b| b != unmasked_reference[i]);
+        .map(|(h, found)| {
+            let apart = |&i: &usize| {
+                h.get(i).is_some_and(|&b| {
+                    b != unmasked_reference[i] && !(*found && set_at(i).is_some_and(|set| class(set, b) == class(set, unmasked_reference[i])))
+                })
+            };
             match ((lo..hi).find(apart), (lo..hi).rev().find(apart)) {
                 (Some(a), Some(b)) => ((a - lo) as i64, (b + 1 - lo) as i64),
                 _ => (0, 0),
@@ -2135,6 +2180,9 @@ pub(crate) struct Guard {
     /// The other alleles of the ALT's length at the locus (RJ-25), and of REF's.
     pub others: Vec<OtherAllele>,
     pub ref_others: Vec<OtherAllele>,
+    /// Whether each of `ref_others` was found from the reads (not listed): a found allele's
+    /// carriers hold the background bases at the masks, which are no difference of its own.
+    pub ref_found: Vec<bool>,
     /// The same alleles as the sequence judge takes them, as site states: each written
     /// as the bases it changes, past the guard's masks (the allele's own base where a
     /// mask takes a carrier's), as RJ-25 reads a spelling. Written over the window with
@@ -2191,6 +2239,7 @@ impl Guard {
             scanned,
             others: Vec::new(),
             ref_others: Vec::new(),
+            ref_found: Vec::new(),
             judge_others: Vec::new(),
             judge_ref_others: Vec::new(),
             indels: Vec::new(),
@@ -3281,6 +3330,10 @@ fn guard_built(
     let mut guard = Guard::new(v, masked, larger, scanned);
     guard.background = background;
     guard.others = others;
+    guard.ref_found = ref_others
+        .iter()
+        .map(|o| !siblings.iter().any(|s| s.pos == o.pos && upper(&s.ref_allele) == o.ref_allele && upper(&s.alt_allele) == o.alt_allele))
+        .collect();
     guard.ref_others = ref_others;
     guard.judge_others = judge_others;
     guard.judge_ref_others = judge_ref_others;
@@ -4918,6 +4971,62 @@ mod tests {
     }
 
     #[test]
+    fn reach_is_measured_on_the_whole_unmasked_difference_not_the_part_the_window_shows() {
+        // S differs from REF at window position 2 (masked: the window shows no difference there)
+        // and at 5 (shown). A read that covers 2 and ends before 5 reaches S's difference.
+        let rw = Window { allele: b"AANGTAC".to_vec(), hold: 7, tail: false, left: None, right: None, before: 0, after: 0, past: Vec::new(), outer: Vec::new(), event_at: (0, 0) };
+        let s = vec![b"AANGTTC".to_vec()];
+        let span = [(2, 6)];
+        assert_eq!(contesting_others(&rw, &s, &span, 0, (0, 4)).len(), 1, "covers the masked base, ends before the shown one: contests");
+        assert!(contesting_others(&rw, &s, &span, 0, (0, 2)).is_empty(), "ends before the first difference");
+        assert!(contesting_others(&rw, &s, &span, -3, (6, 12)).is_empty(), "starts past the last");
+        assert!(contesting_others(&rw, &s, &[(0, 0)], 0, (0, 7)).is_empty(), "no difference in the window");
+    }
+
+    #[test]
+    fn an_mnp_ref_read_that_covers_a_masked_difference_and_ends_before_a_shown_one_is_contested() {
+        let ctx = format!("{}CGCA{}", ag(40, 11), ag(40, 12));
+        let p = 41;
+        let v = var(&ctx, p as i64, "GC", "AT");
+        let (m, u) = (38usize, 44usize);
+        let flip = |b: u8| if b == b'A' { b'G' } else { b'A' };
+        let mut alt = ctx.as_bytes()[m..=u].to_vec();
+        alt[0] = flip(alt[0]);
+        alt[u - m] = flip(alt[u - m]);
+        let mut guard = Guard::new(&v, vec![m as i64], None, 0);
+        guard.ref_others = vec![OtherAllele { pos: m as i64, ref_allele: ctx.as_bytes()[m..=u].to_vec(), alt_allele: alt }];
+        let read = aligned(&ctx.as_bytes()[..u - 1], vec![Cigar::Match((u - 1) as u32)], 0);
+        assert!(!tells_others_aligned(&read, read.qual(), 20, &v, &guard, Side::Ref), "reached at the masked base, not told");
+        let past = aligned(&ctx.as_bytes()[..m], vec![Cigar::Match(m as u32)], 0);
+        assert!(tells_others_aligned(&past, past.qual(), 20, &v, &guard, Side::Ref), "ends before both");
+    }
+
+    #[test]
+    fn the_unmasked_span_follows_a_separate_indel_and_a_trim() {
+        let ctx = format!("{}CGCA{}", ag(40, 11), ag(40, 12));
+        let v = var(&ctx, 41, "GC", "AT");
+        let flip = |b: u8| if b == b'A' { b'G' } else { b'A' };
+        let at = 44usize; // the last base of the window, past the event
+        let layout = Layout {
+            masked: vec![at as i64],
+            ref_others: vec![OtherAllele { pos: at as i64, ref_allele: vec![ctx.as_bytes()[at]], alt_allele: vec![flip(ctx.as_bytes()[at])] }],
+            ..Layout::default()
+        };
+        let w = windows(&v, &layout).expect("windows");
+        let (l, r) = (w.pair.0.left.unwrap(), w.pair.0.right.unwrap());
+        assert_eq!(w.ref_unmasked, vec![(at as i64 - l, at as i64 - l + 1)], "the masked base, window {l}..{r}");
+        let ins = w.with_separate(l + 1, b"T", 0).expect("a separate insertion before the event");
+        assert_eq!(ins.ref_unmasked, vec![(at as i64 - l + 1, at as i64 - l + 2)], "shifted by the inserted base");
+        let del = w.with_separate(l + 1, b"", 1).expect("a separate deletion before the event");
+        assert_eq!(del.ref_unmasked, vec![(at as i64 - l - 1, at as i64 - l)], "shifted back by the deleted base");
+        assert_eq!(edit_span((5, 6), 2, 0, 5, 20), (0, 0), "deleted with the bases");
+        assert_eq!(edit_span((1, 8), 3, 2, 0, 20), (1, 10), "an insertion inside the span widens it");
+        assert_eq!(clamp_span((-3, 4), 10), (0, 4));
+        assert_eq!(clamp_span((8, 15), 10), (8, 10));
+        assert_eq!(clamp_span((11, 15), 10), (0, 0));
+    }
+
+    #[test]
     fn a_listed_allele_meets_the_site_where_their_ref_spans_overlap() {
         let ctx = "ACTGATCGGATCCATTGACAGTGGCAATCAGGACTTAGCGATCCAAGTCAGGATTCAGCATGCA";
         let at = |v: &Variant, s: &Variant| meets_site(v, s, 0, ctx.as_bytes());
@@ -5248,6 +5357,28 @@ mod tests {
         assert_eq!(guard.judge_ref_others.iter().map(|o| spelled(o, &ctx)).collect::<Vec<_>>(), vec![String::from_utf8(want).unwrap()]);
         assert_eq!(guard.judge_ref_others, vec![OtherAllele { pos: p as i64, ref_allele: b"G".to_vec(), alt_allele: b"T".to_vec() }]);
         assert!(guard.judge_others.is_empty() && guard.others.is_empty(), "none of the ALT's length");
+    }
+
+    #[test]
+    fn a_found_alleles_background_base_does_not_widen_its_reach() {
+        // The G>T's carriers also hold the germline base at the mask (position g, left of the
+        // change): found, the allele's difference starts at the G>T; listed, as the input gives
+        // it, at the mask.
+        let (guard, ctx, g, p) = masked_case(20, 0);
+        let guard = guard.expect("a guard");
+        let v = var(&ctx, 30, &ctx[30..37], "TTCT");
+        assert_eq!(guard.ref_found, vec![true], "found from the reads");
+        let layout = |found: bool| Layout {
+            masked: guard.masked.clone(),
+            background: guard.background.clone(),
+            ref_others: guard.ref_others.clone(),
+            ref_found: vec![found],
+            ..Layout::default()
+        };
+        let left = windows(&v, &Layout::default()).unwrap().pair.0.left.unwrap();
+        let first = |found: bool| windows(&v, &layout(found)).unwrap().ref_unmasked[0].0 + left;
+        assert_eq!(first(true), p as i64, "the change alone");
+        assert_eq!(first(false), g as i64, "the mask, for a listed allele");
     }
 
     #[test]

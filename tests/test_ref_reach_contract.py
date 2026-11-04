@@ -574,3 +574,53 @@ def test_a_listed_delins_inside_the_window_still_makes_the_reads_that_cannot_tel
         st = FLANK_P - 60 + (i % 40)
         reads.append(make_read(f"r{i}", c[st : st + READ], st, ((0, READ),), flag=_flag(i)))
     assert _call(_counts(tmp_path, judge, c, [x, s], reads)[0]) == (20, 15, 15)
+
+
+# ── the routing falls back to the rules, said once ──────────────────────
+
+
+def _routed_call(tmp_path, caplog, with_fasta, **kwargs):
+    """An SNV X beside a listed deletion over it (so prep routes it to the judge), counted under
+    the rules with `kwargs`; the engine's fallback warnings."""
+    import logging
+
+    c = _contig(seed=1)
+    x = (P, c[P], _other(c[P]))
+    d = (P, c[P : P + 3], x[2] + c[P + 2])
+    reads = [
+        make_read(f"r{i}", c[P - 40 + i : P + 60 + i], P - 40 + i, ((0, READ),), flag=_flag(i))
+        for i in range(10)
+    ]
+    fa, bam = write_contig(tmp_path, c, reads)
+    pvs = _rs.prepare_variants(
+        [_rs.Variant("1", p, r, a, "COMPLEX") for p, r, a in (x, d)], fa, 5, False, 1, True
+    )
+    vs = [pv.variant for pv in pvs]
+    if with_fasta:
+        kwargs["reference_fasta"] = fa
+    caplog.clear()
+    with caplog.at_level(logging.INFO):
+        count_checked(bam, vs, sibling_variants=[[vs[1]], [vs[0]]], **kwargs)
+    return [
+        r.getMessage() for r in caplog.records if "SNV row(s) beside a listed" in r.getMessage()
+    ]
+
+
+def test_a_routed_row_with_no_reference_fasta_is_counted_by_the_rules_with_one_warning(
+    tmp_path, caplog
+):
+    msgs = _routed_call(tmp_path, caplog, with_fasta=False)
+    assert (
+        len(msgs) == 2
+    ), msgs  # one per count: the helper counts twice (production bins, one row per bin)
+    assert "no reference_fasta is given" in msgs[0]
+
+
+def test_a_routed_row_given_the_reference_is_judged_without_a_warning(tmp_path, caplog):
+    assert _routed_call(tmp_path, caplog, with_fasta=True) == []
+
+
+def test_a_routed_row_in_rna_mode_is_counted_by_the_rules_with_one_warning(tmp_path, caplog):
+    msgs = _routed_call(tmp_path, caplog, with_fasta=True, mode="rna")
+    assert len(msgs) == 2, msgs  # one per count, as above
+    assert "RNA mode does not judge spliced reads yet" in msgs[0]
