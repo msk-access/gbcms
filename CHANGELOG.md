@@ -42,6 +42,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the shared prefix and suffix are trimmed) has a core, 4 bases in from both ends: a substitution
   wholly inside it is a context of REF's molecules, so a read that reaches and spells it is REF
   and a sibling there claims no REF read. A 60>30 delins has a core; 5>60 does not.
+- **Stopgap (#418).** a found allele's background bases are left out of its reach only where the allele also differs at an unmasked base inside X's window; where its only differences inside the window are masked, those differences are its reach. Without it HG002 c246 INS 1-9 gets 185 true-ALT reads called REF against develop's 182, because the allele's one unmasked difference lies outside the window. It goes when #418 is fixed.
 - **Routing can raise AD.** At a routed SNV row the judge counts a read that carries a listed allele
   holding X's change as ALT (RJ-28), and a read whose clipped bases carry X. In rq2, 349 reads enter AD
   at SNV rows, 254 of them off the oracle's anchor; HG002 truth at the routed rows shows no new

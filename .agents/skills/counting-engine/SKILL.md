@@ -63,7 +63,7 @@ not REF for this row, and a tie between rows is neither row's AD (RJ-5).
   over `reached_others`, `tells_others_aligned` for MNPs); one past its end does not contest it;
   reached and not told is neither. Reach is measured on the allele's difference before the guard's
   masks (`Windows::ref_unmasked`): a mask hides a base from the windows, not from a read that
-  spans it (2026-11-03).
+  spans it (2026-11-03). Stopgap tied to #418: a found allele's background bases are left out of its reach only where the allele also differs at an unmasked base inside X's window; where its only differences inside the window are masked, those differences are its reach. Without it HG002 c246 INS 1-9 gets 185 true-ALT reads called REF against develop's 182, because the allele's one unmasked difference lies outside the window. It goes when #418 is fixed.
 - An SNV row where the input lists an indel or delins whose span meets its site is counted by the
   sequence judge also under the rules (`Variant::judge_routed`, set by prep:
   `normalize::engine::assign_judge_routing`, `meets_snv_site`; the count engine's `judge_of`).
