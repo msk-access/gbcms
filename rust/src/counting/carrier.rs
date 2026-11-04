@@ -2081,9 +2081,11 @@ fn windows_on(v: &Variant, start: i64, reference: Vec<u8>, layout: &Layout) -> O
         haps.iter().map(|h| h[a..b].iter().zip(win).map(|(&o, &w)| masked(o, w)).collect()).collect()
     };
     let (others, ref_others) = (kept(&other_haps, alt_win, (lo, alt_hi)), kept(&ref_other_haps, ref_win, (lo, hi)));
-    // where each REF-length allele differs from REF over the window before the masks
-    // (a found allele's carriers hold the background at a mask, no difference of the allele's own:
-    // past the masks for it; a listed allele is as the input gives it)
+    // where each REF-length allele differs from REF over the window before the masks. A found
+    // allele's carriers hold the background at a mask, no difference of the allele's own: where it
+    // differs at an unmasked base (or a third base at a mask) inside the window, the span is the
+    // bases past the masks, so the background does not widen it; differing at masks alone, the
+    // masked differences are all it has. A listed allele is as the input gives it.
     let set_at = |i: usize| {
         let p = start + i as i64;
         layout.masked.contains(&p).then(|| layout.background.iter().find(|&&(q, _)| q == p).map_or(ANY, |&(_, s)| s))
@@ -2091,11 +2093,10 @@ fn windows_on(v: &Variant, start: i64, reference: Vec<u8>, layout: &Layout) -> O
     let ref_unmasked: Vec<(i64, i64)> = ref_other_found
         .iter()
         .map(|(h, found)| {
-            let apart = |&i: &usize| {
-                h.get(i).is_some_and(|&b| {
-                    b != unmasked_reference[i] && !(*found && set_at(i).is_some_and(|set| class(set, b) == class(set, unmasked_reference[i])))
-                })
-            };
+            let raw = |&i: &usize| h.get(i).is_some_and(|&b| b != unmasked_reference[i]);
+            let past_masks =
+                |i: &usize| raw(i) && set_at(*i).is_none_or(|set| class(set, h[*i]) != class(set, unmasked_reference[*i]));
+            let apart: &dyn Fn(&usize) -> bool = if *found && (lo..hi).any(|i| past_masks(&i)) { &past_masks } else { &raw };
             match ((lo..hi).find(apart), (lo..hi).rev().find(apart)) {
                 (Some(a), Some(b)) => ((a - lo) as i64, (b + 1 - lo) as i64),
                 _ => (0, 0),
