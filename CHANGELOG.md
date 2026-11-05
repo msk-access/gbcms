@@ -14,7 +14,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Tests — RNA pins (#344, #345, #346)
 
 - Pinned decided behaviour, no count change: reads carrying another allele are in a transcript's DP and in no transcript AD/RD or ASJD partition; antisense reads carrying another allele appear in no column under enforcement, and count as partial evidence with `--no-strandedness` or with no GTF; an edit inside an insertion's bases is decided by the reads, and an editing database cannot reach it.
-- Decided and pinned (RJ-32): a read with no junction fits every transcript it overlaps, so it counts in each such transcript's DP and RD, and once in the row's counts. No count changes.
+- Decided and pinned (RJ-32): a read with no junction fits every transcript it overlaps, so it counts in the DP and RD of each overlapping spliced transcript, and once in the row's counts. A single-exon transcript gets no per-transcript entry. No count changes.
 
 ### Deprecated — `--rescue-homopolymer` (removed in 6.8.0)
 
