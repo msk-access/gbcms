@@ -3735,7 +3735,7 @@ can still be adopted, and the rescued <abbr title="Variant Allele Frequency - Fr
 <tr>
 <td style="text-align: left;"><code>--rescue-homopolymer</code></td>
 <td style="text-align: left;"><code>false</code></td>
-<td style="text-align: left;">Dual-count the <a href="#reference-variant-normalization-step-5-homopolymer-decomposition-detection">homopolymer twin</a>. For a delins whose REF is a run of one base and whose ALT is the base after the run (<code>CCCCCC&gt;T</code>), also count the run with its last base replaced (<code>CCCCCT</code>), and report whichever form has more ALT reads, flagged <code>WARN_HOMOPOLYMER_DECOMP</code>.</td>
+<td style="text-align: left;"><strong>Deprecated.</strong> Deprecated in 6.7.0; removed in 6.8.0; it did nothing useful the diagnostics do not (<a href="#reference-qc-flags"><code>OBSERVED_ALLELE</code> and <code>COEXISTING_ALLELE</code></a>). Accepted and ignored, with a warning; the row counts the given allele.</td>
 </tr>
 </tbody>
 </table>
@@ -6034,7 +6034,7 @@ skip the merge step and output the single <abbr title="Mutation Annotation Forma
 <tr>
 <td style="text-align: left;"><code>--rescue_homopolymer</code></td>
 <td style="text-align: left;"><code>false</code></td>
-<td style="text-align: left;">Dual-count the <a href="#reference-variant-normalization-step-5-homopolymer-decomposition-detection">homopolymer twin</a> and report the form with more ALT reads (<code>WARN_HOMOPOLYMER_DECOMP</code>). Off: the row counts the given allele, and <code>OBSERVED_ALLELE</code> names the allele the reads carry.</td>
+<td style="text-align: left;"><strong>Deprecated.</strong> Deprecated in 6.7.0; removed in 6.8.0. Still accepted and ignored, with a warning; it did nothing useful the diagnostics do not (<a href="#reference-qc-flags"><code>OBSERVED_ALLELE</code> and <code>COEXISTING_ALLELE</code></a>). The row counts the given allele.</td>
 </tr>
 <tr>
 <td style="text-align: left;"><code>--rescue_mnp_threshold</code></td>
@@ -8954,7 +8954,7 @@ appear at all in DNA mode output.</p>
 <tr>
 <td style="text-align: left;"><code>rna_antisense_depth</code></td>
 <td style="text-align: left;">Integer</td>
-<td style="text-align: left;">REF and ALT reads on the antisense strand (first-class, over the anchor). Under <code>--enforce-strandedness</code> (the RNA default) these reads are kept out of REF, ALT, depth, fragments and the other counts, but are still classified and tallied here, so the column is the same with <code>--no-strandedness</code>. Exceptions: <code>--rescue-homopolymer</code> and <code>--rescue-mnp</code> choose between counts by ALT depth, so the adopted form (and this column) can differ between the modes; loci without a gene strand (intergenic, or genes of both strands over the locus) report 0, as every read there counts as sense, and so does a whole run with <code>--strandedness unstranded</code>. An antisense read carrying another allele is tallied nowhere under enforcement; with <code>--no-strandedness</code> it counts in <code>partial_alt</code>.</td>
+<td style="text-align: left;">REF and ALT reads on the antisense strand (first-class, over the anchor). Under <code>--enforce-strandedness</code> (the RNA default) these reads are kept out of REF, ALT, depth, fragments and the other counts, but are still classified and tallied here, so the column is the same with <code>--no-strandedness</code>. Exceptions: <code>--rescue-mnp</code> chooses between counts by ALT depth, so the adopted form (and this column) can differ between the modes; loci without a gene strand (intergenic, or genes of both strands over the locus) report 0, as every read there counts as sense, and so does a whole run with <code>--strandedness unstranded</code>. An antisense read carrying another allele is tallied nowhere under enforcement; with <code>--no-strandedness</code> it counts in <code>partial_alt</code>.</td>
 </tr>
 <tr>
 <td style="text-align: left;"><code>rna_alt_sense_count</code></td>
@@ -9743,7 +9743,7 @@ same string is in the <abbr title="Variant Call Format - Standard variant call f
 <tr>
 <td style="text-align: left;"><code>WARN_HOMOPOLYMER_DECOMP</code></td>
 <td style="text-align: left;">PASS</td>
-<td style="text-align: left;">With <code>--rescue-homopolymer</code>: the variant spans a homopolymer, was dual-counted with a corrected allele, and the corrected allele won</td>
+<td style="text-align: left;">Never set in 6.7.0 (<code>--rescue-homopolymer</code> is deprecated and ignored; removed in 6.8.0). Before: with the flag, the variant spans a homopolymer, was dual-counted with a corrected allele, and the corrected allele won</td>
 <td style="text-align: left;">The row reports that allele's counts, not the given one</td>
 </tr>
 <tr>
@@ -10908,10 +10908,10 @@ Use mouse to pan and zoom
 </div>
 <hr>
 <h2 id="reference-variant-normalization-step-5-homopolymer-decomposition-detection">Step 5: Homopolymer Decomposition Detection<a class="headerlink" href="#reference-variant-normalization-step-5-homopolymer-decomposition-detection" title="Permanent link">¶</a></h2>
-<p>Some variant callers merge nearby events in a homopolymer run into one complex variant with an inflated deletion, e.g. <code>CCCCCC→T</code> where the reads show a smaller change at the run's end. With <code>--rescue-homopolymer</code>, gbcms also counts a <strong>corrected allele</strong> for such calls and reports whichever of the two more reads support.</p>
+<p>Some variant callers merge nearby events in a homopolymer run into one complex variant with an inflated deletion, e.g. <code>CCCCCC→T</code> where the reads show a smaller change at the run's end. <code>--rescue-homopolymer</code> is <strong>deprecated in 6.7.0 and removed in 6.8.0</strong>: it is accepted, warns and is ignored, and gbcms builds and counts no corrected allele. Until 6.6.x, with the flag, gbcms also counted a <strong>corrected allele</strong> for such calls and reports whichever of the two more reads support.</p>
 <div class="admonition info">
 <p class="admonition-title">Off by default: the row counts the given allele</p>
-<p>gbcms takes the input allele as correct. By default the row reports the given allele's counts. When the reads carry a different allele, <code>gbcms_diagnostic</code> names it: <code>OBSERVED_ALLELE(chrom:pos:REF&gt;ALT:n/0)</code> when no read carries the given allele, <code>COEXISTING_ALLELE(...:n/m)</code> when the given allele is present beside a more frequent one. Prep still builds the corrected allele; it is counted only with <code>--rescue-homopolymer</code>.</p>
+<p>gbcms takes the input allele as correct. By default the row reports the given allele's counts. When the reads carry a different allele, <code>gbcms_diagnostic</code> names it: <code>OBSERVED_ALLELE(chrom:pos:REF&gt;ALT:n/0)</code> when no read carries the given allele, <code>COEXISTING_ALLELE(...:n/m)</code> when the given allele is present beside a more frequent one. The flag is deprecated and ignored (6.7.0).</p>
 <p>The twin became opt-in because its arbitration is not an exact haplotype match. At the case it was built for (SOX2, below), the reads carry <code>CCCCT</code>, a 1bp deletion plus C→T, not the twin <code>CCCCCT</code>. The twin wins there by tolerance. At other real twin loci it claims most of the called allele's own exact carriers. <code>OBSERVED_ALLELE</code> names <code>CCCCT</code> exactly.</p>
 </div>
 <h3 id="reference-variant-normalization-detection-criteria">Detection Criteria<a class="headerlink" href="#reference-variant-normalization-detection-criteria" title="Permanent link">¶</a></h3>
@@ -10971,7 +10971,7 @@ Use mouse to pan and zoom
 <a id="__codelineno-1-5" name="__codelineno-1-5" href="#reference-variant-normalization-__codelineno-1-5"></a>Step 3: corrected_alt = C × (ref_len - 1) + alt_last = CCCCC + T = CCCCCT
 </code></pre></div>
 <h3 id="reference-variant-normalization-dual-counting-flow">Dual-Counting Flow<a class="headerlink" href="#reference-variant-normalization-dual-counting-flow" title="Permanent link">¶</a></h3>
-<p>With <code>--rescue-homopolymer</code> (<code>prepare_variants(..., rescue_homopolymer=True)</code>), the corrected variant is stored in <code>PreparedVariant.decomposed_variant</code>; without it, prep builds no twin. During counting, <strong>both</strong> the original and corrected alleles are counted independently. The result with the higher <code>alt_count</code> wins:</p>
+<p>Historical (the flag is ignored in 6.7.0, removed in 6.8.0): with <code>--rescue-homopolymer</code>, the corrected variant is stored in <code>PreparedVariant.decomposed_variant</code>; without it, prep builds no twin. During counting, <strong>both</strong> the original and corrected alleles are counted independently. The result with the higher <code>alt_count</code> wins:</p>
 <div class="panzoom-box" data-key="none" id="panzoom0" oncontextmenu="return false;">
     
     <nav class="panzoom-nav">
@@ -11024,7 +11024,7 @@ Use mouse to pan and zoom
 <p class="admonition-title">Real-World: SOX2</p>
 <p><strong>SOX2</strong>, <code>CCCCCC→T</code> (6bp→1bp, net −5bp). The reads carry <code>CCCCT</code>.
 - <strong>Default:</strong> the row reports <code>CCCCCC→T</code> (alt=3), and <code>gbcms_diagnostic</code> names <code>CCCCT</code>.
-- <strong>With <code>--rescue-homopolymer</code>:</strong> the corrected <code>CCCCCC→CCCCCT</code> (alt=79) wins, and the row reports <code>gbcms_status = PASS</code>, <code>gbcms_status_reason = WARN_HOMOPOLYMER_DECOMP</code>.</p>
+- <strong>With <code>--rescue-homopolymer</code> (before 6.7.0):</strong> the corrected <code>CCCCCC→CCCCCT</code> (alt=79) wins, and the row reports <code>gbcms_status = PASS</code>, <code>gbcms_status_reason = WARN_HOMOPOLYMER_DECOMP</code>.</p>
 </div>
 <hr>
 <h2 id="reference-variant-normalization-validation-status-reference">Validation Status Reference<a class="headerlink" href="#reference-variant-normalization-validation-status-reference" title="Permanent link">¶</a></h2>
@@ -11059,7 +11059,7 @@ string is byte-identical in the <abbr title="Mutation Annotation Format - Standa
 <tr>
 <td style="text-align: left;"><code>WARN_HOMOPOLYMER_DECOMP</code></td>
 <td style="text-align: left;">PASS</td>
-<td style="text-align: left;">With <code>--rescue-homopolymer</code>: the variant spans a homopolymer, was dual-counted with a corrected allele, and the corrected allele won</td>
+<td style="text-align: left;">Never set in 6.7.0 (<code>--rescue-homopolymer</code> is deprecated and ignored; removed in 6.8.0). Before: with the flag, the variant spans a homopolymer, was dual-counted with a corrected allele, and the corrected allele won</td>
 <td style="text-align: left;">The row reports that allele's counts, not the given one</td>
 </tr>
 <tr>
@@ -20559,6 +20559,21 @@ count-affecting merge since the previous release, run on the changed rows only.<
 <p>The format is based on <a href="https://keepachangelog.com/en/1.0.0/">Keep a Changelog</a>,
 and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semantic Versioning</a>.</p>
 <h2 id="development-changelog-unreleased">[Unreleased]<a class="headerlink" href="#development-changelog-unreleased" title="Permanent link">¶</a></h2>
+<h3 id="development-changelog-deprecated-rescue-homopolymer-removed-in-680">Deprecated — <code>--rescue-homopolymer</code> (removed in 6.8.0)<a class="headerlink" href="#development-changelog-deprecated-rescue-homopolymer-removed-in-680" title="Permanent link">¶</a></h3>
+<ul>
+<li><strong><code>--rescue-homopolymer</code> is deprecated in 6.7.0 and removed in 6.8.0.</strong> <code>gbcms dna</code>,
+  <code>gbcms rna</code>, the <code>Pipeline</code>, <code>observe_molecules(rescue_homopolymer=...)</code> and the Nextflow
+  <code>--rescue_homopolymer</code> accept it, warn once and ignore it, as <code>--gtf-cache-dir</code> was in 6.6.0.
+  The twin is never built, so <code>WARN_HOMOPOLYMER_DECOMP</code> is never set. It did nothing useful
+  the diagnostics do not: <code>OBSERVED_ALLELE</code> and <code>COEXISTING_ALLELE</code> in <code>gbcms_diagnostic</code>
+  name the allele the reads carry.</li>
+<li>Measured on origin/develop <code>df5da55f</code> (hp1): of 20 runs whose variant list holds a twin
+    candidate (71 rows scored), the twin won at 1 of 20 candidate rows (5%), moving <abbr title="Alternate Depth - Reads supporting the alternate allele">AD</abbr> by +2
+    (17 to 19) while 17 reads moved into <abbr title="Reference Depth - Reads supporting the reference allele">RD</abbr>. At the SOX2-shaped rows (REF length 6, ALT length 1)
+    it won at none, and the default diagnostic named the 1 bp deletion plus the change in 2 of 3.</li>
+<li>The Rust binding's <code>rescue_homopolymer</code> parameter, <code>decomp.rs</code> and the dual count stay
+    until 6.8.0 removes them; Python no longer sends the flag.</li>
+</ul>
 <h3 id="development-changelog-changed-rna-a-splice-never-lowers-a-bases-quality-292-rj-31">Changed — RNA: a splice never lowers a base's quality (#292, RJ-31)<a class="headerlink" href="#development-changelog-changed-rna-a-splice-never-lowers-a-bases-quality-292-rj-31" title="Permanent link">¶</a></h3>
 <ul>
 <li>Heuristic <abbr title="Base Alignment Quality - Heuristic quality downgrade near a read's insertions and deletions">BAQ</abbr> (<code>--apply-baq</code>, on by default in <code>gbcms rna</code>) no longer lowers the five read
@@ -25407,7 +25422,7 @@ with 26/27 bases correct and 1 trailing base that's a <abbr title="Mutation Anno
 </details>
 <details class="question">
 <summary><code>WARN_HOMOPOLYMER_DECOMP</code> reason (verdict <code>PASS</code>) — what changed?</summary>
-<p>The run used <code>--rescue-homopolymer</code>, and the variant is a homopolymer run called as a
+<p>Only files from before 6.7.0 hold it: <code>--rescue-homopolymer</code> is deprecated in 6.7.0 (removed in 6.8.0) and ignored. The run used <code>--rescue-homopolymer</code>, and the variant is a homopolymer run called as a
 larger deletion (e.g. <code>CCCCCC→T</code>). In this sample, the corrected allele (the run with its
 last base replaced, <code>CCCCCC→CCCCCT</code>) got more ALT support, so its counts were used.
 <code>used_decomposed = True</code> in the output, and the flag is set per sample. Without the flag,

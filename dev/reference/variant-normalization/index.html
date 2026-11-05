@@ -1473,10 +1473,10 @@ Use mouse to pan and zoom
 </div>
 <hr>
 <h2 id="step-5-homopolymer-decomposition-detection">Step 5: Homopolymer Decomposition Detection<a class="headerlink" href="#step-5-homopolymer-decomposition-detection" title="Permanent link">¶</a></h2>
-<p>Some variant callers merge nearby events in a homopolymer run into one complex variant with an inflated deletion, e.g. <code>CCCCCC→T</code> where the reads show a smaller change at the run's end. With <code>--rescue-homopolymer</code>, gbcms also counts a <strong>corrected allele</strong> for such calls and reports whichever of the two more reads support.</p>
+<p>Some variant callers merge nearby events in a homopolymer run into one complex variant with an inflated deletion, e.g. <code>CCCCCC→T</code> where the reads show a smaller change at the run's end. <code>--rescue-homopolymer</code> is <strong>deprecated in 6.7.0 and removed in 6.8.0</strong>: it is accepted, warns and is ignored, and gbcms builds and counts no corrected allele. Until 6.6.x, with the flag, gbcms also counted a <strong>corrected allele</strong> for such calls and reports whichever of the two more reads support.</p>
 <div class="admonition info">
 <p class="admonition-title">Off by default: the row counts the given allele</p>
-<p>gbcms takes the input allele as correct. By default the row reports the given allele's counts. When the reads carry a different allele, <code>gbcms_diagnostic</code> names it: <code>OBSERVED_ALLELE(chrom:pos:REF&gt;ALT:n/0)</code> when no read carries the given allele, <code>COEXISTING_ALLELE(...:n/m)</code> when the given allele is present beside a more frequent one. Prep still builds the corrected allele; it is counted only with <code>--rescue-homopolymer</code>.</p>
+<p>gbcms takes the input allele as correct. By default the row reports the given allele's counts. When the reads carry a different allele, <code>gbcms_diagnostic</code> names it: <code>OBSERVED_ALLELE(chrom:pos:REF&gt;ALT:n/0)</code> when no read carries the given allele, <code>COEXISTING_ALLELE(...:n/m)</code> when the given allele is present beside a more frequent one. The flag is deprecated and ignored (6.7.0).</p>
 <p>The twin became opt-in because its arbitration is not an exact haplotype match. At the case it was built for (SOX2, below), the reads carry <code>CCCCT</code>, a 1bp deletion plus C→T, not the twin <code>CCCCCT</code>. The twin wins there by tolerance. At other real twin loci it claims most of the called allele's own exact carriers. <code>OBSERVED_ALLELE</code> names <code>CCCCT</code> exactly.</p>
 </div>
 <h3 id="detection-criteria">Detection Criteria<a class="headerlink" href="#detection-criteria" title="Permanent link">¶</a></h3>
@@ -1535,7 +1535,7 @@ Use mouse to pan and zoom
 <a href="#__codelineno-1-5" id="__codelineno-1-5" name="__codelineno-1-5"></a>Step 3: corrected_alt = C × (ref_len - 1) + alt_last = CCCCC + T = CCCCCT
 </code></pre></div>
 <h3 id="dual-counting-flow">Dual-Counting Flow<a class="headerlink" href="#dual-counting-flow" title="Permanent link">¶</a></h3>
-<p>With <code>--rescue-homopolymer</code> (<code>prepare_variants(..., rescue_homopolymer=True)</code>), the corrected variant is stored in <code>PreparedVariant.decomposed_variant</code>; without it, prep builds no twin. During counting, <strong>both</strong> the original and corrected alleles are counted independently. The result with the higher <code>alt_count</code> wins:</p>
+<p>Historical (the flag is ignored in 6.7.0, removed in 6.8.0): with <code>--rescue-homopolymer</code>, the corrected variant is stored in <code>PreparedVariant.decomposed_variant</code>; without it, prep builds no twin. During counting, <strong>both</strong> the original and corrected alleles are counted independently. The result with the higher <code>alt_count</code> wins:</p>
 <div class="panzoom-box" data-key="none" id="panzoom0" oncontextmenu="return false;">
 <nav class="panzoom-nav">
 <button class="panzoom-info panzoom-button">
@@ -1587,7 +1587,7 @@ Use mouse to pan and zoom
 <p class="admonition-title">Real-World: SOX2</p>
 <p><strong>SOX2</strong>, <code>CCCCCC→T</code> (6bp→1bp, net −5bp). The reads carry <code>CCCCT</code>.
 - <strong>Default:</strong> the row reports <code>CCCCCC→T</code> (alt=3), and <code>gbcms_diagnostic</code> names <code>CCCCT</code>.
-- <strong>With <code>--rescue-homopolymer</code>:</strong> the corrected <code>CCCCCC→CCCCCT</code> (alt=79) wins, and the row reports <code>gbcms_status = PASS</code>, <code>gbcms_status_reason = WARN_HOMOPOLYMER_DECOMP</code>.</p>
+- <strong>With <code>--rescue-homopolymer</code> (before 6.7.0):</strong> the corrected <code>CCCCCC→CCCCCT</code> (alt=79) wins, and the row reports <code>gbcms_status = PASS</code>, <code>gbcms_status_reason = WARN_HOMOPOLYMER_DECOMP</code>.</p>
 </div>
 <hr>
 <h2 id="validation-status-reference">Validation Status Reference<a class="headerlink" href="#validation-status-reference" title="Permanent link">¶</a></h2>
@@ -1622,7 +1622,7 @@ string is byte-identical in the <abbr title="Mutation Annotation Format - Standa
 <tr>
 <td style="text-align: left;"><code>WARN_HOMOPOLYMER_DECOMP</code></td>
 <td style="text-align: left;">PASS</td>
-<td style="text-align: left;">With <code>--rescue-homopolymer</code>: the variant spans a homopolymer, was dual-counted with a corrected allele, and the corrected allele won</td>
+<td style="text-align: left;">Never set in 6.7.0 (<code>--rescue-homopolymer</code> is deprecated and ignored; removed in 6.8.0). Before: with the flag, the variant spans a homopolymer, was dual-counted with a corrected allele, and the corrected allele won</td>
 <td style="text-align: left;">The row reports that allele's counts, not the given one</td>
 </tr>
 <tr>
@@ -1711,7 +1711,7 @@ counting but still <strong>written to the output</strong> with their <code>FAIL<
 <span class="md-icon" title="Last update">
 <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M21 13.1c-.1 0-.3.1-.4.2l-1 1 2.1 2.1 1-1c.2-.2.2-.6 0-.8l-1.3-1.3c-.1-.1-.2-.2-.4-.2m-1.9 1.8-6.1 6V23h2.1l6.1-6.1zM12.5 7v5.2l4 2.4-1 1L11 13V7zM11 21.9c-5.1-.5-9-4.8-9-9.9C2 6.5 6.5 2 12 2c5.3 0 9.6 4.1 10 9.3-.3-.1-.6-.2-1-.2s-.7.1-1 .2C19.6 7.2 16.2 4 12 4c-4.4 0-8 3.6-8 8 0 4.1 3.1 7.5 7.1 7.9l-.1.2z"></path></svg>
 </span>
-<span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-timeago" title="October 29, 2026 00:14:04 UTC"><span class="timeago" datetime="2026-10-29T00:14:04+00:00" locale="en"></span></span><span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-iso_date" title="October 29, 2026 00:14:04 UTC">2026-10-29</span>
+<span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-timeago" title="November 5, 2026 18:35:47 UTC"><span class="timeago" datetime="2026-11-05T18:35:47+00:00" locale="en"></span></span><span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-iso_date" title="November 5, 2026 18:35:47 UTC">2026-11-05</span>
 </span>
 <span class="md-source-file__fact">
 <span class="md-icon" title="Created">

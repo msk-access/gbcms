@@ -770,6 +770,15 @@
 <nav aria-label="[Unreleased]" class="md-nav">
 <ul class="md-nav__list">
 <li class="md-nav__item">
+<a class="md-nav__link" href="#deprecated-rescue-homopolymer-removed-in-680">
+<span class="md-ellipsis">
+      
+        Deprecated — --rescue-homopolymer (removed in 6.8.0)
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
 <a class="md-nav__link" href="#changed-rna-a-splice-never-lowers-a-bases-quality-292-rj-31">
 <span class="md-ellipsis">
       
@@ -3143,6 +3152,21 @@
 <p>The format is based on <a href="https://keepachangelog.com/en/1.0.0/">Keep a Changelog</a>,
 and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semantic Versioning</a>.</p>
 <h2 id="unreleased">[Unreleased]<a class="headerlink" href="#unreleased" title="Permanent link">¶</a></h2>
+<h3 id="deprecated-rescue-homopolymer-removed-in-680">Deprecated — <code>--rescue-homopolymer</code> (removed in 6.8.0)<a class="headerlink" href="#deprecated-rescue-homopolymer-removed-in-680" title="Permanent link">¶</a></h3>
+<ul>
+<li><strong><code>--rescue-homopolymer</code> is deprecated in 6.7.0 and removed in 6.8.0.</strong> <code>gbcms dna</code>,
+  <code>gbcms rna</code>, the <code>Pipeline</code>, <code>observe_molecules(rescue_homopolymer=...)</code> and the Nextflow
+  <code>--rescue_homopolymer</code> accept it, warn once and ignore it, as <code>--gtf-cache-dir</code> was in 6.6.0.
+  The twin is never built, so <code>WARN_HOMOPOLYMER_DECOMP</code> is never set. It did nothing useful
+  the diagnostics do not: <code>OBSERVED_ALLELE</code> and <code>COEXISTING_ALLELE</code> in <code>gbcms_diagnostic</code>
+  name the allele the reads carry.</li>
+<li>Measured on origin/develop <code>df5da55f</code> (hp1): of 20 runs whose variant list holds a twin
+    candidate (71 rows scored), the twin won at 1 of 20 candidate rows (5%), moving <abbr title="Alternate Depth - Reads supporting the alternate allele">AD</abbr> by +2
+    (17 to 19) while 17 reads moved into <abbr title="Reference Depth - Reads supporting the reference allele">RD</abbr>. At the SOX2-shaped rows (REF length 6, ALT length 1)
+    it won at none, and the default diagnostic named the 1 bp deletion plus the change in 2 of 3.</li>
+<li>The Rust binding's <code>rescue_homopolymer</code> parameter, <code>decomp.rs</code> and the dual count stay
+    until 6.8.0 removes them; Python no longer sends the flag.</li>
+</ul>
 <h3 id="changed-rna-a-splice-never-lowers-a-bases-quality-292-rj-31">Changed — RNA: a splice never lowers a base's quality (#292, RJ-31)<a class="headerlink" href="#changed-rna-a-splice-never-lowers-a-bases-quality-292-rj-31" title="Permanent link">¶</a></h3>
 <ul>
 <li>Heuristic <abbr title="Base Alignment Quality - Heuristic quality downgrade near a read's insertions and deletions">BAQ</abbr> (<code>--apply-baq</code>, on by default in <code>gbcms rna</code>) no longer lowers the five read
