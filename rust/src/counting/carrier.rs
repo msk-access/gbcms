@@ -3341,10 +3341,13 @@ fn guard_built(
     let mut guard = Guard::new(v, masked, larger, scanned);
     guard.background = background;
     guard.others = others;
-    guard.ref_found = ref_others
+    // An allele is listed when a listed row spells its haplotype, whatever its padding: the one
+    // haplotype is kept once (`other_alleles`), as the found spelling over the window or the row.
+    let listed_haps: Vec<Vec<u8>> = siblings
         .iter()
-        .map(|o| !siblings.iter().any(|s| s.pos == o.pos && upper(&s.ref_allele) == o.ref_allele && upper(&s.alt_allele) == o.alt_allele))
+        .filter_map(|s| OtherAllele { pos: s.pos, ref_allele: upper(&s.ref_allele), alt_allele: upper(&s.alt_allele) }.on(start, &reference))
         .collect();
+    guard.ref_found = ref_others.iter().map(|o| !o.on(start, &reference).is_some_and(|h| listed_haps.contains(&h))).collect();
     guard.ref_others = ref_others;
     guard.judge_others = judge_others;
     guard.judge_ref_others = judge_ref_others;
@@ -5464,6 +5467,34 @@ mod tests {
         let first = |found: bool| windows(&v, &layout(found)).unwrap().ref_unmasked[0].0 + left;
         assert_eq!(first(true), p as i64, "the change alone");
         assert_eq!(first(false), g as i64, "the mask, for a listed allele");
+    }
+
+    #[test]
+    fn a_listed_allele_stays_listed_whatever_its_padding_when_reads_also_spell_it() {
+        // The same allele, listed as an MNV from the germline base (masked) to the G>T, and found
+        // from its carriers' spelling over the window: one haplotype, so the found one stands in
+        // the list, but the allele is the input's.
+        let (_, ctx, g, p) = masked_case(20, 0);
+        let v = var(&ctx, 30, &ctx[30..37], "TTCT");
+        let flip = |b: u8| if b == b'A' { b'G' } else { b'A' };
+        let mut alt = ctx.as_bytes()[g..=p].to_vec();
+        alt[0] = flip(alt[0]);
+        *alt.last_mut().unwrap() = b'T';
+        let listed = var(&ctx, g as i64, &ctx[g..=p], std::str::from_utf8(&alt).unwrap());
+        let mut reference = ctx.clone().into_bytes();
+        reference[g] = flip(reference[g]);
+        let allele = [&reference[..30], b"TTCT", &reference[37..]].concat();
+        let mut odd = reference.clone();
+        odd[p] = b'T';
+        let reads = [
+            fragments(&aligned(&reference, vec![Cigar::Match(98)], 0), 300, "r"),
+            fragments(&aligned(&allele, vec![Cigar::Match(30), Cigar::Ins(4), Cigar::Del(7), Cigar::Match(61)], 0), 100, "a"),
+            fragments(&aligned(&odd, vec![Cigar::Match(98)], 0), 20, "o"),
+        ]
+        .concat();
+        let guard = guard_for(&reads, &v, &|_| true, 20, std::slice::from_ref(&listed)).expect("a guard");
+        assert_eq!(guard.ref_others.len(), 1, "one haplotype");
+        assert_eq!(guard.ref_found, vec![false], "listed, whatever its padding");
     }
 
     #[test]
