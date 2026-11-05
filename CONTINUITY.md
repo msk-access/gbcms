@@ -4,7 +4,7 @@
 > Update the **Now** and **Next** sections as work progresses. When a "Now" section is finished,
 > move it to `.agents/archive/CONTINUITY_ARCHIVE.md` (older sections live there).
 
-_Last updated: 2026-11-03_
+_Last updated: 2026-11-05_
 
 ## Now — 6.7.0: the count-changing class plans, one at a time (2026-11-03)
 
@@ -57,14 +57,21 @@ _Last updated: 2026-11-03_
 - the SNV tie rule with a confident third base (#367);
 - Nextflow resources wait for the sweep (branch `feature/nextflow-resources`, local).
 
-**Next:**
-1. Class plan B through rq2 to its PR.
-2. Package 3's rest (#293, #178), then packages 4 → 7 (table below; the clipped-bases package #212/#177 is the next plan-first item), the truth sets (#275) and the HPC gate.
-3. Speed: #335 for the judge, #412 for the routing, #406's memory, and the C++ floor on the production profile before 6.7.0 ships.
-4. Clean-up.
-5. #331 for 6.8.0.
+**Scope change (operator, 2026-11-05): "we have built enough to move this to next release".** Packages 4 to 7 moved to 6.8.0 (tracker #420), with #290, #293, #178, #408 and #409. #304 is closed (the judge shipped opt-in).
 
-## Next — 6.7.0 work packages (operator, 2026-10-23: the recommended order; #304 in 6.7.0)
+**Next (6.7.0 finishes with):**
+1. Class plan B (PR #419; closes #394 and #398).
+2. Package 3's lean path: the pins #344, #345, #346 and #359.
+3. The homopolymer deprecation (#421).
+4. The truth arms and the HPC gate (#266, #267, #268, #275).
+5. Speed: #412 (the routing's cost on the default path), #312, and the C++ GetBaseCountsMultiSample 1.2.5 floor on the production profile. #335 and #406 are 6.8.0's, with the judge default.
+6. Clean-up and the pre-release review (#313 to #316 under #318).
+7. The small items.
+8. The release.
+
+**6.8.0 (tracker #420):** #331 (the judge default, with #405, #406, #410, #414, #417 and #418), #259, #261, #180, #274, #361, #178, #408 and #409.
+
+## Next — 6.7.0 work packages (operator, 2026-10-23: the recommended order; packages 4 to 7 moved to 6.8.0 on 2026-11-05)
 Tickets that answer the same question, or share code paths and measurements, land together.
 - **Count-changing packages** run one at a time. Each starts from develop on its own branch,
   goes red-first, gets an adversarial review, and is measured on every arm with the checks
@@ -75,17 +82,17 @@ Tickets that answer the same question, or share code paths and measurements, lan
 | # | Package | Tickets | Why together | First step |
 |:--|:--|:--|:--|:--|
 | 1 | Co-annotated alleles (**done**: #305 closed, #246 parked into 2) | #305, #246 | the AD-claiming guard and RJ-5/RJ-25; one measurement set: the cluster-aware check, the compound-het arm, the panel and gate clusters | #305 read by read on the data in hand; then #246, whose SNV sibling still claims the read through its own uncontested call |
-| 2 | Repeats: unit counts and placement (**merged**: the sequence judge, #304, opt-in in 6.7.0 and the default in 6.8.0, #331; #297 in #404; #264 in #396 and #413) | #290, #301, #297, #144, #304; #264 (docs); #246 | one question, in four code paths: which length of a repeat a read carries when the aligner placed it elsewhere. One acceptance metric: VAF at germline hets in repeats (long insertions 0.441 on HG002) | decide the architecture first. Measure #304 (a whole-read haplotype judge) on every arm as a prototype against targeted fixes, then build; #264's documentation with it |
-| 3 | RNA read judgment (**#292 merged** in #415, B: no junction penalty; #293 and #178 next) | #292, #293, #178 | the spliced-read path; FORTE | #292's three prototypes, measured (decided 2026-10-17) |
-| 4 | Evidence outside the aligned bases | #177, #212, #179 | read admission and clipped bases (RJ-10, RJ-13); WES and HG002 without realignment | #212 first: the fragment end bounds what a clip may hold |
-| 5 | Guard statistics and artifacts | #306, #180 | telling a recurring change from an error or an artifact (fragment shares, pair orientation; #302 added the binomial orientation veto) | count the rows near the 5% line; decide #180's form |
-| 6 | Homopolymer twin and decomposition | #111, #112 (#145, #146), #128 | the opt-in `--rescue-homopolymer` path | decide fix or retire (#111); retiring closes #112, #145 and #146 |
-| 7 | Complex-event read-on | #274 | RJ-9 for delins | measure in the engine, then decide |
+| 2 | Repeats: unit counts and placement (**merged**: the sequence judge, #304 closed because it shipped opt-in, and the default in 6.8.0, #331; #297 in #404; #264 in #396 and #413) | #290 (moved to 6.8.0), #301, #297, #144, #304 (closed); #264 (docs); #246 | one question, in four code paths: which length of a repeat a read carries when the aligner placed it elsewhere. One acceptance metric: VAF at germline hets in repeats (long insertions 0.441 on HG002) | decide the architecture first. Measure #304 (a whole-read haplotype judge) on every arm as a prototype against targeted fixes, then build; #264's documentation with it |
+| 3 | RNA read judgment (**#292 merged** in #415, B: no junction penalty; #293 and #178 moved to 6.8.0, 2026-11-05; #420) | #292, #293, #178 | the spliced-read path; FORTE | #292's three prototypes, measured (decided 2026-10-17) |
+| 4 | Evidence outside the aligned bases (**moved to 6.8.0**, 2026-11-05; #420) | #177, #212, #179 | read admission and clipped bases (RJ-10, RJ-13); WES and HG002 without realignment | #212 first: the fragment end bounds what a clip may hold |
+| 5 | Guard statistics and artifacts (**moved to 6.8.0**, 2026-11-05; #420) | #306, #180 | telling a recurring change from an error or an artifact (fragment shares, pair orientation; #302 added the binomial orientation veto) | count the rows near the 5% line; decide #180's form |
+| 6 | Homopolymer twin and decomposition (**moved to 6.8.0**, 2026-11-05; #420) | #111, #112 (#145, #146), #128 | the opt-in `--rescue-homopolymer` path | decide fix or retire (#111); retiring closes #112, #145 and #146 |
+| 7 | Complex-event read-on (**moved to 6.8.0**, 2026-11-05; #420) | #274 | RJ-9 for delins | measure in the engine, then decide |
 | P | Output and reporting (parallel) | #273, #227, #132, #127 | no count change | #273, then #227 (it feeds the QC summary); close #127 unless a pipeline needs it |
 | H | Hygiene (parallel) | #284, #216, #219, #138, #150, #195 | no count change | #195's fallback path is one Phase 3 never reaches: fix it or retire it |
 | D7 | Platforms (parallel) | #232 (#233–#237) | infrastructure | as planned |
 | G | Truth arms and the gate | #266, #267, #268, #275 | the HPC gate | the D12 settings on #275; HPC when available |
 
-**Order (operator, 2026-10-23):** 1 → 2 (decision, then build) → 3 → 4 → 5 → 6 → 7, with P,
+**Order (operator, 2026-10-23; packages 4 to 7 moved to 6.8.0 on 2026-11-05):** 1 → 2 (decision, then build) → 3 (lean path), with P,
 H and D7 alongside; then G, the freeze and the gate. The packages are recorded on #196;
 the A–F parents stay as they are.
