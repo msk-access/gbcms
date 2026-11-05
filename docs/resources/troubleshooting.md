@@ -255,7 +255,7 @@ says what to do about each flag
 
 ??? question "`WARN_HOMOPOLYMER_DECOMP` reason (verdict `PASS`) — what changed?"
 
-    The run used `--rescue-homopolymer`, and the variant is a homopolymer run called as a
+    Only files from before 6.7.0 hold it: `--rescue-homopolymer` is deprecated in 6.7.0 (removed in 6.8.0) and ignored. The run used `--rescue-homopolymer`, and the variant is a homopolymer run called as a
     larger deletion (e.g. `CCCCCC→T`). In this sample, the corrected allele (the run with its
     last base replaced, `CCCCCC→CCCCCT`) got more ALT support, so its counts were used.
     `used_decomposed = True` in the output, and the flag is set per sample. Without the flag,
