@@ -71,7 +71,7 @@ use super::window::{allele_kind, AlleleKind};
 pub(crate) const LONG_DELETION: usize = 50;
 /// Clean bases each window holds before the junction (the flank) and past the
 /// microhomology (the allele's own continuation).
-const K: usize = 4;
+pub(crate) const K: usize = 4;
 /// A read's own indel at least this long inside the deleted span makes it another
 /// allele (C26); shorter ones in a deleted repeat are stutter or alignment noise, as
 /// the CIGAR checks treat 1-4 bp deletions in their scan window.

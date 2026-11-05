@@ -7,6 +7,79 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed — a listed allele at the site is always another allele, and a read counts REF where it tells REF from the alleles it reaches (RJ-25, RJ-24; operator 2026-11-02)
+
+- **No floor for a listed allele, on both paths.** A listed allele whose span meets the ALT's site
+  is another allele there whether or not any read shows it (the input is taken as correct, as
+  rule X took it for another unit count at a long deletion). The 1-fragment-and-5% test of
+  2026-10-14 is gone for listed alleles (the rules' `other_alleles`, the sequence judge's
+  `seen_apart`); it stays for an allele nobody listed (3 fragments and 5%). A listed component of
+  an MNP that no read shows apart from it is another allele too: a carrier that reads only the
+  component's base cannot tell the MNP from it and is partial evidence (AD 14 to 10 in that
+  shape). The rules path takes any listed allele of the ALT's length that meets the site and differs
+  inside the window, not only one that differs nowhere past two bases beside the event.
+- **A REF read is told only from the alleles it reaches.** This reverses the REF clause decided
+  on 2026-10-14 (a REF read short of a REF-length allele was neither). An allele past the read's
+  end (or before its start) no longer contests it: a read ending inside a long event is judged by
+  the bases it has (RJ-9); a read that reaches the allele and cannot tell it (the base unread,
+  below `--min-baseq`, or masked) stays neither. The sequence judge already ties by reach; the
+  rules path now does too, for REF-length alleles listed or found, in the exact-carrier
+  windows and in the MNP check.
+- **An SNV row beside a listed indel or delins is judged by its bases, also under the rules (#398).**
+  An SNV row where the same input lists an indel or delins whose span meets the row's site (the
+  sequence judge's own test) is counted by the sequence judge, as `--read-judge sequence` would;
+  every other row, MNV rows included, keeps the rules. Prep decides it from the whole input, so
+  no bin or call changes it; no column, flag or environment variable is added. The rules still
+  count a routed-class row in two places, each with one warning per count: RNA mode, and a
+  count given no reference FASTA. The rules' single-base check weighed no listed allele that
+  changes the length, so a read that spelled one counted ALT. Measured at these rows (rules
+  lane against judge lane, 2026-11-03): patient sets, wrong-ALT reads 1,230 to 0 and wrong
+  definite calls 1,258 to 7; HG002, true ALT credited 454 to 520 and reads of the listed allele
+  credited ALT 142 to 21. Precedent: a deletion of 50 bp or more already goes to a by-bases
+  junction judge. A MNV-plus-insertion shape (67 true-ALT reads at two gate-set rows) would go to
+  partial under the judge and stays on the rules (#331).
+- **RJ-24 reaches a delins.** A delins that replaces 50 REF bases or more (the changed REF bases once
+  the shared prefix and suffix are trimmed) has a core, 4 bases in from both ends: a substitution
+  wholly inside it is a context of REF's molecules, so a read that reaches and spells it is REF
+  and a sibling there claims no REF read. A 60>30 delins has a core; 5>60 does not.
+- **Stopgap (#418).** a found allele's background bases are left out of its reach only where the allele also differs at an unmasked base inside X's window; where its only differences inside the window are masked, those differences are its reach. Without it HG002 c246 INS 1-9 gets 185 true-ALT reads called REF against develop's 182, because the allele's one unmasked difference lies outside the window. It goes when #418 is fixed.
+- **Routing can raise AD.** At a routed SNV row the judge counts a read that carries a listed allele
+  holding X's change as ALT (RJ-28), and a read whose clipped bases carry X. In rq2, 349 reads enter AD
+  at SNV rows, 254 of them off the oracle's anchor; HG002 truth at the routed rows shows no new
+  wrong-ALT. `--alignment-backend` has no effect at routed rows (the judge scores them). The judge's
+  diagnostics (UNEXPLAINED_READS, MNV_SHARED, INDEL_SHARED) can appear on routed rows.
+  Named limit (#418, as on develop): the rules path's REF side weighs only listed alleles that differ
+  inside X's window (RJ-25 (5)(a)).
+- **Two corrections against the text above (rq1, operator 2026-11-03).** (a) The candidate test
+  reads the window the event's own windows hold: one flank base each side of a pure indel, two of
+  any other event. It read two for a pure indel too, so a listed delins that is X plus a
+  substitution at the second flank base became a candidate whose window equals X's: no read could
+  tell them apart and every carrier of a 1-base insertion in a 4-base run went to partial (AD 106
+  to 0 at one panel row, rules path). (b) The reach of a REF-length allele is measured on its
+  difference from REF before the guard's masks, in every branch (a found allele's background bases at a
+  mask do not widen it), so an allele that differs only at masked bases still
+  contests a read that spans them: reached and not told is neither. It had been taken to contest
+  nothing, and 91 read calls at six HG002 rows (five insertions, one deletion; 5 of them true ALT at
+  c246 INS 1-9) went from neither to REF. The MNP check measures it the same way. The rules path
+  only; the judge lane moves no row and no read call. Where the paths still differ at a delins row
+  (the rules need the read to hold X's whole window, RJ-1 and RJ-2; the judge counts what the read
+  covers) is older than this change, and closing it would be a third REF rule (#331); RJ-25 (6).
+- Counts on HG002 (public, local; 27,589 rows), rules path against develop: 598 arm-rows change (87
+  without the routing); the routing changes no row that is not a class row; at the 1,302 class rows the rules lane equals the judge
+  lane in every MAF field and read call. Phased truth at those rows (strict view): true ALT credited
+  454 to 521, reads of the listed allele credited ALT 142 to 21; scored targets (truth v2dbq20): true
+  ALT credited 30,455 to 30,457, true REF called REF unchanged, true ALT called REF 1,339 to 1,336.
+  Judge: 49 arm-rows change; truth classes equal. Speed (rq2, on HPC): patient wall time 1.02 times develop; HG002 CPU 1.28 times; nocl peak memory
+  411 to 905 MiB. Inputs that can be much slower: a long listed deletion with many SNVs inside it,
+  and dense cohort lists (#412).
+- Existing expectations changed by the decision (each with its reason in the test):
+  `test_listed_sibling_floor_contract.py` (8 cases, AD 14 to 10),
+  `test_locus_alleles_contract.py` (a component never seen alone and one seen on 1 of 100
+  fragments, AD 14 to 10; an SNV among a delins's deleted bases never spelled, RD 24 to 20).
+  New contract tests: `tests/test_ref_reach_contract.py`; a routed row in `tests/test_binning_invariance.py`.
+- Supersedes the option A of the REF-tie question on the judge (#394) and settles #398 (SNV rows
+  routed to the judge, above; the rules path's sibling scope for exact-carrier rows).
+
 ### Deprecated — `--rescue-homopolymer` (removed in 6.8.0)
 
 - **`--rescue-homopolymer` is deprecated in 6.7.0 and removed in 6.8.0.** `gbcms dna`,
