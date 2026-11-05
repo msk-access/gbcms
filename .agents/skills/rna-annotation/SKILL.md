@@ -38,6 +38,9 @@ Built once in `count_bam_binned()`, shared via `Arc` across rayon workers.
 - `asjd_diagnostic`: semicolon-separated flags (`LOW_REF_JUNC`, `LOW_ALT_JUNC`,
   `NOVEL_ALT_JUNC`, `STRAND_DISCORDANT`, ...)
 
+ASJD partitions reads by the main counts' verdict, sibling guards included (`sibling_claims_alt`, `sibling_claims_ref`):
+a read a co-annotated sibling claims votes in neither partition.
+
 Junction counts are **per fragment** (`JunctionTally` in `detect_asjd` dedups a
 molecule's R1+R2 by QNAME hash to one vote) — required so the strand-discordance and
 Fisher tests see independent observations, not mates. `LOW_REF_JUNC` and `LOW_ALT_JUNC`

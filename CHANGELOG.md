@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed — RNA: ASJD reads the same sibling verdict as the main counts (#359, RJ-5)
+
+- At an RNA row with a GTF and a co-annotated sibling, the allele-specific junction test counted reads the main counts give to the sibling (a REF read that is ALT for the sibling where this row's REF is read; an ALT match the sibling explains as well or better). It now makes the same two sibling checks, so those reads vote in neither the REF nor the ALT junction partition. Only the `asjd_*` columns can move; RD, AD, DP and the per-transcript counts are unchanged. Rules path only. Measured on the synthetic set: rows without a sibling are byte-identical (0 of 1,072); with a sibling added to every row, 12 of 2,144 rows move.
+
+### Tests — RNA pins (#344, #345, #346)
+
+- Pinned decided behaviour, no count change: reads carrying another allele are in a transcript's DP and in no transcript AD/RD or ASJD partition; antisense reads carrying another allele appear in no column under enforcement, and count as partial evidence with `--no-strandedness` or with no GTF; an edit inside an insertion's bases is decided by the reads, and an editing database cannot reach it.
+
 ### Changed — RNA: a splice never lowers a base's quality (#292, RJ-31)
 
 - Heuristic BAQ (`--apply-baq`, on by default in `gbcms rna`) no longer lowers the five read

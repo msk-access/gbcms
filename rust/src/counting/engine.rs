@@ -3835,6 +3835,7 @@ fn detect_asjd(
     rules: &carrier::ReadRules,
 ) -> AsjdResult {
     let baq_spare = if use_baq { baq_own_span(variant) } else { None };
+    let ref_guard_siblings = ref_guard_siblings(variant, sibling_variants);
     // Bind the normalized key, then borrow it as &str so the junction/motif lookups
     // below are unchanged.
     let chrom_key = crate::shared::contig::normalize_contig(&variant.chrom);
@@ -3893,10 +3894,25 @@ fn detect_asjd(
             &mut alt_aligner, &mut ref_aligner, backend, rules,
         );
 
+        // One verdict per read in every tally: the two sibling guards the main counts and
+        // the per-transcript counts apply. A read a co-annotated sibling claims is the
+        // sibling's molecule, so it votes for neither of this row's junction partitions.
+        // (The haplotype judge weighs the site's alleles itself: no sibling contest.)
+        let contested = rules.judge == judge::ReadJudge::Rules;
+        let is_alt = result.is_alt
+            && !(contested && sibling_claims_alt(
+                record, variant, &result, sibling_variants, effective_quals, min_baseq, rules,
+            ));
+        let is_ref = result.is_ref
+            && !(contested && sibling_claims_ref(
+                record, variant, &result, &ref_guard_siblings, effective_quals, min_baseq,
+                &mut alt_aligner, &mut ref_aligner, backend, rules,
+            ));
+
         let qh = crate::shared::fragment::hash_qname(record.qname());
-        if result.is_ref || result.is_alt {
+        if is_ref || is_alt {
             classified_frags.insert(qh);
-            if result.is_alt {
+            if is_alt {
                 alt_frags.insert(qh);
             }
         }
@@ -3916,9 +3932,9 @@ fn detect_asjd(
         let tx_minus = super::rna::read_transcript_strand(record, strandedness) == Some('-');
 
         // Dedup by fragment (QNAME hash): vote once per allele-total and per junction.
-        if result.is_ref {
+        if is_ref {
             ref_tally.add(qh, &junctions, tx_minus);
-        } else if result.is_alt {
+        } else if is_alt {
             alt_tally.add(qh, &junctions, tx_minus);
         } else if !result.covers_locus {
             // Spliced over the locus: keep only the junction(s) spanning the
