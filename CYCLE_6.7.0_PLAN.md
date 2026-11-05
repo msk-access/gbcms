@@ -17,6 +17,13 @@
 >   tooling. Aggregates and allele shapes only in issues, PRs and this plan.
 > - Check `.agents/learnings/REJECTED.md` before proposing an alternative.
 
+> **Scope change (2026-11-05).** Operator: "we have built enough to move this to next release".
+> Moved to 6.8.0, tracker **#420**: packages 4 (#259 with #177, #179, #212, #276), 5 (#306, #180,
+> #360), 6 (#261 with #111, #112, #145, #146, #128; `--rescue-homopolymer` is deprecated in 6.7.0
+> by #421 and removed in 6.8.0) and 7 (#274, #361); also #290, #293 and #178 (from package 3),
+> #408 and #409. #304 is closed (the judge shipped opt-in). The sections and rows below are
+> unchanged records; each moved one carries a "Moved to 6.8.0" line.
+
 **Status (updated 2026-10-28).** The plan as decided on 2026-10-08; the decisions below are
 dated records. Implemented and closed since: C39 (#253), C40 (#254), D8 (#255), H4 (#269),
 C42 (#244, replaced by #265) and most C43 follow-ups (for example #277, #278, #279, #280,
@@ -539,15 +546,16 @@ routing #265, D9 #266, D10 #267, D11 #268, H4 #269.
 - **C24 #195** — the stale semiglobal scores in the local-alignment tail. A Rust test,
   then the fix (no reach on prepared variants).
 - **R3 #178** — catalogued editing sites masked inside RNA carrier windows. Measure on
-  FORTE first.
+  FORTE first. Moved to 6.8.0 (2026-11-05; #420).
 
 ### B. Evidence outside the aligned bases (RJ-13)
+- Moved to 6.8.0 (2026-11-05; #420): #177, #179, #212 and the rest of package 4 (#259, #276); #254's part is done.
 - **C40 #254** — decision 3, with C15 item 2 and C18.
 - **C15 #173** — items 2 (C40) and 3 (reads clipped before the flank, measured on WES).
 - **C18 #177** — split reads join their molecule (primary + SA, counted once).
 - **C7 #144** — clip-borne ITD carriers: the clip validated against the duplication.
 - **C31 #212** — fragment end from the mate's unclipped 5' end (MC tag); decided with
-  C40, since clips there are now read.
+  C40, since clips there are now read. Moved to 6.8.0 (2026-11-05; #420).
 - **O5 #179** — per-variant MAPQ, clip and outside-depth rates of ALT-like vs REF reads;
   a diagnostic only.
 
@@ -556,6 +564,7 @@ routing #265, D9 #266, D10 #267, D11 #268, H4 #269.
   arms; the GIAB results are the shareable numbers.
 
 ### D. Homopolymer twin
+- Moved to 6.8.0 (2026-11-05; #420); `--rescue-homopolymer` is deprecated in 6.7.0 (#421) and removed in 6.8.0.
 - **C3 #111**, with **#112** (#145, #146) and **M1 #128**: fix or retire
   `--rescue-homopolymer` (opt-in since O4). Measure how often the twin wins on the
   panel's twin-candidate stratum before deciding; retiring it closes #145, #146 and
@@ -563,7 +572,7 @@ routing #265, D9 #266, D10 #267, D11 #268, H4 #269.
 
 ### E. Diagnostics and reporting
 - **O10 #227** end-of-run QC summary; **O3 #132**; **O6 #180** (decide: orientation
-  counts as a diagnostic only); **I5 #127** (only if a pipeline needs conversion
+  counts as a diagnostic only; moved to 6.8.0 (2026-11-05; #420)); **I5 #127** (only if a pipeline needs conversion
   without counting).
 
 ### F. Hygiene and infrastructure
