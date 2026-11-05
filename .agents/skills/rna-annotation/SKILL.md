@@ -47,6 +47,11 @@ Fisher tests see independent observations, not mates. `LOW_REF_JUNC` and `LOW_AL
 gate on the `asjd_n_ref_total` and `asjd_n_alt_total` counts; `STRAND_DISCORDANT` and the
 Fisher test gate on the `asjd_n_ref_junc` and `asjd_n_alt_junc` counts.
 
+### Per-transcript counts: junction-free reads (RJ-32)
+A read with no junction fits every transcript it overlaps (no junction rules any out): it counts in each such
+transcript's DP and RD (or AD), and in the row's counts once. A spliced read counts only in transcripts
+holding all its junctions. Reads carrying another allele are in transcript DP only.
+
 ### Gotchas (verify before trusting RNA outputs)
 - `gene_strand` must be populated from the GTF or `is_sense_strand` returns true
   for all reads → `antisense_depth` stays 0 and `enforce_strandedness` is a no-op.

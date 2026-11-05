@@ -156,7 +156,7 @@ def test_an_exon_skipping_transcript_holds_only_the_reads_on_its_junctions(tmp_p
     """T1 (exons 1, 2, 3) is compatible only with the reads spliced exon 1 to exon 2, T2
     (exons 1, 3) only with the reads spliced exon 1 to exon 3. Each transcript's DP holds
     its reads, other-length reads included, and no other. The main counts and ASJD hold
-    all of them. (Junction-free reads, compatible with both, are not pinned here.)"""
+    all of them. (Junction-free reads, compatible with both, are in the next test.)"""
     reads = (
         _spliced(E2[0], "del", 0, 20, "ar")
         + _spliced(E2[0], "del", 1, 4, "aa")
@@ -170,6 +170,28 @@ def test_an_exon_skipping_transcript_holds_only_the_reads_on_its_junctions(tmp_p
     assert r["transcript_read_counts"] == "T1:4,20,36|T2:3,6,11"
     assert r["transcript_fragment_counts"] == "T1:4,20,36|T2:3,6,11"
     assert (int(r["asjd_n_ref_total"]), int(r["asjd_n_alt_total"])) == (26, 7)
+
+
+def test_a_junction_free_read_fits_every_transcript_and_counts_once_in_the_row(tmp_path):
+    """RJ-32: a read with no junction fits every transcript it overlaps. Five unspliced REF
+    reads are added to the two-transcript row: each transcript's DP and RD hold them
+    (T1 4,20,36 -> 4,25,41; T2 3,6,11 -> 3,11,16), the row's counts hold each once."""
+    reads = (
+        _spliced(E2[0], "del", 0, 20, "ar")
+        + _spliced(E2[0], "del", 1, 4, "aa")
+        + _spliced(E2[0], "del", 2, 12, "ao")
+        + _spliced(E3[0], "del", 0, 6, "br")
+        + _spliced(E3[0], "del", 1, 3, "ba")
+        + _spliced(E3[0], "del", 2, 2, "bo")
+    )
+    free = [
+        make_read(f"free{i}", REF[230 + i : 330 + i], 230 + i, ((0, READ_LEN),), flag=SENSE)
+        for i in range(5)
+    ]
+    r = _run(tmp_path, DEL_ROW, reads + free, gtf=_gtf_two_transcripts(tmp_path))
+    assert _main(r) == (31, 7, 14, 52)
+    assert r["transcript_read_counts"] == "T1:4,25,41|T2:3,11,16"
+    assert r["transcript_fragment_counts"] == "T1:4,25,41|T2:3,11,16"
 
 
 def test_mnp_other_allele_reads_are_transcript_depth_only(tmp_path):

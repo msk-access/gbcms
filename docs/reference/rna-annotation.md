@@ -171,6 +171,9 @@ overlaps multiple transcripts with different exon structures.
    - A read's CIGAR `N` operations (splice junctions) are compared
      against the transcript's annotated splice sites.
    - Reads with matching splice junctions are counted toward that transcript.
+   - A read with no junction fits every transcript it overlaps (no junction rules any out): it
+     counts in each such transcript's DP and RD (or AD), and once in the variant's counts
+     (register RJ-32 in [Read Judgment](read-judgment.md)).
 4. Alleles are classified under the same base-quality rules as the main
    counts, including the exon-boundary BAQ exception
    ([RNA Splice-Junction Handling](rna-splice-handling.md)); a splice lowers
