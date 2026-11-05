@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Deprecated — `--rescue-homopolymer` (removed in 6.8.0)
+
+- **`--rescue-homopolymer` is deprecated in 6.7.0 and removed in 6.8.0.** `gbcms dna`,
+  `gbcms rna`, the `Pipeline`, `observe_molecules(rescue_homopolymer=...)` and the Nextflow
+  `--rescue_homopolymer` accept it, warn once and ignore it, as `--gtf-cache-dir` was in 6.6.0.
+  The twin is never built, so `WARN_HOMOPOLYMER_DECOMP` is never set. It did nothing useful
+  the diagnostics do not: `OBSERVED_ALLELE` and `COEXISTING_ALLELE` in `gbcms_diagnostic`
+  name the allele the reads carry.
+  - Measured on origin/develop `df5da55f` (hp1): of 20 runs whose variant list holds a twin
+    candidate (71 rows scored), the twin won at 1 of 20 candidate rows (5%), moving AD by +2
+    (17 to 19) while 17 reads moved into RD. At the SOX2-shaped rows (REF length 6, ALT length 1)
+    it won at none, and the default diagnostic named the 1 bp deletion plus the change in 2 of 3.
+  - The Rust binding's `rescue_homopolymer` parameter, `decomp.rs` and the dual count stay
+    until 6.8.0 removes them; Python no longer sends the flag.
+
 ### Changed — RNA: a splice never lowers a base's quality (#292, RJ-31)
 
 - Heuristic BAQ (`--apply-baq`, on by default in `gbcms rna`) no longer lowers the five read

@@ -35,7 +35,7 @@ same string is in the VCF `GSR` INFO. How each is decided:
 |:-------|:--------|:---------|:-----------|
 | *(empty)* | PASS | The variant validated against the reference | — |
 | `WARN_REF_CORRECTED` | PASS | The REF matches the reference at ≥90% of its bases; the reference bases are used downstream (the original REF is kept in `original_ref`) | Check the input's REF; counts are for the corrected REF |
-| `WARN_HOMOPOLYMER_DECOMP` | PASS | With `--rescue-homopolymer`: the variant spans a homopolymer, was dual-counted with a corrected allele, and the corrected allele won | The row reports that allele's counts, not the given one |
+| `WARN_HOMOPOLYMER_DECOMP` | PASS | Never set in 6.7.0 (`--rescue-homopolymer` is deprecated and ignored; removed in 6.8.0). Before: with the flag, the variant spans a homopolymer, was dual-counted with a corrected allele, and the corrected allele won | The row reports that allele's counts, not the given one |
 | `MULTI_ALLELIC` | PASS | Another input row is a different ALT at the same locus; sibling-ALT exclusion is active | None; each row counts its own ALT |
 | `TRACT_CLUSTER` | PASS | The variant shares a repeat-tract scan window with a co-annotated length-changing variant (spans need not touch); sibling exclusion and exclusive ALT assignment are active | None; read the rows together |
 | `REF_MISMATCH` | FAIL | The REF matches the reference at under 90% of its bases | Check the build and coordinates; `REF_AT_OFFSET(k)` in `gbcms_diagnostic` says where the REF sits when it is a few bases off |

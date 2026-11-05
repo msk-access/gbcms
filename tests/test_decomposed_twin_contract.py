@@ -152,7 +152,10 @@ def test_decomp_flag_is_per_sample(tmp_path):
         ]
         (row,) = list(read_maf_output(path))
         reasons[sample] = row["gbcms_status_reason"]
-    assert "WARN_HOMOPOLYMER_DECOMP" in reasons["A"], reasons
+    # Was: "WARN_HOMOPOLYMER_DECOMP" in reasons["A"] (the twin won on A).
+    # Reason: deprecated 2026-11-05; hp1: the twin won at 1 of 20 candidate rows.
+    # Now the flag warns and changes nothing: no twin on either sample.
+    assert "WARN_HOMOPOLYMER_DECOMP" not in reasons["A"], reasons
     assert "WARN_HOMOPOLYMER_DECOMP" not in reasons["B"], reasons
 
 
@@ -182,6 +185,16 @@ def test_twin_respects_strandedness(tmp_path):
         write_gtf(tmp_path),
         extra=("--rescue-homopolymer",),
     )
-    assert "WARN_HOMOPOLYMER_DECOMP" in row["gbcms_status_reason"], "twin must win"
-    assert int(row["alt_count"]) == 8
-    assert int(row["total_count"]) == 18, "antisense reads are not depth either"
+    # Was: the twin wins ("WARN_HOMOPOLYMER_DECOMP" present), alt_count 8, total_count 18.
+    # Reason: deprecated 2026-11-05; hp1: the twin won at 1 of 20 candidate rows.
+    # Now the flag warns and changes nothing: the row equals the run without the flag.
+    assert "WARN_HOMOPOLYMER_DECOMP" not in row["gbcms_status_reason"]
+    (plain,) = run_rna(
+        tmp_path,
+        write_vcf(tmp_path, [(RNA_RUN + 1, "C" * RUN_LEN, "T")]),
+        write_bam(tmp_path, ref, sense + anti + refs),
+        write_fasta(tmp_path, ref),
+        write_gtf(tmp_path),
+        outname="plain",
+    )
+    assert row == plain
