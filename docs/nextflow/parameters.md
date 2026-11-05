@@ -58,7 +58,7 @@ Complete reference for all pipeline parameters.
 | `--filter_by_sample` | `false` | Filter multi-sample MAF by `Tumor_Sample_Barcode` ([details](samplesheet.md#multi-sample-maf-filtering)) |
 | `--show_normalization` | `false` | Add `norm_*` columns showing left-aligned coordinates in output |
 | `--rescue_mnp` | `false` | Enable [MNP rescue pass](../reference/architecture.md#mnp-rescue-pass-rescue-mnp-v430) — for MNPs whose partial evidence dominates (`partial_alt > alt_count`), reports the best-supported component SNV's counts |
-| `--rescue_homopolymer` | `false` | Dual-count the [homopolymer twin](../reference/variant-normalization.md#step-5-homopolymer-decomposition-detection) and report the form with more ALT reads (`WARN_HOMOPOLYMER_DECOMP`). Off: the row counts the given allele, and `OBSERVED_ALLELE` names the allele the reads carry. |
+| `--rescue_homopolymer` | `false` | **Deprecated.** Deprecated in 6.7.0; removed in 6.8.0. Still accepted and ignored, with a warning; it did nothing useful the diagnostics do not ([`OBSERVED_ALLELE` and `COEXISTING_ALLELE`](../reference/qc-flags.md)). The row counts the given allele. |
 | `--rescue_mnp_threshold` | `1.0` | Maximum disc/len ratio for MNP rescue eligibility (0.0–1.0). `1.0` = all MNPs eligible (C++ compatible). `0.5` = conservative sparse-only mode. `0.0` = disable rescue eligibility (diagnostics still emitted). |
 
 ## UMI & BAQ Options

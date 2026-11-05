@@ -28,6 +28,7 @@ from rich.progress import (
 )
 
 from .core.kernel import CoordinateKernel
+from .deprecations import warn_rescue_homopolymer_deprecated
 from .io.atomic import atomic_path, commit_partial, discard_partial, partial_path
 from .io.input import MafReader, VariantReader, VcfReader, variant_format
 from .io.output import MafWriter, VcfWriter, build_identity, declared_contigs
@@ -216,11 +217,6 @@ def run_implications(cfg: Any) -> list[str]:
             "(by read name where a read lacks it)"
         )
     # --rescue-mnp has its own WARNING at run start (rescued rows' counts).
-    if cfg.rescue_homopolymer:
-        out.append(
-            "--rescue-homopolymer: a row whose corrected allele wins reports it "
-            "(WARN_HOMOPOLYMER_DECOMP)"
-        )
     if o.mfsd:
         added = len(MafWriter.column_names(mfsd=True)) - len(MafWriter.column_names())
         out.append(f"--mfsd adds {added} fragment-size (mFSD) columns")
@@ -467,6 +463,8 @@ class Pipeline:
             config: Configuration object with input/output paths and filter settings.
         """
         self.config = config
+        if config.rescue_homopolymer:
+            warn_rescue_homopolymer_deprecated()
         self.console = Console()
         self._stats: dict[str, int | float] = {
             "samples_processed": 0,
@@ -554,7 +552,7 @@ class Pipeline:
             is_maf,
             self.config.threads,
             self.config.quality.adaptive_context,
-            self.config.rescue_homopolymer,
+            False,  # the homopolymer twin is never built; --rescue-homopolymer is ignored
             read_judge=self.config.alignment.read_judge,
         )
 

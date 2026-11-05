@@ -440,11 +440,9 @@ class GbcmsBaseConfig(BaseModel):
     rescue_homopolymer: bool = Field(
         default=False,
         description=(
-            "Dual-count the homopolymer twin: for a delins whose REF is a run of one "
-            "base and whose ALT is the base after the run (CCCCCC>T), also count "
-            "the run with its last base replaced (CCCCCT) and report whichever has "
-            "more ALT reads, flagged WARN_HOMOPOLYMER_DECOMP. Off by default: the row "
-            "counts the given allele, and OBSERVED_ALLELE names what the reads carry."
+            "Deprecated in 6.7.0; removed in 6.8.0. Warns and is ignored: the row "
+            "counts the given allele, and OBSERVED_ALLELE and COEXISTING_ALLELE name "
+            "the allele the reads carry."
         ),
     )
     rescue_mnp_threshold: float = Field(

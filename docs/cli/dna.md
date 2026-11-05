@@ -175,7 +175,7 @@ for the full design.
 
 | Option | Default | Description |
 |:-------|:--------|:------------|
-| `--rescue-homopolymer` | `false` | Dual-count the [homopolymer twin](../reference/variant-normalization.md#step-5-homopolymer-decomposition-detection). For a delins whose REF is a run of one base and whose ALT is the base after the run (`CCCCCC>T`), also count the run with its last base replaced (`CCCCCT`), and report whichever form has more ALT reads, flagged `WARN_HOMOPOLYMER_DECOMP`. |
+| `--rescue-homopolymer` | `false` | **Deprecated.** Deprecated in 6.7.0; removed in 6.8.0; it did nothing useful the diagnostics do not ([`OBSERVED_ALLELE` and `COEXISTING_ALLELE`](../reference/qc-flags.md)). Accepted and ignored, with a warning; the row counts the given allele. |
 
 !!! warning "Off by default: the row counts the given allele"
     Both forms accept near-matches, so the winner can report another allele's reads under

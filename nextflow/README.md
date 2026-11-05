@@ -131,7 +131,7 @@ nextflow run nextflow/main.nf \
 | `--mfsd_report` | Generate the HTML mFSD report | `false` |
 | `--rescue_mnp` | Enable the MNP-rescue second pass | `false` |
 | `--rescue_mnp_threshold` | Maximum discriminating/length ratio for MNP rescue eligibility | `1.0` |
-| `--rescue_homopolymer` | Dual-count the homopolymer twin (`WARN_HOMOPOLYMER_DECOMP`); off counts the given allele | `false` |
+| `--rescue_homopolymer` | Deprecated in 6.7.0, removed in 6.8.0; accepted and ignored with a warning (the row counts the given allele; `OBSERVED_ALLELE` and `COEXISTING_ALLELE` name what the reads carry) | `false` |
 | `--merge_counts` | Enable the `MERGE_COUNTS` process (multi-BAM merge; needs `bam_type` in the samplesheet) | `false` |
 | `--merge_add_combined` | Compute `simplex_duplex_*` combined columns during merge | `true` |
 | `--merge_legacy_naming` | Use `t_{metric}_{type}` naming (genotype_variants compat) | `false` |
