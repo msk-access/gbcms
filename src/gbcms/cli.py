@@ -617,9 +617,10 @@ def rna(
     apply_baq: bool = typer.Option(
         True,
         "--apply-baq/--no-baq",
-        help="Apply heuristic BAQ quality downgrade near indels and splice "
-        "junctions. On by default for RNA (upstream pipelines typically "
-        "lack BQSR). Disable with --no-baq if BAMs are pre-calibrated.",
+        help="Apply heuristic BAQ quality downgrade near indels. A splice "
+        "junction lowers no base's quality. On by default for RNA (upstream "
+        "pipelines typically lack BQSR). Disable with --no-baq if BAMs are "
+        "pre-calibrated.",
     ),
     # UMI (shared)
     umi_tag: str | None = typer.Option(

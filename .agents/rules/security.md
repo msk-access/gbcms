@@ -55,6 +55,11 @@ of the conversation. The operator decided (2026-10-26, after asking what reaches
     send it to a file that never prints. (2026-10-30: an agent's tool output showed WES BAM names.)
   - Test the sanitizer on a made-up line holding each kind of identifier before it sees patient
     data. (2026-10-30: a masking command that did not mask printed five DMP BAM stems.)
+  - Never list a patient folder (`ls`, `find`, `tree`, a glob echoed to the screen): its file and
+    folder names are sample IDs. Take patient paths from the batch's manifest or the scorer's own
+    index, inside a script whose output goes through the sanitizer. Every brief that touches
+    patient files says so. (2026-11-03: a scorer's mistyped `ls` printed run folder names that held
+    germline sample IDs.)
 - **cBioPortal study files** (`data_*.txt`, `meta_*.txt`, case lists: cohort-wide patient-level
   rows) stay on this machine: "I need you to only write scripts and run them here to understand
   and tease what can be used". Enforced by `.claude/hooks/protect-cbioportal.py`; the protected

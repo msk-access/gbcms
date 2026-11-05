@@ -1785,10 +1785,11 @@ fn count_variant_from_cache(
         }
 
         // ── HEURISTIC BAQ: resolve adjusted qualities for classification.
-        // When BAQ is enabled, bases near indels and splice junctions
-        // (CIGAR N) are downgraded. Default: off for DNA (upstream BQSR),
-        // on for RNA (no upstream BQ recalibration). Skipped at exon edges:
-        // `use_baq` is `baq_applies`, resolved once per variant above.
+        // When BAQ is enabled, bases near a read's insertions and deletions
+        // are downgraded (a splice junction, CIGAR N, lowers nothing).
+        // Default: off for DNA (upstream BQSR), on for RNA (no upstream BQ
+        // recalibration). Skipped at exon edges: `use_baq` is `baq_applies`,
+        // resolved once per variant above.
         let quals = effective_quals(record, use_baq, baq_spare);
         let effective_quals: &[u8] = &quals;
 
@@ -3293,8 +3294,8 @@ fn count_per_transcript(
                 continue; // Incompatible junctions → skip for this transcript
             }
 
-            // ── BAQ under the main counts' rule (`use_baq`), so the spliced
-            // reads at an exon edge count here as they do in the main counts.
+            // ── BAQ under the main counts' rule (`use_baq`), so the reads at an
+            // exon edge count here as they do in the main counts.
             let quals = effective_quals(record, use_baq, baq_spare);
             let effective_quals: &[u8] = &quals;
 
@@ -3538,9 +3539,10 @@ impl JunctionTally {
 const JUNCTION_TOLERANCE: i32 = 5;
 
 /// Heuristic BAQ is skipped at variants whose REF span comes within this
-/// distance (bp) of an annotated exon boundary: its CIGAR-N penalty would land
-/// on exactly the reads that splice there, which are the evidence at an exon
-/// edge.
+/// distance (bp) of an annotated exon boundary: the penalty of a read's own
+/// insertions and deletions is lifted there, so the reads at an exon edge are
+/// counted at their stored qualities. (A splice junction lowers no quality, with
+/// or without this exception.)
 const BAQ_BOUNDARY_SUPPRESS_BP: i32 = 5;
 
 /// The span whose read indels BAQ spares for `v`: the variant's own event (grown

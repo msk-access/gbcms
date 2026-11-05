@@ -322,14 +322,28 @@ pub(crate) struct Hap {
     seq: Vec<u8>,
     /// Per applied row, ascending: its window-relative REF span and haplotype span.
     segs: Vec<(i64, i64, i64, i64)>,
+    /// The row of each of `segs`.
+    seg_rows: Vec<usize>,
+    /// The listed changes the guard's masks were laid by the columns of on this haplotype
+    /// ([`Site::mirror_for`]), which also fix the length of RJ-23's windows on it
+    /// ([`Site::window_len`]); none where the masks are not laid by offset.
+    ctx: Vec<usize>,
     /// X's allele's haplotype span, where X is applied.
     x_seg: Option<(i64, i64)>,
+}
+
+/// What a haplotype column holds: a window position's reference base, or one of an applied
+/// row's own bases (the row, and the index in its ALT).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Source {
+    Ref(i64),
+    Row(usize, usize),
 }
 
 impl Hap {
     /// The bytes it holds on the heap (its capacities), for the row caches' budget.
     pub(crate) fn heap_bytes(&self) -> usize {
-        self.rows.capacity() * 8 + self.seq.capacity() + self.segs.capacity() * 32
+        self.rows.capacity() * 8 + self.seq.capacity() + self.segs.capacity() * 32 + self.seg_rows.capacity() * 8
     }
 
     /// Measurement only: the haplotype's base at column `c` (a masked base is WILD).
@@ -340,12 +354,13 @@ impl Hap {
     /// The haplotype of `rows`, every mask taking any base (as the states' spellings are
     /// compared).
     fn build(site: &Site, rows: &[usize]) -> Hap {
-        Self::build_with(site, rows, false)
+        Self::build_with(site, rows, None)
     }
 
-    /// The haplotype of `rows`; with `mirrored`, the guard's masks laid on every candidate
-    /// haplotype by offset from the anchor too ([`Site::mirror_masks`]), as a read is scored on it.
-    fn build_with(site: &Site, rows: &[usize], mirrored: bool) -> Hap {
+    /// The haplotype of `rows`; with `mirrored`, the guard's masks laid on it by offset from the
+    /// anchor too ([`Site::mirror_for`]), as a read is scored on it: `mirrored` holds the rows
+    /// among `rows` the masks' offsets count in (the context changes of the path it spells).
+    fn build_with(site: &Site, rows: &[usize], mirrored: Option<&[usize]>) -> Hap {
         let class = if rows.contains(&0) || rows.iter().any(|&r| site.holds_x[r]) {
             Class::Alt
         } else if rows.iter().any(|&r| site.is_state(r)) {
@@ -365,8 +380,8 @@ impl Hap {
         }
         // the masks laid on the candidate haplotype by offset from the anchor, as a read is scored
         let key = site.mirror_key(rows);
-        let mirror = if mirrored { site.mirror_of(key) } else { None };
-        for &m in mirror.map_or(&[][..], |m| &m.positions) {
+        let mirror = mirrored.and_then(|ctx| site.mirror_for(key, ctx));
+        for &m in mirror.as_ref().map_or(&[][..], |m| &m.positions) {
             if !covered(m) {
                 seq[m as usize] = WILD;
             }
@@ -388,10 +403,10 @@ impl Hap {
                 x_seg = Some((hs, he));
             }
         }
-        // and the candidate's own bases they hide
-        if let (Some(m), Some(r)) = (mirror, key) {
-            if let Some(&(_, _, hs, he)) = order.iter().position(|&o| o == r).map(|k| &segs[k]) {
-                for &i in &m.alt_bases {
+        // and the bases of the rows it applies that they hide
+        if let Some(m) = &mirror {
+            for &(r, i) in &m.row_bases {
+                if let Some(&(_, _, hs, he)) = order.iter().position(|&o| o == r).map(|k| &segs[k]) {
                     let c = hs + i as i64;
                     if c < he {
                         seq[c as usize] = WILD;
@@ -401,7 +416,23 @@ impl Hap {
         }
         let mut rows = rows.to_vec();
         rows.sort_unstable();
-        Hap { rows, class, seq, segs, x_seg }
+        let ctx = mirrored.map_or_else(Vec::new, |ctx| site.shifting(ctx));
+        Hap { rows, class, seq, segs, seg_rows: order, ctx, x_seg }
+    }
+
+    /// What column `c` holds: a window position's reference base, or an applied row's own.
+    fn source(&self, c: i64) -> Source {
+        let mut delta = 0;
+        for (&(_, re, hs, he), &r) in self.segs.iter().zip(&self.seg_rows) {
+            if c < hs {
+                break;
+            }
+            if c < he {
+                return Source::Row(r, (c - hs) as usize);
+            }
+            delta = he - re;
+        }
+        Source::Ref(c - delta)
     }
 
     /// Window coordinate → haplotype coordinate. One inside an applied row maps to the
@@ -559,12 +590,34 @@ impl<'a> FragmentTally<'a> {
 }
 
 /// The guard's masks a candidate haplotype takes by offset from the anchor, besides the guard's
-/// own ([`Site::mirror_masks`]): window positions of its reference bases, and indices into its
-/// row's ALT bases, it takes any base at. Both sorted.
+/// own ([`Site::mirror_for`]): window positions of its reference bases, and the bases of the
+/// rows it applies (the row, and the index in its ALT), it takes any base at. Both sorted.
 #[derive(Debug, Clone, Default)]
 struct Mirror {
     positions: Vec<i64>,
-    alt_bases: Vec<usize>,
+    row_bases: Vec<(usize, usize)>,
+}
+
+/// The masks laid per candidate (its row; None for REF's) and the changes its path takes.
+type MirrorCache = std::cell::RefCell<HashMap<(Option<usize>, Vec<usize>), std::rc::Rc<Mirror>>>;
+
+/// How a long insertion's site lays the guard's masks on its candidate haplotypes by offset
+/// from the anchor ([`Site::lay_mirror`], [`Site::mirror_for`]).
+#[derive(Debug, Clone)]
+struct MirrorLaying {
+    /// The reach of a read: the offsets laid are under it.
+    reach: i64,
+    /// The context rows whose length changes can move a mask's offset: those meeting `zone`.
+    /// Where a path takes any of them, its masks are laid by its own columns, so a graph
+    /// holds a copy of `zone` per set of them that can lie together ([`Site::graph_of`]).
+    shifters: Vec<usize>,
+    /// Window coordinates `[lo, hi)` from the anchor on over which a mask can lie within a
+    /// read's reach, whatever the path takes.
+    zone: (i64, i64),
+    /// The masks laid, per candidate and the shifters its path takes.
+    cache: MirrorCache,
+    /// The windows' length, per set of shifters a path takes ([`Site::window_len`]).
+    windows: std::cell::RefCell<HashMap<Vec<usize>, i64>>,
 }
 
 /// X's haplotypes over its window.
@@ -588,14 +641,32 @@ pub(crate) struct Site {
     max_shift: i64,
     /// Window positions every haplotype takes any base at (the guard's masks), sorted.
     masked: Vec<i64>,
-    /// At a long insertion, the guard's masks laid on every candidate haplotype by offset from
-    /// the anchor ([`Site::mirror_masks`]): per candidate, REF's first (slot 0) and then each
-    /// row's of X and the other states (slot 1 + row), the masks it takes besides the guard's.
-    /// Empty elsewhere.
-    mirrors: Vec<Mirror>,
+    /// At a long insertion with guard masks within a read's reach past the anchor: how the
+    /// guard's masks are laid on every candidate haplotype by offset from the anchor
+    /// ([`Site::lay_mirror`]). None elsewhere.
+    mirror: Option<MirrorLaying>,
+    /// Whether any state's graph holds copies of the masks' zone (by the listed changes that
+    /// can move a mask's offset): a read is then scored on one copy for every state
+    /// ([`Site::taken_changes`]).
+    by_copy: bool,
+    /// The context rows in the reads' reach, kept to lay the graphs per set of changes a read
+    /// spans ([`Site::graphs_over`]).
+    rest: Vec<usize>,
+    /// Where `by_copy`: each state's graph with no copy of the masks' zone, the changes that
+    /// move a mask's offset plain alternatives and the masks at the offsets without them, as
+    /// on develop. A read is scored on these first; it is scored again on the graphs laid for
+    /// the changes it spans ([`Site::graphs_over`]) only where it spans one.
+    plain: Vec<StateGraph>,
+    /// The graphs laid per set of changes a read spans, by that set (a few kept, charged once
+    /// to the thread's budget: [`KeptGraphs`]).
+    over: KeptGraphs,
     /// At a long insertion, whether no base within the haplotypes tells the equal windows
     /// apart once the guard's masks are read (every read is depth only).
     untold: bool,
+    /// At a long insertion, the windows' length before reading on where the masks hide the
+    /// base that tells them apart (the run and the base past it); `long_ins` holds the length
+    /// read on, on the haplotypes without the listed changes ([`Site::window_len`]).
+    window0: i64,
     /// Where X is a pure insertion of [`LONG_EVENT`] bases or more: the first base of its run
     /// (genome; the anchor is the base before it) and the length of RJ-23's equal windows
     /// from the anchor, the anchor included ([`Site::equal_window`]): the run and the base
@@ -760,6 +831,74 @@ pub(crate) fn respell_trace() -> bool {
 pub(crate) fn neither_trace() -> bool {
     static ON: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
     *ON.get_or_init(|| std::env::var("GBCMS_JUDGE_NEITHER_TRACE").is_ok_and(|v| v == "1"))
+}
+
+impl StateGraph {
+    /// The bytes it holds on the heap (its graph's arrays and itself).
+    fn heap_bytes(&self) -> usize {
+        self.graph.heap_bytes() + std::mem::size_of::<StateGraph>()
+    }
+}
+
+/// The bytes a set of state graphs holds.
+pub(crate) fn graphs_bytes(graphs: &[StateGraph]) -> usize {
+    graphs.iter().map(StateGraph::heap_bytes).sum::<usize>() + std::mem::size_of::<Vec<StateGraph>>()
+}
+
+/// The graph sets a site keeps, by the set of changes a read spans ([`Site::graphs_over`]): at
+/// most [`OVER_KEPT`], each charged once to the thread's budget when it is kept (a
+/// [`Scored`](super::decide::Scored) holding it again does not count it). Where a set does not
+/// fit the budget none is kept from then on: a read's set is laid for it alone and dropped. The
+/// bytes are given back when the site is dropped. A clone keeps none.
+#[derive(Debug, Default)]
+struct KeptGraphs {
+    sets: std::cell::RefCell<HashMap<Vec<usize>, std::rc::Rc<Vec<StateGraph>>>>,
+    /// The bytes charged for the sets kept.
+    bytes: std::cell::Cell<usize>,
+    /// Whether a set did not fit the budget (no more are kept).
+    closed: std::cell::Cell<bool>,
+}
+
+impl Clone for KeptGraphs {
+    fn clone(&self) -> Self {
+        Self::default()
+    }
+}
+
+impl Drop for KeptGraphs {
+    fn drop(&mut self) {
+        super::release_kept(self.bytes.get());
+    }
+}
+
+impl KeptGraphs {
+    /// The set kept for `spanned`, if any.
+    fn get(&self, spanned: &[usize]) -> Option<std::rc::Rc<Vec<StateGraph>>> {
+        self.sets.borrow().get(spanned).cloned()
+    }
+
+    /// Keeps `graphs` for `spanned` where fewer than [`OVER_KEPT`] are kept and the set fits the
+    /// thread's budget, charging it once; whether it was kept.
+    fn keep(&self, spanned: &[usize], graphs: &std::rc::Rc<Vec<StateGraph>>) -> bool {
+        let mut sets = self.sets.borrow_mut();
+        if self.closed.get() || sets.len() >= OVER_KEPT {
+            return false;
+        }
+        let add = graphs_bytes(graphs) + spanned.len() * 8 + 64;
+        if !super::charge_kept(add) {
+            self.closed.set(true);
+            return false;
+        }
+        self.bytes.set(self.bytes.get() + add);
+        sets.insert(spanned.to_vec(), graphs.clone());
+        true
+    }
+
+    /// Tests only: the sets kept and the bytes charged for them.
+    #[cfg(test)]
+    fn state(&self) -> (usize, usize) {
+        (self.sets.borrow().len(), self.bytes.get())
+    }
 }
 
 /// One state of X's site and its graph: the window with the state's row applied (none for
@@ -1565,9 +1704,36 @@ impl Site {
     /// insertion beside X's run) lengthens neither allele's window: equal windows hold as many
     /// bases of each read.
     pub(crate) fn equal_window(&self, hap: &Hap) -> Option<(i64, i64)> {
-        let (lo, w) = self.long_ins?;
+        let (lo, _) = self.long_ins?;
+        let w = self.window_len(&hap.ctx);
         let a = self.column_in(hap, lo - 1 - self.start);
         Some((a, a + w - 1))
+    }
+
+    /// The windows' length on a haplotype whose masks are laid by the columns of the listed
+    /// changes `ctx` ([`Hap::ctx`]): the length they read on to where the masks hide the base
+    /// telling REF's window from X's ([`Site::read_on`]), counted on the haplotypes with those
+    /// changes, as the masks are. A listed deletion between the anchor and that base moves it
+    /// nearer on a haplotype that carries it, and the window with it. The length on the
+    /// haplotypes without them (the site's) where `ctx` is empty or no masks are laid.
+    fn window_len(&self, ctx: &[usize]) -> i64 {
+        let Some((lo, w)) = self.long_ins else { return 0 };
+        let Some(laying) = self.mirror.as_ref().filter(|_| !ctx.is_empty() && !self.untold) else { return w };
+        if let Some(&n) = laying.windows.borrow().get(ctx) {
+            return n;
+        }
+        let n = self.read_on(lo, self.window0, ctx).unwrap_or(i64::MAX / 4);
+        laying.windows.borrow_mut().insert(ctx.to_vec(), n);
+        n
+    }
+
+    /// Of `ctx`, the listed changes that move the guard's masks by their length
+    /// ([`MirrorLaying::shifters`]), sorted.
+    fn shifting(&self, ctx: &[usize]) -> Vec<usize> {
+        let mut ctx: Vec<usize> = self.mirror.as_ref().map_or_else(Vec::new, |m| ctx.iter().copied().filter(|r| m.shifters.contains(r)).collect());
+        ctx.sort_unstable();
+        ctx.dedup();
+        ctx
     }
 
     /// The candidate a haplotype of `rows` is: the row of X or of the other state it applies (X
@@ -1580,85 +1746,107 @@ impl Site {
             .or_else(|| rows.iter().copied().find(|&r| self.is_state(r)))
     }
 
-    /// The masks laid by offset on the candidate `key` (None: REF's), where they are laid.
-    fn mirror_of(&self, key: Option<usize>) -> Option<&Mirror> {
-        self.mirrors.get(key.map_or(0, |r| r + 1))
-    }
-
-    /// Lays the guard's masks on every candidate haplotype by offset from the anchor (RJ-23:
-    /// "masked in both windows"; RJ-27: the masks are read on every haplotype alike), over the
-    /// reach of a read `l` bases long holding them. A change past X's run masked at genome `g`
-    /// sits at offset `g − anchor` on REF's haplotype and, past X's insert, at `g − anchor + n`
-    /// on X's: read as the guard has it, REF's reads over it were weighed against X's base at
-    /// that offset while no ALT read was against REF's (and a mask X's haplotype takes inside
-    /// its window, where X's run is longer than its insert, the other way round). Each offset
-    /// either haplotype masks is now masked at that offset on every candidate: an inserted base
+    /// Sets up the guard's masks laid on every candidate haplotype by offset from the anchor
+    /// (RJ-23: "masked in both windows"; RJ-27: the masks are read on every haplotype alike),
+    /// over the reach of a read `l` bases long holding them; `rest` are the context rows in
+    /// its reach. A change past X's run masked at genome `g` sits at offset `g − anchor` on
+    /// REF's haplotype and, past X's insert, at `g − anchor + n` on X's: read as the guard has
+    /// it, REF's reads over it were weighed against X's base at that offset while no ALT read
+    /// was against REF's (and a mask X's haplotype takes inside its window, where X's run is
+    /// longer than its insert, the other way round). Each offset either haplotype masks is
+    /// now masked at that offset on every candidate ([`Site::mirror_for`]): an inserted base
     /// or a reference base of its own, wherever its row puts them. A listed allele of X's
     /// length differing from X at a masked offset is then told from X by no base there, as REF
     /// is not; a read with a third base at that offset weighs on none of them. The anchor is
     /// the base before X's run, wherever X is written in it: a row that was not left-aligned
     /// still takes the masks.
-    fn mirror_masks(&mut self, l: i64) {
+    ///
+    /// The offsets are the read's, so they count the length changes of the path it lies on
+    /// between the anchor and the mask: a listed insertion or deletion there moves a mask to
+    /// another offset on every candidate that takes it. Nothing is laid where the guard masks
+    /// no base within the read's reach past the anchor.
+    fn lay_mirror(&mut self, l: i64, rest: &[usize]) {
         let Some((lo, _)) = self.long_ins else { return };
         let (anchor, wn) = (lo - 1 - self.start, self.reference.len() as i64);
-        // the candidates, REF's haplotype first and then X's and each other state's, each with
-        // the column of its anchor
-        let keys: Vec<Option<usize>> = std::iter::once(None).chain((0..=self.n_states).map(Some)).collect();
-        let haps: Vec<Hap> = keys.iter().map(|k| Hap::build(self, k.as_slice())).collect();
-        let at: Vec<i64> = haps.iter().map(|h| self.column_in(h, anchor)).collect();
-        // the offsets from the anchor, within a read's reach, that REF's haplotype or X's masks
+        // the bases past the anchor a mask can lie at within a read's reach, whatever the path
+        // takes (the most it shifts them either way is every row's length change)
+        let zone = (anchor, (anchor + l + self.max_shift + 2).min(wn));
+        if !self.masked.iter().any(|&m| m > anchor && m < zone.1) {
+            return;
+        }
+        let shifters: Vec<usize> = rest
+            .iter()
+            .copied()
+            .filter(|&r| self.rows[r].changes_length() && self.spans[r].0 < zone.1 && self.spans[r].1 > zone.0)
+            .collect();
+        self.mirror = Some(MirrorLaying { reach: l, shifters, zone, cache: Default::default(), windows: Default::default() });
+        let x = &self.rows[0];
+        let mirror = self.mirror_for(None, &[]).map(|m| (m.positions.len(), m.row_bases.len()));
+        log::debug!(
+            "haplotype judge {}>{} at {}: the guard's masks laid on every candidate haplotype by offset (REF's: {:?}), by the columns of each path through {} context changes",
+            String::from_utf8_lossy(&x.ref_al),
+            String::from_utf8_lossy(&x.alt_al),
+            x.pos + 1,
+            mirror,
+            self.mirror.as_ref().map_or(0, |m| m.shifters.len()),
+        );
+    }
+
+    /// The masks the guard's masks lay on the candidate `key` (its row, X's or another state's;
+    /// None: REF's) with the path's context changes `ctx` applied (those the laying counts,
+    /// [`MirrorLaying::shifters`], the rest set aside): the offsets from the anchor that REF's
+    /// haplotype or X's masks, each with `ctx` applied (a context that cannot lie with X's
+    /// left out of X's), are masked at the same offsets on the candidate with `ctx` applied.
+    /// So a read lying on that path is weighed on every candidate alike at the base it reads
+    /// there. None where no masks are laid.
+    fn mirror_for(&self, key: Option<usize>, ctx: &[usize]) -> Option<std::rc::Rc<Mirror>> {
+        let laying = self.mirror.as_ref()?;
+        let (lo, _) = self.long_ins?;
+        let ctx = self.shifting(ctx);
+        if let Some(m) = laying.cache.borrow().get(&(key, ctx.clone())) {
+            return Some(m.clone());
+        }
+        let (anchor, wn) = (lo - 1 - self.start, self.reference.len() as i64);
+        // the haplotype of `base` (None: REF's) with the path's changes that can lie with it
+        let with = |base: Option<usize>| {
+            let mut rows: Vec<usize> = ctx.iter().copied().filter(|&c| base.is_none_or(|b| b != c && !self.conflict(b, c))).collect();
+            rows.extend(base);
+            Hap::build(self, &rows)
+        };
+        // the offsets from the anchor, within a read's reach, that REF's haplotype or X's mask
         let mut offsets: BTreeSet<i64> = BTreeSet::new();
-        for &m in self.masked.iter().filter(|&&m| m > anchor) {
-            for w in [0, 1] {
-                let covered = haps[w].rows.iter().any(|&r| self.spans[r].0 <= m && m < self.spans[r].1);
-                let k = self.column_in(&haps[w], m) - at[w];
-                if !covered && 0 < k && k < l {
+        for hap in [with(None), with(Some(0))] {
+            let at = self.column_in(&hap, anchor);
+            for &m in self.masked.iter().filter(|&&m| m > anchor) {
+                let covered = hap.rows.iter().any(|&r| self.spans[r].0 <= m && m < self.spans[r].1);
+                let k = self.column_in(&hap, m) - at;
+                if !covered && 0 < k && k < laying.reach {
                     offsets.insert(k);
                 }
             }
         }
-        // per candidate, what sits at those offsets: a reference base, or one of its row's own
-        let mut mirrors = vec![Mirror::default(); keys.len()];
-        for (w, hap) in haps.iter().enumerate() {
-            for &k in &offsets {
-                let col = at[w] + k;
-                if !(0..hap.seq.len() as i64).contains(&col) {
-                    continue;
-                }
-                match hap.segs.first() {
-                    Some(&(_, _, hs, he)) if hs <= col && col < he => mirrors[w].alt_bases.push((col - hs) as usize),
-                    seg => {
-                        let pos = match seg {
-                            Some(&(_, re, _, he)) if col >= he => col - (he - re),
-                            _ => col,
-                        };
-                        if (0..wn).contains(&pos) && self.masked.binary_search(&pos).is_err() {
-                            mirrors[w].positions.push(pos);
-                        }
-                    }
-                }
+        // what sits at those offsets on the candidate: a reference base, or one of its rows' own
+        let cand = with(key);
+        let at = self.column_in(&cand, anchor);
+        let mut mirror = Mirror::default();
+        for &k in &offsets {
+            let col = at + k;
+            if !(0..cand.seq.len() as i64).contains(&col) {
+                continue;
             }
-            mirrors[w].positions.sort_unstable();
-            mirrors[w].positions.dedup();
-            mirrors[w].alt_bases.sort_unstable();
-            mirrors[w].alt_bases.dedup();
+            match cand.source(col) {
+                Source::Row(r, i) => mirror.row_bases.push((r, i)),
+                Source::Ref(pos) if (0..wn).contains(&pos) && self.masked.binary_search(&pos).is_err() => mirror.positions.push(pos),
+                Source::Ref(_) => {}
+            }
         }
-        if mirrors.iter().any(|m| !m.positions.is_empty() || !m.alt_bases.is_empty()) {
-            let x = &self.rows[0];
-            log::debug!(
-                "haplotype judge {}>{} at {}: the guard's masks laid on every candidate haplotype by offset: {}",
-                String::from_utf8_lossy(&x.ref_al),
-                String::from_utf8_lossy(&x.alt_al),
-                x.pos + 1,
-                mirrors
-                    .iter()
-                    .zip(&keys)
-                    .map(|(m, k)| format!("{} {}+{}", k.map_or("REF".to_string(), |r| format!("row {r}")), m.positions.len(), m.alt_bases.len()))
-                    .collect::<Vec<_>>()
-                    .join(", "),
-            );
-        }
-        self.mirrors = mirrors;
+        mirror.positions.sort_unstable();
+        mirror.positions.dedup();
+        mirror.row_bases.sort_unstable();
+        mirror.row_bases.dedup();
+        let mirror = std::rc::Rc::new(mirror);
+        laying.cache.borrow_mut().insert((key, ctx), mirror.clone());
+        Some(mirror)
     }
 
     /// The equal windows' length `w` from the anchor (the base before `lo`), read on where
@@ -1669,8 +1857,14 @@ impl Site {
     /// alone (a change past an insertion's run lies, on X's, past the insert) would let REF's
     /// molecules be told by that base while X's are not. None where no base within the
     /// haplotypes tells them apart: no read holds the windows.
-    fn read_on(&self, lo: i64, w: i64) -> Option<i64> {
-        let (r, x) = (Hap::build(self, &[]), Hap::build(self, &[0]));
+    fn read_on(&self, lo: i64, w: i64, ctx: &[usize]) -> Option<i64> {
+        // the haplotypes of REF and X with the path's changes that can lie with each
+        let with = |base: Option<usize>| {
+            let mut rows: Vec<usize> = ctx.iter().copied().filter(|&c| base.is_none_or(|b| b != c && !self.conflict(b, c))).collect();
+            rows.extend(base);
+            Hap::build(self, &rows)
+        };
+        let (r, x) = (with(None), with(Some(0)));
         let (ar, ax) = (self.column_in(&r, lo - 1 - self.start), self.column_in(&x, lo - 1 - self.start));
         let n = (r.seq.len() as i64 - ar).min(x.seq.len() as i64 - ax);
         let tells = |k: i64| {
@@ -1793,13 +1987,13 @@ impl Site {
     }
 
     /// The read's alignment to state `k`'s haplotype `hap` (the one its best path spells,
-    /// [`Site::hap_on_path`]) read off that path (`steps`, [`graph::kept_steps`]): each read
-    /// base's graph base mapped to its column in `hap` (a reference base by its coordinate past
-    /// the rows applied before it, an allele's by its place in the row's span on `hap`);
-    /// columns are `hap`'s own (the trim starts at 0). The read's call is examined on it: the
-    /// alignment its score came from, not a second one.
-    pub(crate) fn alignment_on_path(&self, k: usize, steps: &graph::PathSteps, hap: &Hap, read: &[u8]) -> (Alignment, usize) {
-        let g = &self.graphs[k].graph;
+    /// [`Site::hap_on_path_in`]) read off that path (`steps`, [`graph::kept_steps`]) on the graphs
+    /// `graphs` the read was scored on: each read base's graph base mapped to its column in `hap`
+    /// (a reference base by its coordinate past the rows applied before it, an allele's by its
+    /// place in the row's span on `hap`); columns are `hap`'s own (the trim starts at 0). The
+    /// read's call is examined on it: the alignment its score came from, not a second one.
+    pub(crate) fn alignment_on_path_in(&self, graphs: &[StateGraph], k: usize, steps: &graph::PathSteps, hap: &Hap, read: &[u8]) -> (Alignment, usize) {
+        let g = &graphs[k].graph;
         let column = |v: usize| -> usize {
             let seg = g.segment_of(v);
             let c = match seg.row {
@@ -2835,8 +3029,13 @@ impl Site {
             places,
             max_shift,
             masked,
-            mirrors: Vec::new(),
+            mirror: None,
+            by_copy: false,
+            rest: Vec::new(),
+            plain: Vec::new(),
+            over: KeptGraphs::default(),
             untold: false,
+            window0: 0,
             long_ins,
             site_window,
             graphs: Vec::new(),
@@ -2860,7 +3059,8 @@ impl Site {
             .collect();
         // Every context at once: one graph per state, no enumeration.
         if let Some((lo, w)) = site.long_ins.filter(|_| ins_rule != LongInsRule::Window) {
-            match site.read_on(lo, w) {
+            site.window0 = w;
+            match site.read_on(lo, w, &[]) {
                 Some(read) => {
                     if read != w {
                         log::debug!("haplotype judge: the guard's masks hide the base telling a long insertion's windows apart; both read on, {w} -> {read} bases from the anchor");
@@ -2875,21 +3075,37 @@ impl Site {
             }
         }
         if site.long_ins.is_some() && ins_rule != LongInsRule::Window {
-            site.mirror_masks(l);
+            site.lay_mirror(l, &rest);
         }
         site.graphs = site.state_graphs(&rest);
+        site.by_copy = site.graphs.iter().any(|g| g.graph.has_copies());
         site.drop_spelled_states(&rest);
         site.drop_graph_spellings(&found_states, reads, rule);
         site.link_layouts();
+        site.rest = rest;
+        if site.by_copy {
+            site.plain = site.laid_over(&[]);
+        }
         Some(site)
     }
 
+}
+
+/// Per state, the earlier state whose graph is laid out as its own and the first base they
+/// differ at ([`Graph::layout_until`]), for the programme to take its first columns from.
+fn link_all(graphs: &mut [StateGraph]) {
+    for k in 0..graphs.len() {
+        let share = (0..k).filter(|&s| graphs[s].share.is_none()).find_map(|s| graphs[s].graph.layout_until(&graphs[k].graph).map(|p| (s, p)));
+        graphs[k].share = share;
+    }
 }
 
 /// A zone's alternatives (the sets of its rows at one place that can lie together) up to
 /// which it is laid out as parallel copies; past it the zone's rows are plain bubbles, so
 /// two of them at one place may share a path (a haplotype more, never one fewer).
 const ZONE_MAX_ALTS: usize = 64;
+/// Sets of changes a read spans whose graphs a site keeps (the rest are laid again for each read).
+const OVER_KEPT: usize = 32;
 /// Rows inside an other state's span up to which every set of them is tried when asking
 /// whether the state spells X or REF beside them.
 const SPELL_MAX_ROWS: usize = 6;
@@ -2909,6 +3125,53 @@ impl Site {
                 StateGraph { class, row, graph: self.graph_of(row, &optional), share: None }
             })
             .collect()
+    }
+
+    /// The graph per remaining state, laid with copies of the masks' zone for the changes
+    /// `copied` only (the others plain alternatives, the masks at the offsets without them).
+    fn laid_over(&self, copied: &[usize]) -> Vec<StateGraph> {
+        let mut graphs: Vec<StateGraph> = self
+            .graphs
+            .iter()
+            .map(|st| {
+                let optional: Vec<usize> = self.rest.iter().copied().filter(|&c| st.row.is_none_or(|s| !self.conflict(s, c))).collect();
+                StateGraph { class: st.class, row: st.row, graph: self.graph_over(st.row, &optional, copied), share: None }
+            })
+            .collect();
+        link_all(&mut graphs);
+        graphs
+    }
+
+    /// The graphs a read that spans the changes `spanned` is scored on the second time: copies
+    /// of the masks' zone for those changes only. Laid once per set where kept.
+    ///
+    /// A set is kept (and charged to the thread's budget, once) while the site keeps fewer than
+    /// [`OVER_KEPT`] and the budget has room; otherwise it is laid for the read alone. The graphs
+    /// and whether they were kept: a set not kept is the read's own, and whoever holds it counts it.
+    pub(crate) fn graphs_over(&self, spanned: &[usize]) -> (std::rc::Rc<Vec<StateGraph>>, bool) {
+        if let Some(g) = self.over.get(spanned) {
+            return (g, true);
+        }
+        let g = std::rc::Rc::new(self.laid_over(spanned));
+        let kept = self.over.keep(spanned, &g);
+        (g, kept)
+    }
+
+    /// Tests only: the graph sets the site keeps for the reads' spans, and the bytes charged
+    /// to the budget for them.
+    #[cfg(test)]
+    pub(crate) fn kept_graphs(&self) -> (usize, usize) {
+        self.over.state()
+    }
+
+    /// The graphs a read is scored on first: with no copy of the masks' zone where the site
+    /// lays masks by copy, else the site's.
+    pub(crate) fn first_graphs(&self) -> &[StateGraph] {
+        if self.by_copy {
+            &self.plain
+        } else {
+            &self.graphs
+        }
     }
 
     /// Row `r`'s bases as its haplotypes spell them: its ALT, a base it keeps (a row of
@@ -2937,8 +3200,22 @@ impl Site {
     /// take two rows whose REF spans meet; two rows at one place whose spans do not meet
     /// (two length changes in one repeat) are kept apart by a zone: the window over them
     /// laid out once per set of them that can lie together, each copy with the zone's
-    /// other rows as bubbles.
+    /// other rows as bubbles. Where the guard's masks are laid by offset from the anchor
+    /// ([`Site::lay_mirror`]), the length changes among `optional` that can move a mask's
+    /// offset are laid out so too, over the zone where a mask can lie: each copy takes the
+    /// masks by the columns of its own set (the copy of no change too, so a read can be held to
+    /// the changes it carries: [`graph::GraphRead::lies_in`]); a segment of a copy says which
+    /// ([`graph::Segment::copy`]), so a path's haplotype is laid the masks of the copy it ran
+    /// through, the same for every state a read is scored on.
     pub(crate) fn graph_of(&self, forced: Option<usize>, optional: &[usize]) -> Graph {
+        let copied: Vec<usize> = self.mirror.as_ref().map_or_else(Vec::new, |m| m.shifters.clone());
+        self.graph_over(forced, optional, &copied)
+    }
+
+    /// [`Site::graph_of`] with copies of the masks' zone for the changes `copied` only: the
+    /// other changes are laid as without the zone (rows at one place in alternatives, the rest
+    /// bubbles), their masks at the offsets without them.
+    pub(crate) fn graph_over(&self, forced: Option<usize>, optional: &[usize], copied: &[usize]) -> Graph {
         let mut all: Vec<usize> = forced.into_iter().chain(optional.iter().copied()).collect();
         all.sort_by_key(|&r| (self.spans[r], r));
         all.dedup();
@@ -2980,6 +3257,9 @@ impl Site {
                 ((lo, hi), rows)
             })
             .collect();
+        // the masks' zone: the changes that move a mask's offset, laid out by copy with it
+        let mirror_zone = self.mirror_zone(forced, &all, copied);
+        zones.extend(mirror_zone);
         // merged where they meet, widened over every row reaching across an end
         loop {
             zones.sort_by_key(|z| z.0);
@@ -3006,6 +3286,15 @@ impl Site {
             zones = merged;
             if !grew {
                 break;
+            }
+        }
+        // a zone holds every change that moves a mask's offset within it among its rows
+        if self.mirror.is_some() {
+            for z in zones.iter_mut() {
+                let inside_z = |r: usize| self.spans[r].0 >= z.0 .0 && self.spans[r].1 <= z.0 .1;
+                z.1.extend(all.iter().copied().filter(|&r| copied.contains(&r) && inside_z(r)));
+                z.1.sort_unstable();
+                z.1.dedup();
             }
         }
         // each zone's alternatives; a zone with too many is left to plain bubbles
@@ -3038,10 +3327,13 @@ impl Site {
             if pos < *lo {
                 let f: Vec<usize> = forced.into_iter().filter(|&r| inside(r, (pos, *lo))).collect();
                 let o: Vec<usize> = all.iter().copied().filter(|&r| Some(r) != forced && inside(r, (pos, *lo))).collect();
-                let (entry, exit) = self.region(&mut gb, (pos, *lo), &f, &o, forced);
+                let (entry, exit) = self.region(&mut gb, (pos, *lo), &f, &o, forced, 0, copied);
                 join(&mut gb, &mut prev, entry, exit);
             }
             let zone_rows: Vec<usize> = all.iter().copied().filter(|&r| inside(r, (*lo, *hi))).collect();
+            // a zone holding changes that move a mask's offset is laid out by copy, each one
+            // tagged (the copy of no change too), so a read can be held to one of them
+            let by_copy = zone_rows.iter().any(|r| copied.contains(r));
             let (mut entries, mut exits) = (Vec::new(), Vec::new());
             for set in alts {
                 let mut f: Vec<usize> = set.clone();
@@ -3055,7 +3347,10 @@ impl Site {
                     .filter(|&r| !f.contains(&r) && !alts.iter().flatten().any(|&c| c == r))
                     .filter(|&r| f.iter().all(|&c| !self.conflict(c, r)))
                     .collect();
-                let (entry, exit) = self.region(&mut gb, (*lo, *hi), &f, &o, forced);
+                // the copy's masks are laid by the columns of the changes it takes
+                let shifters: Vec<usize> = f.iter().copied().filter(|r| copied.contains(r)).collect();
+                let copy = if by_copy { gb.copy({ let mut c = shifters; c.sort_unstable(); c }) } else { 0 };
+                let (entry, exit) = self.region(&mut gb, (*lo, *hi), &f, &o, forced, copy, copied);
                 entries.extend(entry);
                 exits.extend(exit);
             }
@@ -3065,10 +3360,32 @@ impl Site {
         if pos < wn {
             let f: Vec<usize> = forced.into_iter().filter(|&r| inside(r, (pos, wn))).collect();
             let o: Vec<usize> = all.iter().copied().filter(|&r| Some(r) != forced && inside(r, (pos, wn))).collect();
-            let (entry, exit) = self.region(&mut gb, (pos, wn), &f, &o, forced);
+            let (entry, exit) = self.region(&mut gb, (pos, wn), &f, &o, forced, 0, copied);
             join(&mut gb, &mut prev, entry, exit);
         }
         gb.finish()
+    }
+
+    /// The zone of the mirror's masks in a graph of `forced` over `all`: the window span where a
+    /// mask can lie within a read's reach, widened to hold whole the changes among `all` that
+    /// can move a mask's offset ([`MirrorLaying::shifters`]) and `forced` where it meets the
+    /// span (its own bases take masks by offset too), with those changes as its rows. None
+    /// where no masks are laid or `all` holds none of them: the graph's masks are the same
+    /// whatever its path takes.
+    fn mirror_zone(&self, forced: Option<usize>, all: &[usize], copied: &[usize]) -> Option<((i64, i64), Vec<usize>)> {
+        let laying = self.mirror.as_ref()?;
+        let rows: Vec<usize> = all.iter().copied().filter(|r| copied.contains(r)).collect();
+        if rows.is_empty() {
+            return None;
+        }
+        let (mut lo, mut hi) = laying.zone;
+        for &r in rows.iter().chain(forced.iter()) {
+            let (s, e) = self.spans[r];
+            if s < hi && e > lo {
+                (lo, hi) = (lo.min(s), hi.max(e));
+            }
+        }
+        Some(((lo, hi), rows))
     }
 
     /// The sets of `rows` (rows at one place) that can lie together, `forced` in each
@@ -3110,9 +3427,13 @@ impl Site {
     /// under them) and `optional` as bubbles (those meeting a forced row left out). Its
     /// entry segments (starting at `a`) and exit segments (ending at `b`). `state` is the
     /// candidate the graph is of (its row, None for REF's), which takes the masks laid on it
-    /// by offset ([`Site::mirror_masks`]).
-    fn region(&self, gb: &mut GraphBuilder, (a, b): (i64, i64), forced: &[usize], optional: &[usize], state: Option<usize>) -> (Vec<usize>, Vec<usize>) {
-        let mirror = self.mirror_of(state);
+    /// by offset ([`Site::mirror_for`]) with the changes `forced` applies: over the copies of
+    /// a graph's mirror zone, the path's own.
+    #[allow(clippy::too_many_arguments)]
+    fn region(&self, gb: &mut GraphBuilder, (a, b): (i64, i64), forced: &[usize], optional: &[usize], state: Option<usize>, copy: u32, copied: &[usize]) -> (Vec<usize>, Vec<usize>) {
+        // the masks are laid by the columns of the changes `copied` among those it applies only
+        let ctx: Vec<usize> = forced.iter().copied().filter(|r| copied.contains(r)).collect();
+        let mirror = self.mirror_for(state, &ctx);
         let rows: Vec<usize> = forced
             .iter()
             .copied()
@@ -3133,11 +3454,11 @@ impl Site {
             }
             let bases: Vec<u8> = (p..q)
                 .map(|c| {
-                    let hidden = self.masked.binary_search(&c).is_ok() || mirror.is_some_and(|m| m.positions.binary_search(&c).is_ok());
+                    let hidden = self.masked.binary_search(&c).is_ok() || mirror.as_ref().is_some_and(|m| m.positions.binary_search(&c).is_ok());
                     if hidden { WILD } else { self.reference[c as usize] }
                 })
                 .collect();
-            let id = gb.segment(None, (p, q), bases);
+            let id = gb.segment_in(None, (p, q), bases, copy);
             starting.entry(p).or_default().push(id);
             ending.entry(q).or_default().push(id);
         }
@@ -3147,14 +3468,14 @@ impl Site {
                 continue;
             }
             let mut bases = self.row_bases(r);
-            if let Some(m) = mirror.filter(|_| state == Some(r)) {
-                for &i in &m.alt_bases {
+            if let Some(m) = &mirror {
+                for &(_, i) in m.row_bases.iter().filter(|&&(row, _)| row == r) {
                     if let Some(b) = bases.get_mut(i) {
                         *b = WILD;
                     }
                 }
             }
-            let id = gb.segment(Some(r), (s, e), bases);
+            let id = gb.segment_in(Some(r), (s, e), bases, copy);
             starting.entry(s).or_default().push(id);
             ending.entry(e).or_default().push(id);
         }
@@ -3173,13 +3494,52 @@ impl Site {
         (starting.remove(&a).unwrap_or_default(), ending.remove(&b).unwrap_or_default())
     }
 
+    /// Whether a read is scored on one copy of the masks' zone for every state
+    /// ([`Site::taken_changes`]).
+    pub(crate) fn scores_by_copy(&self) -> bool {
+        self.by_copy
+    }
+
+    /// Of `rows` (a path's), the listed changes that move the guard's masks by their length
+    /// ([`MirrorLaying::shifters`]) and that the path carries: it takes the change's segment
+    /// and its bases span the change's place ([`Site::spans_place`]). A path that only touches
+    /// the place carries nothing: in the copy laid for a deletion the reference under it is cut
+    /// and its segment holds the padding base, so a path ending on that base, or inside the
+    /// repeat the deletion slides over, goes through the segment at no cost, and a read's
+    /// sequencing error would be hidden by the masks of a change its bases cannot show.
+    pub(crate) fn taken_changes(&self, rows: &[usize], reach: (i64, i64)) -> Vec<usize> {
+        self.shifting(rows).into_iter().filter(|&r| self.spans_place(r, reach)).collect()
+    }
+
+    /// The listed changes that move the guard's masks and whose place lies inside `reach`, the
+    /// stretch of the window a path spans: those a read on it passes, carrying them or not.
+    pub(crate) fn spanned_changes(&self, reach: (i64, i64)) -> Vec<usize> {
+        self.mirror.as_ref().map_or_else(Vec::new, |m| m.shifters.iter().copied().filter(|&r| self.spans_place(r, reach)).collect())
+    }
+
+    /// Whether `reach` (the least and greatest reference coordinate of the bases a path visits)
+    /// holds the whole place of change `r`: from the anchor before the first place it can sit
+    /// to the base past the last (the repeat it slides over). Short of that a read cannot tell
+    /// the change from its absence.
+    fn spans_place(&self, r: usize, reach: (i64, i64)) -> bool {
+        let (s, e) = (self.places[r].0.min(self.spans[r].0), self.places[r].1.max(self.spans[r].1));
+        reach.0 <= s && e <= reach.1
+    }
+
     /// The haplotype the graph of `state` spells along a path taking `rows`: the state's
     /// row with them.
-    pub(crate) fn hap_on_path(&self, state: usize, rows: &[usize]) -> Hap {
-        let mut all: Vec<usize> = self.graphs[state].row.into_iter().chain(rows.iter().copied()).collect();
+    #[cfg(test)]
+    pub(crate) fn hap_on_path(&self, state: usize, rows: &[usize], copy: u32) -> Hap {
+        self.hap_on_path_in(&self.graphs, state, rows, copy)
+    }
+
+    /// [`Site::hap_on_path`] on the graphs `graphs` the read was scored on.
+    pub(crate) fn hap_on_path_in(&self, graphs: &[StateGraph], state: usize, rows: &[usize], copy: u32) -> Hap {
+        let mut all: Vec<usize> = graphs[state].row.into_iter().chain(rows.iter().copied()).collect();
         all.sort_unstable();
         all.dedup();
-        Hap::build_with(self, &all, true)
+        // the masks laid by the columns of the copy of the graph's mirror zone the path ran through
+        Hap::build_with(self, &all, Some(graphs[state].graph.copy_set(copy)))
     }
 
     /// The read as the graph scorer reads it: its aligned positions in window coordinates,
@@ -3194,7 +3554,7 @@ impl Site {
         let first = read.refpos.iter().copied().min().unwrap_or(read.ref_start).min(read.ref_start);
         let end = read.refpos.iter().copied().max().unwrap_or(read.ref_end).max(read.ref_end);
         let span = (first - self.start, end - self.start);
-        let mut gr = GraphRead { seq: &read.seq, rp, span, free_shift: self.free_shift(read), full: self.band_full, long: true };
+        let mut gr = GraphRead { seq: &read.seq, rp, span, free_shift: self.free_shift(read), full: self.band_full, long: true, lies_in: None };
         // where any state's graph holds a long insertion past the read's band, every state runs
         // the full programme: one exactness for the read's call, the found-allele check
         // and `needed_by` alike
@@ -3279,10 +3639,7 @@ impl Site {
     /// Per state graph, the first earlier one laid out alike that shares from none itself,
     /// and where their bases first differ ([`StateGraph::share`]).
     fn link_layouts(&mut self) {
-        for k in 0..self.graphs.len() {
-            let share = (0..k).filter(|&s| self.graphs[s].share.is_none()).find_map(|s| self.graphs[s].graph.layout_until(&self.graphs[k].graph).map(|p| (s, p)));
-            self.graphs[k].share = share;
-        }
+        link_all(&mut self.graphs);
     }
 
     /// An other state whose allele spells X's haplotype (or REF's) with rows of the reads'
@@ -3645,6 +4002,54 @@ pub(crate) mod tests {
         assert_eq!((o.found, o.rule, o.found_min), (true, FoundRule::Told(2), 3));
         let o = parse_other("none");
         assert_eq!((o.found, o.fit, o.rule), (false, false, FoundRule::All));
+    }
+
+    /// A 60 bp duplication after the anchor at 0-based 299, a copy of the 60 bases after it but
+    /// its last (RJ-23's shape: its run is 300-358 and the base past it tells the alleles
+    /// apart), on a 700-base contig.
+    fn long_duplication() -> (Vec<u8>, Row) {
+        let c = random_seq(700, 264);
+        let last = *b"ACGT".iter().find(|&&b| b != c[359] && b != c[299]).unwrap();
+        let mut ins = c[300..360].to_vec();
+        ins[59] = last;
+        let x = Row::new(299, &c[299..300], &[&c[299..300], &ins[..]].concat());
+        (c, x)
+    }
+
+    /// The columns of `hap` past its anchor, within `reach`, whose base is masked, as offsets
+    /// from its anchor.
+    fn masked_offsets(site: &Site, hap: &Hap, reach: usize) -> Vec<usize> {
+        let a = site.anchor_in(hap) as usize;
+        (1..reach).filter(|&k| a + k < hap.seq.len() && hap.seq[a + k] == WILD).collect()
+    }
+
+    #[test]
+    fn the_masks_lie_at_the_same_offsets_on_every_haplotype_of_a_path_through_a_listed_change() {
+        // The guard masks 365, 66 bases from the anchor, past the duplication's run. A 2 bp
+        // deletion listed after 360 lies between: a context (it meets no place of X's), which a
+        // read may carry. On a path through it the masked base is 64 bases from the anchor on
+        // REF's haplotype, and the masks laid on X's haplotype by offset (RJ-23: "masked in both
+        // windows"; RJ-27: the masks are read on every haplotype alike) must be 64 bases from
+        // its anchor too. They were laid at the offset the haplotypes show without the deletion
+        // (66), where a read carrying it has its base for 365 two bases earlier.
+        let (c, x) = long_duplication();
+        let k = Row::new(360, &c[360..363], &c[360..361]);
+        let read = ReadView::new(&[b'A'; 100], &[30; 100], 0, &[Cigar::Match(100)], (0, 100), 20).unwrap();
+        let candidates = Candidates { listed: vec![k.clone()], masked: vec![365], ..Candidates::default() };
+        let site = Site::build_ins(x, &candidates, (0, c), std::slice::from_ref(&read), LongInsRule::ReadOn).unwrap();
+        let li = site.rows.iter().position(|r| *r == k).unwrap();
+        // the copy of each state's graph a path through the deletion runs through
+        let on_path = |state: usize| {
+            let copy = (0..8).find(|&copy| site.graphs[state].graph.copy_set(copy) == [li]).expect("a copy for the deletion");
+            site.hap_on_path(state, &[li], copy)
+        };
+        let (reference, alt) = (on_path(0), on_path(1));
+        assert_eq!(masked_offsets(&site, &reference, 100), vec![64], "REF's haplotype, through the deletion");
+        assert_eq!(masked_offsets(&site, &alt, 100), vec![64], "X's haplotype, through the deletion");
+        // a path that does not take it keeps the offsets without it
+        let plain = |state: usize| site.hap_on_path(state, &[], 0);
+        assert_eq!(masked_offsets(&site, &plain(0), 100), vec![66]);
+        assert_eq!(masked_offsets(&site, &plain(1), 100), vec![66]);
     }
 
     #[test]
@@ -4123,7 +4528,7 @@ mod band_tests {
         let sc = Scorer::new(read);
         (0..site.graphs.len())
             .map(|k| {
-                let hap = site.hap_on_path(k, &[]);
+                let hap = site.hap_on_path(k, &[], 0);
                 let near = sc.near(site, &hap);
                 let (seq, _, _) = sc.prepare(site, &hap, &near);
                 (align(&sc, &hap).0.score, score::align(&read.seq, seq, None).score)
@@ -4409,7 +4814,7 @@ mod band_tests {
         assert!(site.long_skips(&read), "the linear aligner drops its band");
         let sc = Scorer::new(&read);
         for k in 0..site.graphs.len() {
-            let hap = site.hap_on_path(k, &[li]);
+            let hap = site.hap_on_path(k, &[li], 0);
             let near = sc.near(&site, &hap);
             let (seq, _, _) = sc.prepare(&site, &hap, &near);
             let (got, full) = (sc.align(&site, &hap).0.score, score::align(&read.seq, seq, None).score);
@@ -4453,7 +4858,7 @@ mod band_tests {
     }
 }
 
-/// Tests of the call examined on the traced path (`graph::kept_steps`, `Site::alignment_on_path`).
+/// Tests of the call examined on the traced path (`graph::kept_steps`, `Site::alignment_on_path_in`).
 #[cfg(test)]
 mod path_tests {
     use super::super::decide::judge;

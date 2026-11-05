@@ -183,7 +183,10 @@ For a row X and each admitted read:
     measured with a temporary option and not adopted (REJ-20261023-001); the option is removed.
     `GBCMS_JUDGE_LONG_INS=window` keeps the windows without the read-on and `off` restores the
     judge before them (measurement only, temporary: both go when the judge becomes the default,
-    #331, and the default behaviour stays).
+    #331, and the default behaviour stays). Two follow-ups (operator, 2026-11-02): a read tying the
+    ALT with another allele must hold the ALT's equal window too, or it is depth only; and the
+    masks are laid by the columns of each path, the listed or found changes between the anchor
+    and a masked base counted (RJ-23).
   - *An indel the reads write beside X's site* (two reads and 5%, every placement clear of
     the site, the repeat X changes included) is a context, a separate event (RJ-8), however
     a read's aligner wrote it, where the reads need it for their calls (as a respelling
@@ -706,8 +709,10 @@ placement, bases). Cost within 2× develop. The HPC gate.
      budget still gets it. A row's caches are freed at its end, and so is work space past a
      quarter of the budget. The bytes counted are those held: the work space's arrays and
      the band each workspace keeps for its path (a band states share, once); each cache's hash
-     table whole (its buckets are allocated as it grows); and a kept programme as later reads
-     alike grow it. `GBCMS_JUDGE_BUDGET_MB` sets the budget for measurement only
+     table whole (its buckets are allocated as it grows); a kept programme as later reads
+     alike grow it; and, at a pure insertion of 50 bp or more, the graph sets a site keeps for
+     the changes its reads span (once each, when kept; past the budget a read's set is laid for
+     it alone and counted with the read's programmes while they are kept). `GBCMS_JUDGE_BUDGET_MB` sets the budget for measurement only
      (`none`: no limit); `GBCMS_JUDGE_CACHE_TRACE=1` traces each row's cache at its end.
    - **Count-neutral.** A test judges a deletion's reads with no limit, with nothing cached and
      with budgets that close the caches part way: every call is the same. On every arm the

@@ -11,7 +11,7 @@ use rust_htslib::bam::record::{Aux, Cigar, Record};
 
 
 use super::graph::{self, ShortReads, Workspace};
-use super::haplotypes::{neither_trace, other_option, AlnTags, Class, Hap, NeitherRule, OwnGapRule, ReadView, RefBaseRule, Scorer, Site};
+use super::haplotypes::{graphs_bytes, neither_trace, other_option, AlnTags, Class, Hap, NeitherRule, OwnGapRule, ReadView, RefBaseRule, Scorer, Site, StateGraph};
 use super::score::{Alignment, Placed, DELTA, WILD};
 use crate::counting::carrier::{readable_range, ReadRules};
 use crate::counting::utils::{soft_clips, ClassifyPhase, ClassifyResult};
@@ -362,6 +362,20 @@ pub(crate) struct Scored {
     best: [Option<(i32, usize)>; 3],
     halves: Vec<Option<i64>>,
     rows: Vec<Vec<usize>>,
+    /// Per state, the copy of its graph's mirror zone its best path runs through
+    /// ([`graph::GraphPath::copy`]).
+    copies: Vec<u32>,
+    /// Per state, the stretch of the window its best path spans ([`graph::GraphPath::reach`]).
+    reach: Vec<(i64, i64)>,
+    /// The graphs the read was scored on where not the site's first ones: those laid with
+    /// copies of the masks' zone for the changes the read spans ([`Site::graphs_over`]).
+    over: Option<std::rc::Rc<Vec<StateGraph>>>,
+    /// Whether the site keeps `over` (charged to the budget once, there). A set the site did not
+    /// keep is this read's own and counted with it ([`Scored::heap_bytes`]).
+    over_kept: bool,
+    /// The changes the read was held to there: those it carries and those it spans without
+    /// carrying ([`graph::GraphRead::lies_in`]); None on the first graphs.
+    lies_in: Option<(Vec<usize>, Vec<usize>)>,
     haps: std::cell::RefCell<Vec<(usize, std::rc::Rc<Hap>)>>,
     aligns: std::cell::RefCell<Vec<(usize, Aligned)>>,
     /// Per state a call can be examined on (each class's best, and state 0), its best path read
@@ -373,6 +387,11 @@ pub(crate) struct Scored {
 }
 
 impl Scored {
+    /// The graphs the read was scored on.
+    fn graphs<'a>(&'a self, site: &'a Site) -> &'a [StateGraph] {
+        self.over.as_deref().map_or_else(|| site.first_graphs(), |g| &g[..])
+    }
+
     /// The bytes it holds (its capacities, the path steps, and the haplotypes and alignments
     /// built so far), for the row caches' budget.
     pub(crate) fn heap_bytes(&self) -> usize {
@@ -381,7 +400,8 @@ impl Scored {
             + self.steps.capacity() * std::mem::size_of::<Option<graph::PathSteps>>();
         let haps: usize = self.haps.borrow().iter().map(|(_, h)| h.heap_bytes() + std::mem::size_of::<Hap>() + 16).sum();
         let aligns: usize = self.aligns.borrow().iter().map(|(_, a)| a.0.heap_bytes() + std::mem::size_of::<Laid>() + 16).sum();
-        std::mem::size_of::<Scored>() + self.halves.capacity() * 16 + rows + steps + haps + aligns
+        let over: usize = self.over.as_ref().filter(|_| !self.over_kept).map_or(0, |g| graphs_bytes(g));
+        std::mem::size_of::<Scored>() + self.halves.capacity() * 16 + rows + steps + haps + aligns + over
     }
 }
 
@@ -417,7 +437,8 @@ fn judge_graph(site: &Site, read: &ReadView, min_baseq: u8, ask_anchor: bool, ke
     } else {
         let scorer = Scorer::new(read);
         // the alignment a candidate's call is examined on: its traced path's
-        let on_path = |k: usize, hap: &Hap| scored.steps[k].as_ref().map(|st| site.alignment_on_path(k, st, hap, &read.seq));
+        let graphs = scored.graphs(site);
+        let on_path = |k: usize, hap: &Hap| scored.steps[k].as_ref().map(|st| site.alignment_on_path_in(graphs, k, st, hap, &read.seq));
         let ex = Examined::new(
             site,
             &scorer,
@@ -425,7 +446,7 @@ fn judge_graph(site: &Site, read: &ReadView, min_baseq: u8, ask_anchor: bool, ke
                 if let Some((_, h)) = scored.haps.borrow().iter().find(|(j, _)| *j == k) {
                     return h.clone();
                 }
-                let h = std::rc::Rc::new(site.hap_on_path(k, &scored.rows[k]));
+                let h = std::rc::Rc::new(site.hap_on_path_in(graphs, k, &scored.rows[k], scored.copies[k]));
                 scored.haps.borrow_mut().push((k, h.clone()));
                 h
             },
@@ -441,28 +462,84 @@ fn judge_graph(site: &Site, read: &ReadView, min_baseq: u8, ask_anchor: bool, ke
 /// score, the band that decided it, and its best path traced back from the values its
 /// scoring left there ([`Scored`]).
 fn score_states(site: &Site, gr: &graph::GraphRead, wss: &mut [Workspace]) -> Scored {
+    // Where the site lays the guard's masks by copy (a listed change moves a mask's offset on
+    // every haplotype a read carrying it lies on), a read is scored first on the graphs with no
+    // copy: the changes that move a mask's offset are plain alternatives, the masks at the
+    // offsets without them, for every state. A change the read cannot place (its bases do not
+    // span the change's place) is neither carried nor barred, so a read that spans none is
+    // scored there and nowhere else. Where the best-scoring state's path spans some, every
+    // state is scored again on graphs laid with copies for those changes only, held to the
+    // copies of the changes the path carries and those it spans without carrying, which each
+    // state's alignment may shift for as the change would; the others stay plain alternatives.
+    let first = score_once(site.first_graphs(), gr, wss);
+    match lying_copy(site, &first) {
+        Some((spanned, taken, free)) => {
+            let (over, kept) = site.graphs_over(&spanned);
+            let mut second = score_once(&over, &gr.lying_in(taken.clone(), free.clone()), wss);
+            second.over = Some(over);
+            second.over_kept = kept;
+            second.lies_in = Some((taken, free));
+            second
+        }
+        None => first,
+    }
+}
+
+/// The changes of the masks' zone the read spans, those of them it carries, and those it
+/// spans without carrying, where the best-scoring state's path spans any ([`score_states`]).
+fn lying_copy(site: &Site, first: &Scored) -> Option<(Vec<usize>, Vec<usize>, Vec<usize>)> {
+    if !site.scores_by_copy() {
+        return None;
+    }
+    // the best-scoring state, the one taking the fewest changes on a tie
+    let top = first.best.iter().flatten().max_by_key(|&&(s, h)| (s, std::cmp::Reverse(site.taken_changes(&first.rows[h], first.reach[h]).len()), std::cmp::Reverse(h)))?;
+    let spanned = site.spanned_changes(first.reach[top.1]);
+    if spanned.is_empty() {
+        return None;
+    }
+    let mut taken = site.taken_changes(&first.rows[top.1], first.reach[top.1]);
+    taken.sort_unstable();
+    let free: Vec<usize> = spanned.iter().copied().filter(|r| !taken.contains(r)).collect();
+    Some((spanned, taken, free))
+}
+
+/// [`score_states`]'s programmes over the graphs `graphs`, each state's best path on whichever
+/// copy scores best, unless the read is held to some ([`graph::GraphRead::lies_in`]).
+fn score_once(graphs: &[StateGraph], gr: &graph::GraphRead, wss: &mut [Workspace]) -> Scored {
     let mut best: [Option<(i32, usize)>; 3] = [None; 3];
-    let graphs: Vec<&graph::Graph> = site.graphs.iter().map(|st| &st.graph).collect();
-    let shares: Vec<Option<(usize, usize)>> = site.graphs.iter().map(|st| st.share).collect();
-    let decided = graph::decided_states(&ShortReads, gr, &graphs, &shares, wss);
-    let mut halves = Vec::with_capacity(site.graphs.len());
-    for (k, (st, &(s, half))) in site.graphs.iter().zip(&decided).enumerate() {
+    let refs: Vec<&graph::Graph> = graphs.iter().map(|st| &st.graph).collect();
+    let shares: Vec<Option<(usize, usize)>> = graphs.iter().map(|st| st.share).collect();
+    let decided = graph::decided_states(&ShortReads, gr, &refs, &shares, wss);
+    let mut halves = Vec::with_capacity(graphs.len());
+    for (k, (st, &(s, half))) in graphs.iter().zip(&decided).enumerate() {
         halves.push(half);
         raise(&mut best, st.class as usize, s, k);
     }
     // The states a call can be examined on: each class's best ([`conclude`] asks for no
     // other), and state 0, which it falls back to where the class it names has none.
     let examined = |k: usize| k == 0 || best.iter().flatten().any(|&(_, h)| h == k);
-    let (mut rows, mut steps) = (Vec::with_capacity(site.graphs.len()), Vec::with_capacity(site.graphs.len()));
-    for k in 0..site.graphs.len() {
-        let p = graph::kept_path(&ShortReads, gr, &site.graphs[k].graph, halves[k], &wss[k]);
+    let (mut rows, mut copies, mut reach, mut steps) = (Vec::with_capacity(graphs.len()), Vec::with_capacity(graphs.len()), Vec::with_capacity(graphs.len()), Vec::with_capacity(graphs.len()));
+    for k in 0..graphs.len() {
+        let p = graph::kept_path(&ShortReads, gr, &graphs[k].graph, halves[k], &wss[k]);
         if best.iter().flatten().any(|&(s, h)| h == k && s != p.score) {
             trace!("haplotype judge: state {k}'s traced path scores {} against its score", p.score);
         }
         rows.push(p.rows);
-        steps.push(if examined(k) { graph::kept_steps(&ShortReads, gr, &site.graphs[k].graph, &wss[k]) } else { None });
+        copies.push(p.copy);
+        reach.push(p.reach);
+        steps.push(if examined(k) { graph::kept_steps(&ShortReads, gr, &graphs[k].graph, &wss[k]) } else { None });
     }
-    Scored { best, halves, rows, haps: Default::default(), aligns: Default::default(), steps }
+    Scored { best, halves, rows, copies, reach, over: None, over_kept: false, lies_in: None, haps: Default::default(), aligns: Default::default(), steps }
+}
+
+/// Tests only: for a read scored a second time (it spans a listed change), whether the graphs
+/// of that scoring are the site's kept ones, and the bytes its programmes hold
+/// ([`Scored::heap_bytes`]); None where the first scoring decided.
+#[cfg(test)]
+pub(crate) fn second_scoring(site: &Site, read: &ReadView) -> Option<(bool, usize)> {
+    let gr = site.graph_read(read);
+    let scored = graph::with_workspaces(site.graphs.len(), |wss| score_states(site, &gr, wss));
+    scored.over.as_ref().map(|_| (scored.over_kept, scored.heap_bytes()))
 }
 
 /// Tests only: per state of a graph site, the state's score, the read's alignment to the
@@ -474,19 +551,24 @@ pub(crate) fn examined_alignments(site: &Site, read: &ReadView, free: Option<i64
     let gr = site.graph_read(read);
     let scored = graph::with_workspaces(site.graphs.len(), |wss| score_states(site, &gr, wss));
     // every state's score and steps (a call keeps the steps of those it can examine only)
+    let graphs = scored.graphs(site);
     let (decided, steps): (Vec<i32>, Vec<Option<graph::PathSteps>>) = {
-        let graphs: Vec<&graph::Graph> = site.graphs.iter().map(|st| &st.graph).collect();
-        let shares: Vec<Option<(usize, usize)>> = site.graphs.iter().map(|st| st.share).collect();
-        graph::with_workspaces(site.graphs.len(), |wss| {
-            let d = graph::decided_states(&ShortReads, &gr, &graphs, &shares, wss);
-            let st = (0..site.graphs.len()).map(|k| graph::kept_steps(&ShortReads, &gr, &site.graphs[k].graph, &wss[k])).collect();
+        let refs: Vec<&graph::Graph> = graphs.iter().map(|st| &st.graph).collect();
+        let shares: Vec<Option<(usize, usize)>> = graphs.iter().map(|st| st.share).collect();
+        let gr = match &scored.lies_in {
+            Some((taken, free)) => gr.lying_in(taken.clone(), free.clone()),
+            None => site.graph_read(read),
+        };
+        graph::with_workspaces(graphs.len(), |wss| {
+            let d = graph::decided_states(&ShortReads, &gr, &refs, &shares, wss);
+            let st = (0..graphs.len()).map(|k| graph::kept_steps(&ShortReads, &gr, &graphs[k].graph, &wss[k])).collect();
             (d.into_iter().map(|x| x.0).collect(), st)
         })
     };
     let scorer = Scorer::new(read);
-    let on_path = |k: usize, hap: &Hap| steps[k].as_ref().map(|st| site.alignment_on_path(k, st, hap, &read.seq));
+    let on_path = |k: usize, hap: &Hap| steps[k].as_ref().map(|st| site.alignment_on_path_in(graphs, k, st, hap, &read.seq));
     let aligns = Default::default();
-    let ex = Examined::new(site, &scorer, |k| std::rc::Rc::new(site.hap_on_path(k, &scored.rows[k])), &aligns, &on_path);
+    let ex = Examined::new(site, &scorer, |k| std::rc::Rc::new(site.hap_on_path_in(graphs, k, &scored.rows[k], scored.copies[k])), &aligns, &on_path);
     (0..site.graphs.len())
         .map(|k| {
             let hap = ex.hap(k);
@@ -626,6 +708,38 @@ fn conclude<'h, F: Fn(usize) -> std::rc::Rc<Hap>>(
     Verdict { owngap: og, ..conclude_margin(site, read, ex, kept, min_baseq, ask_anchor) }
 }
 
+/// Where a long insertion's RJ-23 windows are missed on candidate `k`: the columns of its
+/// haplotype the read's alignment covers, None where it holds the equal window from the anchor
+/// (or the candidate has none).
+#[inline(never)]
+fn window_missed<'h, F: Fn(usize) -> std::rc::Rc<Hap>>(site: &'h Site, ex: &Examined<'h, '_, F>, k: usize) -> Option<Option<(usize, usize)>> {
+    let (hap_k, k_al) = (ex.hap(k), ex.align(k));
+    let (a, b) = site.equal_window(&hap_k)?;
+    let (wa, off) = (&k_al.0, k_al.1);
+    if wa.covers().is_some_and(|(s, e)| ((s + off) as i64) <= a && b <= (e + off) as i64) {
+        return None;
+    }
+    Some(wa.covers().map(|(s, e)| (s + off, e + off)))
+}
+
+/// The haplotypes a long insertion's call on `w` needs the equal window held on (RJ-23): `w`
+/// itself, and the best haplotype of every other class that scores within [`DELTA`] of it, the
+/// alleles the read ties. A call that beats every other class by the margin holds its own
+/// window alone; a read that ties the ALT with another allele (REF beaten), REF with another
+/// allele (the ALT beaten), or whatever the fit check or the mixed-changes check named, holds
+/// the windows of the alleles it ties as well: it fits each as well as the one it counts for.
+fn windows_to_hold(best: [Option<(i32, usize)>; 3], w: usize) -> Vec<usize> {
+    let mut needs = vec![w];
+    if let Some((s_w, _)) = best.iter().flatten().copied().find(|&(_, h)| h == w) {
+        for (s, h) in best.iter().flatten().copied() {
+            if !needs.contains(&h) && (i64::from(s) - i64::from(s_w)).abs() < i64::from(DELTA) {
+                needs.push(h);
+            }
+        }
+    }
+    needs
+}
+
 /// [`conclude`] by the margin alone.
 fn conclude_margin<'h, F: Fn(usize) -> std::rc::Rc<Hap>>(
     site: &'h Site,
@@ -712,14 +826,17 @@ fn conclude_margin<'h, F: Fn(usize) -> std::rc::Rc<Hap>>(
     // allele's too (one tying X inside the insert is no partial evidence), so no allele gains
     // read starts another cannot have.
     if site.long_insertion() {
-        let (hap_w, w_al) = (ex.hap(w), ex.align(w));
-        if let Some((a, b)) = site.equal_window(&hap_w) {
-            let (wa, off) = (&w_al.0, w_al.1);
-            if !wa.covers().is_some_and(|(s, e)| ((s + off) as i64) <= a && b <= (e + off) as i64) {
-                trace!(
-                    "haplotype judge: a {call:?} call at a long insertion holding no equal window from its anchor ({a}-{b}; the read covers {:?}) → depth only",
-                    wa.covers().map(|(s, e)| (s + off, e + off)),
-                );
+        // The haplotypes whose windows the call needs held: the called one, and every other
+        // class's best within the margin of it (the alleles the read ties): the read fits them
+        // as well, so it counts for none of them where it holds no window of theirs (a read
+        // inside the insert holds the other allele's window, which is REF's run, and tied X).
+        // A REF call the reach rule made (the tied allele is one the read never reaches, or one it
+        // writes its own indel across) holds REF's window alone, as before: the read shows REF
+        // where REF and X differ and nothing of the other allele, whose window it need not hold.
+        let needs = if ref_by_reach && call == Call::Ref { vec![w] } else { windows_to_hold(best, w) };
+        for k in needs {
+            if let Some(covers) = window_missed(site, ex, k) {
+                trace!("haplotype judge: a {call:?} call at a long insertion holding no equal window from its anchor on state {k} (the read covers {covers:?}) → depth only");
                 return Verdict { call: Call::Depth, qual: 0, best: scores, holds_anchor: false, placed: None, confirmed: false, spells: 0, spells_x: 0, clip: None, fits: FitsTrace::default(), fits_none: false, neither: NeitherTrace::default(), owngap: OwnGapTrace::default() };
             }
         }
@@ -1562,5 +1679,26 @@ mod tests {
         assert!(!fired(both, &noisy(12), doubted), "within 14 per 100: judged");
         assert!(fired(both, &noisy(16), doubted), "past both, doubted: depth only");
         assert!(!fired(both, &noisy(16), sure), "placed here alone: judged");
+    }
+
+    #[test]
+    fn a_long_insertions_call_holds_the_windows_of_the_alleles_it_ties() {
+        // best per class: [ALT, REF, another allele], each a (score, haplotype)
+        let best = |a: i32, r: i32, o: i32| [Some((a, 1)), Some((r, 0)), Some((o, 2))];
+        // beating the rest by the margin: its own window alone
+        assert_eq!(windows_to_hold(best(0, -20, -20), 1), vec![1], "ALT");
+        assert_eq!(windows_to_hold(best(-20, 0, -20), 0), vec![0], "REF");
+        // another allele tying the ALT, REF beaten: both (as before)
+        assert_eq!(windows_to_hold(best(-2, -20, 0), 2), vec![2, 1], "another allele ties the ALT");
+        // another allele tying REF, the ALT beaten: REF's too (it was the called allele's alone)
+        assert_eq!(windows_to_hold(best(-20, -2, 0), 2), vec![2, 0], "another allele ties REF");
+        // a call the fit check or the mixed check made on the haplotype that scores best of all,
+        // with a class within the margin of it: that one's as well
+        assert_eq!(windows_to_hold(best(-3, 0, -20), 0), vec![0, 1], "REF's haplotype, the ALT within the margin");
+        assert_eq!(windows_to_hold(best(-20, -3, 0), 2), vec![2, 0], "another allele's haplotype, REF within the margin");
+        // exactly the margin is beaten, not tied
+        assert_eq!(windows_to_hold(best(-4, 0, -20), 0), vec![0]);
+        // a class with no haplotype is not asked for
+        assert_eq!(windows_to_hold([None, Some((0, 0)), Some((-1, 2))], 2), vec![2, 0]);
     }
 }

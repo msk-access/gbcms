@@ -94,7 +94,7 @@ flowchart LR
     transparently.  See [CRAM Support](dna.md#required-arguments) for details.
 
 !!! tip "BAQ is On by Default in RNA Mode"
-    Unlike DNA mode, `--apply-baq` defaults to **on** for RNA. BAQ penalizes bases within 5 bp of both indels and splice junctions (CIGAR `N`), serving as a lightweight alternative to GATK SplitNCigarReads. Disable with `--no-baq` if your upstream workflow already runs SplitNCigarReads or BQSR. See [RNA Splice-Junction Handling](../reference/rna-splice-handling.md).
+    Unlike DNA mode, `--apply-baq` defaults to **on** for RNA. BAQ lowers the quality of bases within 5 bp of a read's insertion or deletion. A splice junction (CIGAR `N`) lowers no base's quality: a base is judged by its own quality, as GATK does after SplitNCigarReads. Disable with `--no-baq` if your upstream workflow already recalibrates base qualities. See [RNA Splice-Junction Handling](../reference/rna-splice-handling.md).
 
 | Option | Description |
 |:-------|:------------|
@@ -246,7 +246,8 @@ flowchart TD
 `--min-baseq` masks bases, never reads: a base below it is read as unknown, like `N`, and
 the read still counts toward depth, judged on its other bases (see [Read Filters → Quality
 Thresholds](../reference/read-filters.md#quality-thresholds)). BAQ, on by default in RNA
-mode, lowers qualities near splice junctions and indels before this threshold applies.
+mode, lowers qualities near a read's insertions and deletions before this threshold applies; a
+splice junction lowers none.
 
 The RNA `--min-mapq 1` default keeps the primary alignments of reads STAR placed at two
 to four loci (MAPQ 3 or 1); the measurement behind it and the cost of unique-only
@@ -469,7 +470,7 @@ rows need a look and what to do about each, then a `WARNING` when any row needs 
 | **Secondary filter** | on | on (same) |
 | **Supplementary filter** | on | on (same) |
 | **QC-failed filter** | on | on (same) |
-| **BAQ default** | off | **on** (no upstream BQSR; splice penalty) |
+| **BAQ default** | off | **on** (no upstream BQSR; indel penalty only) |
 | **Strandedness filter** | N/A | enabled (dUTP) |
 | **RNA editing flagging** | N/A | optional (`--rna-editing-db`) |
 | **GTF annotation** | N/A | optional (`--gtf`) |

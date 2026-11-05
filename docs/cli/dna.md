@@ -97,17 +97,17 @@ flag is passed.
 
 ## BAQ Options
 
-Base Alignment Quality (BAQ) heuristically downgrades base qualities near indels and splice junctions to prevent systematic errors from realignment artifacts.
+Base Alignment Quality (BAQ) heuristically downgrades base qualities near a read's insertions and deletions to prevent systematic errors from realignment artifacts.
 
 | Option | Default | Description |
 |:-------|:--------|:------------|
-| `--apply-baq/--no-baq` | `off` | Enable BAQ quality downgrade near indels and splice junctions |
+| `--apply-baq/--no-baq` | `off` | Enable BAQ quality downgrade near indels |
 
 **Internal constants** (not configurable — derived from Li 2011):
 
 | Constant | Value | Description |
 |:---------|:------|:------------|
-| `BAQ_RADIUS` | 5 bp | Bases within 5 bp of an indel/splice boundary are penalized |
+| `BAQ_RADIUS` | 5 bp | Bases within 5 bp of an indel boundary are penalized |
 | `BAQ_PENALTY` | 20 | Subtracted from BQ (clamped to 0) |
 
 !!! info "When to Enable BAQ for DNA"
@@ -117,7 +117,7 @@ Base Alignment Quality (BAQ) heuristically downgrades base qualities near indels
     If your DNA pipeline includes BQSR or consensus calling (e.g., fgbio, Marianas), leave BAQ off (the default). Applying BAQ on already-recalibrated BAMs may over-penalize, causing undercounting of legitimate variant evidence.
 
 !!! tip "RNA Mode Default"
-    In `gbcms rna`, BAQ is **on by default** because RNA pipelines typically lack BQSR. BAQ also penalizes bases near splice junctions (CIGAR `N`). See [RNA Splice-Junction Handling](../reference/rna-splice-handling.md).
+    In `gbcms rna`, BAQ is **on by default** because RNA pipelines typically lack BQSR. A splice junction (CIGAR `N`) lowers no base's quality. See [RNA Splice-Junction Handling](../reference/rna-splice-handling.md).
 
 ## UMI Options
 
