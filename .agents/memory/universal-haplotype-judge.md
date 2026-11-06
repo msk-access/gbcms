@@ -72,8 +72,9 @@ sub-issues #323 (input formats and the separate output), #324 (breakend-junction
 #325 (fragment evidence), #326 (truth, validation, small-variant overlap, community
 standard) and #327 (RNA fusions on mRNA junctions). Decided (operator, 2026-10-24): when
 the judge becomes the default, `--read-judge rules` stays one release as the fallback;
-removing the previous classifier is #328 (moves with the flip). R5–R9 (#313–#317)
-stay in 6.7.0: an R-ticket goes later only if every item is separate from 6.7.0 work.
+removing the previous classifier is #328 (moves with the flip). R9 (#317) closed in 6.7.0;
+R4–R8 (#312–#316) moved to 6.8.0 with the interim release (operator, 2026-11-06: speed and
+structure work waits until the counts stop changing).
 
 **Scorer architecture under evaluation (2026-10-24; plan and pre-registered acceptance on
 #304):** most judge faults came from enumerating contexts x states, so a graph scorer is being

@@ -1,6 +1,6 @@
 # Site candidates and REF: which alleles compete at the ALT's site, and when a read counts REF
 
-Status: approved 2026-11-02 for its measurement step (one class by the operator's decision of 2026-11-02: C2 round 2, #394, #398, the delins REF geometry)
+Status: approved 2026-11-02 for its measurement step (one class by the operator's decision of 2026-11-02: C2 round 2, #394, #398, the delins REF geometry); decided 2026-11-02 (option B); merged 2026-11-05 in #419 after rq3 and rq4. Trial cost: `docs/harness/plan-first.md`, "Result"
 Rounds: 0 of 2 · New conditions: 0 of 1 (the delins core) · HPC batches: 0 of 4 (lanes on the builds in hand, one build per option, one final)
 
 ## 1. The class

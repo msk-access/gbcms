@@ -4,6 +4,10 @@
 > becomes part of `.agents/rules/decision-protocol.md` only if the trial meets its bar (section
 > "How the trial is judged"). If it does not, it goes to `.agents/learnings/REJECTED.md` with its
 > numbers.
+>
+> **Result (2026-11-05): the bar was not met** (section "Result"). Operator, 2026-11-06: try it
+> again on the 6.8.0 work, with a new bar fixed before the first count-changing build. Until that
+> trial passes, the page is not part of the decision protocol.
 
 The decision protocol and the register ("How a change to read judgment is made": spec first, decide,
 then code) already say what a count-changing decision needs. Until now those steps were done when an
@@ -84,6 +88,33 @@ in this instance or in the mechanism, and does an option break an invariant?
   - the operator can read the page in five minutes.
 - **If the trial passes:** the page goes into the decision protocol and replaces text there. A
   count-changing PR must then link its plan, and the qa-check step looks for the link.
+
+## Result (measured 2026-11-05; operator 2026-11-06)
+
+Measured with `baseline.py`'s method (`~/test/gbcms/harness/plan670/plan-first/trial_results.md`
+and `trial_config.json`): agent tokens summed over context resets; the main session's own tokens
+are not visible.
+
+| Bar | 1. Audit | 2. #297 close | 3. C2, then class plan B |
+|:--|:--|:--|:--|
+| Agent tokens below 2.38 M | 1.26 M: pass | 3.20 M: fail (2.64 M without the attributions marked unsure) | 6.01 M: fail (C2 1.56 M, B 4.45 M) |
+| At most two review rounds | 0: pass | 2: pass | 4: fail (two for each plan page) |
+| No decision reversed; no condition added and later removed | pass | pass | fail: C2's choice changed twice before B (2026-10-31, 2026-11-02); the refinement is a stopgap that #418 removes |
+| HPC builds at most the options measured plus one final | 0: pass | 3 for 2: fail | 7 (C2 2, B 5): fail |
+| HPC batches fewer than 14 | 0: pass | 8: pass | 13: pass |
+| The operator reads the page in five minutes | not measured | not measured | not measured |
+
+- **Better than the baseline:** no commit was undone (the baseline's #297 undid 5 of 11), and no
+  merged decision was reversed.
+- **Where the cost went:** the scorers used 2.75 M of item 3's 6.01 M tokens. The measurements
+  found two real bugs (rq1); the plan did not prevent them.
+- **Extra items (not in the bar):** #292, 3.08 M tokens (2.36 M without the prototypes made before
+  its plan), 2 rounds, 4 builds, 8 batches; RNA package 3's lean path, 0.39 M tokens, no review
+  round, no HPC, merged the day it was planned.
+- **The code graph's own trial was not run:** no later plan answered "what already touches it" both
+  ways. graphify stays outside the repository.
+- **Verdict:** the bar was not met. **Operator (2026-11-06):** try it again on the 6.8.0 work. The
+  new bar is fixed with the operator before the first 6.8.0 count-changing build.
 
 ## The code graph: a trial of its own (operator, 2026-10-31)
 

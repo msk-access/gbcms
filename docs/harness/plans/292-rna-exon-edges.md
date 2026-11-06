@@ -1,6 +1,6 @@
 # 292: reads at exon edges — does a splice lower a base's quality?
 
-Status: measured; reviewed (Fable, "sound with conditions"); conditions met, for approval 2026-11-02
+Status: measured; reviewed (Fable, "sound with conditions"); conditions met; decided 2026-11-02 (option B); merged 2026-11-03 in #415
 Rounds: 1 of 2 · New conditions: 0 of 0 (option B removes one) · HPC batches: 5 of 6 (one final build left)
 
 ## 1. The class

@@ -4,95 +4,61 @@
 > Update the **Now** and **Next** sections as work progresses. When a "Now" section is finished,
 > move it to `.agents/archive/CONTINUITY_ARCHIVE.md` (older sections live there).
 
-_Last updated: 2026-11-05_
+_Last updated: 2026-11-06_
 
-## Now — 6.7.0: the count-changing class plans, one at a time (2026-11-03)
+## Now — 6.7.0, an interim release (operator, 2026-11-06)
 
-**Merged to develop (2026-11-02/03):**
-- #297, the unit-run rule (rule X: a listed allele is always a candidate) with Greptile's three fixes (#404).
-- #264, long-insertion windows (#396), and its follow-up (#413, judge path only):
-  - one mask copy per read;
-  - read-on by path columns;
-  - the tie window check;
-  - the full class rule: a change a read cannot place is a plain alternative, and copies are made only for the changes its best path spans;
-  - the kept graph sets are charged to the cache budget.
-  - z68 measured it: every HG002 class equals develop, the patient views pass 24 of 24, and the rules path is byte-identical.
-- RNA #292 option B (operator 2026-11-02/03): no junction penalty on any path (RJ-31; it reverses the penalty of 2026-05-04), with the decided partial-span rule RJ-17 (#415).
-  - Measured on FORTE: delins at bar 30 go from 280 to 173 (p292d). The reads losing ALT are spliced, with the event 0-4 bases from the junction, and their own bases read REF.
-  - DNA mode is byte-identical.
-- CI: macOS on `macos-latest` (#399); the macOS wheel's minimum version is checked on the tag and on each binary (#407).
-- Agent rules: read the bot review before ready or merge (#403); the gate covers only the tree it ran on, and cherry-pick and merge commit too; never list a patient folder; own-gap for every state is rejected (#411).
-- #402 (the PHI read guard) is closed unmerged. It is being rebuilt as a separate, tool-agnostic project (agent-guards; DESIGN.md and KICKOFF.md in `~/Documents/Github/agent-guards`, the operator's own session).
+**Decision (operator, 2026-11-06):** "it does not make sense to do speed if we are still making
+changes to counts". 6.7.0 ships with the count changes merged. Every open 6.7.0 ticket moved to
+6.8.0 (tracker #420); only the cycle tracker #196 stays, to close with the release.
 
-**In progress: the class plan for site candidates and REF** (`docs/harness/plans/site-candidates-ref.md` on `chore/plan-first`):
-- Operator 2026-11-02: option B, "tell what the read reaches". It reverses RJ-25's REF clause.
-- Branch `fix/ref-what-the-read-reaches` (local, f3c6565e), on both paths:
-  - every listed allele at the site is a candidate (no floor);
-  - REF where the read tells REF from every candidate it reaches;
-  - the delins core by REF bases replaced (50 or more).
-- Rules path only: SNV rows with a listed indel or delins at the site are judged by the sequence judge (#398; operator 2026-11-03).
-  - It removes 1,230 patient wrong-ALT reads.
-  - Speed is accepted for now and ticketed (#412). Patient lanes run 1.12x slower.
-- rq1 failed three rules-path bars. Two causes were found and fixed: the candidate test now reads the event's own flank, and reach is measured on the allele's unmasked difference. The third, the delins gap between the paths, is older than B and is ticketed for #331 (#414).
-- **Running on HPC:** rq2 (6731328; 6731367, 6731384). Next steps:
-  1. copy back rq2R and rq2S, and score them against n105 and rq1. The bars: the panel INS-1 class and HG002 INS 1-9 on the rules path; 24 of 24 views on the judge path; no wrong-ALT;
-  2. a fresh review;
-  3. the PR. Close #394 (superseded by B) and #398 with it.
+**In 6.7.0 (merged to develop):**
+- #297, one unit-count rule for long deletions in repeats (#404).
+- #264, equal windows for long insertions (#396), and the judge-path follow-up (#413).
+- RNA #292 option B: a splice lowers no base's quality (RJ-31), with the partial-span rule RJ-17 (#415).
+- Class plan B, "tell what the read reaches" (#419; closed #394 and #398):
+  - every listed allele that meets the site is a candidate, with no floor;
+  - a read counts REF only where it tells REF from every candidate whose difference it reaches;
+  - a long delins has a core (50 or more REF bases replaced);
+  - an SNV row beside a listed indel or delins is counted by the judge, also under the rules.
+  - HPC rq3 and rq4: every bar passes. rq4 equals rq3 on the rules path in all 1,078 runs; the
+    judge path moves only #413's shape (partial to depth only at insertions of 50 bp or more).
+- RNA package 3's lean path (#423; closed #343 to #346 and #359): ASJD makes the same sibling
+  calls as the main counts; three pins; RJ-32.
+- `--rescue-homopolymer` is deprecated (#421) and removed in 6.8.0 (#261): hp1 found that the
+  twin wins at 1 of 20 candidate rows.
+- The sequence judge, opt-in (`--read-judge sequence`), with its follow-ups.
+- Platforms: the RHEL 8 wheel, one abi3 wheel, the macOS arm64 wheel, the multi-arch image and
+  Apptainer in CI (#233 to #237); macOS CI on `macos-latest` (#399, #407).
 
-**Plan-first trial:** branch `chore/plan-first` (local) holds the template and the plans (audit, #297 close, C2, #292, site candidates). The measurement records are in `~/test/gbcms/harness/plan670/plan-first/`. Next: write the trial's result against its baseline bar, then open its PR.
+**Release steps (in progress):**
+1. The speed floor (the operator's standing rule, before each release): **met in all 8 cases.**
+   pf72 on HPC, the release candidate rc670 (develop f7293618), C++ GetBaseCountsMultiSample 1.2.5
+   against the rules path on pf71's production tasks, 3 repeats each (7650328; 7650331, 7652235).
+   Rules wall time over C++'s: 0.39 to 0.57 for 1 BAM at 1,000 and 5,000 rows; IMPACT 1 × 20,000
+   0.51; ACCESS 1 × 20,000 0.94 (as in October); fill-outs IMPACT 10 × 5,000 0.55 and ACCESS
+   9 × 5,000 0.74. Every ratio equals or beats pf71's (develop fe34f443).
+2. This record, the plan-first result and the plan pages (PR from `chore/plan-first`).
+3. `release/6.7.0` from develop: the version, the CHANGELOG section, the gate; a PR to main. The
+   operator merges; the tag publishes. Then main into develop, develop to 6.8.0-dev, and #196 and
+   the milestone close.
 
-**Tickets opened 2026-11-02/03:**
-- #405: DP for off-anchor reads.
-- #406: the mask-copy cap per state graph, with the measured memory.
-- #408: at `--min-baseq` 0, a base with no evidence counts.
-- #409: a piece too short to place its own bases, at a read's end or between two junctions (RNA B's limit).
-- #410: a listed MNV and an insertion carried together.
-- #412: the routing's speed.
-- #414: the delins gap between the paths.
+**Plan-first:** the trial did not meet its bar (`docs/harness/plan-first.md`, "Result"). Operator
+2026-11-06: try it again on the 6.8.0 work, with a new bar fixed before the first count-changing
+build.
 
-**Cleanup waiting for the operator:** the worktrees and builds of the merged PRs (macfloor, rules1103, rna292b, f264b) and the RNA measurement builds, to the Trash, by the retirement checklist.
+**Open:** the guard's masks depend on `--min-baseq` (#374); the SNV tie rule with a confident
+third base (#367); Nextflow resources wait for the sweep (branch `feature/nextflow-resources`, local).
 
-**Open:**
-- the guard's masks depend on `--min-baseq` (#374);
-- the SNV tie rule with a confident third base (#367);
-- Nextflow resources wait for the sweep (branch `feature/nextflow-resources`, local).
+## Next — 6.8.0 (tracker #420)
 
-**Scope change (operator, 2026-11-05): "we have built enough to move this to next release".** Packages 4 to 7 moved to 6.8.0 (tracker #420), with #290, #293, #178, #408 and #409. #304 is closed (the judge shipped opt-in).
-
-**Next (6.7.0 finishes with):**
-1. Class plan B (PR #419; closes #394 and #398).
-2. Package 3's lean path: the pins #344, #345, #346 and #359.
-3. The homopolymer deprecation (#421).
-4. The truth arms and the HPC gate (#266, #267, #268, #275).
-5. Speed: #412 (the routing's cost on the default path), #312, and the C++ GetBaseCountsMultiSample 1.2.5 floor on the production profile. #335 and #406 are 6.8.0's, with the judge default.
-6. Clean-up and the pre-release review (#313 to #316 under #318).
-7. The small items.
-8. The release.
-
-**6.8.0 (tracker #420):** #331 (the judge default, with #405, #406, #410, #414, #417 and #418), #259, #261, #180, #274, #361, #178, #408 and #409.
-
-## Next — 6.7.0 work packages (operator, 2026-10-23: the recommended order; packages 4 to 7 moved to 6.8.0 on 2026-11-05)
-Tickets that answer the same question, or share code paths and measurements, land together.
-- **Count-changing packages** run one at a time. Each starts from develop on its own branch,
-  goes red-first, gets an adversarial review, and is measured on every arm with the checks
-  above.
-- **Output-only and hygiene items** run alongside in their own worktrees.
-- **Then** D9–D12 on HPC, and one 6.7.0 freeze and gate.
-
-| # | Package | Tickets | Why together | First step |
-|:--|:--|:--|:--|:--|
-| 1 | Co-annotated alleles (**done**: #305 closed, #246 parked into 2) | #305, #246 | the AD-claiming guard and RJ-5/RJ-25; one measurement set: the cluster-aware check, the compound-het arm, the panel and gate clusters | #305 read by read on the data in hand; then #246, whose SNV sibling still claims the read through its own uncontested call |
-| 2 | Repeats: unit counts and placement (**merged**: the sequence judge, #304 closed because it shipped opt-in, and the default in 6.8.0, #331; #297 in #404; #264 in #396 and #413) | #290 (moved to 6.8.0), #301, #297, #144, #304 (closed); #264 (docs); #246 | one question, in four code paths: which length of a repeat a read carries when the aligner placed it elsewhere. One acceptance metric: VAF at germline hets in repeats (long insertions 0.441 on HG002) | decide the architecture first. Measure #304 (a whole-read haplotype judge) on every arm as a prototype against targeted fixes, then build; #264's documentation with it |
-| 3 | RNA read judgment (**#292 merged** in #415, B: no junction penalty; #293 and #178 moved to 6.8.0, 2026-11-05; #420) | #292, #293, #178 | the spliced-read path; FORTE | #292's three prototypes, measured (decided 2026-10-17) |
-| 4 | Evidence outside the aligned bases (**moved to 6.8.0**, 2026-11-05; #420) | #177, #212, #179 | read admission and clipped bases (RJ-10, RJ-13); WES and HG002 without realignment | #212 first: the fragment end bounds what a clip may hold |
-| 5 | Guard statistics and artifacts (**moved to 6.8.0**, 2026-11-05; #420) | #306, #180 | telling a recurring change from an error or an artifact (fragment shares, pair orientation; #302 added the binomial orientation veto) | count the rows near the 5% line; decide #180's form |
-| 6 | Homopolymer twin and decomposition (**moved to 6.8.0**, 2026-11-05; #420) | #111, #112 (#145, #146), #128 | the opt-in `--rescue-homopolymer` path | decide fix or retire (#111); retiring closes #112, #145 and #146 |
-| 7 | Complex-event read-on (**moved to 6.8.0**, 2026-11-05; #420) | #274 | RJ-9 for delins | measure in the engine, then decide |
-| P | Output and reporting (parallel) | #273, #227, #132, #127 | no count change | #273, then #227 (it feeds the QC summary); close #127 unless a pipeline needs it |
-| H | Hygiene (parallel) | #284, #216, #219, #138, #150, #195 | no count change | #195's fallback path is one Phase 3 never reaches: fix it or retire it |
-| D7 | Platforms (parallel) | #232 (#233–#237) | infrastructure | as planned |
-| G | Truth arms and the gate | #266, #267, #268, #275 | the HPC gate | the D12 settings on #275; HPC when available |
-
-**Order (operator, 2026-10-23; packages 4 to 7 moved to 6.8.0 on 2026-11-05):** 1 → 2 (decision, then build) → 3 (lean path), with P,
-H and D7 alongside; then G, the freeze and the gate. The packages are recorded on #196;
-the A–F parents stay as they are.
+- The judge becomes the default (#331), with #405, #406, #410, #414, #417 and #418; the judge
+  meets the speed floor first (#335).
+- Packages 4 to 7: evidence outside the aligned bases (#259 with #177, #179, #212); guard
+  statistics and artifacts (#306, #180); retiring the homopolymer twin (#261 with #111, #112,
+  #128); complex-event read-on (#274, #361). Also #290, #293, #178, #408 and #409.
+- Moved from 6.7.0 on 2026-11-06: speed (#412, #312, #150); clean-up (#313 with #195, #314, #315,
+  #316); the truth arms and the release gate (#260 with #266, #267, #268, #275); output and
+  hygiene (#273, #132, #127, #138); the pre-release review (#318).
+- The order is decided with the operator when 6.8.0 starts: count changes first, then speed and
+  structure once the counts settle.

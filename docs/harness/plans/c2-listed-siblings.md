@@ -1,6 +1,6 @@
 # C2: is a listed allele of the ALT's length always a candidate?
 
-Status: approved 2026-10-31 (operator, from the app: "Looks good")
+Status: approved 2026-10-31 (operator, from the app: "Looks good"); superseded 2026-11-02 by `site-candidates-ref.md` (class plan B), merged in #419
 Rounds: 0 of 2 · New conditions: at most 1 (option B) · HPC batches: 0 of 4 (two builds, each with HG002 and patient arrays)
 
 ## 1. The class

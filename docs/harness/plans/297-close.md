@@ -1,6 +1,6 @@
 # #297: close the unit-run rule on one principle
 
-Status: approved 2026-10-31 (option A throughout; F2 holds the reads as partial on both paths; F4 traced before its fix)
+Status: approved 2026-10-31 (option A throughout; F2 holds the reads as partial on both paths; F4 traced before its fix); merged 2026-11-02 in #404. Trial cost: `docs/harness/plan-first.md`, "Result"
 Rounds: 1 of 2 (the final review of rule X) · New conditions: 0 of 0 (the options remove or align conditions) · HPC batches: 0 of 2
 
 ## 1. The class
