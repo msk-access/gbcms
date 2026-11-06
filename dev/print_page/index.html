@@ -17967,13 +17967,13 @@ caveat in gbcms's output.</p>
 <tr>
 <td style="text-align: left;">Reads from paralogs or segmental duplications</td>
 <td style="text-align: left;"><abbr title="Mapping Quality - Confidence score for read alignment">MAPQ</abbr> ≥ 20; <code>mq0_count</code></td>
-<td style="text-align: left;">Proposed (diagnostic, 6.7.0); validate on paralog-rich loci</td>
+<td style="text-align: left;">Proposed (diagnostic, 6.8.0); validate on paralog-rich loci</td>
 <td style="text-align: left;">O5 #179</td>
 </tr>
 <tr>
 <td style="text-align: left;">Reference bias: ALT reads map worse, clip, or go unmapped</td>
 <td style="text-align: left;">Counts what maps</td>
-<td style="text-align: left;">Proposed (diagnostic in <code>gbcms_diagnostic</code>; no filter, no new column; 6.7.0)</td>
+<td style="text-align: left;">Proposed (diagnostic in <code>gbcms_diagnostic</code>; no filter, no new column; 6.8.0)</td>
 <td style="text-align: left;">O5 #179</td>
 </tr>
 <tr>
@@ -18021,7 +18021,7 @@ caveat in gbcms's output.</p>
 <tr>
 <td style="text-align: left;">OxoG / FFPE orientation artifacts</td>
 <td style="text-align: left;">Strand counts only</td>
-<td style="text-align: left;">To decide: optional F1R2/F2R1 counts or an orientation-imbalance diagnostic; measure first on FFPE-rich data (6.7.0)</td>
+<td style="text-align: left;">To decide: optional F1R2/F2R1 counts or an orientation-imbalance diagnostic; measure first on FFPE-rich data (6.8.0)</td>
 <td style="text-align: left;">O6 #180</td>
 </tr>
 <tr>
@@ -18203,7 +18203,7 @@ caveat in gbcms's output.</p>
   were variants.</li>
 <li><strong>gbcms now:</strong> minimum <abbr title="Mapping Quality - Confidence score for read alignment">MAPQ</abbr> 20; <code>mq0_count</code> is reported. There is no paralog
   awareness: gbcms reports what is at the locus.</li>
-<li><strong>Should do:</strong> proposed (O5 #179, 6.7.0): a diagnostic in <code>gbcms_diagnostic</code>,
+<li><strong>Should do:</strong> proposed (O5 #179, 6.8.0): a diagnostic in <code>gbcms_diagnostic</code>,
   never a filter, no new column. The target is settled by measurement first: how
   often ALT reads at low-mappability and segmental-duplication loci are
   paralog-derived, validated on paralog-rich loci and the paired panel/WES loci.</li>
@@ -18370,7 +18370,7 @@ caveat in gbcms's output.</p>
 <li><strong>In the <abbr title="Binary Alignment Map - Compressed sequence alignment file format">BAM</abbr>:</strong> artifacts concentrated in one read orientation (F1R2 or F2R1),
   which strand counts do not separate.</li>
 <li><strong>gbcms now:</strong> forward and reverse counts per allele.</li>
-<li><strong>Should do:</strong> to decide (O6 #180, 6.7.0): optional per-allele F1R2/F2R1 counts, or
+<li><strong>Should do:</strong> to decide (O6 #180, 6.8.0): optional per-allele F1R2/F2R1 counts, or
   an orientation-imbalance diagnostic only (the project prefers no new columns).
   Measure first on FFPE-rich data: orientation skew at oxoG/FFPE-prone contexts
   against true variants on the validation matrix.</li>
