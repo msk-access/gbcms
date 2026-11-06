@@ -33,6 +33,21 @@ regenerating a section.
 
 ---
 
+## [LRN-20261105-002] rule-trigger | the main session listed a copy-back lane, which holds patient outputs
+- **Status:** resolved (rule promoted).
+- **Cause:** rule-trigger.
+- **Summary:**
+  - Looking for how rq3 had been copied back, the main session ran `ls` on `hpc/out/rq3R` and
+    `hpc/out/rq3S`. Both lanes hold patient outputs, whose folder names are sample IDs. The auto-mode
+    check refused the command, so nothing was printed.
+  - The rule says "a patient folder". I read the copy-back lanes as harness output, not as patient
+    folders, so the rule did not fire.
+- **Promotion target:** `.agents/rules/security.md` ("Tool output leaves the machine") — `DONE:` the
+  rule names the copy-back lanes (`hpc/out/<label>/`) and their clones (`out_<label>/`, `across/`,
+  `wes/`, `germ/`, `xdata/gatex/`) as patient folders; find a lane's copy command in the ledger or
+  `hpc/PLAN.md` §6, not by listing it.
+- **Related:** LRN-20261103-001.
+
 ## [LRN-20261105-001] environment | a restart emptied the session scratchpad, and the tools were in it
 - **Status:** resolved (rule promoted).
 - **Cause:** environment.

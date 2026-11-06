@@ -24,6 +24,15 @@
 > #408 and #409. #304 is closed (the judge shipped opt-in). The sections and rows below are
 > unchanged records; each moved one carries a "Moved to 6.8.0" line.
 
+> **Interim release (operator, 2026-11-06).** "It does not make sense to do speed if we are still
+> making changes to counts." 6.7.0 ships with the count changes merged, and every open 6.7.0
+> ticket moved to 6.8.0 (#420): speed (#412, #312, #150); clean-up (#313 with #195, #314, #315,
+> #316); the truth arms and the release gate (#260 with #266, #267, #268, #275); output and
+> hygiene (#273, #132, #127, #138); the parents #258, #262 and #263; and the pre-release review
+> (#318). The release is checked against the speed floor (C++ GetBaseCountsMultiSample 1.2.5, the
+> default path, the production profile) before the tag. The rows below are not edited for this
+> move; the issues carry the 6.8.0 milestone.
+
 **Status (updated 2026-10-28).** The plan as decided on 2026-10-08; the decisions below are
 dated records. Implemented and closed since: C39 (#253), C40 (#254), D8 (#255), H4 (#269),
 C42 (#244, replaced by #265) and most C43 follow-ups (for example #277, #278, #279, #280,
