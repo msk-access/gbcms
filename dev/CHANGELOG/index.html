@@ -29,7 +29,7 @@
             body[data-md-color-scheme="slate"] .gslide-title { color: var(--md-default-fg-color); }
             body[data-md-color-scheme="slate"] .gslide-desc { color: var(--md-default-fg-color); }
         </style><meta name="panzoom-theme" content="material">
-<meta name="panzoom-data" content='{"selectors": [".d2", ".mermaid"], "initial_zoom_level": 1.0}'> </head>
+<meta name="panzoom-data" content='{"selectors": [".mermaid", ".d2"], "initial_zoom_level": 1.0}'> </head>
 <body data-md-color-accent="custom" data-md-color-primary="custom" data-md-color-scheme="default" dir="ltr">
 <input autocomplete="off" class="md-toggle" data-md-toggle="drawer" id="__drawer" type="checkbox">
 <input autocomplete="off" class="md-toggle" data-md-toggle="search" id="__search" type="checkbox">
@@ -769,6 +769,24 @@
 </a>
 <nav aria-label="[Unreleased]" class="md-nav">
 <ul class="md-nav__list">
+<li class="md-nav__item">
+<a class="md-nav__link" href="#fixed-rna-asjd-reads-the-same-sibling-verdict-as-the-main-counts-359-rj-5">
+<span class="md-ellipsis">
+      
+        Fixed — RNA: ASJD reads the same sibling verdict as the main counts (#359, RJ-5)
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#tests-rna-pins-344-345-346">
+<span class="md-ellipsis">
+      
+        Tests — RNA pins (#344, #345, #346)
+      
+    </span>
+</a>
+</li>
 <li class="md-nav__item">
 <a class="md-nav__link" href="#changed-a-listed-allele-at-the-site-is-always-another-allele-and-a-read-counts-ref-where-it-tells-ref-from-the-alleles-it-reaches-rj-25-rj-24-operator-2026-11-02">
 <span class="md-ellipsis">
@@ -3161,6 +3179,15 @@
 <p>The format is based on <a href="https://keepachangelog.com/en/1.0.0/">Keep a Changelog</a>,
 and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semantic Versioning</a>.</p>
 <h2 id="unreleased">[Unreleased]<a class="headerlink" href="#unreleased" title="Permanent link">¶</a></h2>
+<h3 id="fixed-rna-asjd-reads-the-same-sibling-verdict-as-the-main-counts-359-rj-5">Fixed — RNA: ASJD reads the same sibling verdict as the main counts (#359, RJ-5)<a class="headerlink" href="#fixed-rna-asjd-reads-the-same-sibling-verdict-as-the-main-counts-359-rj-5" title="Permanent link">¶</a></h3>
+<ul>
+<li>At an RNA row with a GTF and a co-annotated sibling, the allele-specific junction test counted reads the main counts give to the sibling (a REF read that is ALT for the sibling where this row's REF is read; an ALT match the sibling explains as well or better). It now makes the same two sibling checks, so those reads vote in neither the REF nor the ALT junction partition. Only the <code>asjd_*</code> columns can move; <abbr title="Reference Depth - Reads supporting the reference allele">RD</abbr>, <abbr title="Alternate Depth - Reads supporting the alternate allele">AD</abbr>, <abbr title="Total Depth - All mapped reads overlapping the variant position">DP</abbr> and the per-transcript counts are unchanged. Rules path only. Measured on the synthetic set: rows without a sibling are byte-identical (0 of 1,072); with a sibling added to every row, 12 of 2,144 rows move.</li>
+</ul>
+<h3 id="tests-rna-pins-344-345-346">Tests — RNA pins (#344, #345, #346)<a class="headerlink" href="#tests-rna-pins-344-345-346" title="Permanent link">¶</a></h3>
+<ul>
+<li>Pinned decided behaviour, no count change: reads carrying another allele are in a transcript's <abbr title="Total Depth - All mapped reads overlapping the variant position">DP</abbr> and in no transcript <abbr title="Alternate Depth - Reads supporting the alternate allele">AD</abbr>/<abbr title="Reference Depth - Reads supporting the reference allele">RD</abbr> or ASJD partition; antisense reads carrying another allele appear in no column under enforcement, and count as partial evidence with <code>--no-strandedness</code> or with no GTF; an edit inside an insertion's bases is decided by the reads, and an editing database cannot reach it.</li>
+<li>Decided and pinned (RJ-32): a read with no junction fits every transcript it overlaps, so it counts in the <abbr title="Total Depth - All mapped reads overlapping the variant position">DP</abbr> and <abbr title="Reference Depth - Reads supporting the reference allele">RD</abbr> of each overlapping spliced transcript, and once in the row's counts. A single-exon transcript gets no per-transcript entry. No count changes.</li>
+</ul>
 <h3 id="changed-a-listed-allele-at-the-site-is-always-another-allele-and-a-read-counts-ref-where-it-tells-ref-from-the-alleles-it-reaches-rj-25-rj-24-operator-2026-11-02">Changed — a listed allele at the site is always another allele, and a read counts REF where it tells REF from the alleles it reaches (RJ-25, RJ-24; operator 2026-11-02)<a class="headerlink" href="#changed-a-listed-allele-at-the-site-is-always-another-allele-and-a-read-counts-ref-where-it-tells-ref-from-the-alleles-it-reaches-rj-25-rj-24-operator-2026-11-02" title="Permanent link">¶</a></h3>
 <ul>
 <li><strong>No floor for a listed allele, on both paths.</strong> A listed allele whose span meets the ALT's site
