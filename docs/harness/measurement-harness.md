@@ -168,6 +168,10 @@ read to the REF and ALT local haplotypes). Entry points: `make_sites.py`, `run_t
 
 ## Rules for running
 
+- **Keep tools where a restart cannot empty them.** Measurement tools (scorers, sanitizers), PR
+  bodies, gate scripts and venvs go under `~/test/gbcms/harness/`, never in the session scratchpad
+  (`/private/tmp/...`), because a restart empties it. On 2026-11-05 a restart deleted the hp1
+  scorer, a PR body, the rq scorers' tools, and the gate scripts and their venvs.
 - **Make a long run visible.** Start it as the tracked background task itself (Bash with
   `run_in_background`; `| tee <log>` keeps a log), so the operator sees the run and is told when it
   ends. Tracked tasks ran 6+ hours on 2026-10-19. Use `nohup ... &` only for a run that must

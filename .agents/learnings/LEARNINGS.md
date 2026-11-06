@@ -48,6 +48,20 @@ regenerating a section.
   `hpc/PLAN.md` §6, not by listing it.
 - **Related:** LRN-20261103-001.
 
+## [LRN-20261105-001] environment | a restart emptied the session scratchpad, and the tools were in it
+- **Status:** resolved (rule promoted).
+- **Cause:** environment.
+- **Summary:**
+  - On 2026-11-05 a restart deleted the hp1 scorer, a PR body, the rq scorers' tools, and the gate
+    scripts and their venvs. They had been written to the session scratchpad (`/private/tmp/...`),
+    which a restart empties. The work had to be rebuilt.
+  - The failure is external (the scratchpad's lifetime), but the record must still say where tools
+    live, so the rule is in the measurement harness.
+- **Promotion target:** `docs/harness/measurement-harness.md` ("Rules for running") — `DONE:`
+  measurement tools, PR bodies, gate scripts and venvs go under `~/test/gbcms/harness/`, never in
+  the session scratchpad.
+- **Related:** the gate script `~/test/gbcms/harness/plan670/gates/gate_wt.sh` (a persistent path).
+
 ## [LRN-20261103-001] rule-body | a scorer listed a patient folder, and its names are sample IDs
 - **Status:** resolved (rule promoted).
 - **Cause:** rule-body.
@@ -76,6 +90,11 @@ regenerating a section.
     that the gate covers only the tree it ran on.
 - **Promotion target:** `.agents/skills/qa-check/SKILL.md` ("Read every exit code") — `DONE:` an edit
   made after the gate, docs included, needs the gate again before the commit.
+- **Recurred 2026-11-03:** moving this rule to its own docs branch, I cherry-picked two commits. The
+  cherry-pick made them before the gate ran on the new tree (the content had been gated on the plan
+  branch). Nothing was pushed; the gate ran before the push. `DONE:` the same skill line now says
+  that cherry-pick, merge and rebase commit too: use
+  `git cherry-pick --no-commit` or `git merge --no-commit`, run the gate, then commit.
 - **Related:** LRN-20261031-001 (a gate result read and a commit made in one command).
 
 ## [LRN-20261102-002] rule-body | PRs merged on green checks with a bot review unread

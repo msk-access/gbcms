@@ -1047,13 +1047,14 @@ def test_with_no_other_allele_of_refs_length_a_partly_read_ref_read_counts(tmp_p
 
 
 @pytest.mark.parametrize("seen", [False, True])
-def test_a_co_annotated_snv_inside_the_deleted_bases_is_another_allele_only_where_seen(
-    tmp_path, seen
-):
-    """The change co-annotated as an SNV: never spelled in full by a fragment, it is no
-    other allele (the 4 partly read REF reads count REF); on one fragment, it is."""
+def test_a_co_annotated_snv_inside_the_deleted_bases_is_another_allele_seen_or_not(tmp_path, seen):
+    """The change co-annotated as an SNV is another allele whether or not a fragment spells it
+    in full: the 4 REF reads that read its base below min BQ reach it and cannot tell it from
+    REF, so they are neither."""
     _, _, _, c, _ = _delins_ref_allele(tmp_path, 1 if seen else 0, 4, sibling=True)
-    assert c.rd == (20 if seen else 24)
+    # B, 2026-11-02: a listed allele at the site is always a candidate; a read that reaches it
+    # and cannot tell is neither (unseen was 24: the 4 partly read REF reads counted REF)
+    assert c.rd == 20
 
 
 def _component_locus(tmp_path, alone, n_ref=20):
@@ -1075,10 +1076,12 @@ def _component_locus(tmp_path, alone, n_ref=20):
     return counts[0]
 
 
-def test_a_component_never_seen_alone_is_part_of_the_mnp(tmp_path):
-    """No fragment spells the co-annotated C>G apart from the MNP: it is part of the
-    MNP, so the 4 carriers reading only the G count ALT."""
-    assert _component_locus(tmp_path, 0).ad == 14
+def test_a_component_never_seen_alone_is_another_allele(tmp_path):
+    """No fragment spells the co-annotated C>G apart from the MNP; it is another allele all the
+    same, so the 4 carriers reading only the G cannot tell the MNP from it: not ALT."""
+    # B, 2026-11-02: a listed allele at the site is always a candidate; a read that reaches it
+    # and cannot tell is neither (was 14: the carriers counted ALT while it was unseen)
+    assert _component_locus(tmp_path, 0).ad == 10
 
 
 def test_a_component_seen_alone_is_another_allele(tmp_path):
@@ -1087,11 +1090,12 @@ def test_a_component_seen_alone_is_another_allele(tmp_path):
     assert _component_locus(tmp_path, 1).ad == 10
 
 
-@pytest.mark.parametrize("alone, ad", [(1, 14), (5, 10)])
-def test_a_component_is_seen_only_above_the_errors_of_its_nearest_allele(tmp_path, alone, ad):
-    """100 REF fragments: one spelling G then C is under 5% of REF's, an error's share,
-    so the component is part of the MNP (the 4 carriers reading only the G count ALT);
-    five reach it, so it is another allele."""
+# B, 2026-11-02: a listed allele at the site is always a candidate; a read that reaches it and
+# cannot tell is neither (1 spelling fragment of 100 was 14: under 5%, an error's share)
+@pytest.mark.parametrize("alone, ad", [(1, 10), (5, 10)])
+def test_a_component_is_another_allele_whatever_share_of_the_reads_spell_it(tmp_path, alone, ad):
+    """100 REF fragments: one spelling G then C, or five: the component is another allele
+    either way, so the 4 carriers reading only the G are neither."""
     assert _component_locus(tmp_path, alone, n_ref=100).ad == ad
 
 

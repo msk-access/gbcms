@@ -491,6 +491,35 @@ def test_haplotype_judge_clip_carriers_do_not_depend_on_bin_geometry(tmp_path, c
     assert (base[0].rd, base[0].ad) == (10, 20), "the clipped carriers must count"
 
 
+def test_rows_routed_to_the_judge_under_the_rules_do_not_depend_on_bin_geometry(tmp_path, caplog):
+    """An SNV row beside a listed indel or delins (here the SNV inside the 55bp deletion) is
+    counted by the sequence judge under the rules (RJ-25, 2026-11-03). Prep decides it from the
+    input list, so no bin window, cap, thread count, decoy row or call changes it; every other
+    row counts as the rules count it."""
+    reads = _pairs(DNA, DNA_VARIANTS, seed=1)
+    fa, bam = write_contig(tmp_path, DNA, reads, "dna")
+    variants, decomposed, siblings = _prepared(fa, DNA_VARIANTS)
+    base, _ = _check_invariance(caplog, bam, variants, decomposed, siblings, reference_fasta=fa)
+
+    at = next(i for i, v in enumerate(DNA_VARIANTS) if v[0] == 1320)
+    count = gbcms_rs.count_bam_binned
+    judged_vs, judged_ds, judged_ss = _prepared(fa, DNA_VARIANTS, read_judge="sequence")
+    judged = count(
+        bam, judged_vs, judged_ds, **ARGS, threads=1, sibling_variants=judged_ss,
+        read_judge="sequence", reference_fasta=fa,
+    )  # fmt: skip
+    assert_same_counts([base[at]], [judged[at]], "the routed row, as the judge counts it")
+    # without the reference the judge cannot read the row's candidate sequences: the rules count
+    rules = count(bam, variants, decomposed, **ARGS, threads=1, sibling_variants=siblings)
+    assert base[at].partial_alt > rules[at].partial_alt, "the routing must change the row"
+    others = [i for i in range(len(base)) if i != at]
+    assert_same_counts(
+        [base[i] for i in others],
+        [rules[i] for i in others],
+        "every other row, as the rules count it",
+    )
+
+
 # ── RNA ───────────────────────────────────────────────────────────────────────
 def test_rna_counts_do_not_depend_on_bin_geometry(tmp_path, caplog):
     ref = mk_ref()

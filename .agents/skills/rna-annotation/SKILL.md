@@ -38,11 +38,20 @@ Built once in `count_bam_binned()`, shared via `Arc` across rayon workers.
 - `asjd_diagnostic`: semicolon-separated flags (`LOW_REF_JUNC`, `LOW_ALT_JUNC`,
   `NOVEL_ALT_JUNC`, `STRAND_DISCORDANT`, ...)
 
+ASJD partitions reads by the main counts' verdict, sibling guards included (`sibling_claims_alt`, `sibling_claims_ref`):
+a read a co-annotated sibling claims votes in neither partition.
+
 Junction counts are **per fragment** (`JunctionTally` in `detect_asjd` dedups a
 molecule's R1+R2 by QNAME hash to one vote) — required so the strand-discordance and
 Fisher tests see independent observations, not mates. `LOW_REF_JUNC` and `LOW_ALT_JUNC`
 gate on the `asjd_n_ref_total` and `asjd_n_alt_total` counts; `STRAND_DISCORDANT` and the
 Fisher test gate on the `asjd_n_ref_junc` and `asjd_n_alt_junc` counts.
+
+### Per-transcript counts: junction-free reads (RJ-32)
+A read with no junction fits every transcript it overlaps (no junction rules any out): it counts in the DP
+and RD (or AD) of each overlapping spliced transcript, and in the row's counts once. A spliced read counts
+only in transcripts holding all its junctions. Reads carrying another allele are in transcript DP only.
+Single-exon transcripts get no per-transcript entry (`spliced_transcripts_at`).
 
 ### Gotchas (verify before trusting RNA outputs)
 - `gene_strand` must be populated from the GTF or `is_sense_strand` returns true

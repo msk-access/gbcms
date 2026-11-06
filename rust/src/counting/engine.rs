@@ -470,6 +470,22 @@ fn count_bam_binned_core(
             )));
         }
     }
+    // Rows prep routed to the sequence judge under the rules (an SNV row beside a listed
+    // indel or delins: RJ-25, 2026-11-03). The judge reads each row's candidate sequences
+    // from the reference and does not judge spliced reads; where it cannot, the rows are
+    // counted by the rules, said once, never silently.
+    let routed = variants.iter().chain(decomposed.iter().flatten()).filter(|v| v.judge_routed).count();
+    let routing = routed > 0 && read_judge == judge::ReadJudge::Rules && mode != "rna" && reference_fasta.is_some();
+    if routed > 0 && read_judge == judge::ReadJudge::Rules && !routing {
+        warn!(
+            "{routed} SNV row(s) beside a listed indel or delins would be counted by the sequence judge, but {}: \
+             they are counted by the rules",
+            if mode == "rna" { "RNA mode does not judge spliced reads yet" } else { "no reference_fasta is given" },
+        );
+    }
+    if read_judge == judge::ReadJudge::Rules && !routing {
+        variants.iter_mut().chain(decomposed.iter_mut().flatten()).for_each(|v| v.judge_routed = false);
+    }
     let backend = parse_alignment_backend(
         alignment_backend,
         hmm_llr_threshold,
@@ -716,7 +732,7 @@ fn count_bam_binned_core(
                         // haplotype judge, in either mode, the reader its windows come
                         // from. A worker that cannot open it fails the run: judging its
                         // bins differently from the others' would be silent.
-                        let reads_reference = mode == "rna" || read_judge == judge::ReadJudge::Haplotype;
+                        let reads_reference = mode == "rna" || read_judge == judge::ReadJudge::Haplotype || routing;
                         let far_reference: Result<Option<crate::normalize::fasta::CachedFasta>, String> =
                             match (reads_reference, fasta_path_owned.as_deref()) {
                                 (true, Some(path)) => crate::normalize::fasta::CachedFasta::open(path)
@@ -1258,6 +1274,9 @@ fn count_bin_shared(
         // same siblings.
         let cache = &read_cache;
         let rna_edges = (mode == "rna").then_some(&edges);
+        // The judge that counts a row: the call's, or the sequence judge for a row prep routed
+        // to it under the rules (RJ-25, 2026-11-03).
+        let judge_of = |v: &Variant| if v.judge_routed { judge::ReadJudge::Haplotype } else { read_judge };
         let guard_of = |v| {
             carrier::CarrierGuard::new(move || {
                 let counted = |r: &Record| counted_read(r, v, mode, enforce_strandedness, strandedness, min_mapq);
@@ -1270,7 +1289,7 @@ fn count_bin_shared(
                     junction::guard_read_as(cache, v, &counted, min_baseq, siblings, &|r: &Record| {
                         Some((effective_quals(r, use_baq, spare), carrier::readable_with(r, rna_edges)?))
                     })
-                } else if read_judge == judge::ReadJudge::Haplotype {
+                } else if judge_of(v) == judge::ReadJudge::Haplotype {
                     // the sequence judge also takes the alleles written past the masks
                     carrier::guard_for_judge(cache, v, &counted, min_baseq, siblings)
                 } else {
@@ -1318,7 +1337,7 @@ fn count_bin_shared(
                 judge::site_for(v, rules.guard.and_then(|g| g.get(v)), reference, &reads)
             })
         };
-        let judged = read_judge == judge::ReadJudge::Haplotype;
+        let judged = judge_of(variant) == judge::ReadJudge::Haplotype;
         let guard = guard_of(variant);
         let tolerance = tolerance_of(variant);
         let haplotypes = judged.then(|| haplotypes_of(variant));
@@ -1329,14 +1348,14 @@ fn count_bin_shared(
                 spliced: Some(&spliced),
                 guard: Some(&guard),
                 tolerance: Some(&tolerance),
-                judge: read_judge,
+                judge: judge_of(variant),
                 haplotypes: haplotypes.as_ref(),
             }
         } else {
             carrier::ReadRules {
                 guard: Some(&guard),
                 tolerance: Some(&tolerance),
-                judge: read_judge,
+                judge: judge_of(variant),
                 haplotypes: haplotypes.as_ref(),
                 ..carrier::ReadRules::DNA
             }
@@ -1766,10 +1785,11 @@ fn count_variant_from_cache(
         }
 
         // ── HEURISTIC BAQ: resolve adjusted qualities for classification.
-        // When BAQ is enabled, bases near indels and splice junctions
-        // (CIGAR N) are downgraded. Default: off for DNA (upstream BQSR),
-        // on for RNA (no upstream BQ recalibration). Skipped at exon edges:
-        // `use_baq` is `baq_applies`, resolved once per variant above.
+        // When BAQ is enabled, bases near a read's insertions and deletions
+        // are downgraded (a splice junction, CIGAR N, lowers nothing).
+        // Default: off for DNA (upstream BQSR), on for RNA (no upstream BQ
+        // recalibration). Skipped at exon edges: `use_baq` is `baq_applies`,
+        // resolved once per variant above.
         let quals = effective_quals(record, use_baq, baq_spare);
         let effective_quals: &[u8] = &quals;
 
@@ -2315,7 +2335,11 @@ fn mask_low_qual(seq: &mut [u8], quals: &[u8], min_baseq: u8) {
 fn ref_guard_siblings<'a>(variant: &Variant, siblings: &'a [Variant]) -> Vec<&'a Variant> {
     let (lo, hi) = window::discrimination_window(variant);
     let span = junction::ref_window_span(variant).map_or((lo, hi), |(a, b)| (a.max(lo), b.min(hi)));
-    window::siblings_in_span(span, siblings)
+    // A long delins's core is as a long deletion's deleted bases (RJ-24, extended): a
+    // substitution there changes bases only REF's molecules hold and is a context of them,
+    // so its carriers keep their REF call.
+    let core = window::delins_core(variant.pos, &variant.ref_allele, &variant.alt_allele);
+    window::siblings_in_span(span, siblings).into_iter().filter(|s| !window::in_core(core, s)).collect()
 }
 
 /// Whether a read classified REF for `variant` (or whose REF call was
@@ -3270,8 +3294,8 @@ fn count_per_transcript(
                 continue; // Incompatible junctions → skip for this transcript
             }
 
-            // ── BAQ under the main counts' rule (`use_baq`), so the spliced
-            // reads at an exon edge count here as they do in the main counts.
+            // ── BAQ under the main counts' rule (`use_baq`), so the reads at an
+            // exon edge count here as they do in the main counts.
             let quals = effective_quals(record, use_baq, baq_spare);
             let effective_quals: &[u8] = &quals;
 
@@ -3515,9 +3539,10 @@ impl JunctionTally {
 const JUNCTION_TOLERANCE: i32 = 5;
 
 /// Heuristic BAQ is skipped at variants whose REF span comes within this
-/// distance (bp) of an annotated exon boundary: its CIGAR-N penalty would land
-/// on exactly the reads that splice there, which are the evidence at an exon
-/// edge.
+/// distance (bp) of an annotated exon boundary: the penalty of a read's own
+/// insertions and deletions is lifted there, so the reads at an exon edge are
+/// counted at their stored qualities. (A splice junction lowers no quality, with
+/// or without this exception.)
 const BAQ_BOUNDARY_SUPPRESS_BP: i32 = 5;
 
 /// The span whose read indels BAQ spares for `v`: the variant's own event (grown
@@ -3833,6 +3858,7 @@ fn detect_asjd(
     rules: &carrier::ReadRules,
 ) -> AsjdResult {
     let baq_spare = if use_baq { baq_own_span(variant) } else { None };
+    let ref_guard_siblings = ref_guard_siblings(variant, sibling_variants);
     // Bind the normalized key, then borrow it as &str so the junction/motif lookups
     // below are unchanged.
     let chrom_key = crate::shared::contig::normalize_contig(&variant.chrom);
@@ -3891,10 +3917,25 @@ fn detect_asjd(
             &mut alt_aligner, &mut ref_aligner, backend, rules,
         );
 
+        // One verdict per read in every tally: the two sibling guards the main counts and
+        // the per-transcript counts apply. A read a co-annotated sibling claims is the
+        // sibling's molecule, so it votes for neither of this row's junction partitions.
+        // (The haplotype judge weighs the site's alleles itself: no sibling contest.)
+        let contested = rules.judge == judge::ReadJudge::Rules;
+        let is_alt = result.is_alt
+            && !(contested && sibling_claims_alt(
+                record, variant, &result, sibling_variants, effective_quals, min_baseq, rules,
+            ));
+        let is_ref = result.is_ref
+            && !(contested && sibling_claims_ref(
+                record, variant, &result, &ref_guard_siblings, effective_quals, min_baseq,
+                &mut alt_aligner, &mut ref_aligner, backend, rules,
+            ));
+
         let qh = crate::shared::fragment::hash_qname(record.qname());
-        if result.is_ref || result.is_alt {
+        if is_ref || is_alt {
             classified_frags.insert(qh);
-            if result.is_alt {
+            if is_alt {
                 alt_frags.insert(qh);
             }
         }
@@ -3914,9 +3955,9 @@ fn detect_asjd(
         let tx_minus = super::rna::read_transcript_strand(record, strandedness) == Some('-');
 
         // Dedup by fragment (QNAME hash): vote once per allele-total and per junction.
-        if result.is_ref {
+        if is_ref {
             ref_tally.add(qh, &junctions, tx_minus);
-        } else if result.is_alt {
+        } else if is_alt {
             alt_tally.add(qh, &junctions, tx_minus);
         } else if !result.covers_locus {
             // Spliced over the locus: keep only the junction(s) spanning the
@@ -4199,6 +4240,7 @@ mod tests {
             listed_neighbours: Vec::new(),
             reach_rows: Vec::new(),
             reach_unrecorded: false,
+            judge_routed: false,
             whole_ref: None,
             listed_indels: Vec::new(),
         }
@@ -4930,6 +4972,7 @@ mod tests {
             listed_neighbours: Vec::new(),
             reach_rows: Vec::new(),
             reach_unrecorded: false,
+            judge_routed: false,
             whole_ref: None,
             listed_indels: Vec::new(),
         }

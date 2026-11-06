@@ -16,6 +16,7 @@ gbcms/
 │   ├── convert.py       # Standalone VCF <-> MAF conversion
 │   ├── merge.py         # `gbcms merge`: per-BAM-type MAFs (duplex, simplex) -> one, simplex_duplex_* columns
 │   ├── observations.py  # Per-molecule observation export (public API; companion Parquet)
+│   ├── deprecations.py  # Deprecation notices shared by the CLI, Pipeline and Python API (--rescue-homopolymer)
 │   ├── rescue_audit.py  # The gbcms_rescue audit contract, shared by the MNP rescue pass and merge
 │   ├── qc_summary.py    # End-of-run QC summary: the flag tier table, read from the written output, one log block
 │   ├── qc_export.py     # `gbcms summarize`: the QC summary as text, JSON, a cohort TSV or MultiQC content

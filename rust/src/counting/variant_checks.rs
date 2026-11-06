@@ -3024,6 +3024,7 @@ mod tests {
             listed_neighbours: Vec::new(),
             reach_rows: Vec::new(),
             reach_unrecorded: false,
+            judge_routed: false,
             whole_ref: None,
             listed_indels: Vec::new(),
         }

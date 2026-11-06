@@ -152,7 +152,7 @@ Beyond the read-level filters above, gbcms also applies **base-level quality thr
     masked bases still counts toward depth (`DP`, `DPF`) and is classified on its other
     bases; when those cannot tell REF from ALT, it counts toward depth only (neither REF
     nor ALT). `--min-baseq 0` masks only `N` bases. With `--apply-baq`, qualities near
-    indels and splice junctions are lowered first, then compared with the threshold
+    a read's indels are lowered first, then compared with the threshold
     (see [BAQ](#baq-quality-downgrade)).
 
     By variant type:
@@ -331,7 +331,7 @@ single gene, reverse-stranded dUTP:
 
 ## BAQ Quality Downgrade
 
-When `--apply-baq` is enabled, base qualities near CIGAR indels and splice junctions (CIGAR `N`/RefSkip) are heuristically downgraded to prevent inflated quality scores from causing false-positive allele classifications.
+When `--apply-baq` is enabled, base qualities near CIGAR insertions and deletions are heuristically downgraded to prevent inflated quality scores from causing false-positive allele classifications.
 
 ### Parameters (Internal Constants)
 
@@ -339,19 +339,19 @@ These are not configurable via CLI — they are fixed values derived from Li (20
 
 | Constant | Value | Description |
 |:---------|:------|:------------|
-| `BAQ_RADIUS` | 5 bp | Bases within 5 bp of an indel or splice junction boundary are penalized |
+| `BAQ_RADIUS` | 5 bp | Bases within 5 bp of an indel boundary are penalized |
 | `BAQ_PENALTY` | 20 | Subtracted from BQ (clamped to 0, never negative) |
 
-The effective aggressiveness of BAQ is controlled by `--min-baseq` (default 20): a base with BQ 30 near a splice junction becomes BQ 10 after BAQ, which is below the default `--min-baseq` threshold and is therefore excluded from allele evidence.
+The effective aggressiveness of BAQ is controlled by `--min-baseq` (default 20): a base with BQ 30 near a read's deletion becomes BQ 10 after BAQ, which is below the default `--min-baseq` threshold and is therefore excluded from allele evidence.
 
-**The variant's own indel is spared.** When the variant being counted is not an SNV, a read's insertion or deletion that touches the variant's own event (where its alleles can differ, grown through repeats, plus two flank bases) is that variant's evidence, not an alignment artifact beside it, so the bases around it are not penalized. Otherwise, at Q37 (NovaSeq 6000 bins, unbinned or recalibrated data) every ALT read of a small insertion or delins would fall below `--min-baseq` while REF reads, with no indel, kept full quality. Splice junctions, and indels elsewhere in the read (a germline indel beside an SNV), are penalized as before. At Q40 (Q40 − 20 = 20) the difference does not arise.
+**The variant's own indel is spared.** When the variant being counted is not an SNV, a read's insertion or deletion that touches the variant's own event (where its alleles can differ, grown through repeats, plus two flank bases) is that variant's evidence, not an alignment artifact beside it, so the bases around it are not penalized. Otherwise, at Q37 (NovaSeq 6000 bins, unbinned or recalibrated data) every ALT read of a small insertion or delins would fall below `--min-baseq` while REF reads, with no indel, kept full quality. Indels elsewhere in the read (a germline indel beside an SNV) are penalized as before. At Q40 (Q40 − 20 = 20) the difference does not arise.
 
 ### Mode Defaults
 
 | Mode | Default | CLI Override | Rationale |
 |:-----|:--------|:-------------|:----------|
 | `gbcms dna` | **off** | `--apply-baq` to enable | DNA BAMs typically go through BQSR or consensus calling, which already recalibrates BQ. Enabling BAQ on top may double-penalize. |
-| `gbcms rna` | **on** | `--no-baq` to disable | RNA BAMs typically do not go through BQSR or consensus calling. BAQ penalizes bases near splice junctions, mimicking GATK SplitNCigarReads' overhang clipping. |
+| `gbcms rna` | **on** | `--no-baq` to disable | RNA BAMs typically do not go through BQSR or consensus calling. BAQ lowers the qualities of bases near a read's indels; a splice junction lowers none. |
 
 ### When to Enable BAQ for DNA
 
@@ -366,9 +366,9 @@ In these "raw BQ" scenarios, bases near indels may retain inflated sequencer-ass
 !!! warning "Do Not Enable for Pre-Calibrated BAMs"
     If your DNA pipeline includes BQSR or consensus calling, leave BAQ off (the default). Applying BAQ on already-recalibrated BAMs may over-penalize, causing undercounting of legitimate variant evidence.
 
-### RNA: Splice Junction Penalty
+### RNA: A Splice Lowers No Base's Quality
 
-In RNA mode, BAQ additionally penalizes bases near CIGAR `N` (RefSkip) operations — splice junctions. This is a lightweight alternative to running GATK SplitNCigarReads upstream. See [RNA Splice-Junction Handling](rna-splice-handling.md) for details.
+In RNA mode a CIGAR `N` (RefSkip) operation, a splice junction, lowers no base's quality: a base is judged by its own quality against `--min-baseq`, as it is in GATK after SplitNCigarReads (which changes no quality). A read's insertions and deletions keep the penalty above. Earlier versions (4.1.0 to 6.6.0) also lowered the five bases each side of every junction by 20; the rule is RJ-31 in the [read-judgment register](read-judgment.md). See [RNA Splice-Junction Handling](rna-splice-handling.md) for details.
 
 ---
 

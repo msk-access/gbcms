@@ -78,12 +78,10 @@ _RESCUE_MNP_HELP = (
 )
 
 _RESCUE_HOMOPOLYMER_HELP = (
-    "Dual-count the homopolymer twin: for a delins whose REF is a run of one base and "
-    "whose ALT is the base after the run (CCCCCC>T), also count CCCCCT and report "
-    "whichever has more ALT reads, flagged WARN_HOMOPOLYMER_DECOMP. Both counts accept "
-    "near-matches, so the winner can report another allele's reads under the row's "
-    "label. Off by default: the row counts the given allele, and OBSERVED_ALLELE in "
-    "gbcms_diagnostic names the allele the reads carry."
+    "Deprecated in 6.7.0; removed in 6.8.0. Accepted and ignored, with a warning: it did "
+    "nothing useful the diagnostics do not. The row counts the given allele, and "
+    "OBSERVED_ALLELE and COEXISTING_ALLELE in gbcms_diagnostic name the allele the reads "
+    "carry."
 )
 
 app = typer.Typer(help="gbcms: Get Base Counts Multi-Sample")
@@ -394,7 +392,8 @@ def dna(
         ReadJudge.RULES,
         "--read-judge",
         help=(
-            "Read judgment: 'rules' (the size-specific rules, default) or 'sequence' "
+            "Read judgment: 'rules' (the size-specific rules, default; an SNV row beside a "
+            "listed indel or delins is judged by 'sequence') or 'sequence' "
             "(which of the row's candidate sequences each read's own bases spell at the "
             "row; opt-in while it is measured, #304). 'haplotype' is its former name "
             "(deprecated)."
@@ -616,9 +615,10 @@ def rna(
     apply_baq: bool = typer.Option(
         True,
         "--apply-baq/--no-baq",
-        help="Apply heuristic BAQ quality downgrade near indels and splice "
-        "junctions. On by default for RNA (upstream pipelines typically "
-        "lack BQSR). Disable with --no-baq if BAMs are pre-calibrated.",
+        help="Apply heuristic BAQ quality downgrade near indels. A splice "
+        "junction lowers no base's quality. On by default for RNA (upstream "
+        "pipelines typically lack BQSR). Disable with --no-baq if BAMs are "
+        "pre-calibrated.",
     ),
     # UMI (shared)
     umi_tag: str | None = typer.Option(

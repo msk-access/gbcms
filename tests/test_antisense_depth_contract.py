@@ -123,7 +123,25 @@ PAIR_R1, PAIR_R2 = 0x1 | 0x40, 0x1 | 0x80 | 0x10  # an FR pair on the antisense 
 
 def _carriers(shape, n, prefix, flag, quals=None):
     """Reads carrying the shape's ALT, aligned as an aligner would (M, D or I)."""
+    return _carriers_of(*SHAPES[shape], n, prefix, flag, quals)
+
+
+def _other_lengths(shape):
+    """(REF, ALT) pairs of other lengths at the row's anchor (a deletion of 1 and of 5
+    bases against the row's 3; an insertion of 1 and of 4 against its 2), or the MNP
+    matching only its first base: reads that carry another allele, never REF or the
+    row's ALT."""
     ref, alt = SHAPES[shape]
+    if shape == "deletion":  # delete 1 and 5 bases (the row deletes 3)
+        return [(_REF[SNV : SNV + 2], _REF[SNV]), (_REF[SNV : SNV + 6], _REF[SNV])]
+    if shape == "insertion":  # insert 1 and 4 bases (the row inserts 2)
+        return [(ref, ref + "G"), (ref, ref + "GTGT")]
+    if shape == "MNP":  # the ALT's first base only
+        return [(ref, alt[0] + ref[1])]
+    return []
+
+
+def _carriers_of(ref, alt, n, prefix, flag, quals=None):
     hap = _REF[:SNV] + alt + _REF[SNV + len(ref) :]
     out = []
     for i in range(n):
@@ -157,12 +175,15 @@ def _refs(n, prefix, flag, quals=None):
 
 def _antisense_mix(shape):
     """Every kind of antisense read at the locus: REF and ALT carriers, an FR
-    pair, low base quality, a third allele (SNV), reads whose splice spans the
+    pair, low base quality, a third allele (SNV), carriers of another length (indels) or
+    of part of the MNP, reads whose splice spans the
     locus (they feed SPLICE_SKIP_DOMINANT), and reads clipped at an insertion
     (they feed CLIP_CANDIDATES)."""
     reads = _refs(4, "aref", ANTISENSE) + _carriers(shape, 3, "aalt", ANTISENSE)
     reads += _refs(1, "apair", PAIR_R1) + _refs(1, "apair", PAIR_R2)
     reads += _carriers(shape, 2, "alowq", ANTISENSE, quals=[5] * READ_LEN)
+    for j, (oref, oalt) in enumerate(_other_lengths(shape)):  # another allele, not REF or ALT
+        reads += _carriers_of(oref, oalt, 3, f"aother{j}_", ANTISENSE)
     if shape == "SNV":
         reads += _through(_THIRD, 2, "athird", ANTISENSE)
     for i in range(12):  # N over [SNV - 20, SNV + 40)

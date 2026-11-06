@@ -111,11 +111,15 @@ def test_rescue_homopolymer_keeps_the_twin(tmp_path):
     ref = _ref()
     reads = _twin_carriers(ref, 20) + _ref_reads(ref, 10)
     (rescued,) = _run(tmp_path, ref, reads, [SOX2_ROW], "--rescue-homopolymer")
-    assert "WARN_HOMOPOLYMER_DECOMP" in rescued["gbcms_status_reason"]
-    assert int(rescued["alt_count"]) == 20
+    # Was: WARN_HOMOPOLYMER_DECOMP present and alt_count 20 with the flag.
+    # Reason: deprecated 2026-11-05; hp1: the twin won at 1 of 20 candidate rows.
+    # Now the flag warns and changes nothing: the row equals the run without it.
+    assert "WARN_HOMOPOLYMER_DECOMP" not in rescued["gbcms_status_reason"]
+    assert int(rescued["alt_count"]) == 0
     (tmp_path / "plain").mkdir()
     (plain,) = _run(tmp_path / "plain", ref, reads, [SOX2_ROW])
     assert int(plain["alt_count"]) == 0
+    assert rescued == plain
     assert f"OBSERVED_ALLELE(1:{RUN + RUN_LEN}:C>T:20/0)" in plain["gbcms_diagnostic"].split(";")
 
 

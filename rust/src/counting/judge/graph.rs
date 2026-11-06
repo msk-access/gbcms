@@ -83,6 +83,8 @@ pub(crate) struct Segment {
     /// Its bases, indices into the graph's bases `[first, after)`.
     first: u32,
     after: u32,
+    /// The copy of the graph's masks zone it lies in ([`Graph::copy_set`]); 0 outside one.
+    pub(crate) copy: u32,
 }
 
 /// A segment before it is laid out: its row, its reference span and its bases.
@@ -92,15 +94,43 @@ type Pending = (Option<usize>, (i64, i64), Vec<u8>);
 #[derive(Debug, Default)]
 pub(crate) struct GraphBuilder {
     segments: Vec<Pending>,
+    /// Per segment, its copy ([`Segment::copy`]).
+    copies: Vec<u32>,
+    /// The rows each copy's path takes, by copy (copy 0: none).
+    copy_sets: Vec<Vec<usize>>,
     edges: Vec<(usize, usize)>,
 }
 
 impl GraphBuilder {
     /// A segment: the bases spelled over the reference span `span` (window coordinates),
     /// for `row` (None: the reference). Its id.
+    #[cfg(test)]
     pub(crate) fn segment(&mut self, row: Option<usize>, span: (i64, i64), bases: Vec<u8>) -> usize {
+        self.segment_in(row, span, bases, 0)
+    }
+
+    /// [`GraphBuilder::segment`] in the copy `copy` of a zone ([`GraphBuilder::copy`]).
+    pub(crate) fn segment_in(&mut self, row: Option<usize>, span: (i64, i64), bases: Vec<u8>, copy: u32) -> usize {
         self.segments.push((row, span, bases));
+        self.copies.push(copy);
         self.segments.len() - 1
+    }
+
+    /// The copy of a zone laid out for the path that takes `rows` (sorted; none: the copy
+    /// of no change): a segment in it says which, so a path's haplotype can be built as the
+    /// copy it ran through. Copy 0 is no zone's.
+    pub(crate) fn copy(&mut self, rows: Vec<usize>) -> u32 {
+        if self.copy_sets.is_empty() {
+            self.copy_sets.push(Vec::new());
+        }
+        // copy 0 stays the segments outside a zone: a zone's copy of no change has its own
+        match self.copy_sets.iter().skip(1).position(|c| *c == rows) {
+            Some(i) => i as u32 + 1,
+            None => {
+                self.copy_sets.push(rows);
+                (self.copy_sets.len() - 1) as u32
+            }
+        }
     }
 
     /// An edge from the end of segment `from` to the start of `to`. Edges run forward: `to`
@@ -131,7 +161,7 @@ impl GraphBuilder {
                 coord.push(span.0 + (j as i64 * width) / b.len() as i64);
                 seg_of.push(k as u32);
             }
-            segments.push(Segment { row: *row, span: *span, first, after: bases.len() as u32 });
+            segments.push(Segment { row: *row, span: *span, first, after: bases.len() as u32, copy: self.copies[s] });
         }
         // Per segment, its predecessors (empty ones resolved through), the reference first.
         let mut into: Vec<Vec<usize>> = vec![Vec::new(); self.segments.len()];
@@ -207,7 +237,11 @@ impl GraphBuilder {
         }
         // every predecessor laid out before its base (edges run forward)
         let topological = (0..n).all(|v| preds[pred_off[v] as usize..pred_off[v + 1] as usize].iter().all(|&u| (u as usize) < v));
-        Graph { segments, bases, coord, seg_of, pred_off, preds, succ_off: succ_count, succs, shifts, grows, end_max, topological }
+        let mut copy_sets = self.copy_sets;
+        if copy_sets.is_empty() {
+            copy_sets.push(Vec::new());
+        }
+        Graph { segments, bases, coord, seg_of, pred_off, preds, succ_off: succ_count, succs, shifts, grows, end_max, topological, copy_sets }
     }
 }
 
@@ -233,11 +267,27 @@ pub(crate) struct Graph {
     /// columns before it, so a graph that is not (none the builder makes) is scored by
     /// [`run_reference`].
     topological: bool,
+    /// The rows the path of each copy of a zone takes ([`GraphBuilder::copy`]); copy 0, none.
+    copy_sets: Vec<Vec<usize>>,
 }
 
 impl Graph {
     pub(crate) fn len(&self) -> usize {
         self.bases.len()
+    }
+
+    /// The bytes it holds on the heap (its arrays' capacities), for the budget of the graphs a
+    /// site keeps.
+    pub(crate) fn heap_bytes(&self) -> usize {
+        let u32s = self.seg_of.capacity() + self.pred_off.capacity() + self.preds.capacity() + self.succ_off.capacity() + self.succs.capacity();
+        self.segments.capacity() * std::mem::size_of::<Segment>()
+            + self.bases.capacity()
+            + (self.coord.capacity() + self.end_max.capacity()) * 8
+            + u32s * 4
+            + self.shifts.capacity() * std::mem::size_of::<(i64, i64, i64)>()
+            + self.grows.capacity()
+            + self.copy_sets.capacity() * std::mem::size_of::<Vec<usize>>()
+            + self.copy_sets.iter().map(|c| c.capacity() * 8).sum::<usize>()
     }
 
     #[inline]
@@ -284,13 +334,14 @@ impl Graph {
 
     /// Where `other`'s bases first differ from this graph's (its length where none does),
     /// where the two are laid out alike: the same segments (spans, bases' places, whether
-    /// each spells a row), coordinates, edges and length changes, so a programme over them
-    /// differs only from that base on. None where they are not laid out alike (as REF's
+    /// each spells a row, the copy of a zone it lies in), coordinates, edges, length changes
+    /// and copies (the changes each is laid for), so a programme over them differs only from
+    /// that base on, and a band that bars a read from some copies bars the same bases of both. None where they are not laid out alike (as REF's
     /// graph, not cut at X's span, and X's).
     pub(crate) fn layout_until(&self, other: &Graph) -> Option<usize> {
         let segments = self.segments.len() == other.segments.len()
             && self.segments.iter().zip(&other.segments).all(|(a, b)| {
-                (a.span, a.first, a.after, a.row.is_some()) == (b.span, b.first, b.after, b.row.is_some())
+                (a.span, a.first, a.after, a.row.is_some(), a.copy) == (b.span, b.first, b.after, b.row.is_some(), b.copy)
             });
         let alike = segments
             && self.topological
@@ -303,8 +354,56 @@ impl Graph {
             && self.succs == other.succs
             && self.shifts == other.shifts
             && self.grows == other.grows
-            && self.end_max == other.end_max;
+            && self.end_max == other.end_max
+            && self.copy_sets == other.copy_sets;
         alike.then(|| self.bases.iter().zip(&other.bases).position(|(a, b)| a != b).unwrap_or(self.bases.len()))
+    }
+
+    /// The rows the path through copy `copy` of a zone takes ([`Segment::copy`]).
+    pub(crate) fn copy_set(&self, copy: u32) -> &[usize] {
+        self.copy_sets.get(copy as usize).map_or(&[][..], |c| &c[..])
+    }
+
+    /// Whether a read that carries the changes `taken` (and may lie on any of `free`, which it
+    /// spans without carrying) is scored on copy `c` of a zone: the copy is laid for all of
+    /// `taken` that this graph can carry (a change conflicting with the state's row is in none
+    /// of its copies) and for no change outside `taken` and `free`. Copy 0 (outside a zone)
+    /// always.
+    pub(crate) fn allows(&self, c: u32, taken: &[usize], free: &[usize]) -> bool {
+        let Some(set) = self.copy_sets.get(c as usize).filter(|_| c != 0) else { return true };
+        let carries = |r: &usize| self.copy_sets.iter().any(|s| s.contains(r));
+        set.iter().all(|r| taken.contains(r) || free.contains(r)) && taken.iter().filter(|r| carries(r)).all(|r| set.contains(r))
+    }
+
+    /// Per copy of a zone, whether a read is barred from it ([`Graph::allows`]). Empty where
+    /// the graph holds no copy, or none is allowed (nothing is barred, so no path is cut).
+    pub(crate) fn barring(&self, taken: &[usize], free: &[usize]) -> Vec<bool> {
+        let allowed: Vec<bool> = (0..self.copy_sets.len() as u32).map(|c| self.allows(c, taken, free)).collect();
+        if allowed.iter().skip(1).any(|&a| a) {
+            allowed.into_iter().map(|a| !a).collect()
+        } else {
+            Vec::new()
+        }
+    }
+
+    /// The stretch of the window the bases `visited` span: the least reference coordinate they
+    /// stand at to the greatest. A base of an allele longer than the span it replaces (an
+    /// insertion's inserted bases) stands one coordinate further on for each base past the
+    /// first, up to the end of the span: a path that reads inserted bases has passed the
+    /// anchor, where the bases themselves all stand at the anchor's coordinate.
+    pub(crate) fn reach_of(&self, visited: &[u32]) -> (i64, i64) {
+        visited.iter().fold((i64::MAX, i64::MIN), |(lo, hi), &v| {
+            let v = v as usize;
+            let seg = self.segment_of(v);
+            let (width, len) = (seg.span.1 - seg.span.0, (seg.after - seg.first) as i64);
+            let at = if seg.row.is_some() && len > width { seg.span.0 + (self.offset_in_segment(v) as i64).min(width) } else { self.coord[v] };
+            (lo.min(self.coord[v]), hi.max(at))
+        })
+    }
+
+    /// Whether the graph holds copies of a zone ([`Segment::copy`]).
+    pub(crate) fn has_copies(&self) -> bool {
+        self.copy_sets.len() > 1
     }
 
     /// The length changes of the rows within `by` of the reference span `[lo, hi]`.
@@ -325,18 +424,33 @@ pub(crate) struct GraphBand {
     off: Vec<u32>,
     cells: usize,
     trim: (i64, i64),
+    /// Per copy of a zone ([`Graph::barring`]), whether the read is barred from it: its bases
+    /// hold no row and are no neighbour. Empty where none is.
+    barred: Vec<bool>,
 }
 
 impl GraphBand {
     /// The bytes it holds (its arrays' capacities and itself), for the work space's count.
     fn heap_bytes(&self) -> usize {
-        (self.lo.capacity() + self.hi.capacity() + self.off.capacity()) * 4 + std::mem::size_of::<GraphBand>()
+        (self.lo.capacity() + self.hi.capacity() + self.off.capacity()) * 4 + self.barred.capacity() + std::mem::size_of::<GraphBand>()
     }
 
     /// The band `half` coordinates each side of each read base's aligned position (`rp`,
     /// window coordinates, non-decreasing), over the bases in the read's reach `trim`;
     /// None for every row of every base in reach (the full programme).
+    #[cfg(test)]
     pub(crate) fn new(g: &Graph, rp: &[i64], half: Option<i64>, trim: (i64, i64)) -> GraphBand {
+        Self::new_barring(g, rp, half, trim, Vec::new())
+    }
+
+    /// [`GraphBand::new`] for `read`: its band, with the copies of a zone it is barred from
+    /// ([`GraphRead::lies_in`]) left out.
+    pub(crate) fn reading(g: &Graph, read: &GraphRead, half: Option<i64>, trim: (i64, i64)) -> GraphBand {
+        let barred = read.lies_in.as_ref().map_or_else(Vec::new, |(taken, free)| g.barring(taken, free));
+        Self::new_barring(g, &read.rp, half, trim, barred)
+    }
+
+    fn new_barring(g: &Graph, rp: &[i64], half: Option<i64>, trim: (i64, i64), barred: Vec<bool>) -> GraphBand {
         let n = rp.len() as u32;
         let (v0, v1) = g.range(trim);
         let len = v1 - v0;
@@ -348,7 +462,7 @@ impl GraphBand {
         let (mut seg, mut p_lo, mut p_hi) = (u32::MAX, 0usize, 0usize);
         for v in v0..v1 {
             let c = g.coord[v];
-            let (a, b) = if !g.in_reach(v, trim) || n == 0 {
+            let (a, b) = if !g.in_reach(v, trim) || n == 0 || (!barred.is_empty() && barred[g.segment_of(v).copy as usize]) {
                 (1, 0)
             } else if let Some(h) = half {
                 if g.seg_of[v] != seg {
@@ -375,7 +489,7 @@ impl GraphBand {
             hi.push(b);
         }
         off.push(cells as u32);
-        GraphBand { v0, v1, lo, hi, off, cells, trim }
+        GraphBand { v0, v1, lo, hi, off, cells, trim, barred }
     }
 
     /// [`GraphBand::new`] as first written, two searches per base (for tests).
@@ -402,7 +516,7 @@ impl GraphBand {
             hi.push(b);
         }
         off.push(cells as u32);
-        GraphBand { v0, v1, lo, hi, off, cells, trim }
+        GraphBand { v0, v1, lo, hi, off, cells, trim, barred: Vec::new() }
     }
 
     #[inline]
@@ -418,7 +532,7 @@ impl GraphBand {
     /// Whether base `v` is in the read's reach at all: a base out of reach is no neighbour.
     #[inline]
     fn reached(&self, g: &Graph, v: usize) -> bool {
-        v >= self.v0 && v < self.v1 && g.in_reach(v, self.trim)
+        v >= self.v0 && v < self.v1 && g.in_reach(v, self.trim) && (self.barred.is_empty() || !self.barred[g.segment_of(v).copy as usize])
     }
 }
 
@@ -1203,6 +1317,18 @@ pub(crate) struct GraphRead<'r> {
     /// its band widens for sends the read to the full programme ([`skips_bands`]). On for
     /// every read a site scores; off only in tests, to show what the band misses without it.
     pub(crate) long: bool,
+    /// The changes of a masks zone the read lies on, the same for every candidate: those it
+    /// carries and those it spans without carrying. It is scored on the copies of each
+    /// state's graph laid for them ([`Graph::allows`]) and no other. None: on whichever copy
+    /// each state's best path takes.
+    pub(crate) lies_in: Option<(Vec<usize>, Vec<usize>)>,
+}
+
+impl GraphRead<'_> {
+    /// The read lying on the changes `taken` it carries, and `free` it spans.
+    pub(crate) fn lying_in(&self, taken: Vec<usize>, free: Vec<usize>) -> GraphRead<'_> {
+        GraphRead { seq: self.seq, rp: self.rp.clone(), lies_in: Some((taken, free)), ..*self }
+    }
 }
 
 
@@ -1319,7 +1445,7 @@ pub(crate) fn decided_states<M: ErrorModel>(m: &M, read: &GraphRead, graphs: &[&
             let half = (step < 2).then(|| halves[step]);
             let band = match from[i].and_then(|s| stepped[s].clone()) {
                 Some(b) => b,
-                None => std::rc::Rc::new(GraphBand::new(g, &read.rp, half, trim)),
+                None => std::rc::Rc::new(GraphBand::reading(g, read, half, trim)),
             };
             stepped[i] = Some(band.clone());
             let (head, rest) = wss.split_at_mut(i);
@@ -1363,7 +1489,7 @@ pub(crate) fn decided<M: ErrorModel>(m: &M, read: &GraphRead, g: &Graph, ws: &mu
     let (trim, halves) = bands(g, read);
     let steps = if read.full || skips_bands(g, read) { 0 } else { 2 };
     for (half, slack) in halves.into_iter().zip([BAND_SLACK, WIDE_SLACK]).take(steps) {
-        let band = GraphBand::new(g, &read.rp, Some(half), trim);
+        let band = GraphBand::reading(g, read, Some(half), trim);
         let floor = floor_for(slack, read);
         let r = if g.topological { run_tracked(m, read.seq, g, &band, ws, floor) } else { run_reference::<M, true, false>(m, read.seq, g, &band, ws) };
         if !r.clipped && r.score >= floor && (r.score == 0 || !copy_off_band(read.seq, g, &band)) {
@@ -1373,7 +1499,7 @@ pub(crate) fn decided<M: ErrorModel>(m: &M, read: &GraphRead, g: &Graph, ws: &mu
             return (r.score, Some(half));
         }
     }
-    let full = GraphBand::new(g, &read.rp, None, trim);
+    let full = GraphBand::reading(g, read, None, trim);
     let r = if g.topological { run::<M, false>(m, read.seq, g, &full, ws) } else { run_reference::<M, false, false>(m, read.seq, g, &full, ws) };
     if g.topological {
         ws.last = Some((std::rc::Rc::new(full), r));
@@ -1389,7 +1515,7 @@ pub(crate) fn reach_score<M: ErrorModel>(m: &M, read: &GraphRead, g: &Graph) -> 
         return 0;
     }
     let (trim, _) = bands(g, read);
-    let full = GraphBand::new(g, &read.rp, None, trim);
+    let full = GraphBand::reading(g, read, None, trim);
     let mut ws = Workspace::default();
     if g.topological {
         run::<M, false>(m, read.seq, g, &full, &mut ws).score
@@ -1403,6 +1529,11 @@ pub(crate) fn reach_score<M: ErrorModel>(m: &M, read: &GraphRead, g: &Graph) -> 
 pub(crate) struct GraphPath {
     pub(crate) score: i32,
     pub(crate) rows: Vec<usize>,
+    /// The copy of a zone the path runs through ([`Segment::copy`]); 0 for none.
+    pub(crate) copy: u32,
+    /// The least and greatest reference coordinate of the bases it visits (`i64::MAX` and
+    /// `i64::MIN` for none; [`Graph::reach_of`]): the stretch of the window it spans.
+    pub(crate) reach: (i64, i64),
 }
 
 /// The read's best path in `g` traced back from the values `ws` still holds from
@@ -1432,10 +1563,10 @@ pub(crate) fn with_workspaces<R>(k: usize, f: impl FnOnce(&mut [Workspace]) -> R
 /// The read's best path in `g`, traced back in the band [`decided`] chose (`half`).
 pub(crate) fn path<M: ErrorModel>(m: &M, read: &GraphRead, g: &Graph, half: Option<i64>, ws: &mut Workspace) -> GraphPath {
     if read.seq.is_empty() {
-        return GraphPath { score: 0, rows: Vec::new() };
+        return GraphPath { score: 0, rows: Vec::new(), copy: 0, reach: (i64::MAX, i64::MIN) };
     }
     let (trim, _) = bands(g, read);
-    let band = GraphBand::new(g, &read.rp, half, trim);
+    let band = GraphBand::reading(g, read, half, trim);
     if !g.topological {
         let r = run_reference::<M, false, true>(m, read.seq, g, &band, ws);
         return traceback_reference(g, &band, ws, r);
@@ -1453,7 +1584,7 @@ fn traceback<M: ErrorModel>(m: &M, read: &[u8], g: &Graph, band: &GraphBand, ws:
     let (open, ext) = (m.gap_open(), m.gap_extend());
     let mut visited: Vec<u32> = Vec::new();
     let Some((mut i, mut v)) = r.end else {
-        return GraphPath { score: r.score, rows: Vec::new() };
+        return GraphPath { score: r.score, rows: Vec::new(), copy: 0, reach: (i64::MAX, i64::MIN) };
     };
     // states: 0 D, 1 A, 2 E, 3 F
     let mut state = 0u8;
@@ -1505,12 +1636,14 @@ fn traceback<M: ErrorModel>(m: &M, read: &[u8], g: &Graph, band: &GraphBand, ws:
     let mut rows: Vec<usize> = visited.iter().filter_map(|&v| g.segment_of(v as usize).row).collect();
     rows.sort_unstable();
     rows.dedup();
-    GraphPath { score: r.score, rows }
+    let copy = visited.iter().map(|&v| g.segment_of(v as usize).copy).find(|&c| c != 0).unwrap_or(0);
+    let reach = g.reach_of(&visited);
+    GraphPath { score: r.score, rows, copy, reach }
 }
 
 /// What a read's best path does with each of its bases: aligned to a graph base, inserted, or
 /// left over at an end; and the graph bases it skips right after each (a deletion). The
-/// read's call is examined on this alignment ([`Site::alignment_on_path`]).
+/// read's call is examined on this alignment ([`Site::alignment_on_path_in`]).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct PathSteps {
     pub(crate) score: i32,
@@ -1590,7 +1723,7 @@ pub(crate) fn kept_steps<M: ErrorModel>(m: &M, read: &GraphRead, g: &Graph, ws: 
 fn traceback_reference(g: &Graph, band: &GraphBand, ws: &Workspace, r: GraphRun) -> GraphPath {
     let mut visited: Vec<u32> = Vec::new();
     let Some((mut i, mut v)) = r.end else {
-        return GraphPath { score: r.score, rows: Vec::new() };
+        return GraphPath { score: r.score, rows: Vec::new(), copy: 0, reach: (i64::MAX, i64::MIN) };
     };
     // states: 0 D, 1 A, 2 E, 3 F
     let mut state = 0u8;
@@ -1628,7 +1761,9 @@ fn traceback_reference(g: &Graph, band: &GraphBand, ws: &Workspace, r: GraphRun)
     let mut rows: Vec<usize> = visited.iter().filter_map(|&v| g.segment_of(v as usize).row).collect();
     rows.sort_unstable();
     rows.dedup();
-    GraphPath { score: r.score, rows }
+    let copy = visited.iter().map(|&v| g.segment_of(v as usize).copy).find(|&c| c != 0).unwrap_or(0);
+    let reach = g.reach_of(&visited);
+    GraphPath { score: r.score, rows, copy, reach }
 }
 
 /// The full programme over every base of the graph, scores only (for tests).
@@ -1714,6 +1849,87 @@ mod tests {
         assert_eq!(full_score(&ShortReads, b"AACGTTT", &gr), 0);
         assert_eq!(full_score(&ShortReads, b"AACTTTT", &gr), 0);
         assert_eq!(full_score(&ShortReads, b"AACATTT", &gr), score::MISMATCH);
+    }
+
+    /// 30 bases of reference with a zone over `[10, 20)` laid out twice, as a masks zone is per
+    /// set of listed changes (row 7): copy `a` (that change taken) masks the base at 13, copy
+    /// `b` (none) masks the base at 17. Returns the graph, the reference, and the copies.
+    fn two_copies_of_a_zone() -> (Graph, Vec<u8>, u32, u32) {
+        let reference = b"ACGTTGCAACGTGACCTAGTCAGGTACCATGC".to_vec();
+        let mut b = GraphBuilder::default();
+        let head = b.segment(None, (0, 10), reference[0..10].to_vec());
+        let a = b.copy(vec![7]);
+        let none = b.copy(Vec::new());
+        assert_ne!((a, none), (0, 0), "a zone's copy of no change is not copy 0");
+        let mut zone = |copy: u32, wild: usize| {
+            let mut bases = reference[10..20].to_vec();
+            bases[wild - 10] = WILD;
+            b.segment_in(None, (10, 20), bases, copy)
+        };
+        let (za, zb) = (zone(a, 13), zone(none, 17));
+        let tail = b.segment(None, (20, 30), reference[20..30].to_vec());
+        for z in [za, zb] {
+            b.edge(head, z);
+            b.edge(z, tail);
+        }
+        (b.finish(), reference, a, none)
+    }
+
+    #[test]
+    fn a_read_held_to_one_copy_of_a_zone_is_scored_on_its_masks_alone() {
+        let (g, reference, a, none) = two_copies_of_a_zone();
+        // the reference from 4 to 26 with a mismatch at 13 (masked in copy a) or at 17 (in copy none)
+        let read_with = |at: usize| {
+            let mut r = reference[4..26].to_vec();
+            r[at - 4] = *b"ACGT".iter().find(|&&b| b != r[at - 4]).unwrap();
+            r
+        };
+        let rp: Vec<i64> = (4..26).collect();
+        let held = |read: &[u8], lies_in: Option<(Vec<usize>, Vec<usize>)>| {
+            let gr = GraphRead { seq: read, rp: rp.clone(), span: (4, 26), free_shift: 0, full: false, long: true, lies_in };
+            let mut ws = Workspace::default();
+            let (score, half) = decided(&ShortReads, &gr, &g, &mut ws);
+            let p = path(&ShortReads, &gr, &g, half, &mut Workspace::default());
+            assert_eq!(p.score, score, "the traced path scores the score");
+            // the same score from the cell programme, over the full band
+            let band = GraphBand::reading(&g, &gr, None, bands(&g, &gr).0);
+            assert_eq!(run_reference::<ShortReads, false, false>(&ShortReads, read, &g, &band, &mut Workspace::default()).score, run::<ShortReads, false>(&ShortReads, read, &g, &band, &mut Workspace::default()).score);
+            (score, p.copy)
+        };
+        let (at13, at17) = (read_with(13), read_with(17));
+        // free to take either copy, a read takes the one that masks its mismatch
+        assert_eq!(held(&at13, None), (0, a));
+        assert_eq!(held(&at17, None), (0, none));
+        // held to the copy of the change it carries, it is scored on that copy's masks
+        assert_eq!(held(&at13, Some((vec![7], Vec::new()))), (0, a));
+        assert_eq!(held(&at17, Some((vec![7], Vec::new()))), (score::MISMATCH, a));
+        // held to the copy of none, on that copy's
+        assert_eq!(held(&at13, Some((Vec::new(), Vec::new()))), (score::MISMATCH, none));
+        assert_eq!(held(&at17, Some((Vec::new(), Vec::new()))), (0, none));
+        // spanning the change without carrying it, either copy
+        assert_eq!(held(&at13, Some((Vec::new(), vec![7]))), (0, a));
+        assert_eq!(held(&at17, Some((Vec::new(), vec![7]))), (0, none));
+        // carrying a change this graph holds no copy of (row 9), a read is on the copy of none:
+        // the copy laid for a change it neither carries nor spans (row 7) is barred
+        assert_eq!(held(&at13, Some((vec![9], Vec::new()))), (score::MISMATCH, none));
+        assert_eq!(g.barring(&[9], &[]), vec![false, true, false]);
+    }
+
+    #[test]
+    fn graphs_laid_for_other_copies_of_a_zone_share_no_columns() {
+        // A state reuses another state's band, and with it the copies a read is barred from.
+        // Two graphs with the same segments, edges and bases whose copies are laid for other
+        // changes, or tagged otherwise, bar other bases: the band of one is not the other's.
+        let (g, _, _, _) = two_copies_of_a_zone();
+        assert_eq!(g.layout_until(&g.clone()), Some(g.len()), "a graph laid out as itself");
+        let mut other = g.clone();
+        other.copy_sets[1] = vec![8];
+        assert_eq!(g.layout_until(&other), None, "the first copy laid for another change");
+        let mut swapped = g.clone();
+        for s in swapped.segments.iter_mut().filter(|s| s.copy != 0) {
+            s.copy = 3 - s.copy;
+        }
+        assert_eq!(g.layout_until(&swapped), None, "the copies tagged the other way round");
     }
 
     /// Deterministic pseudo-random numbers (xorshift), `0..n`.
@@ -1928,7 +2144,7 @@ mod tests {
             assert_eq!(copy_off_band_lanes(&read, &g, &band), copy, "copy off the band, case {case}");
             copies += usize::from(copy);
             // and the scores, bands and paths the judge reads
-            let gr = GraphRead { seq: &read, rp: rp.clone(), span: (lo, hi + 1), free_shift: 0, full: false, long: true };
+            let gr = GraphRead { seq: &read, rp: rp.clone(), span: (lo, hi + 1), free_shift: 0, full: false, long: true, lies_in: None };
             let (s0, h0, p0) = decided_reference(&gr, &g);
             let (s1, h1) = decided(&ShortReads, &gr, &g, &mut ws);
             assert_eq!((s0, h0), (s1, h1), "decided, case {case}");
@@ -1955,7 +2171,7 @@ mod tests {
                 let band = GraphBand::new(&g, &rp, half, (lo - 170, hi + 170));
                 same_run(&read, &g, &band, &mut ws, case);
             }
-            let gr = GraphRead { seq: &read, rp: rp.clone(), span: (lo, hi + 1), free_shift: 0, full: false, long: true };
+            let gr = GraphRead { seq: &read, rp: rp.clone(), span: (lo, hi + 1), free_shift: 0, full: false, long: true, lies_in: None };
             let (s0, h0, p0) = decided_reference(&gr, &g);
             let (s1, h1) = decided(&ShortReads, &gr, &g, &mut ws);
             assert_eq!((s0, h0), (s1, h1), "decided, case {case}");
@@ -2019,7 +2235,7 @@ mod tests {
             let base = &graphs[shares.iter().position(|s| s.is_some()).map_or(0, |k| shares[k].unwrap().0)];
             let (read, rp) = random_read_of(base, &mut st, 100);
             let (lo, hi) = (rp[0], *rp.last().unwrap());
-            let gr = GraphRead { seq: &read, rp: rp.clone(), span: (lo, hi + 1), free_shift: 0, full: false, long: true };
+            let gr = GraphRead { seq: &read, rp: rp.clone(), span: (lo, hi + 1), free_shift: 0, full: false, long: true, lies_in: None };
             let refs: Vec<&Graph> = graphs.iter().collect();
             let mut wss: Vec<Workspace> = (0..graphs.len()).map(|_| Workspace::default()).collect();
             let all = decided_states(&ShortReads, &gr, &refs, &shares, &mut wss);
@@ -2047,7 +2263,7 @@ mod tests {
         g.pred_off = vec![0, 1, 2, 3, 4, 5, 6];
         g.preds = vec![4, 0, 1, 2, 3, 4];
         g.topological = false;
-        let gr = GraphRead { seq: b"ACGTA", rp: (0..5).collect(), span: (0, 5), free_shift: 0, full: false, long: true };
+        let gr = GraphRead { seq: b"ACGTA", rp: (0..5).collect(), span: (0, 5), free_shift: 0, full: false, long: true, lies_in: None };
         let mut ws = Workspace::default();
         let (s0, h0, p0) = decided_reference(&gr, &g);
         let (s1, h1) = decided(&ShortReads, &gr, &g, &mut ws);

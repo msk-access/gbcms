@@ -7,6 +7,150 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed — RNA: ASJD reads the same sibling verdict as the main counts (#359, RJ-5)
+
+- At an RNA row with a GTF and a co-annotated sibling, the allele-specific junction test counted reads the main counts give to the sibling (a REF read that is ALT for the sibling where this row's REF is read; an ALT match the sibling explains as well or better). It now makes the same two sibling checks, so those reads vote in neither the REF nor the ALT junction partition. Only the `asjd_*` columns can move; RD, AD, DP and the per-transcript counts are unchanged. Rules path only. Measured on the synthetic set: rows without a sibling are byte-identical (0 of 1,072); with a sibling added to every row, 12 of 2,144 rows move.
+
+### Tests — RNA pins (#344, #345, #346)
+
+- Pinned decided behaviour, no count change: reads carrying another allele are in a transcript's DP and in no transcript AD/RD or ASJD partition; antisense reads carrying another allele appear in no column under enforcement, and count as partial evidence with `--no-strandedness` or with no GTF; an edit inside an insertion's bases is decided by the reads, and an editing database cannot reach it.
+- Decided and pinned (RJ-32): a read with no junction fits every transcript it overlaps, so it counts in the DP and RD of each overlapping spliced transcript, and once in the row's counts. A single-exon transcript gets no per-transcript entry. No count changes.
+
+### Changed — a listed allele at the site is always another allele, and a read counts REF where it tells REF from the alleles it reaches (RJ-25, RJ-24; operator 2026-11-02)
+
+- **No floor for a listed allele, on both paths.** A listed allele whose span meets the ALT's site
+  is another allele there whether or not any read shows it (the input is taken as correct, as
+  rule X took it for another unit count at a long deletion). The 1-fragment-and-5% test of
+  2026-10-14 is gone for listed alleles (the rules' `other_alleles`, the sequence judge's
+  `seen_apart`); it stays for an allele nobody listed (3 fragments and 5%). A listed component of
+  an MNP that no read shows apart from it is another allele too: a carrier that reads only the
+  component's base cannot tell the MNP from it and is partial evidence (AD 14 to 10 in that
+  shape). The rules path takes any listed allele of the ALT's length that meets the site and differs
+  inside the window, not only one that differs nowhere past two bases beside the event.
+- **A REF read is told only from the alleles it reaches.** This reverses the REF clause decided
+  on 2026-10-14 (a REF read short of a REF-length allele was neither). An allele past the read's
+  end (or before its start) no longer contests it: a read ending inside a long event is judged by
+  the bases it has (RJ-9); a read that reaches the allele and cannot tell it (the base unread,
+  below `--min-baseq`, or masked) stays neither. The sequence judge already ties by reach; the
+  rules path now does too, for REF-length alleles listed or found, in the exact-carrier
+  windows and in the MNP check.
+- **An SNV row beside a listed indel or delins is judged by its bases, also under the rules (#398).**
+  An SNV row where the same input lists an indel or delins whose span meets the row's site (the
+  sequence judge's own test) is counted by the sequence judge, as `--read-judge sequence` would;
+  every other row, MNV rows included, keeps the rules. Prep decides it from the whole input, so
+  no bin or call changes it; no column, flag or environment variable is added. The rules still
+  count a routed-class row in two places, each with one warning per count: RNA mode, and a
+  count given no reference FASTA. The rules' single-base check weighed no listed allele that
+  changes the length, so a read that spelled one counted ALT. Measured at these rows (rules
+  lane against judge lane, 2026-11-03): patient sets, wrong-ALT reads 1,230 to 0 and wrong
+  definite calls 1,258 to 7; HG002, true ALT credited 454 to 520 and reads of the listed allele
+  credited ALT 142 to 21. Precedent: a deletion of 50 bp or more already goes to a by-bases
+  junction judge. A MNV-plus-insertion shape (67 true-ALT reads at two gate-set rows) would go to
+  partial under the judge and stays on the rules (#331).
+- **RJ-24 reaches a delins.** A delins that replaces 50 REF bases or more (the changed REF bases once
+  the shared prefix and suffix are trimmed) has a core, 4 bases in from both ends: a substitution
+  wholly inside it is a context of REF's molecules, so a read that reaches and spells it is REF
+  and a sibling there claims no REF read. A 60>30 delins has a core; 5>60 does not.
+- **Stopgap (#418).** a found allele's background bases are left out of its reach only where the allele also differs at an unmasked base inside X's window; where its only differences inside the window are masked, those differences are its reach. Without it HG002 c246 INS 1-9 gets 185 true-ALT reads called REF against develop's 182, because the allele's one unmasked difference lies outside the window. It goes when #418 is fixed.
+- **Routing can raise AD.** At a routed SNV row the judge counts a read that carries a listed allele
+  holding X's change as ALT (RJ-28), and a read whose clipped bases carry X. In rq2, 349 reads enter AD
+  at SNV rows, 254 of them off the oracle's anchor; HG002 truth at the routed rows shows no new
+  wrong-ALT. `--alignment-backend` has no effect at routed rows (the judge scores them). The judge's
+  diagnostics (UNEXPLAINED_READS, MNV_SHARED, INDEL_SHARED) can appear on routed rows.
+  Named limit (#418, as on develop): the rules path's REF side weighs only listed alleles that differ
+  inside X's window (RJ-25 (5)(a)).
+- **Two corrections against the text above (rq1, operator 2026-11-03).** (a) The candidate test
+  reads the window the event's own windows hold: one flank base each side of a pure indel, two of
+  any other event. It read two for a pure indel too, so a listed delins that is X plus a
+  substitution at the second flank base became a candidate whose window equals X's: no read could
+  tell them apart and every carrier of a 1-base insertion in a 4-base run went to partial (AD 106
+  to 0 at one panel row, rules path). (b) The reach of a REF-length allele is measured on its
+  difference from REF before the guard's masks, in every branch (a found allele's background bases at a
+  mask do not widen it), so an allele that differs only at masked bases still
+  contests a read that spans them: reached and not told is neither. It had been taken to contest
+  nothing, and 91 read calls at six HG002 rows (five insertions, one deletion; 5 of them true ALT at
+  c246 INS 1-9) went from neither to REF. The MNP check measures it the same way. The rules path
+  only; the judge lane moves no row and no read call. Where the paths still differ at a delins row
+  (the rules need the read to hold X's whole window, RJ-1 and RJ-2; the judge counts what the read
+  covers) is older than this change, and closing it would be a third REF rule (#331); RJ-25 (6).
+- Counts on HG002 (public, local; 27,589 rows), rules path against develop: 598 arm-rows change (87
+  without the routing); the routing changes no row that is not a class row; at the 1,302 class rows the rules lane equals the judge
+  lane in every MAF field and read call. Phased truth at those rows (strict view): true ALT credited
+  454 to 521, reads of the listed allele credited ALT 142 to 21; scored targets (truth v2dbq20): true
+  ALT credited 30,455 to 30,457, true REF called REF unchanged, true ALT called REF 1,339 to 1,336.
+  Judge: 49 arm-rows change; truth classes equal. Speed (rq2, on HPC): patient wall time 1.02 times develop; HG002 CPU 1.28 times; nocl peak memory
+  411 to 905 MiB. Inputs that can be much slower: a long listed deletion with many SNVs inside it,
+  and dense cohort lists (#412).
+- Existing expectations changed by the decision (each with its reason in the test):
+  `test_listed_sibling_floor_contract.py` (8 cases, AD 14 to 10),
+  `test_locus_alleles_contract.py` (a component never seen alone and one seen on 1 of 100
+  fragments, AD 14 to 10; an SNV among a delins's deleted bases never spelled, RD 24 to 20).
+  New contract tests: `tests/test_ref_reach_contract.py`; a routed row in `tests/test_binning_invariance.py`.
+- Supersedes the option A of the REF-tie question on the judge (#394) and settles #398 (SNV rows
+  routed to the judge, above; the rules path's sibling scope for exact-carrier rows).
+
+### Deprecated — `--rescue-homopolymer` (removed in 6.8.0)
+
+- **`--rescue-homopolymer` is deprecated in 6.7.0 and removed in 6.8.0.** `gbcms dna`,
+  `gbcms rna`, the `Pipeline`, `observe_molecules(rescue_homopolymer=...)` and the Nextflow
+  `--rescue_homopolymer` accept it, warn once and ignore it, as `--gtf-cache-dir` was in 6.6.0.
+  The twin is never built, so `WARN_HOMOPOLYMER_DECOMP` is never set. It did nothing useful
+  the diagnostics do not: `OBSERVED_ALLELE` and `COEXISTING_ALLELE` in `gbcms_diagnostic`
+  name the allele the reads carry.
+  - Measured on origin/develop `df5da55f` (hp1): of 20 runs whose variant list holds a twin
+    candidate (71 rows scored), the twin won at 1 of 20 candidate rows (5%), moving AD by +2
+    (17 to 19) while 17 reads moved into RD. At the SOX2-shaped rows (REF length 6, ALT length 1)
+    it won at none, and the default diagnostic named the 1 bp deletion plus the change in 2 of 3.
+  - The Rust binding's `rescue_homopolymer` parameter, `decomp.rs` and the dual count stay
+    until 6.8.0 removes them; Python no longer sends the flag.
+
+### Changed — RNA: a splice never lowers a base's quality (#292, RJ-31)
+
+- Heuristic BAQ (`--apply-baq`, on by default in `gbcms rna`) no longer lowers the five read
+  bases each side of a splice junction (CIGAR `N`) by 20. It still lowers by 20 the five bases
+  each side of a read's own insertion or deletion, and still spares the counted variant's own
+  indel. A base is judged by its own quality against `--min-baseq`, wherever it lies in the
+  read. This reverses the junction penalty decided on 2026-05-04 (in effect for RNA since
+  4.1.0), under which a base near a junction passed the bar only where its quality was 20
+  above it: Q40 data passed at the default bar 20 and nothing passed at 30. GATK's
+  SplitNCigarReads changes no quality at a splice and htslib's BAQ skips a spliced read whole,
+  so no surveyed tool lowered a base for lying near a junction.
+- Counts change in RNA only, and only for reads spliced within five bases of the variant's
+  bases, GTF or none (with a GTF, BAQ was already skipped within five bases of an annotated
+  exon edge). Measured on 58 FORTE STAR slices at bar 20: of 163,882 SNV rows in the first five
+  bases of exons, 136,257 move, ALT +14,269 and REF +5.70 million reads (+1.9%); clean rows
+  keep 0 ALT, and the 219 germline hets gain the 984 ALT reads (1.9%) the penalty hid (76% at
+  bar 30). DNA has no junction: unchanged.
+- At a delins, ALT can fall at bar 30 (FORTE: 280 to 173 reads in reach, reproduced exactly on
+  the builds before and after the change). That is right by bases: a base under the bar fits any
+  allele, so with a junction's ten read bases masked a read could fit the ALT on the few bases
+  left, whatever the masked bases showed. The 117 reads that lose ALT are all spliced with the
+  event 0 to 4 bases from the junction; 92 lie on a long piece (20 or more aligned bases), not a
+  short anchor. Under the change 91 of the 117 are REF and 18 partial evidence.
+- The exon-edge exception (#106) stays; it now lifts only the penalty of a read's own indels.
+- The limit (#409, RJ-3's short pieces): a piece too short to place its own bases, at a spliced
+  read's end or between two junctions, is no longer hidden by the penalty and can read as an ALT it
+  does not carry. An end piece is written at an annotated junction where its molecule spliced at a
+  novel one a few bases on (synthetic set: 2.2% of the reads at that stratum, at hom-REF rows); a
+  6-base piece between two junctions with a misplaced base counted ALT on 4 of 4 reads (develop:
+  depth only, two penalties stacked to Q0). Ticketed; two strict xfails pin them.
+- `gbcms rna --apply-baq/--no-baq` help and the `--trace` BAQ line no longer name splice
+  junctions. No flag or Nextflow parameter changes.
+- One test expectation changed, with the decision:
+  `test_baq_still_applies_to_an_mnp_ending_six_bases_from_the_edge`, (REF, ALT) from (20, 0) to
+  (20, 10): its ten carriers hold the MNP in their own bases, and the novel donor's junction
+  penalty had masked both.
+
+### Fixed — RNA: an exon piece holding part of a deletion's bases is depth only (#292)
+
+- A spliced read whose exon piece starts at a junction at a deletion's edge and ends inside
+  the deleted bases (or, mirrored, starts inside them and ends at a junction) holds part of
+  the deletion and no flank base of its own. The exact-carrier rule now counts it toward depth
+  only, never REF (RJ-17, amended 2026-10-30), with BAQ on or off. Before, only BAQ's
+  junction penalty hid the piece's bases: with `--no-baq`, such reads counted REF.
+  The CIGAR checks already required the whole span. DNA is unchanged (its reads have no
+  junction).
+
 ### Changed — a long deletion's ALT reads must tell it from another unit count present at the site (#297)
 
 - At a deletion of 50 bp or more beside a tandem run of its unit (its deleted copy differing
@@ -110,6 +254,52 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     the same. On HG002 (public; c246, tr, sub, nocl; both paths) no row and no read call moves for
     any of the three. RJ-24 and RJ-25 amended 2026-11-02.
 
+### Fixed — two follow-ups to the equal windows of an insertion of 50 bp or more (#264)
+
+- Under `--read-judge sequence`, a read that ties the ALT with another allele (REF beaten) must
+  hold the ALT's equal window as well as that allele's (RJ-23). Before, the window check ran on the
+  haplotype of the allele the call names, and a read inside the insert, or holding only its far
+  junction, held the other allele's window (a haplotype with no long insert, which looks like
+  REF's run) and counted partial evidence. It is depth only now; no ALT count can rise.
+  At HG002 (public; c246, tr, sub, nocl) 367 read calls on 82 rows move from partial evidence to
+  depth only, all at pure insertions of 50 bp or more; no row's REF count, ALT count or VAF changes
+  (partial evidence falls on all 82 rows; DP falls by 42 reads on 25 rows: those reads lie off the anchor, and a read off the anchor was in DP only through its partial call, so as depth only they now count in no column).
+- The guard's masks are laid by offset from the anchor on every candidate haplotype along the
+  columns of each path (RJ-23, RJ-27), not by the offsets the haplotypes have without the
+  listed or found changes beside the insertion (Greptile's finding on PR #396): an insertion or
+  deletion between the anchor and a masked base moves that base's offset on every haplotype a
+  read carrying it lies on. The graph holds a copy of the span where a mask can lie per set of
+  such changes that can lie together. A state's graph with seven such changes or more in that span (the cap is checked per graph) keeps
+  the offsets without them (a named limit).
+  At HG002 the masks are laid by the columns of up to five such changes at the rows with masks and
+  no read call moves (nor in a sweep of 12,078 synthetic read pairs); the change is in the score of a
+  read carrying such a change on a candidate (four points lower on X's haplotype with a third base at
+  the masked base, now equal).
+- A read lies on one copy of that span for every candidate (RJ-23). A state's best path took
+  whichever copy masked its own mismatches, so a read ending in the insert, long before a listed
+  deletion, took the deletion's copy for the ALT (masking a base where the read has a third base)
+  and the other copy for a listed sibling of the ALT's length that differs at a masked offset: the
+  ALT scored 0, the sibling -4, and the read was ALT from a deletion it cannot carry. A read now lies
+  on the changes it carries and those it spans, the same for every candidate, and carries a change only where its bases span the change's place (a read ending on a deletion's padding base, or inside the repeat it slides over, carries nothing); a change it cannot place is a plain alternative for every candidate, with no mask moved for it, as on develop: the read is scored first on graphs with no copy of the masks' zone and again, on graphs with copies for the changes it spans only, where it spans one; the candidates whose
+  best path took another copy are scored again. A read carrying the deletion is told the ALT from the
+  sibling at the base its copy leaves unmasked, ALT.
+- The graph sets a site lays for the changes its reads span (up to 32 per site) count against the
+  judge's cache budget (`GBCMS_JUDGE_BUDGET_MB`), once each when kept. Past the budget no more are
+  kept and a read's set is laid for it alone. No call changes; only what is cached.
+- The length the windows read on to (RJ-23, RJ-27) where the masks hide the base that tells them
+  apart is counted in the columns of the path a read lies on, as the masks are. A deletion listed
+  between the anchor and that base takes bases out of the haplotype of a read that carries it, so
+  the windows hold as many fewer columns there; a REF molecule carrying it that reached the base was
+  two columns short of a window measured without the deletion and was depth only.
+- The window check at a pure insertion of 50 bp or more is the class rule for every call (RJ-23): a
+  read is told only on the windows of the alleles it ties, so a call holds its own allele's equal
+  window and that of every other class within the margin of it. Before, only a tie of another allele
+  with the ALT held the ALT's window too; a tie of REF with another allele was checked on that
+  allele's window alone, and a call made by the fit check on its haplotype's alone.
+  A REF call the reach rule made (REF ties another allele the read never reaches, or one it writes its own
+  indel across) holds REF's window alone, as on develop; a separate class plan decides it for every shape.
+- The default rules path is unchanged.
+
 ### Changed — the sequence judge reads an insertion of 50 bp or more over equal windows from its anchor (#264)
 
 - Under `--read-judge sequence`, a REF or ALT call at a pure insertion of 50 bp or more now
@@ -161,6 +351,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   installs it on Python 3.10 and 3.14 with `pip install --only-binary=:all:`. The suite runs
   there, and the counting run's output digests must equal the Linux ones. The same steps run
   on a Mac with `scripts/check_wheel.sh`.
+- The action then checks that the wheel needs no newer macOS than 11.0: its platform tag, and
+  the minimum macOS in each binary's load commands (`otool -l`). The tests run on
+  `macos-latest`, so they would accept a wheel that needs a newer macOS; the Linux build checks
+  its glibc floor the same way.
 - Intel Macs (x86_64) still build the source distribution: nothing in CI uses an Intel Mac,
   and a wheel for one would be a second entry in the same two jobs (or a cross build on the
   arm64 runner) if a user asks for it.

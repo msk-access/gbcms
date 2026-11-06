@@ -2,10 +2,10 @@
 deterministic ASJD junction choice, and an exon distance found in any contig
 naming.
 
-Heuristic BAQ lowers base qualities within 5bp of a CIGAR N. At a variant
-within 5bp of an annotated exon boundary that penalizes exactly the reads that
-splice there, so the main counts skip BAQ at such sites. Per-transcript counts
-and ASJD read the same reads and must apply the same rule:
+Heuristic BAQ lowered base qualities within 5bp of a CIGAR N (until 2026-11-03,
+RJ-31: a splice now lowers none) and still lowers them within 5bp of a read's own
+indel. At a variant within 5bp of an annotated exon boundary the main counts skip
+BAQ. Per-transcript counts and ASJD read the same reads and must apply the same rule:
 
 - at an exon-edge SNV, the per-transcript counts of the transcript every read
   is compatible with equal the main counts (they undercounted by ~3% on real

@@ -39,8 +39,8 @@ caveat in gbcms's output.
 | Long event split across alignments | The primary's clip is read at the junction | Proposed | C18 #177 |
 | Indel realignment (ABRA2) fixes or forces placements | Invariant by design (bases, not placement) | Decided; verify | D5 #155 |
 | Aligner settings change clipping; hard clips drop bases | Clips read; hard-clipped bases lost; warned at run start | Decided (done: warn) | O2 #131, D5 #155 |
-| Reads from paralogs or segmental duplications | MAPQ ≥ 20; `mq0_count` | Proposed (diagnostic, 6.7.0); validate on paralog-rich loci | O5 #179 |
-| Reference bias: ALT reads map worse, clip, or go unmapped | Counts what maps | Proposed (diagnostic in `gbcms_diagnostic`; no filter, no new column; 6.7.0) | O5 #179 |
+| Reads from paralogs or segmental duplications | MAPQ ≥ 20; `mq0_count` | Proposed (diagnostic, 6.8.0); validate on paralog-rich loci | O5 #179 |
+| Reference bias: ALT reads map worse, clip, or go unmapped | Counts what maps | Proposed (diagnostic in `gbcms_diagnostic`; no filter, no new column; 6.8.0) | O5 #179 |
 | Alt contigs and decoys split coverage | Contig naming handled; ALT contigs warned at run start | Decided (done: warn) | O2 #131 |
 | Base-quality calibration: binned, BQSR, BAQ | One masking rule; BAQ spares the variant's own indel; run start reports the share below `--min-baseq` | Decided (done: warn above 10%) | O2 #131 |
 | Adapter read-through | Clipped at the fragment end in every read | Decided (done) | C17 #176 |
@@ -48,7 +48,7 @@ caveat in gbcms's output.
 | Exact-length insertion with a sequencing error inside; truncated copies | One error inside the insert is tolerated; a truncated copy counts `partial_alt` | Decided (done); the identity band for truncated inserts was not adopted | C6 #143 |
 | A REF molecule with one error beside the event reads ALT | Both alleles' windows are read from one anchor | Decided (done, RJ-23) | C33 #214 |
 | Stutter in repeats | Counted exactly; named by a diagnostic | Decided (done) | — |
-| OxoG / FFPE orientation artifacts | Strand counts only | To decide: optional F1R2/F2R1 counts or an orientation-imbalance diagnostic; measure first on FFPE-rich data (6.7.0) | O6 #180 |
+| OxoG / FFPE orientation artifacts | Strand counts only | To decide: optional F1R2/F2R1 counts or an orientation-imbalance diagnostic; measure first on FFPE-rich data (6.8.0) | O6 #180 |
 | Unmarked duplicates; UMI consensus N's | Duplicate flag honoured; N masked; run start reports the flagged share | Decided (done: report, no warning) | O2 #131 |
 | Overlapping mates | Fragment counts | Decided (done) | — |
 | RNA: splicing at exon edges | Windows built over the reference spliced at each read's junctions; a splice is not coverage; ASJD | Decided (done) | C32 #213, R5 #198 |
@@ -160,7 +160,7 @@ caveat in gbcms's output.
   were variants.
 - **gbcms now:** minimum MAPQ 20; `mq0_count` is reported. There is no paralog
   awareness: gbcms reports what is at the locus.
-- **Should do:** proposed (O5 #179, 6.7.0): a diagnostic in `gbcms_diagnostic`,
+- **Should do:** proposed (O5 #179, 6.8.0): a diagnostic in `gbcms_diagnostic`,
   never a filter, no new column. The target is settled by measurement first: how
   often ALT reads at low-mappability and segmental-duplication loci are
   paralog-derived, validated on paralog-rich loci and the paired panel/WES loci.
@@ -204,7 +204,8 @@ caveat in gbcms's output.
   recalibration, and heuristic BAQ all change which bases pass `--min-baseq`.
 - **gbcms now:**
     - one masking rule: bases below min BQ, and N, match anything;
-    - BAQ spares the variant's own indel (#166).
+    - BAQ spares the variant's own indel (#166);
+    - a splice junction lowers no base's quality, in RNA with a GTF or without (RJ-31, 2026-11-03).
 - **Should do:** done (O2 #131): the run start reports each BAM's base-quality
   values (binned when 8 or fewer) and the share of sampled bases below
   `--min-baseq`, and warns above 10%. Measured on 10 MSK BAMs: 0.8–2.1% at the
@@ -310,7 +311,7 @@ caveat in gbcms's output.
 - **In the BAM:** artifacts concentrated in one read orientation (F1R2 or F2R1),
   which strand counts do not separate.
 - **gbcms now:** forward and reverse counts per allele.
-- **Should do:** to decide (O6 #180, 6.7.0): optional per-allele F1R2/F2R1 counts, or
+- **Should do:** to decide (O6 #180, 6.8.0): optional per-allele F1R2/F2R1 counts, or
   an orientation-imbalance diagnostic only (the project prefers no new columns).
   Measure first on FFPE-rich data: orientation skew at oxoG/FFPE-prone contexts
   against true variants on the validation matrix.

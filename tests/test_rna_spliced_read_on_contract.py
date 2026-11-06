@@ -4,7 +4,9 @@ A read whose windows fit both alleles, or whose fit rests on too few bases, is r
 on past the windows (RJ-27). For a read spliced just past them, the bases there are
 the next exon's: judged against the genome's continuation (the intron), a REF read
 misses REF and fits a shifted allele by chance, and a read whose bases at the
-junction BAQ masks has nothing left to decide on. A read spliced within the reach of
+junction are masked has nothing left to decide on (BAQ masked them until 2026-11-03,
+when a splice stopped lowering quality, RJ-31; the counts below did not change). A
+read spliced within the reach of
 its windows' reading is judged on the reference spliced along its junctions, as a
 read spliced inside the windows is, so it counts as the same read without a junction
 does. No GTF: BAQ is suppressed only within five bases of an annotated exon edge.
@@ -45,9 +47,11 @@ def _hap(p: int, ref: str, alt: str) -> list:
     return out
 
 
-def _read(name: str, seg: list, ins_after_n: bool = False):
+def _read(name: str, seg: list, ins_after_n: bool = False, junction_qual: int | None = None):
     """A read of the haplotype slice `seg`, its CIGAR from the genome positions; an
-    insertion right before a splice is written after it with `ins_after_n`."""
+    insertion right before a splice is written after it with `ins_after_n`. With
+    `junction_qual` the five read bases each side of the splice have that raw quality
+    (the rest Q30)."""
     ops: list = []
     prev = None
     for _, g in seg:
@@ -64,16 +68,24 @@ def _read(name: str, seg: list, ins_after_n: bool = False):
         if ins_after_n and ops[i][0] == 1 and ops[i + 1][0] == 3:
             ops[i], ops[i + 1] = ops[i + 1], ops[i]
     start = next(g for _, g in seg if g is not None)
-    return make_read(name, "".join(b for b, _ in seg), start, tuple(map(tuple, ops)))
+    quals = [30] * len(seg)
+    if junction_qual is not None:
+        at = sum(
+            n for op, n in ops[: next(i for i, o in enumerate(ops) if o[0] == 3)] if op in (0, 1)
+        )
+        quals[max(at - 5, 0) : at + 5] = [junction_qual] * len(quals[max(at - 5, 0) : at + 5])
+    return make_read(name, "".join(b for b, _ in seg), start, tuple(map(tuple, ops)), quals=quals)
 
 
-def _count(p: int, ref: str, alt: str, apply_baq: bool, tmp_path, ins_after_n=False):
+def _count(
+    p: int, ref: str, alt: str, apply_baq: bool, tmp_path, ins_after_n=False, junction_qual=None
+):
     """Eight spliced REF and eight spliced ALT reads from exon 1 into exon 2."""
     assert CONTIG[p : p + len(ref)] == ref
     haps = {"R": _hap(p, ref, ref), "A": _hap(p, ref, alt)}
     j = next(i for i, (_, g) in enumerate(haps["R"]) if g == E)
     reads = [
-        _read(f"{k}{i}", h[j - 40 + 3 * i : j - 40 + 3 * i + RL], ins_after_n)
+        _read(f"{k}{i}", h[j - 40 + 3 * i : j - 40 + 3 * i + RL], ins_after_n, junction_qual)
         for k, h in haps.items()
         for i in range(8)
     ]
@@ -103,7 +115,7 @@ NEAR_EXON_END = {
 @pytest.mark.parametrize("shape", list(NEAR_EXON_END))
 def test_spliced_reads_near_an_exon_end_read_on_into_the_next_exon(shape, apply_baq, tmp_path):
     """Spliced just past the windows: read on along the mRNA, REF reads are REF and
-    ALT reads ALT, with BAQ masking the bases at the junction or not."""
+    ALT reads ALT, with BAQ on or off."""
     assert _count(*NEAR_EXON_END[shape], apply_baq, tmp_path) == (8, 8, 0)
 
 
@@ -118,10 +130,21 @@ NEAR_EXON_START = {
 def test_spliced_reads_at_an_exon_first_base_anchor_read_on_past_the_masked_junction(
     shape, tmp_path
 ):
-    """BAQ masks the five bases each side of the junction, the whole windows: the
-    spliced reads read on along exon 2, as they do with BAQ off."""
+    """The whole windows lie within five bases of the junction (BAQ masked them until
+    2026-11-03): the spliced reads read on along exon 2, with BAQ on or off."""
     assert _count(*NEAR_EXON_START[shape], True, tmp_path) == (8, 8, 0)
     assert _count(*NEAR_EXON_START[shape], False, tmp_path) == (8, 8, 0)
+
+
+@pytest.mark.parametrize("apply_baq", [False, True], ids=["no-baq", "baq"])
+@pytest.mark.parametrize("shape", list(NEAR_EXON_END) + list(NEAR_EXON_START))
+def test_spliced_reads_read_on_past_junction_bases_of_low_raw_quality(shape, apply_baq, tmp_path):
+    """The five read bases each side of the splice are Q10, under the default bar: the
+    windows lie in bases the quality gate masks, with BAQ on or off (a splice lowers no
+    quality since RJ-31, so only raw quality masks them now). The spliced reads read on
+    along exon 2 as they do at full quality: every REF read REF, every ALT read ALT."""
+    variant = {**NEAR_EXON_END, **NEAR_EXON_START}[shape]
+    assert _count(*variant, apply_baq, tmp_path, junction_qual=10) == (8, 8, 0)
 
 
 # at exon 1's very end: TG inserted after its last base, and its last two bases deleted
@@ -137,8 +160,8 @@ AT_EXON_END = {
 @pytest.mark.parametrize("shape", list(AT_EXON_END))
 def test_an_exon_end_at_the_event_leaves_its_left_flank_whole(shape, apply_baq, tmp_path):
     """An exon end where the event starts cuts its right flank, not its left: the
-    windows read from the left and on along the mRNA, past the bases BAQ masks at the
-    junction, instead of from the right, where the alleles differ only there."""
+    windows read from the left and on along the mRNA, past the junction, instead of
+    from the right, where the alleles differ only there."""
     variant, counts = AT_EXON_END[shape]
     assert _count(*variant, apply_baq, tmp_path) == counts
 
