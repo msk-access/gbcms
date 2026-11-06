@@ -31,7 +31,7 @@
             body[data-md-color-scheme="slate"] .gslide-title { color: var(--md-default-fg-color); }
             body[data-md-color-scheme="slate"] .gslide-desc { color: var(--md-default-fg-color); }
         </style><meta name="panzoom-theme" content="material">
-<meta name="panzoom-data" content='{"selectors": [".mermaid", ".d2"], "initial_zoom_level": 1.0}'> </head>
+<meta name="panzoom-data" content='{"selectors": [".d2", ".mermaid"], "initial_zoom_level": 1.0}'> </head>
 <body data-md-color-accent="custom" data-md-color-primary="custom" data-md-color-scheme="default" dir="ltr">
 <input autocomplete="off" class="md-toggle" data-md-toggle="drawer" id="__drawer" type="checkbox">
 <input autocomplete="off" class="md-toggle" data-md-toggle="search" id="__search" type="checkbox">
@@ -1262,19 +1262,19 @@ their base name in the run log. Examples: <code>ZERO_ALT</code>,
 </tr>
 <tr>
 <td style="text-align: left;"><code>MNV_SHARED(chrom:pos:REF&gt;ALT:n/m)</code></td>
-<td style="text-align: left;"><code>--read-judge sequence</code></td>
+<td style="text-align: left;"><code>--read-judge sequence</code>, and an SNV row routed to the judge under the rules</td>
 <td style="text-align: left;">At a substitution (an SNV) with a co-listed MNV that holds its change (the same length over its bases, reading its ALT where it changes them): <code>n</code> of the row's <code>m</code> ALT reads spell that MNV whole (the MNV's 1-based POS). The judge counts the MNV's carriers as the SNV's ALT reads (RJ-28), so the two rows share them. One flag per such MNV</td>
 <td style="text-align: left;">The SNV's <code>alt_count</code> includes the MNV's carriers: one molecule can sit in both rows' counts and <abbr title="Mutant Fragment Size Distribution - Insert-size analysis for REF vs ALT fragments">mFSD</abbr> size distributions (two KS tests on one event in the BH family). The counts are unchanged</td>
 </tr>
 <tr>
 <td style="text-align: left;"><code>INDEL_SHARED(chrom:pos:REF&gt;ALT:n/m)</code></td>
-<td style="text-align: left;"><code>--read-judge sequence</code></td>
+<td style="text-align: left;"><code>--read-judge sequence</code>, and an SNV row routed to the judge under the rules</td>
 <td style="text-align: left;">At a row with a listed row that is its ALT with listed neighbours (an indel or delins holding the row's whole change, such as a delins that is two listed deletions together): <code>n</code> of the row's <code>m</code> ALT reads spell that row whole (its 1-based POS). The judge counts that row's carriers as this row's ALT (RJ-28's indel twin), so the rows share them. One flag per such row</td>
 <td style="text-align: left;">The row's <code>alt_count</code> includes that row's carriers: one molecule can sit in several rows' counts and <abbr title="Mutant Fragment Size Distribution - Insert-size analysis for REF vs ALT fragments">mFSD</abbr> size distributions. The counts are unchanged</td>
 </tr>
 <tr>
 <td style="text-align: left;"><code>UNEXPLAINED_READS(n/m)</code></td>
-<td style="text-align: left;"><code>--read-judge sequence</code></td>
+<td style="text-align: left;"><code>--read-judge sequence</code>, and an SNV row routed to the judge under the rules</td>
 <td style="text-align: left;"><code>n</code> of the row's <code>m</code> depth reads fit none of its candidate sequences (REF, the ALT, the other alleles at its site, each with every context the judge weighs) within ten confident mismatches. The fit rule makes such a read depth only where its aligner places it elsewhere at least as well (XS ≥ AS, or <abbr title="Mapping Quality - Confidence score for read alignment">MAPQ</abbr> 0 with no XS); a read the aligner places here alone is judged by its bases at the row, as any other</td>
 <td style="text-align: left;">Weigh the row's counts with that in mind where <code>n</code> is a large share of <code>m</code>: foreign reads the aligner places uniquely (a paralog's, reads at a homozygous deletion in a repeat) can count. The counts are unchanged</td>
 </tr>
