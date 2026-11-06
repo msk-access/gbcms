@@ -470,6 +470,22 @@ fn count_bam_binned_core(
             )));
         }
     }
+    // Rows prep routed to the sequence judge under the rules (an SNV row beside a listed
+    // indel or delins: RJ-25, 2026-11-03). The judge reads each row's candidate sequences
+    // from the reference and does not judge spliced reads; where it cannot, the rows are
+    // counted by the rules, said once, never silently.
+    let routed = variants.iter().chain(decomposed.iter().flatten()).filter(|v| v.judge_routed).count();
+    let routing = routed > 0 && read_judge == judge::ReadJudge::Rules && mode != "rna" && reference_fasta.is_some();
+    if routed > 0 && read_judge == judge::ReadJudge::Rules && !routing {
+        warn!(
+            "{routed} SNV row(s) beside a listed indel or delins would be counted by the sequence judge, but {}: \
+             they are counted by the rules",
+            if mode == "rna" { "RNA mode does not judge spliced reads yet" } else { "no reference_fasta is given" },
+        );
+    }
+    if read_judge == judge::ReadJudge::Rules && !routing {
+        variants.iter_mut().chain(decomposed.iter_mut().flatten()).for_each(|v| v.judge_routed = false);
+    }
     let backend = parse_alignment_backend(
         alignment_backend,
         hmm_llr_threshold,
@@ -716,7 +732,7 @@ fn count_bam_binned_core(
                         // haplotype judge, in either mode, the reader its windows come
                         // from. A worker that cannot open it fails the run: judging its
                         // bins differently from the others' would be silent.
-                        let reads_reference = mode == "rna" || read_judge == judge::ReadJudge::Haplotype;
+                        let reads_reference = mode == "rna" || read_judge == judge::ReadJudge::Haplotype || routing;
                         let far_reference: Result<Option<crate::normalize::fasta::CachedFasta>, String> =
                             match (reads_reference, fasta_path_owned.as_deref()) {
                                 (true, Some(path)) => crate::normalize::fasta::CachedFasta::open(path)
@@ -1258,6 +1274,9 @@ fn count_bin_shared(
         // same siblings.
         let cache = &read_cache;
         let rna_edges = (mode == "rna").then_some(&edges);
+        // The judge that counts a row: the call's, or the sequence judge for a row prep routed
+        // to it under the rules (RJ-25, 2026-11-03).
+        let judge_of = |v: &Variant| if v.judge_routed { judge::ReadJudge::Haplotype } else { read_judge };
         let guard_of = |v| {
             carrier::CarrierGuard::new(move || {
                 let counted = |r: &Record| counted_read(r, v, mode, enforce_strandedness, strandedness, min_mapq);
@@ -1270,7 +1289,7 @@ fn count_bin_shared(
                     junction::guard_read_as(cache, v, &counted, min_baseq, siblings, &|r: &Record| {
                         Some((effective_quals(r, use_baq, spare), carrier::readable_with(r, rna_edges)?))
                     })
-                } else if read_judge == judge::ReadJudge::Haplotype {
+                } else if judge_of(v) == judge::ReadJudge::Haplotype {
                     // the sequence judge also takes the alleles written past the masks
                     carrier::guard_for_judge(cache, v, &counted, min_baseq, siblings)
                 } else {
@@ -1318,7 +1337,7 @@ fn count_bin_shared(
                 judge::site_for(v, rules.guard.and_then(|g| g.get(v)), reference, &reads)
             })
         };
-        let judged = read_judge == judge::ReadJudge::Haplotype;
+        let judged = judge_of(variant) == judge::ReadJudge::Haplotype;
         let guard = guard_of(variant);
         let tolerance = tolerance_of(variant);
         let haplotypes = judged.then(|| haplotypes_of(variant));
@@ -1329,14 +1348,14 @@ fn count_bin_shared(
                 spliced: Some(&spliced),
                 guard: Some(&guard),
                 tolerance: Some(&tolerance),
-                judge: read_judge,
+                judge: judge_of(variant),
                 haplotypes: haplotypes.as_ref(),
             }
         } else {
             carrier::ReadRules {
                 guard: Some(&guard),
                 tolerance: Some(&tolerance),
-                judge: read_judge,
+                judge: judge_of(variant),
                 haplotypes: haplotypes.as_ref(),
                 ..carrier::ReadRules::DNA
             }
@@ -2316,7 +2335,11 @@ fn mask_low_qual(seq: &mut [u8], quals: &[u8], min_baseq: u8) {
 fn ref_guard_siblings<'a>(variant: &Variant, siblings: &'a [Variant]) -> Vec<&'a Variant> {
     let (lo, hi) = window::discrimination_window(variant);
     let span = junction::ref_window_span(variant).map_or((lo, hi), |(a, b)| (a.max(lo), b.min(hi)));
-    window::siblings_in_span(span, siblings)
+    // A long delins's core is as a long deletion's deleted bases (RJ-24, extended): a
+    // substitution there changes bases only REF's molecules hold and is a context of them,
+    // so its carriers keep their REF call.
+    let core = window::delins_core(variant.pos, &variant.ref_allele, &variant.alt_allele);
+    window::siblings_in_span(span, siblings).into_iter().filter(|s| !window::in_core(core, s)).collect()
 }
 
 /// Whether a read classified REF for `variant` (or whose REF call was
@@ -4217,6 +4240,7 @@ mod tests {
             listed_neighbours: Vec::new(),
             reach_rows: Vec::new(),
             reach_unrecorded: false,
+            judge_routed: false,
             whole_ref: None,
             listed_indels: Vec::new(),
         }
@@ -4948,6 +4972,7 @@ mod tests {
             listed_neighbours: Vec::new(),
             reach_rows: Vec::new(),
             reach_unrecorded: false,
+            judge_routed: false,
             whole_ref: None,
             listed_indels: Vec::new(),
         }

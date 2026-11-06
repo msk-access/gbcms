@@ -82,11 +82,22 @@ pub struct Variant {
     #[pyo3(get)]
     pub reach_rows: Vec<(i64, String, String)>,
 
-    /// Prep was told the rules, so it left `reach_rows` unrecorded (the rules never read
-    /// them). The sequence judge refuses such a row: judged without the rows in its reach,
+    /// Prep was told the rules, so it left `reach_rows` unrecorded (the rules read them only
+    /// at a row routed to the judge, `judge_routed`). The sequence judge refuses such a row: judged without the rows in its reach,
     /// its reads would be weighed against too few candidate sequences, silently. False for
     /// a row built by hand, never prepared, which lists no other row.
     pub reach_unrecorded: bool,
+
+    /// Prep routed this row to the sequence judge although the call is told the rules
+    /// (RJ-25, 2026-11-03): an SNV row (one base differing, after trimming: REF and ALT one base
+    /// each, or a same-length row kept with its padding), where the input lists an indel or
+    /// delins whose REF span meets the row's site (the judge's `meets`, after its `beside`
+    /// step). The rules' single-base check weighs no listed allele that changes the
+    /// length, so a read that spells one counts ALT; the judge holds that allele as a site
+    /// state and calls the read partial evidence, as a deletion of 50 bp or more already goes
+    /// to a by-bases junction judge. Whole-input, so no bin geometry can change it; the row
+    /// records its rows in reach. Prep's; not exposed to Python.
+    pub judge_routed: bool,
 
     /// Reference bases a whole read reaches each side of an event the exact-carrier rule
     /// judges, with their 0-based start (covering `event_ref`): a read the aligner placed
@@ -139,6 +150,7 @@ impl Variant {
             listed_neighbours: Vec::new(),
             reach_rows: Vec::new(),
             reach_unrecorded: false,
+            judge_routed: false,
             whole_ref: None,
             listed_indels: Vec::new(),
         }

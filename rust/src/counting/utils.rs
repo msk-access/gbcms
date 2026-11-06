@@ -157,8 +157,9 @@ pub struct ClassifyResult {
     /// here), and a fragment whose reads are all like this is left out of the mFSD
     /// classes.
     pub uninformative: bool,
-    /// A REF call withdrawn because the read tells REF from no other allele of REF's
-    /// length at the locus (RJ-25): that allele or REF. The sibling REF guard still
+    /// A REF call withdrawn because the read reaches another allele of REF's length at the
+    /// locus and tells REF from it by no base (RJ-25; an allele past the read's end does not
+    /// count): that allele or REF. The sibling REF guard still
     /// checks it, so a co-annotated sibling's allele it carries is partial evidence
     /// here (RJ-5).
     pub ref_untold: bool,

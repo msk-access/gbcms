@@ -85,6 +85,49 @@ pub(crate) fn allele_kind(ref_allele: &str, alt_allele: &str) -> Option<AlleleKi
     })
 }
 
+/// Replaced REF bases (after the shared prefix and suffix are trimmed) from which a delins has a
+/// core: the same bar as a pure deletion's junction judge, which counts the deleted bases
+/// ([`super::junction::LONG_DELETION`]).
+pub(crate) const LONG_REPLACED: usize = super::junction::LONG_DELETION;
+/// Replaced bases at each end of a long event that its junction holds: its core starts and ends
+/// this far in ([`super::junction`]'s windows read this many bases of the deleted span).
+pub(crate) const CORE_JUNCTION: i64 = super::junction::K as i64;
+
+/// The core of a delins that replaces [`LONG_REPLACED`] REF bases or more (RJ-24, extended): the
+/// genome span `[start, end)` of the replaced bases that lie [`CORE_JUNCTION`] or more bases in
+/// from both ends, at the row's placement. A substitution there changes bases only REF's
+/// molecules hold, never the ALT's, and away from the junctions it is no allele at the event's
+/// site: a context on REF's side. None for a pure insertion or deletion (the junction judge, or
+/// the exact-carrier rule's own windows, reads those), for an event that keeps the length, and
+/// for one replacing fewer bases.
+pub(crate) fn delins_core(pos: i64, ref_allele: &str, alt_allele: &str) -> Option<(i64, i64)> {
+    if allele_kind(ref_allele, alt_allele)? != AlleleKind::Complex {
+        return None;
+    }
+    let (r, a) = (ref_allele.as_bytes(), alt_allele.as_bytes());
+    let short = r.len().min(a.len());
+    let p = r.iter().zip(a).take_while(|(x, y)| x.eq_ignore_ascii_case(y)).count().min(short);
+    let s = r.iter().rev().zip(a.iter().rev()).take_while(|(x, y)| x.eq_ignore_ascii_case(y)).count().min(short - p);
+    let replaced = r.len() - p - s;
+    (replaced >= LONG_REPLACED).then(|| (pos + (p as i64) + CORE_JUNCTION, pos + (r.len() - s) as i64 - CORE_JUNCTION))
+}
+
+/// Whether the substitution `sib` (equal alleles' lengths) changes bases only inside `core`
+/// (a long delins's core, [`delins_core`]).
+pub(crate) fn in_core(core: Option<(i64, i64)>, sib: &Variant) -> bool {
+    let Some((c_lo, c_hi)) = core else { return false };
+    let (r, a) = (sib.ref_allele.as_bytes(), sib.alt_allele.as_bytes());
+    if r.len() != a.len() {
+        return false;
+    }
+    let differs = |k: &usize| !r[*k].eq_ignore_ascii_case(&a[*k]);
+    let (first, last) = ((0..r.len()).find(differs), (0..r.len()).rev().find(differs));
+    match (first, last) {
+        (Some(f), Some(l)) => c_lo <= sib.pos + f as i64 && sib.pos + (l as i64) < c_hi,
+        _ => false,
+    }
+}
+
 /// Whether the alleles are a pure insertion or deletion by [`allele_kind`]: a
 /// one-base allele that is the other's first base (compared case-insensitively),
 /// the classification the dispatcher counts by. A multi-base shared prefix
@@ -621,6 +664,42 @@ pub(crate) fn siblings_in_span((w_lo, w_hi): (i64, i64), siblings: &[Variant]) -
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn row(pos: i64, r: &str, a: &str) -> Variant {
+        Variant::new("1".into(), pos, r.into(), a.into(), "COMPLEX".into(), None, 0, 0, None, None, None, None)
+    }
+
+    #[test]
+    fn a_delins_has_a_core_from_fifty_replaced_ref_bases() {
+        let ref60 = "ACGT".repeat(15);
+        // 60 REF bases replaced by 30 others: the core starts and ends 4 bases in
+        assert_eq!(delins_core(100, &ref60, &"C".repeat(30)), Some((104, 156)));
+        // the replaced bases are those left after the shared prefix and suffix are trimmed
+        let shared = format!("G{}A", &ref60[1..59]);
+        assert_eq!(delins_core(100, &shared, &format!("G{}A", "T".repeat(10))), Some((105, 155)), "58 replaced bases");
+        assert_eq!(delins_core(100, &"ACGT".repeat(12), "TT"), None, "48 replaced bases");
+        let fifty = "A".repeat(50);
+        assert_eq!(delins_core(100, &fifty, "CT"), Some((104, 146)), "50 replaced bases");
+        assert_eq!(delins_core(100, &"A".repeat(49), "CT"), None, "49 replaced bases");
+        assert_eq!(delins_core(100, "ACGTA", &"T".repeat(60)), None, "5>60 replaces 5 REF bases");
+        // a pure deletion is the junction judge's, and an event that keeps the length has no core
+        assert_eq!(delins_core(100, &format!("A{}", "C".repeat(59)), "A"), None);
+        assert_eq!(delins_core(100, &"A".repeat(60), &"C".repeat(60)), None);
+    }
+
+    #[test]
+    fn a_substitution_is_in_the_core_only_where_all_it_changes_is() {
+        let core = Some((104, 156));
+        assert!(in_core(core, &row(120, "A", "C")));
+        assert!(in_core(core, &row(104, "A", "C")), "the first core base");
+        assert!(in_core(core, &row(155, "A", "C")), "the last core base");
+        assert!(!in_core(core, &row(103, "A", "C")), "a junction base");
+        assert!(!in_core(core, &row(156, "A", "C")), "a junction base at the other end");
+        assert!(in_core(core, &row(120, "AGA", "ACA")), "the changed base alone counts");
+        assert!(!in_core(core, &row(154, "AAAA", "CAAC")), "a block crossing the end");
+        assert!(!in_core(core, &row(120, "A", "AC")), "an insertion is no substitution");
+        assert!(!in_core(None, &row(120, "A", "C")));
+    }
 
     #[test]
     fn allele_kind_reads_lengths_and_the_anchor_case_insensitively() {
