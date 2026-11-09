@@ -59,7 +59,10 @@ of the conversation. The operator decided (2026-10-26, after asking what reaches
     folder names are sample IDs. Take patient paths from the batch's manifest or the scorer's own
     index, inside a script whose output goes through the sanitizer. Every brief that touches
     patient files says so. (2026-11-03: a scorer's mistyped `ls` printed run folder names that held
-    germline sample IDs.)
+    germline sample IDs.) The HPC copy-back lanes (`~/test/gbcms/harness/hpc/out/<label>/`) and
+    their clones (`out_<label>/`, `across/`, `wes/`, `germ/`, `xdata/gatex/`) are patient folders
+    too; a lane's copy command is in the ledger and `~/test/gbcms/harness/hpc/PLAN.md` §6.
+    (2026-11-05: an `ls` of two lanes was refused before any output.)
 - **cBioPortal study files** (`data_*.txt`, `meta_*.txt`, case lists: cohort-wide patient-level
   rows) stay on this machine: "I need you to only write scripts and run them here to understand
   and tease what can be used". Enforced by `.claude/hooks/protect-cbioportal.py`; the protected

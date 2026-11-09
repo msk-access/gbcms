@@ -24,6 +24,8 @@ pipeline run, whatever it gains in counts.
 - Measured 2026-10-30 (develop fe34f443): the rules path meets the floor in all 8 cases (1.4–2.4×
   faster; ACCESS 1 BAM × 20,000 rows about equal); the sequence judge does not from 5,000 rows up
   (1.3–5.2× slower). The judge meets the floor before it becomes the default (6.8.0, #331; #335).
+- Measured 2026-11-06 for the 6.7.0 release (pf72, develop f7293618, rules path only): met in all
+  8 cases, rules wall over C++ 0.39–0.94; ACCESS 1 BAM × 20,000 rows still the closest (0.94).
 - Report times with the rows (variants) and reads per data set, so a ratio such as "2× slower" has
   concrete numbers behind it.
 
