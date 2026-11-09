@@ -71,5 +71,5 @@ Intent, PHI, cBioPortal and HPC rules: `.agents/rules/security.md`.
   skills: `.agents/skills/<name>/SKILL.md` (mirrored to `.claude/skills/`), by outcome.
 - Where we left off: `CONTINUITY.md`. Durable facts: `.agents/memory/MEMORY.md`. Measurement harness:
   `docs/harness/measurement-harness.md`; harness plan and philosophy: `docs/harness/00-plan.md`.
-- Open work: `CONTINUITY.md` "Next" (the 6.7.0 work packages), tracker #196, `PRODUCTION_READINESS.md`.
+- Open work: `CONTINUITY.md` "Next" (the 6.8.0 work), tracker #420, `PRODUCTION_READINESS.md`.
   Retired plans are in `.agents/archive/`.
