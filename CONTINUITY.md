@@ -37,7 +37,9 @@ changes to counts". 6.7.0 ships with the count changes merged. Every open 6.7.0 
    against the rules path on pf71's production tasks, 3 repeats each (7650328; 7650331, 7652235).
    Rules wall time over C++'s: 0.39 to 0.57 for 1 BAM at 1,000 and 5,000 rows; IMPACT 1 × 20,000
    0.51; ACCESS 1 × 20,000 0.94 (as in October); fill-outs IMPACT 10 × 5,000 0.55 and ACCESS
-   9 × 5,000 0.74. Every ratio equals or beats pf71's (develop fe34f443).
+   9 × 5,000 0.74. Against pf71 (develop fe34f443), five ratios are lower and three are slightly
+   higher: IMPACT 1 × 5,000 0.462 (0.452), ACCESS 9 × 5,000 0.740 (0.725), ACCESS 1 × 20,000
+   0.944 (0.942).
 2. This record, the plan-first result and the plan pages (PR from `chore/plan-first`).
 3. `release/6.7.0` from develop: the version, the CHANGELOG section, the gate; a PR to main. The
    operator merges; the tag publishes. Then main into develop, develop to 6.8.0-dev, and #196 and
