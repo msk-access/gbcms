@@ -116,6 +116,30 @@ are not visible.
 - **Verdict:** the bar was not met. **Operator (2026-11-06):** try it again on the 6.8.0 work. The
   new bar is fixed with the operator before the first 6.8.0 count-changing build.
 
+## The 6.8.0 trial (approved 2026-11-10: scope A, the bar as written)
+
+- **Items (operator, 2026-11-10: scope A):** every count-changing item of 6.8.0 (about 30 of the
+  milestone's 56 open tickets) gets a plan page and a cost log. The verdict on the method rests on
+  the first three, so it comes early; the later items keep their logs, so the verdict is checked
+  again before the release. Each page weighs DNA and RNA, fixes the class, and names the other
+  tickets its class touches. The first item is the fit rule's doubt test on realigned reads
+  (`plans/331-fits-realigned.md`).
+- **What changed from the first trial:** the scorers took 2.75 M of item 3's 6.01 M tokens, and
+  every builds bar failed. So an option whose effect follows exactly from existing arms (its
+  rule changes one test, read by read) is emulated, not built. The scorers' tokens are reported apart.
+- **Bar, per item:**
+  1. at most two review rounds;
+  2. no condition added and later removed, no decision reversed; the chosen option's declared
+     conditions are the ceiling;
+  3. builds: at most the options that cannot be emulated, plus one final build; the final build
+     equals the emulation on the emulated arms;
+  4. at most 4 HPC batches;
+  5. at most 2.4 M agent tokens (`baseline.py`'s method), the scorers' tokens reported apart;
+  6. the operator reads the page in five minutes: a yes or no at the approval;
+  7. the option table holds only measured or exactly emulated numbers.
+- **Pass:** every bar on at least two of the three items, and bar 2 on all three. Then the page
+  goes into the decision protocol as written in "How the trial is judged".
+
 ## The code graph: a trial of its own (operator, 2026-10-31)
 
 graphify (0.9.12) builds a graph of the Rust code with its syntax parser, at no model cost. In the

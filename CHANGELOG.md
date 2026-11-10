@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- The sequence judge's fit rule (RJ-29) no longer reads a realigner's placeholder tags as the
+  aligner's doubt. ABRA2 never writes AS or XS, so a read it places after BWA left it unmapped keeps
+  BWA's unmapped placeholder `AS:i:0 XS:i:0` and met XS >= AS as 0 >= 0. Such a read (ABRA2's `YO`
+  beginning `N/A`, or the placeholder pair) now counts as having no XS, on both paths: the judge's
+  fit rule and the rules path's junction judge for deletions of 50 bp or more share one test. These
+  are the reads that span a dense somatic cluster. On the 6.7.0 release panel the judge brings 395
+  carriers back to ALT at 50 rows (387 carry the ALT haplotype the counted carriers share) and 22
+  more signed-out rows fall inside the sign-out margin; the rules path, ACCESS, the matched normals,
+  RNA, WES and HG002 do not change. RNA's own doubt signal (`NH`) is unchanged. Plan:
+  `docs/harness/plans/331-fits-realigned.md`.
+
 ## [6.7.0] - 2026-11-09 — a read counts what it reaches; the sequence judge, opt-in
 
 ### Release gate — the regression panel against 6.6.0 (2026-11-09)

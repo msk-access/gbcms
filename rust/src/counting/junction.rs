@@ -53,9 +53,9 @@
 //!   can spell an unlisted count nothing is held, and the row is named (UNIT_COUNT_UNSPANNED).
 
 use log::trace;
-use rust_htslib::bam::record::{Aux, Cigar, Record};
+use rust_htslib::bam::record::{Cigar, Record};
 
-use crate::shared::bam_utils::fragment_query_span;
+use crate::shared::bam_utils::{fragment_query_span, placement_scores};
 use crate::types::Variant;
 
 use super::carrier::{
@@ -514,19 +514,11 @@ fn row_at(w: &[u8], ws: i64, lo: usize, from: usize) -> (i64, Vec<u8>, Vec<u8>) 
 }
 
 /// Whether the aligner places the read here: not elsewhere at least as well (XS below AS),
-/// and, where it wrote no XS, at MAPQ above 0 (RJ-29's placement test). A read it doubts may
-/// belong to another copy, so it spells no allele here.
+/// and, where it wrote no XS or its tags do not describe the present placement (a
+/// realigner's placeholder tags, see `placement_scores`), at MAPQ above 0 (RJ-29's placement
+/// test). A read it doubts may belong to another copy, so it spells no allele here.
 fn placed_here(record: &Record) -> bool {
-    let tag = |t: &[u8]| match record.aux(t) {
-        Ok(Aux::I8(v)) => Some(i64::from(v)),
-        Ok(Aux::U8(v)) => Some(i64::from(v)),
-        Ok(Aux::I16(v)) => Some(i64::from(v)),
-        Ok(Aux::U16(v)) => Some(i64::from(v)),
-        Ok(Aux::I32(v)) => Some(i64::from(v)),
-        Ok(Aux::U32(v)) => Some(i64::from(v)),
-        _ => None,
-    };
-    match (tag(b"AS"), tag(b"XS")) {
+    match placement_scores(record) {
         (Some(a), Some(x)) => x < a,
         _ => record.mapq() > 0,
     }

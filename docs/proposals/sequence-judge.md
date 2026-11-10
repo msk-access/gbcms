@@ -54,7 +54,8 @@ For a row X and each admitted read:
 - **The fit rule (phase B, decided 2026-10-25; RJ-29):** a read whose best score over every
   candidate sequence is below ten confident mismatches fits none of them; it is depth only
   where its aligner also doubts it (XS ≥ AS, or MAPQ 0 with no XS), otherwise its margin
-  decides it. `UNEXPLAINED_READS(n/m)` names how many of a row's depth reads fit none. The
+  decides it. Amended 2026-11-10 (#331): a realigner's read placed from unmapped (ABRA2's `YO`
+  beginning `N/A`) and BWA's unmapped placeholder pair (`AS:i:0 XS:i:0`) count as no XS. `UNEXPLAINED_READS(n/m)` names how many of a row's depth reads fit none. The
   other options measured stay behind `GBCMS_JUDGE_FITS` (measurement only).
 - **Second fix round (2026-10-26), each red-first:**
   - A substitution's read whose confident bases at X's telling bases show some of X's

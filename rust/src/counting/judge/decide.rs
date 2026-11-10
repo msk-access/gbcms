@@ -7,7 +7,8 @@
 //! depth only. No priors; a tie is never credited.
 
 use log::trace;
-use rust_htslib::bam::record::{Aux, Cigar, Record};
+use crate::shared::bam_utils::{int_tag, placement_scores};
+use rust_htslib::bam::record::{Cigar, Record};
 
 
 use super::graph::{self, ShortReads, Workspace};
@@ -1117,16 +1118,8 @@ pub(crate) fn read_view(record: &Record, quals: &[u8], min_baseq: u8, rules: &Re
     }
     let seq = record.seq().as_bytes();
     let readable = readable_range(record, rules)?;
-    let tag = |t: &[u8]| match record.aux(t) {
-        Ok(Aux::I8(v)) => Some(i64::from(v)),
-        Ok(Aux::U8(v)) => Some(i64::from(v)),
-        Ok(Aux::I16(v)) => Some(i64::from(v)),
-        Ok(Aux::U16(v)) => Some(i64::from(v)),
-        Ok(Aux::I32(v)) => Some(i64::from(v)),
-        Ok(Aux::U32(v)) => Some(i64::from(v)),
-        _ => None,
-    };
-    let tags = AlnTags { mapq: record.mapq(), best: tag(b"AS"), elsewhere: tag(b"XS"), nm: tag(b"NM") };
+    let (best, elsewhere) = placement_scores(record);
+    let tags = AlnTags { mapq: record.mapq(), best, elsewhere, nm: int_tag(record, b"NM") };
     ReadView::new(&seq, quals, record.pos(), &cigar, readable, min_baseq).map(|v| v.named(record.qname()).tagged(tags))
 }
 
@@ -1314,11 +1307,14 @@ pub(crate) fn classify(record: &Record, variant: &Variant, quals: &[u8], min_bas
             if tracing {
                 trace!(
                     "judge fits {}:{} {}>{} read={} mate={} call={:?} alt={} ref={} other={} conf={} len={} experr={:.2} \
-                     full={}/{} ns={} mapq={} as={} xs={} nm={} nb={} fired={} rule={:?}",
+                     full={}/{} ns={} mapq={} as={} xs={} placeholder={} nm={} nb={} fired={} rule={:?}",
                     variant.chrom, variant.pos + 1, variant.ref_allele, variant.alt_allele,
                     String::from_utf8_lossy(record.qname()), if record.is_first_in_template() { 1 } else { 2 },
                     call, opt(verdict.best[0]), opt(verdict.best[1]), opt(verdict.best[2]), read.confident(), read.seq.len(),
-                    read.expected_errors(), f.full, f.states, ns, read.tags.mapq, opt(read.tags.best), opt(read.tags.elsewhere),
+                    read.expected_errors(), f.full, f.states, ns, read.tags.mapq,
+                    // the tags as written, and whether they describe no placement (RJ-29)
+                    opt(int_tag(record, b"AS")), opt(int_tag(record, b"XS")),
+                    read.tags.best.is_none() && int_tag(record, b"AS").is_some(),
                     opt(read.tags.nm), opt(f.neighbourhood), f.fired, fits_rule(),
                 );
             }
