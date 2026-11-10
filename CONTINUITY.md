@@ -38,6 +38,11 @@ sign-out margin, 348 of them above the sign-out (138 DNP rows).
 - `r2/plain_trace.py` for traces (`docs/harness/measurement-harness.md`, "Traces").
 - `gates/gate_wt.sh WORKTREE VENV LOGDIR`: the whole qa-check gate, one exit code per tool.
 - `judge680/`: the tool survey for #417 and #425.
+- Frozen builds: `src_<label>/.venv` holds an installed wheel (for example `src_v660` for 6.6.0 and
+  `src_rc670d` for the candidate f7293618). `build_frozen.sh` makes them from checkouts in
+  `frozen_src/`; the panel scripts at f7293618 are in `frozen_src/rc670d/`. `run_v660.sh` and
+  `build_proto_*.sh` are finished one-off runs that still name the 6.7.0 session's scratchpad: do
+  not rerun them as they are.
 - The PHI rules hold: the patient files (for example `zero_alt_map.tsv`, `flips_judge.tsv`) stay
   local; never list a gate folder; take paths from the manifests inside a sanitized script.
 
