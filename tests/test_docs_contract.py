@@ -117,9 +117,19 @@ def commands(monkeypatch):
     group = typer.main.get_command(app)
     for command in group.commands.values():  # type: ignore[attr-defined]
         for param in command.params:
-            if getattr(param.type, "exists", False):
-                monkeypatch.setattr(param.type, "exists", False)
+            check = path_check(param)
+            if getattr(check, "exists", False):
+                monkeypatch.setattr(check, "exists", False)
     return group.commands  # type: ignore[attr-defined]
+
+
+def path_check(param):
+    """Where a parameter's path-existence check lives: on its click type up to Typer 0.28, on
+    its declaration from Typer 0.29 (whose parameters have no `type`). Each built command holds
+    its own declarations, so switching one off reaches no other command."""
+    if hasattr(param, "type"):
+        return param.type
+    return getattr(getattr(param, "type_descriptor", None), "parameter_info", None)
 
 
 def _check_example(commands, sub: str, args: list[str], elided: bool) -> str | None:

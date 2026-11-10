@@ -35,6 +35,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `--read-judge sequence` counts all three. The rules path is not changed for them (operator,
   2026-11-10): the sequence judge is the path to keep, and it becomes the default in 6.8.0 (#331).
 
+### Tests — Typer 0.29.0
+
+- Two docs tests (every `gbcms` example parses; the `qc summarize` examples parse) switch off the
+  path-existence check where Typer 0.29 keeps it, on the parameter's declaration (0.29 removed a
+  parameter's `type`). What they assert is unchanged; gbcms itself runs on Typer 0.29.
+
 ### Fixed — RNA: ASJD reads the same sibling verdict as the main counts (#359, RJ-5)
 
 - At an RNA row with a GTF and a co-annotated sibling, the allele-specific junction test counted reads the main counts give to the sibling (a REF read that is ALT for the sibling where this row's REF is read; an ALT match the sibling explains as well or better). It now makes the same two sibling checks, so those reads vote in neither the REF nor the ALT junction partition. Only the `asjd_*` columns can move; RD, AD, DP and the per-transcript counts are unchanged. Rules path only. Measured on the synthetic set: rows without a sibling are byte-identical (0 of 1,072); with a sibling added to every row, 12 of 2,144 rows move.

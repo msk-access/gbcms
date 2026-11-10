@@ -645,8 +645,14 @@ def test_the_parameter_is_documented_with_its_default():
 def test_the_summarize_examples_in_the_docs_parse():
     group = get_command(app).commands["summarize"]  # type: ignore[attr-defined]
     for p in group.params:
-        if getattr(p.type, "exists", False):
-            p.type.exists = False  # type: ignore[attr-defined]
+        # the click type up to Typer 0.28; the parameter's declaration from Typer 0.29
+        check = (
+            p.type
+            if hasattr(p, "type")
+            else getattr(getattr(p, "type_descriptor", None), "parameter_info", None)
+        )
+        if getattr(check, "exists", False):
+            check.exists = False  # type: ignore[union-attr]
     seen = 0
     for page in (ROOT / "docs").rglob("*.md"):
         if page.name == "CHANGELOG.md":
