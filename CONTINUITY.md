@@ -4,7 +4,7 @@
 > Update the **Now** and **Next** sections as work progresses. When a "Now" section is finished,
 > move it to `.agents/archive/CONTINUITY_ARCHIVE.md` (older sections live there).
 
-_Last updated: 2026-11-06_
+_Last updated: 2026-11-10_
 
 ## Now — 6.7.0, an interim release (operator, 2026-11-06)
 
@@ -55,6 +55,11 @@ changes to counts". 6.7.0 ships with the count changes merged. Every open 6.7.0 
    - The sequence judge on the same panel (`--read-judge sequence`): 408 rows leave the sign-out
      margin, 348 of them above it (138 DNP rows). Its read-by-read check is the first 6.8.0 task
      (#331); the tool survey for #417 and #425 is in the harness (`judge680/`).
+   - Done 2026-11-10: the operator merged #426 into main with a merge commit (0f5c1f0b); main went
+     into develop (a fast-forward), and develop moved to 6.8.0-dev.0. Left: the tag `6.7.0` on
+     0f5c1f0b (the operator pushes it: the app's auto-mode check stops an agent's tag push, which
+     publishes to PyPI and GHCR); the release workflow and the GitHub Release (release guide,
+     steps 8 and 9); then #196 and the milestone close.
 
 **Plan-first:** the trial did not meet its bar (`docs/harness/plan-first.md`, "Result"). Operator
 2026-11-06: try it again on the 6.8.0 work, with a new bar fixed before the first count-changing
@@ -65,7 +70,7 @@ third base (#367); Nextflow resources wait for the sweep (branch `feature/nextfl
 
 ## Next — 6.8.0 (tracker #420)
 
-- The judge becomes the default (#331), with #405, #406, #410, #414, #417 and #418; the judge
+- The judge becomes the default (#331), with #405, #406, #410, #414, #417, #418 and #425; the judge
   meets the speed floor first (#335).
 - Packages 4 to 7: evidence outside the aligned bases (#259 with #177, #179, #212); guard
   statistics and artifacts (#306, #180); retiring the homopolymer twin (#261 with #111, #112,
