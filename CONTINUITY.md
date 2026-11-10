@@ -44,6 +44,17 @@ changes to counts". 6.7.0 ships with the count changes merged. Every open 6.7.0 
 3. `release/6.7.0` from develop: the version, the CHANGELOG section, the gate; a PR to main. The
    operator merges; the tag publishes. Then main into develop, develop to 6.8.0-dev, and #196 and
    the milestone close.
+   - The gate (2026-11-09/10, the 6.6.0 tier on local slices; CHANGELOG "Release gate"): 411 of
+     411 runs in both builds, every changed cell attributed. 23 strata fell more than 5 points; read
+     by read, 94 of the 136 rows that left the margin are above the sign-out. Each of the 19
+     signed-out rows at AD 0 was checked on its own (operator, 2026-11-09: "check and understand
+     each"); the operator kept the two decided causes (one molecule, one allele; the reads carry a
+     larger allele) and, on 2026-11-10, chose not to fix the rules path for the three gap shapes:
+     the sequence judge counts them, and 6.7.0 ships with them as known issues (#417, #425, in 6.8.0
+     under #331).
+   - The sequence judge on the same panel (`--read-judge sequence`): 408 rows leave the sign-out
+     margin, 348 of them above it (138 DNP rows). Its read-by-read check is the first 6.8.0 task
+     (#331); the tool survey for #417 and #425 is in the harness (`judge680/`).
 
 **Plan-first:** the trial did not meet its bar (`docs/harness/plan-first.md`, "Result"). Operator
 2026-11-06: try it again on the 6.8.0 work, with a new bar fixed before the first count-changing

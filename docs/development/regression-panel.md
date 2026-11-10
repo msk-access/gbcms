@@ -162,7 +162,11 @@ The candidate is tagged when:
 - **concordance by stratum** is reported for both versions; any stratum whose fraction
   within max(2 reads, 10%) of the sign-out (matched level) falls by more than 5 points,
   and the top discordant rows, are adjudicated read by read (the read census, or the
-  reads themselves) before the tag;
+  reads themselves) before the tag. A class-level count does not close it: every
+  signed-out row whose matched ALT falls to 0, or below a tenth of the previous
+  release's, is checked on its own (the listed rows around it, the changes its ALT
+  reads share, its count under each read judgment), and the decision is then taken by
+  class;
 - **run time and peak memory** per arm stay within 1.5× of the previous release, or
   the excess is explained (wall time summed over the runs paired across the builds that
   took 10 s or more, at least 3 per arm; peak memory over paired runs).

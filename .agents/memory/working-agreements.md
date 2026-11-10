@@ -73,6 +73,10 @@ adversarially, from the code and the numbers, not from the author's conclusion.
 - **Decide by class, not by row** (2026-10-31: "i feel we regressed and made certain row level
   decisions vs category level"). Review findings do not go back to a builder as a fix list after the
   first round until the rule's conditions are counted (`.agents/rules/decision-protocol.md` §3).
+- **Check each signed-out row that loses its ALT, then decide by class** (2026-11-09: "I dont
+  understand how can Signout event got to AD 0 ... we should check and understand each"). A class
+  count does not explain a signed-out call that falls to AD 0: look at its listed neighbours, the
+  changes its ALT reads share and each read judgment's count (`docs/development/regression-panel.md`).
 - **Every failed task is reported** (2026-10-30: "when i see failed task should i probe you"). When a
   background task, HPC job or agent run fails, the next message says what failed and what follows:
   fixed and rerun, stopped on purpose, a red-first test failing as intended, or still open. The

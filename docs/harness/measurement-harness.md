@@ -127,8 +127,10 @@ line at the terminal width. To trace, run the CLI through `r2/plain_trace.py` (a
 `%(message)s` handler: nothing wraps or pads, the calls are identical, about 3x faster), as
 `<build venv>/bin/python plain_trace.py dna ... --trace` or `r2/run_plain.sh ARM LABEL PYTHON`.
 Plain `gbcms --trace` needs `COLUMNS=60000` in the environment (`COLUMNS=3000` still wraps
-alleles past about 2.9 kb) and is hundreds of times slower than an untraced run. Assert a
-non-zero count of parsed calls before trusting a diff of two traces.
+alleles past about 2.9 kb) and is hundreds of times slower than an untraced run; its padding
+sits inside each line, before the source-file name, so a parser cuts at the first double space
+and never runs a lazy `.*?` regex over the line. Assert a non-zero count of parsed calls before
+trusting a diff of two traces.
 
 - `partial=` is a count of positions matching the ALT, not a flag; `mate` is 1 for first in
   template, else 2.

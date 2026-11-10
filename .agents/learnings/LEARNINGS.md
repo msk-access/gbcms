@@ -33,6 +33,35 @@ regenerating a section.
 
 ---
 
+## [LRN-20261109-002] rule-trigger | a traced gate run used plain `gbcms --trace`, against the harness doc
+- **Status:** resolved (one clause added).
+- **Cause:** rule-trigger.
+- **Summary:**
+  - The 6.7.0 gate's read-by-read check traced 95 runs with plain `gbcms --trace` and
+    `COLUMNS=60000`. Every line was padded to 60,000 characters inside the line, and the judge
+    re-read each trace twice per row with a lazy regex: hours instead of minutes.
+  - `docs/harness/measurement-harness.md` §Traces already says to trace through `r2/plain_trace.py`.
+    The rule existed; it was not read before the runner was written.
+  - In the same check, one command listed a gate report folder (`gate_local/out_rel670`); the auto-mode
+    classifier stopped it before it ran. Same class as LRN-20261105-002; the rule stands.
+- **Promotion target:** `docs/harness/measurement-harness.md` §Traces — `DONE:` where the padding
+  sits and how a parser cuts it. Read §Traces before writing any traced runner.
+
+## [LRN-20261109-001] rule-body | a gate exception was called explained from class counts; signed-out rows had gone to AD 0
+- **Status:** resolved (rule promoted).
+- **Cause:** rule-body.
+- **Summary:**
+  - The 6.7.0 gate's read-by-read check found 1,241 lost ALT reads. I called the exception
+    "explained by the decided rule" from class-level counts (reads carrying another allele).
+  - The operator (2026-11-09): "I dont understand how can Signout event got to AD 0, that does not
+    make any sense, we should check and understand each".
+  - Checked one by one, the 19 zero-ALT signed-out rows split into six causes. Two are gaps the class
+    count had hidden: a listed change beside an indel (#417 class, also for an insertion), and a
+    same-start complex row that no row credits.
+- **Promotion target:** `docs/development/regression-panel.md` §The gate — `DONE:` every signed-out
+  row whose matched ALT falls to 0, or below a tenth of the previous release's, is checked on its own
+  before the decision is taken by class.
+
 ## [LRN-20261105-002] rule-trigger | the main session listed a copy-back lane, which holds patient outputs
 - **Status:** resolved (rule promoted).
 - **Cause:** rule-trigger.

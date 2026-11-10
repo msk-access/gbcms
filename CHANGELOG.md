@@ -7,6 +7,34 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [6.7.0] - 2026-11-09 — a read counts what it reaches; the sequence judge, opt-in
 
+### Release gate — the regression panel against 6.6.0 (2026-11-09)
+
+- The 6.6.0 tier on local slices, 411 runs: no run failed in either build; 48,022 changed cells, every
+  one attributed to a merge (the reduction is exact).
+- Concordance with the sign-out (matched level): 98.1% of the 13,323 DNA rows within the margin in
+  6.6.0, 97.3% in 6.7.0 (136 rows left the margin, 33 entered it). 94 of the 136 are now above the
+  sign-out: 6.7.0 counts carriers by their bases and finds carriers that a count by alignment missed
+  (read by read, 809 of the changed reads carry the ALT and 150 do not).
+- 19 signed-out rows read AD 0, each flagged `ZERO_ALT` and `PARTIAL_DOMINANT`, and each checked on
+  its own:
+  - 9 rows: the row is a part of a complex event that the input also lists. One molecule gives one
+    allele (RJ-25), so the complex row keeps the reads; the part reads AD 0 with status
+    `MULTI_ALLELIC` (operator, 2026-11-09: kept).
+  - 5 rows: every ALT read carries the listed deletion and an unlisted change beside it that no REF
+    read carries. The reads carry another allele, named in `OBSERVED_ALLELE`, so the given deletion
+    reads AD 0 (D4, RJ-25; operator, 2026-11-09: kept).
+  - 1 row: a 279 bp deletion with a change past its junction (a named limit of the junction judge,
+    RJ-24). 1 row: the reads carry two or more extra changes (another allele).
+  - 3 rows: see "Known issues".
+
+### Known issues — three shapes that the default read judgment counts as 0
+
+- A pure deletion with a listed change on the first base past its end, carried in cis (#417).
+- The exact carriers of a 17 bp tandem duplication: partial on the rules path (#417).
+- A delins with a listed SNV at its first base: neither row gets the reads (#425).
+- `--read-judge sequence` counts all three. The rules path is not changed for them (operator,
+  2026-11-10): the sequence judge is the path to keep, and it becomes the default in 6.8.0 (#331).
+
 ### Fixed — RNA: ASJD reads the same sibling verdict as the main counts (#359, RJ-5)
 
 - At an RNA row with a GTF and a co-annotated sibling, the allele-specific junction test counted reads the main counts give to the sibling (a REF read that is ALT for the sibling where this row's REF is read; an ALT match the sibling explains as well or better). It now makes the same two sibling checks, so those reads vote in neither the REF nor the ALT junction partition. Only the `asjd_*` columns can move; RD, AD, DP and the per-transcript counts are unchanged. Rules path only. Measured on the synthetic set: rows without a sibling are byte-identical (0 of 1,072); with a sibling added to every row, 12 of 2,144 rows move.
