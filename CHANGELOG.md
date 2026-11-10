@@ -35,6 +35,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `--read-judge sequence` counts all three. The rules path is not changed for them (operator,
   2026-11-10): the sequence judge is the path to keep, and it becomes the default in 6.8.0 (#331).
 
+### Fixed — harness: the cBioPortal guard reads each output stream (Greptile on #426)
+
+- The guard (`.claude/hooks/protect-cbioportal.py`) took the `>` inside `2>` for a stdout
+  redirect, so a command that sent only stderr into a protected folder passed while stdout printed
+  the rows. Now every stdout redirect (`>`, `>>`, `1>`, `&>`) and every stderr redirect must end
+  under a protected root (`2>&1` counts only after the last stdout redirect), and a root matches
+  only as a whole folder. `tests/test_protect_cbioportal_hook.py` pins 18 shapes (made-up names).
+
 ### Tests — Typer 0.29.0
 
 - Two docs tests (every `gbcms` example parses; the `qc summarize` examples parse) switch off the

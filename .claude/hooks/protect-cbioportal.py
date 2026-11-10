@@ -60,13 +60,21 @@ def bash_allowed(cmd, rs):
     # Any other command: one plain command, every output stream into a protected file.
     if re.search(r"[|;`\n]|&&|\$\(|<\(|\btee\b", c):
         return False
-    m = re.search(r"(?:&>|>>?)\s*(\S+)", c)
-    if not m or not any(m.group(1).startswith(r) for r in rs):
+
+    def under_root(target):
+        return any(target.startswith(r + "/") or target == r for r in rs)
+
+    # stdout redirects: `>`, `>>`, `1>`, and `&>` (both streams); never the `>` inside `2>`
+    outs = list(re.finditer(r"(?:^|\s)(1|&)?>>?\s*(\S+)", c))
+    if not outs or not all(under_root(m.group(2)) for m in outs):
         return False
-    if "&>" in c:
+    if any(m.group(1) == "&" for m in outs):
         return True
-    err = re.search(r"2>>?\s*(\S+)", c)
-    return "2>&1" in c[m.end():] or bool(err and any(err.group(1).startswith(r) for r in rs))
+    # stderr: joined to stdout after the last stdout redirect, or every `2>` into a protected file
+    if re.search(r"(?:^|\s)2>&1(?=\s|$)", c[outs[-1].end():]):
+        return True
+    errs = [m.group(1) for m in re.finditer(r"(?:^|\s)2>>?\s*(\S+)", c) if not m.group(1).startswith("&")]
+    return bool(errs) and all(under_root(t) for t in errs)
 
 
 try:
