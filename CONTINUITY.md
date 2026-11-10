@@ -6,67 +6,58 @@
 
 _Last updated: 2026-11-10_
 
-## Now — 6.7.0, an interim release (operator, 2026-11-06)
+## Now — 6.8.0 starts (tracker #420)
 
-**Decision (operator, 2026-11-06):** "it does not make sense to do speed if we are still making
-changes to counts". 6.7.0 ships with the count changes merged. Every open 6.7.0 ticket moved to
-6.8.0 (tracker #420); only the cycle tracker #196 stays, to close with the release.
+**6.7.0 is released (2026-11-10):** tag `6.7.0` on the merge 0f5c1f0b (#426); PyPI `gbcms 6.7.0`
+(abi3 wheels for Linux x86_64 and Apple silicon, and the sdist); `ghcr.io/msk-access/gbcms:6.7.0`
+(amd64 and arm64); the GitHub Release. #196 and the 6.7.0 milestone are closed. develop is at
+6.8.0-dev.0. The 6.7.0 record (the gate, the decisions, the release) is in the archive.
 
-**In 6.7.0 (merged to develop):**
-- #297, one unit-count rule for long deletions in repeats (#404).
-- #264, equal windows for long insertions (#396), and the judge-path follow-up (#413).
-- RNA #292 option B: a splice lowers no base's quality (RJ-31), with the partial-span rule RJ-17 (#415).
-- Class plan B, "tell what the read reaches" (#419; closed #394 and #398):
-  - every listed allele that meets the site is a candidate, with no floor;
-  - a read counts REF only where it tells REF from every candidate whose difference it reaches;
-  - a long delins has a core (50 or more REF bases replaced);
-  - an SNV row beside a listed indel or delins is counted by the judge, also under the rules.
-  - HPC rq3 and rq4: every bar passes. rq4 equals rq3 on the rules path in all 1,078 runs; the
-    judge path moves only #413's shape (partial to depth only at insertions of 50 bp or more).
-- RNA package 3's lean path (#423; closed #343 to #346 and #359): ASJD makes the same sibling
-  calls as the main counts; three pins; RJ-32.
-- `--rescue-homopolymer` is deprecated (#421) and removed in 6.8.0 (#261): hp1 found that the
-  twin wins at 1 of 20 candidate rows.
-- The sequence judge, opt-in (`--read-judge sequence`), with its follow-ups.
-- Platforms: the RHEL 8 wheel, one abi3 wheel, the macOS arm64 wheel, the multi-arch image and
-  Apptainer in CI (#233 to #237); macOS CI on `macos-latest` (#399, #407).
+**The theme (#420):** make the sequence read judge the default (#331), meticulously and
+systematically. The operator decides the order at the start: count changes first, then speed and
+structure once the counts settle. The judge meets the speed floor before it is the default (#335).
 
-**Release steps (in progress):**
-1. The speed floor (the operator's standing rule, before each release): **met in all 8 cases.**
-   pf72 on HPC, the release candidate rc670 (develop f7293618), C++ GetBaseCountsMultiSample 1.2.5
-   against the rules path on pf71's production tasks, 3 repeats each (7650328; 7650331, 7652235).
-   Rules wall time over C++'s: 0.39 to 0.57 for 1 BAM at 1,000 and 5,000 rows; IMPACT 1 × 20,000
-   0.51; ACCESS 1 × 20,000 0.94 (as in October); fill-outs IMPACT 10 × 5,000 0.55 and ACCESS
-   9 × 5,000 0.74. Against pf71 (develop fe34f443), five ratios are lower and three are slightly
-   higher: IMPACT 1 × 5,000 0.462 (0.452), ACCESS 9 × 5,000 0.740 (0.725), ACCESS 1 × 20,000
-   0.944 (0.942).
-2. This record, the plan-first result and the plan pages (PR from `chore/plan-first`).
-3. `release/6.7.0` from develop: the version, the CHANGELOG section, the gate; a PR to main. The
-   operator merges; the tag publishes. Then main into develop, develop to 6.8.0-dev, and #196 and
-   the milestone close.
-   - The gate (2026-11-09/10, the 6.6.0 tier on local slices; CHANGELOG "Release gate"): 411 of
-     411 runs in both builds, every changed cell attributed. 23 strata fell more than 5 points; read
-     by read, 94 of the 136 rows that left the margin are above the sign-out. Each of the 19
-     signed-out rows at AD 0 was checked on its own (operator, 2026-11-09: "check and understand
-     each"); the operator kept the two decided causes (one molecule, one allele; the reads carry a
-     larger allele) and, on 2026-11-10, chose not to fix the rules path for the three gap shapes:
-     the sequence judge counts them, and 6.7.0 ships with them as known issues (#417, #425, in 6.8.0
-     under #331).
-   - The sequence judge on the same panel (`--read-judge sequence`): 408 rows leave the sign-out
-     margin, 348 of them above it (138 DNP rows). Its read-by-read check is the first 6.8.0 task
-     (#331); the tool survey for #417 and #425 is in the harness (`judge680/`).
-   - Done 2026-11-10: the operator merged #426 into main with a merge commit (0f5c1f0b); main went
-     into develop (a fast-forward), and develop moved to 6.8.0-dev.0. Left: the tag `6.7.0` on
-     0f5c1f0b (the operator pushes it: the app's auto-mode check stops an agent's tag push, which
-     publishes to PyPI and GHCR); the release workflow and the GitHub Release (release guide,
-     steps 8 and 9); then #196 and the milestone close.
+**First task — the judge's read-by-read check against 6.6.0** (the 6.7.0 release panel; CHANGELOG
+6.7.0, "Release gate"). With `--read-judge sequence`, 456 rows flip against 6.6.0: 408 leave the
+sign-out margin, 348 of them above the sign-out (138 DNP rows).
+- Done: the DNP rows above the sign-out are a sensitivity gain, not a fault. The judge credits 1,544
+  reads that 6.6.0 did not; 1,543 of them carry the DNP only in the soft clip, and 97% carry both ALT
+  bases at Q20 or above (RJ-13: soft-clipped bases are the read's own).
+- Left, in this order: the SNV rows above the sign-out (58 rows; by the oracle, reads right 19,
+  wrong 191, unclear 368), then the 60 rows below the sign-out, then the other strata. Attribute
+  each class read by read before any rule change (`.agents/rules/decision-protocol.md`).
+- Acceptance rows for #331: the three shapes the rules count as 0 and the judge counts (6.7.0
+  "Known issues": #417, the tandem duplication through #417, and #425).
 
-**Plan-first:** the trial did not meet its bar (`docs/harness/plan-first.md`, "Result"). Operator
-2026-11-06: try it again on the 6.8.0 work, with a new bar fixed before the first count-changing
-build.
+**Harness (local, `~/test/gbcms/harness/plan670/`):**
+- `gate_local/`: the release panel and its scripts (`judge_check.py`, `judge_verdicts.py`,
+  `mnp_bases.py`, `strata3.py`, `class_map.py`, `class_split.py`, `zero_alt_*.py`,
+  `run_judge670.sh`, which builds the judge arm).
+- `m294/oracle_sibling_fast.py`: the oracle (BWA-MEM against REF, ALT and sibling haplotypes), with
+  the arms `flip` and `flipj`.
+- `r2/plain_trace.py` for traces (`docs/harness/measurement-harness.md`, "Traces").
+- `gates/gate_wt.sh WORKTREE VENV LOGDIR`: the whole qa-check gate, one exit code per tool.
+- `judge680/`: the tool survey for #417 and #425.
+- The PHI rules hold: the patient files (for example `zero_alt_map.tsv`, `flips_judge.tsv`) stay
+  local; never list a gate folder; take paths from the manifests inside a sanitized script.
 
-**Open:** the guard's masks depend on `--min-baseq` (#374); the SNV tie rule with a confident
-third base (#367); Nextflow resources wait for the sweep (branch `feature/nextflow-resources`, local).
+**Plan-first:** the 6.7.0 trial did not meet its bar (`docs/harness/plan-first.md`, "Result").
+Operator 2026-11-06: try it again on the 6.8.0 work, with a new bar fixed before the first
+count-changing build.
+
+**At the 6.8.0 release:** the app's auto-mode check stops an agent's push of a release tag (the push
+publishes to PyPI and GHCR). The agent tags the merge commit locally and runs
+`scripts/release.py check --tag X.Y.Z`; the operator pushes the tag; the agent then checks the
+workflow, PyPI, GHCR and the Release page (release guide, steps 8 and 9).
+
+**Open:** the guard's masks depend on `--min-baseq` (#374); the SNV tie rule with a confident third
+base (#367); Nextflow resources wait for the sweep (branch `feature/nextflow-resources`, local).
+#420's sub-issue list does not name #425 yet.
+
+**Housekeeping (operator approval first):** 37 worktrees under `.claude/worktrees/` and
+`../py-gbcms-d4`, most on merged branches: list them, and retire the merged ones to the Trash
+(never `rm -rf`), then `git worktree prune`. The `release/6.7.0` branch on GitHub (deletion is
+optional, release guide step 11).
 
 ## Next — 6.8.0 (tracker #420)
 
