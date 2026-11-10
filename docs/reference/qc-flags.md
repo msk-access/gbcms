@@ -2,20 +2,23 @@
 
 Every flag, reason and class gbcms writes is defined here, once. Other pages
 include these tables (snippet sections of this file) or link to them, so a
-definition is written in one place. Two tests keep it that way: one fails when a
-flag the code emits is missing from this page, the other when a flag is defined
-anywhere else in the docs.
+definition is written in one place. Three tests keep it that way: one fails when a
+flag the code emits is missing from this page, one when a flag is defined anywhere
+else in the docs, and one when the end-of-run summary's table (below) and this
+page's definitions differ.
 
 **Where flags appear.** MAF columns are listed first, then the VCF field. In VCF,
-`;` inside a value is written `|`.
+`;` inside a value is written `|`. The run log ends with a summary of the flags
+that fired and the rows that need a look: [End-of-run summary](#end-of-run-summary).
 
 | Family | MAF column | VCF field | Mode |
 |:-------|:-----------|:----------|:-----|
 | [Verdict and status reasons](#verdict-and-status-reasons) | `gbcms_status`, `gbcms_status_reason` | INFO `GS`, `GSR` | all |
 | [Diagnostics](#diagnostics) | `gbcms_diagnostic` | INFO `GD` | all (some RNA, some PairHMM only) |
 | [MNP rescue](#mnp-rescue) | `gbcms_rescue` | INFO `GR` | `--rescue-mnp` |
-| [ASJD splice flags](#asjd-splice-flags) | `asjd_diagnostic`, `asjd_*_motif` | not in VCF | RNA with `--gtf` |
-| [QC columns](#qc-columns) | `rna_editing_site`, `asjd_flag`, `mfsd_ks_valid`, `mfsd_alt_confidence`, `mfsd_ch_flag` | INFO `RED`; mFSD INFO | RNA; `--mfsd` |
+| [ASJD splice flags](#asjd-splice-flags) | `asjd_diagnostic`, `asjd_*_motif` | INFO `ASJDD`, `ASJDRM`, `ASJDAM` | RNA with `--gtf` |
+| [QC columns](#qc-columns) | `rna_editing_site`, `asjd_flag`, `mfsd_ks_valid`, `mfsd_alt_confidence`, `mfsd_ch_flag` | INFO `RED`, `ASJD`; mFSD INFO | RNA; `--mfsd` |
+| [Merged output](#merged-output) | — (read from the `simplex_duplex_*` cells) | — | `gbcms merge` with combined columns |
 | [mFSD report classes](#mfsd-report-classes) | — (HTML report) | — | `--mfsd-report` |
 | [Record shapes in VCF output](#record-shapes-in-vcf-output) | — | ALT `<NON_SEQUENCE>`, INFO `MAF_*`, `NORM_*` | MAF input; `--show-normalization` |
 
@@ -32,7 +35,7 @@ same string is in the VCF `GSR` INFO. How each is decided:
 |:-------|:--------|:---------|:-----------|
 | *(empty)* | PASS | The variant validated against the reference | — |
 | `WARN_REF_CORRECTED` | PASS | The REF matches the reference at ≥90% of its bases; the reference bases are used downstream (the original REF is kept in `original_ref`) | Check the input's REF; counts are for the corrected REF |
-| `WARN_HOMOPOLYMER_DECOMP` | PASS | With `--rescue-homopolymer`: the variant spans a homopolymer, was dual-counted with a corrected allele, and the corrected allele won | The row reports that allele's counts, not the given one |
+| `WARN_HOMOPOLYMER_DECOMP` | PASS | Never set in 6.7.0 (`--rescue-homopolymer` is deprecated and ignored; removed in 6.8.0). Before: with the flag, the variant spans a homopolymer, was dual-counted with a corrected allele, and the corrected allele won | The row reports that allele's counts, not the given one |
 | `MULTI_ALLELIC` | PASS | Another input row is a different ALT at the same locus; sibling-ALT exclusion is active | None; each row counts its own ALT |
 | `TRACT_CLUSTER` | PASS | The variant shares a repeat-tract scan window with a co-annotated length-changing variant (spans need not touch); sibling exclusion and exclusive ALT assignment are active | None; read the rows together |
 | `REF_MISMATCH` | FAIL | The REF matches the reference at under 90% of its bases | Check the build and coordinates; `REF_AT_OFFSET(k)` in `gbcms_diagnostic` says where the REF sits when it is a few bases off |
@@ -40,6 +43,7 @@ same string is in the VCF `GSR` INFO. How each is decided:
 | `EMPTY_ALLELE` | FAIL | REF or ALT is empty (a malformed indel; a MAF dash allele is `-`) | Fix the input row |
 | `NON_SEQUENCE_ALLELE` | FAIL | An allele is not a base sequence (an IUPAC code, a stray character; `-` outside MAF input); kept in MAF output, written as `<NON_SEQUENCE>` in VCF output | Fix the input row |
 | `ALT_EQUALS_REF` | FAIL | ALT equals REF (any case; `-` for both in a MAF): no change to count | Fix the input row |
+| `START_BEFORE_CONTIG` | FAIL | A MAF row at `Start_Position` 0 that is not a dash insertion (a substitution, a deletion, a delins, or an insertion written with sequence alleles). Position 0 is no base, so nothing can be counted. A dash insertion there is counted (resolved to the base after it); see [Input Formats](input-formats.md#maf-indel-normalization). Kept in MAF output, written as `<NON_SEQUENCE>` at position 1 in VCF output | Fix the input row (MAF positions are 1-based) |
 | `ALT_CONTAINS_N` | FAIL | The ALT contains an `N` base | Fix the input row |
 <!-- --8<-- [end:status] -->
 
@@ -62,6 +66,12 @@ their base name in the run log. Examples: `ZERO_ALT`,
 | `CLIP_CANDIDATES(n)` | all | An insertion with no confirmed ALT where `n` (≥ 2) reads carry a soft clip ≥ 8 bp whose boundary lies within the insert's duplication reach (anchor ± insert length + 10): carriers the aligner may have written as clips rather than insertions | Inspect in IGV |
 | `OBSERVED_ALLELE(chrom:pos:REF>ALT:n/0)` | all | No read carries the given allele exactly, and `n` reads carry this allele (canonical VCF form, 1-based POS) | The input is likely mis-described; the counts stay the given allele's |
 | `COEXISTING_ALLELE(chrom:pos:REF>ALT:n/m)` | all | The given allele is present (`m` reads carry it exactly), but more reads (`n`) carry another allele in the same stretch, e.g. a germline indel or stutter in a repeat | A caveat for reading the VAF |
+| `POSSIBLE_MINORITY_HAPLOTYPE(chrom:pos:REF>ALT:c/n)` | all | At an indel or delins the exact-carrier rule judges, a change within 25 bases of the event whose base is the one the ALT's reads written without their gap show there (1-based POS), carried by `c` of the `n` reads placed apart from the event (two or more, over 1%): too few for a haplotype's (under three or 3%) or too one-sided in pair orientation (an oxoG or FFPE artifact sits in one), so it was left unmasked | A minority haplotype carrying it (a germline SNP after a tumour's loss, a subclone) would count ALT where its reads read as the ALT; weigh low `alt_count` here with that in mind. The counts are unchanged |
+| `MNV_SHARED(chrom:pos:REF>ALT:n/m)` | `--read-judge sequence`, and an SNV row routed to the judge under the rules | At a substitution (an SNV) with a co-listed MNV that holds its change (the same length over its bases, reading its ALT where it changes them): `n` of the row's `m` ALT reads spell that MNV whole (the MNV's 1-based POS). The judge counts the MNV's carriers as the SNV's ALT reads (RJ-28), so the two rows share them. One flag per such MNV | The SNV's `alt_count` includes the MNV's carriers: one molecule can sit in both rows' counts and mFSD size distributions (two KS tests on one event in the BH family). The counts are unchanged |
+| `INDEL_SHARED(chrom:pos:REF>ALT:n/m)` | `--read-judge sequence`, and an SNV row routed to the judge under the rules | At a row with a listed row that is its ALT with listed neighbours (an indel or delins holding the row's whole change, such as a delins that is two listed deletions together): `n` of the row's `m` ALT reads spell that row whole (its 1-based POS). The judge counts that row's carriers as this row's ALT (RJ-28's indel twin), so the rows share them. One flag per such row | The row's `alt_count` includes that row's carriers: one molecule can sit in several rows' counts and mFSD size distributions. The counts are unchanged |
+| `UNEXPLAINED_READS(n/m)` | `--read-judge sequence`, and an SNV row routed to the judge under the rules | `n` of the row's `m` depth reads fit none of its candidate sequences (REF, the ALT, the other alleles at its site, each with every context the judge weighs) within ten confident mismatches. The fit rule makes such a read depth only where its aligner places it elsewhere at least as well (XS ≥ AS, or MAPQ 0 with no XS); a read the aligner places here alone is judged by its bases at the row, as any other | Weigh the row's counts with that in mind where `n` is a large share of `m`: foreign reads the aligner places uniquely (a paralog's, reads at a homozygous deletion in a repeat) can count. The counts are unchanged |
+| `UNIT_COUNT_UNSPANNED(change:bases/longest)` | all | At a deletion of 50 bp or more, the nearest other unit count at its breakpoint on either side (one more unit of a tandem run beside it deleted, or one fewer; `change` is its length change, deleted bases negative) reads like the given deletion past what a read can spell: a read must hold `bases` bases from the junction windows' first base (the first difference and 24 more) to spell the count in full, and the longest read is `longest`. A listed other count is held wherever it first differs, and also when its REF runs past the reference held (its bases cannot be read, so no read can be shown to tell it from the given deletion): the reads that do not reach the difference are partial evidence instead of ALT (RJ-24, rule X; `alt_count` is 0 until a read can tell). A count nobody listed that no read can spell is held for nothing | For a count nobody listed, the row's `alt_count` may include that allele's carriers: no read can tell them apart. A listed one's reads are already partial evidence. The flag changes no count |
+| `NO_TELLING_BASE` | `--read-judge sequence` | At a pure insertion of 50 bp or more, no base within the haplotypes the judge reads tells REF's equal window from the ALT's once the guard's masks are read (RJ-23): the run the insert slides over reaches past the reads, or masks take every base that would tell. Every read is depth only | Explains a zero REF and ALT at a covered long insertion; no read could tell the alleles apart |
 | `SW_FALLBACK(n)` | PairHMM backend | `n` depth reads could not be evaluated by the haplotype matrix (the reference context is missing or does not contain them): scored by the Smith-Waterman fallback where it can run, else left NEITHER (one WARN per variant names why) | The row's counts came partly from another scorer, or miss reads |
 | `SPLICE_SKIP_DOMINANT(n)` | RNA | A deletion-type locus where more reads splice over the deleted span (CIGAR `N`, no observation) than confirm ALT; RNA aligners write large deletions as splices (STAR: ≥ `alignIntronMin`, default 21 bp) | `alt_count` 0 may hide carriers written as junction reads |
 | `NON_DISCRIMINATING_LOCUS` | PairHMM backend | A nearby germline sibling combination reconstructs the reference haplotype (e.g. a homopolymer deletion cancelled by an adjacent insertion of the same base), so REF and ALT are the same sequence and reads tie to NEITHER | Explains zero REF and ALT at a covered locus |
@@ -69,11 +79,26 @@ their base name in the run log. Examples: `ZERO_ALT`,
 | `REF_AT_OFFSET(k)` | all (FAIL rows) | A `REF_MISMATCH` row's REF (3+ bases) matches the reference exactly `k` bases from its position (every such offset within 3, nearest first, `/`-separated) | Correct the input's coordinates; the row is not moved or counted |
 
 `OBSERVED_ALLELE` and `COEXISTING_ALLELE` both need `n` ≥ 3, `n` > `m`, `n` ≥ 5%
-of the scanned reads, and an allele that is not already an input row. `n` and `m`
+of the scanned reads, and an allele that is not already an input row. One exception: at a
+deletion of 50 bp or more beside a run of its unit, another unit count present at its
+breakpoint (listed in the input, always; or, unlisted, spelled in full on 3 or more
+fragments the aligner places here) holds the row's ALT calls (RJ-24, rule X); where it
+takes one, it is named in the same form at the
+deletion's anchor, listed or not, with `n` the fragments fitting the ALT's windows whose ALT
+call it takes and `m` those that tell the given count from it (`OBSERVED_ALLELE` where `m`
+is 0). `n` and `m`
 are taken over the reads the counts read (first-class reads the mapping rule
 admits: in RNA a unique mapper, `NH:i:1`, below `--min-mapq`; under strandedness
 enforcement, sense reads only), so they compare with `alt_count` and `ref_count`.
 <!-- --8<-- [end:diagnostics] -->
+
+Before 6.6.0 the scan used its own filter (not secondary, not supplementary, `mapq >= min_mapq`):
+it had no strand filter, so antisense reads that enforcement keeps out of the counts still entered
+`n` and `m`, and it did not keep the loop's `NH:i:1` rescue. A review measured
+`COEXISTING_ALLELE(...:16/12)` with antisense reads present against `8/6` without them, both
+enforced. The diagnostic now shares the counting loop's admission rule (O8 #186, built in #217). Measured on FORTE: counts unchanged everywhere; the diagnostic changes
+on 1 exon-edge probe row (100/0 → 98/0) and 5 of 7,224 splice-probe rows. Other tools tally other alleles over the
+same filtered reads as their primary counts (bam-readcount, ASEReadCounter `otherBases`, VarDict).
 
 ## MNP rescue
 
@@ -133,6 +158,18 @@ Columns whose value is itself a flag. Each column's place in the output is in
 | `mfsd_ch_flag` | `--mfsd` | `True` when the variant falls in a clonal-hematopoiesis (CH) gene (from `Hugo_Symbol`) | A prior, not fragment evidence; matched-normal data decide CH |
 <!-- --8<-- [end:qc-columns] -->
 
+## Merged output
+
+`gbcms merge` writes a combined `simplex_duplex_*` cell as `NA` where it cannot add the
+two inputs' counts. The flag below is not a column: the
+[end-of-run summary](#end-of-run-summary) derives it from a merged MAF.
+
+<!-- --8<-- [start:merge] -->
+| Flag | Set when | What to do |
+|:-----|:---------|:-----------|
+| `COMBINED_NA` | A combined count, total or VAF cell (`simplex_duplex_*`, the strand-bias statistics left out) is `NA` on the row: an input's count was missing or not a number, or the duplex and simplex MNP rescues adopted different alleles (the merge log names each) | Do not use the combined counts or VAF there; read each input's own columns |
+<!-- --8<-- [end:merge] -->
+
 ## mFSD report classes
 
 The `--mfsd-report` HTML grades each variant's fragment-size evidence (see
@@ -181,6 +218,147 @@ In VCF, the mFSD summary is in INFO: `MFSD_REF_COUNT`, `MFSD_ALT_COUNT`,
 
 | Field | Set when | Meaning |
 |:------|:---------|:--------|
-| ALT `<NON_SEQUENCE>` | MAF input, a row with no VCF allele: an allele that is not a base sequence (or empty), or a deletion spanning its whole contig | The row is FAIL (reason in `GSR`); REF is the reference base at POS |
+| ALT `<NON_SEQUENCE>` | MAF input, a row with no VCF allele: an allele that is not a base sequence (or empty), a deletion spanning its whole contig, or a row at `Start_Position` 0 that is not an insertion | The row is FAIL (reason in `GSR`); REF is the reference base at POS |
 | INFO `MAF_START`, `MAF_REF`, `MAF_ALT` | MAF input | The MAF row the record came from, as written: look a result up by its input |
 | INFO `NORM_POS`, `NORM_REF`, `NORM_ALT` | `--show-normalization` | The left-aligned record gbcms counted |
+
+## End-of-run summary
+
+At the end of every `gbcms dna` and `gbcms rna` run the log carries a QC summary: which
+flags fired, on how many rows, which rows need a look, and what to do about each. Most
+users read the counts and the VAF and never open the flag columns; the summary points to
+the few rows where that is not enough.
+
+It reads the output the run has written, MAF or VCF, after writing it. It changes no count,
+column or row, writes no file and does not change the exit code. If a sample's output
+cannot be read, the run logs a warning and carries on; the sample is named in the block
+under "Not checked", with a sample that failed to count, and the closing line is a `WARNING`
+that says "k of n samples not checked", so an incomplete check never reads as a clean one.
+
+Each flag is in one of three tiers. The first two are the rows that **need a look**.
+
+| Tier | The row | What to do |
+|:-----|:--------|:-----------|
+| Fix the input | Rejected (`FAIL`), or its input is wrong | Correct the input row and run again |
+| Check the call | Counted, but its count or VAF may not mean what it looks like | Look at the row before you use the number |
+| Informational | A caveat or a description | Nothing; read it when a number looks odd |
+
+For each tier the block gives the number of rows (a row with flags in two tiers is in both)
+and each flag that fired, most rows first. The first two tiers show a zero as `none`, so a
+clean run reads as one. It then names the first rows that need a look (input problems first)
+and the output fields to filter on for the rest. With several samples in one run the block
+combines them: each flag with the number of samples it fired in, and the samples with the
+most rows to look at. A flag the reading build does not know, written by another build, is
+listed apart and is not counted as needing a look, except on a `FAIL` row.
+
+The run's last line is a `WARNING` when any row needs a look and an `INFO` line when none
+does; the exit code is unchanged, so flagged rows never fail a pipeline.
+
+[`gbcms summarize`](../cli/summarize.md) makes the same summary from outputs already written
+(older runs, many samples, a merged MAF), as text, JSON, a cohort table or MultiQC content.
+
+The mFSD report classes are not in the output rows, so the summary leaves them out.
+
+An example, from 2,000 synthetic rows:
+
+<!-- qc-summary-example -->
+```text
+QC summary for sample S: 40 of 2,000 rows need a look (2.0%)
+  Rows with only informational flags: 107; with no flag: 1,853
+  Fix the input: 2 rows
+    REF_MISMATCH: 2 rows
+      The REF does not match the reference: check the build and coordinates;
+      REF_AT_OFFSET says where it does match
+    REF_AT_OFFSET: 1 row
+      The REF matches the reference a few bases away: correct the input's coordinates
+      (the row is not moved or counted)
+  Check the call: 38 rows
+    PARTIAL_DOMINANT: 30 rows
+      More reads partly match the ALT than carry it, often a coexisting allele the
+      annotation misses: inspect the locus (--trace shows per-read lengths)
+    OBSERVED_ALLELE: 7 rows
+      No read carries the given allele but others carry another one: the input is likely
+      mis-described; the counts stay the given allele's
+    CLIP_CANDIDATES: 1 row
+      An insertion with no ALT reads, but soft-clipped reads may hold its carriers:
+      inspect in IGV
+  Informational: 113 rows
+    ZERO_ALT: 55 rows (no read carries the ALT)
+    MULTI_ALLELIC: 40 rows (another row has a different ALT here)
+    COEXISTING_ALLELE: 18 rows (another allele is more frequent: a VAF caveat)
+  Rows to look at (first 5 of 40, input problems first):
+    chr1:1000 A>T (GENE1): REF_MISMATCH, REF_AT_OFFSET(2)
+    chr1:1001 A>T (GENE2): REF_MISMATCH
+    chr1:1002 A>T (GENE3): PARTIAL_DOMINANT
+    chr1:1003 A>T (GENE4): PARTIAL_DOMINANT
+    chr1:1004 A>T (GENE5): PARTIAL_DOMINANT
+  Find them in the output (MAF columns): gbcms_diagnostic, gbcms_status, gbcms_status_reason
+  What each flag means and what to do: https://msk-access.github.io/gbcms/reference/qc-flags/
+```
+
+The tables list every flag by tier with the line the summary prints for it (a short gloss for
+an informational flag). The definitions are above; the tests keep the two in step.
+
+### Fix the input
+
+| Flag | The summary says |
+|:-----|:-----------------|
+| `REF_MISMATCH` | The REF does not match the reference: check the build and coordinates; REF_AT_OFFSET says where it does match |
+| `REF_AT_OFFSET` | The REF matches the reference a few bases away: correct the input's coordinates (the row is not moved or counted) |
+| `FETCH_FAILED` | The reference region could not be read: check contig naming and the FASTA |
+| `EMPTY_ALLELE` | REF or ALT is empty: fix the input row |
+| `NON_SEQUENCE_ALLELE` | An allele is not a base sequence: fix the input row |
+| `ALT_EQUALS_REF` | ALT equals REF, so there is no change to count: fix the input row |
+| `START_BEFORE_CONTIG` | The row starts before the contig's first base (Start_Position 0): fix the input row; MAF positions are 1-based |
+| `ALT_CONTAINS_N` | The ALT contains an N base: fix the input row |
+
+### Check the call
+
+| Flag | The summary says |
+|:-----|:-----------------|
+| `WARN_REF_CORRECTED` | The input's REF was corrected to the reference: check the REF; the counts are for the corrected REF |
+| `WARN_HOMOPOLYMER_DECOMP` | The row reports a corrected allele's counts, not the given one: check which you want |
+| `OBSERVED_ALLELE` | No read carries the given allele but others carry another one: the input is likely mis-described; the counts stay the given allele's |
+| `PARTIAL_DOMINANT` | More reads partly match the ALT than carry it, often a coexisting allele the annotation misses: inspect the locus (--trace shows per-read lengths) |
+| `CLIP_CANDIDATES` | An insertion with no ALT reads, but soft-clipped reads may hold its carriers: inspect in IGV |
+| `POSSIBLE_MINORITY_HAPLOTYPE` | A change on a minority of nearby reads may be counted as ALT: weigh a low alt_count with that in mind (the counts are unchanged) |
+| `MNV_SHARED` | Under the sequence judge the SNV's ALT reads include a co-listed MNV's carriers, so one molecule counts in both rows: read the two rows together (the counts are unchanged) |
+| `INDEL_SHARED` | Under the sequence judge the ALT reads include a listed indel's carriers holding this change, so one molecule counts at several rows: read them together (counts unchanged) |
+| `UNIT_COUNT_UNSPANNED` | Another unit count of a run beside this long deletion reads like it past every read here: an unlisted one's carriers may count as ALT (the counts are unchanged) |
+| `UNEXPLAINED_READS` | Under the sequence judge some depth reads fit none of the row's candidate sequences: where they are a large share, foreign reads may count (the counts are unchanged) |
+| `NO_TELLING_BASE` | Under the sequence judge no base within reach tells a long insertion's REF window from its ALT's, so every read is depth only: a zero REF and ALT here is not an absence |
+| `SW_FALLBACK` | Some reads were scored by a fallback aligner or left uncounted: the row's counts came partly from another scorer |
+| `SPLICE_SKIP_DOMINANT` | More reads splice over the deleted span than confirm ALT: an alt_count of 0 may hide carriers written as junction reads |
+| `NON_DISCRIMINATING_LOCUS` | A nearby germline combination makes REF and ALT the same sequence: a zero REF and ALT here is not an absence |
+| `RESCUED_COMPONENT` | With --rescue-mnp the row reports a component SNV's counts, not the MNP's: read gbcms_rescue |
+| `rescued` | The best component SNV beat the MNP, so its counts are written: read gbcms_rescue |
+| `ref_validation_failed` | No component SNV survived preparation (an anomaly): the MNP's own counts stand; read the logged warning |
+| `NON_CANONICAL_MOTIF` | The ALT junction's splice motif is not canonical: likely a mapping artifact |
+| `STRAND_DISCORDANT` | The ALT junction has mixed transcript-strand support: likely an alignment artifact |
+| `RETENTION_DOMINANT` | Most reads splice over the locus, so the counted reads are the intron-retaining minority: read vaf as the VAF within them, not as allelic balance |
+| `NOVEL_JUNC_AT_SPLICE_LOSS` | Carriers of a splice-destroying variant may splice around the locus while alt_count is low: read asjd_diagnostic for the junction |
+| `rna_editing_site` | The locus overlaps a known A-to-I editing site: an A>G or T>C call there is likely editing, not a somatic mutation |
+| `COMBINED_NA` | A combined simplex_duplex count is NA (a count missing in one flavour, or mixed MNP rescue): the combined VAF is unusable, so read each flavour's own columns |
+
+### Informational
+
+| Flag | The summary says |
+|:-----|:-----------------|
+| `MULTI_ALLELIC` | another row has a different ALT here |
+| `TRACT_CLUSTER` | shares a repeat window with another indel |
+| `ZERO_ALT` | no read carries the ALT |
+| `COEXISTING_ALLELE` | another allele is more frequent: a VAF caveat |
+| `MNP_DISC_RATIO` | the MNP's shape; nothing to do |
+| `MNP_RESCUE_ELIGIBLE` | a rescue candidate (--rescue-mnp) |
+| `HIGH_N_FRACTION` | over 5% of depth is N: counts are thinner |
+| `LOW_ALT_JUNC` | fewer than 5 ALT junction fragments |
+| `LOW_REF_JUNC` | fewer than 10 REF junction fragments |
+| `NOVEL_ALT_JUNC` | the ALT uses an unannotated junction |
+| `MULTI_JUNCTION` | ALT fragments use over two junctions |
+| `asjd_flag` | ALT and REF junction usage differ |
+| `skipped_grouped` | in a co-annotated group; rescue left it |
+| `haplotype_confirmed` | a read shows the whole MNP haplotype |
+| `no_improvement` | no component beat the MNP; its counts stand |
+| `mfsd_ks_valid` | the KS test did not run |
+| `mfsd_alt_confidence` | few or no ALT fragments in the size window |
+| `mfsd_ch_flag` | in a clonal-hematopoiesis gene: a prior |

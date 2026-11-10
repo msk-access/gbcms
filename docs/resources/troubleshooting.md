@@ -30,14 +30,14 @@ Common issues and solutions for gbcms. Issues are grouped by phase — work top-
     The Rust backend compiles htslib statically. Ensure compression library headers are present:
 
     ```bash
-    apt-get install zlib1g-dev libbz2-dev liblzma-dev libcurl4-openssl-dev
+    apt-get install zlib1g-dev libbz2-dev liblzma-dev
     ```
 
-??? question "`GLIBC_2.34 not found` when installing via pip"
+??? question "pip builds from source, or `GLIBC_2.28 not found`"
 
-    Your system has an older glibc (RHEL 8 / CentOS 8 / HPC). PyPI wheels require glibc 2.34+.
-    Use the [Legacy Linux](../getting-started/installation.md#legacy-linux-rhel-8-hpc) install path
-    (micromamba + clangdev + source install).
+    The one prebuilt wheel (any CPython from 3.10, Linux x86_64) needs glibc 2.28 or newer (RHEL 8 and newer) and pip 20.3 or newer. With an older glibc or an older pip, pip builds the source distribution instead ([Platform support](../getting-started/installation.md#platform-support)).
+    On RHEL 8, install a Python from 3.10 on and use a virtual environment (`python3.11 -m venv`, then `pip install --upgrade pip`); see the
+    [Legacy Linux](../getting-started/installation.md#legacy-linux-rhel-8-hpc) install path. For glibc older than 2.28, use that page's micromamba + clangdev source install.
 
 ??? question "`LIBCLANG_PATH` not set error during build"
 
@@ -93,6 +93,11 @@ Common issues and solutions for gbcms. Issues are grouped by phase — work top-
 
 ## Allele Count Issues
 
+Start with the **QC summary** at the end of the run log: it counts the rows by what
+they need (fix the input, check the call, or nothing), names the first rows to look at and
+says what to do about each flag
+([End-of-run summary](../reference/qc-flags.md#end-of-run-summary)).
+
 ??? question "`alt_count = 0` for a variant I can see reads for in IGV"
 
     Check in this order:
@@ -119,31 +124,31 @@ Common issues and solutions for gbcms. Issues are grouped by phase — work top-
        Run normalization to see the left-aligned coordinates:
        ```bash
        gbcms normalize --variants variants.maf --fasta ref.fa --output /tmp/norm/normalized.tsv
-       # Check norm_pos vs original Start_Position
+       # Compare original_pos with norm_pos in the output TSV
        ```
 
     4. **BAM coverage** — verify the BAM actually has reads at this position:
        ```bash
-       samtools view -c sample.bam "chr17:7579309-7579322"
+       samtools view -c sample.bam "CHROM:START-END"  # the event's span
        ```
 
     5. **Verbose per-read trace** — most diagnostic tool:
        ```bash
        # Per-read trace lines print 0-BASED positions; variant-level lines are 1-based.
-       gbcms dna --trace ... 2>&1 | grep -E "7579308|7579309"  # 0-based and 1-based
+       gbcms dna --trace ... 2>&1 | grep -E "<pos0>|<pos1>"  # the anchor, 0-based and 1-based
        ```
 
 ??? question "`ref_count = 0` for a large deletion"
 
     A pure large deletion counts a clean read spanning its anchor as REF (`check_deletion`).
     A large delins (a deletion with a replacement) is judged by the
-    [exact-carrier rule](../reference/allele-classification.md#the-exact-carrier-rule): no read
-    holds a ~100bp window whole, so each end is judged by a junction window, and a REF read
-    counts when it carries the reference across either junction.
+    [exact-carrier rule](../reference/allele-classification.md#the-exact-carrier-rule): one pair
+    of equal-length windows read from the POS flank, so a REF read counts when it carries the
+    reference from that flank as far as the ALT read must carry the ALT.
 
     If `ref = 0`, check:
     - The variant was normalized correctly (`gbcms_status` is `PASS`)
-    - The BAM slice has coverage at the event's ends (`samtools depth -a sample.bam -r chr22:30038094-30038095`)
+    - The BAM slice has coverage at the event's ends (`samtools depth -a sample.bam -r CHROM:START-END`)
     - Reads actually **reach a junction**: reads mapping entirely inside a large deleted span,
       or ending inside the event, carry no information about the variant and count as depth only
 
@@ -160,9 +165,11 @@ Common issues and solutions for gbcms. Issues are grouped by phase — work top-
     intentional. A 1-4bp deletion in the wrong reference context is almost certainly spurious noise,
     not a left-alignment artifact.
 
-    To diagnose deletion ≥5bp still returning low alt:
+    To diagnose deletion ≥5bp still returning low alt, read the per-read calls: each
+    `read call` line names the rule that decided the read (`rule=`), and `--verbose`
+    adds a `Phase stats` line per variant:
     ```bash
-    gbcms dna --trace ... 2>&1 | grep "S3 reject\|falling back to phase3_classify"
+    gbcms dna --trace ... 2>&1 | grep "read call"
     ```
 
 ??? question "Large Δalt vs sign-out `t_alt` for MNP / ONP / DNP variants"
@@ -248,7 +255,7 @@ Common issues and solutions for gbcms. Issues are grouped by phase — work top-
 
 ??? question "`WARN_HOMOPOLYMER_DECOMP` reason (verdict `PASS`) — what changed?"
 
-    The run used `--rescue-homopolymer`, and the variant is a homopolymer run called as a
+    Only files from before 6.7.0 hold it: `--rescue-homopolymer` is deprecated in 6.7.0 (removed in 6.8.0) and ignored. The run used `--rescue-homopolymer`, and the variant is a homopolymer run called as a
     larger deletion (e.g. `CCCCCC→T`). In this sample, the corrected allele (the run with its
     last base replaced, `CCCCCC→CCCCCT`) got more ALT support, so its counts were used.
     `used_decomposed = True` in the output, and the flag is set per sample. Without the flag,
@@ -358,7 +365,7 @@ Common issues and solutions for gbcms. Issues are grouped by phase — work top-
 
     An **empty or fully-rejected variant set is not a failure**: a sample that legitimately
     has no variants called (or whose variants are all rejected at prep) still exits **0**, and
-    the rejected variants are written to the output with their `FAIL_*` `gbcms_status`. This
+    the rejected variants are written to the output with `gbcms_status` `FAIL` and the reason in `gbcms_status_reason`. This
     lets a per-sample workflow keep going instead of failing the whole cohort on a sample that
     genuinely has nothing to count.
 
@@ -382,7 +389,7 @@ gbcms dna --verbose --variants variants.maf --bam sample.bam \
 # Per-read trace lines print 0-BASED positions; variant-level lines are 1-based,
 # so grep both spellings of the coordinate.
 gbcms dna --trace --variants variants.maf --bam sample.bam \
-    --fasta ref.fa --output-dir /tmp/debug/ 2>&1 | grep -E "7579308|7579309" > tp53_trace.log
+    --fasta ref.fa --output-dir /tmp/debug/ 2>&1 | grep -E "<pos0>|<pos1>" > trace.log
 ```
 
 ### Inspecting Genomic Bin Construction

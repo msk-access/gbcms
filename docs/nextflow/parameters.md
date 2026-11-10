@@ -25,6 +25,8 @@ Complete reference for all pipeline parameters.
 | `--suffix` | `''` | Suffix for output filenames |
 | `--column_prefix` | `''` | Prefix for gbcms count columns in MAF output |
 | `--preserve_barcode` | `false` | Keep original Tumor_Sample_Barcode from input MAF |
+| `--publish_dir_mode` | `copy` | How Nextflow stages results into `--outdir` (`publishDir` mode: `copy`, `symlink`, `link`, `move`, ...) |
+| `--tracedir` | `${params.outdir}/pipeline_info` | Directory for the execution trace, report, timeline and DAG files |
 
 ## mFSD Options (DNA only)
 
@@ -32,7 +34,7 @@ Complete reference for all pipeline parameters.
 |:----------|:--------|:------------|
 | `--mfsd` | `false` | Enable mFSD analysis — adds 41 mFSD columns to MAF and 13 `MFSD_*` INFO fields to VCF. See [mFSD metrics](../reference/counting-metrics.md#mfsd). |
 | `--mfsd_parquet` | `false` | Write a companion `<sample>.fsd.parquet` with raw per-variant fragment size arrays. Requires `--mfsd`. |
-| `--mfsd_report` | `false` | Generate an interactive HTML report with per-variant fragment size distributions. Implies `--mfsd` and `--mfsd_parquet`. See [mFSD Report](../reference/mfsd-report.md). |
+| `--mfsd_report` | `false` | Generate an interactive HTML report with per-variant fragment size distributions. Implies `--mfsd` and `--mfsd_parquet`; requires `--format maf` (the pipeline stops at launch otherwise). See [mFSD Report](../reference/mfsd-report.md). |
 | `--observations_parquet` | `false` | Write a companion `<sample>.observations.parquet` recording which molecule carried which allele at each variant. Enables read-backed phasing and allelic-imbalance analyses. Counts output is unchanged. See [Per-Molecule Observations](../reference/molecule-observations.md). |
 | `--mfsd_report_min_alt` | `3` | Minimum ALT fragment count to include a variant in the HTML report. |
 | `--mfsd_report_max_variants` | `20` | Maximum variants in the HTML report. Use `-1` for no limit. |
@@ -43,7 +45,7 @@ Complete reference for all pipeline parameters.
 |:----------|:--------|:------------|
 | `--min_mapq` | `20` | Minimum mapping quality for **DNA** counting |
 | `--rna_min_mapq` | `1` | Minimum mapping quality for **RNA** counting. Defaults to `1` to match the `gbcms rna` CLI: STAR gives uniquely-mapped reads MAPQ 255 but 2–4-locus multi-mappers MAPQ 3/1, so a DNA-style floor of 20 silently drops those primaries (~16% of reads genome-wide on a FORTE sample; up to ~6% of depth at an individual locus). Raise it to 20 for unique-only RNA counting. |
-| `--min_baseq` | `20` | Minimum base quality |
+| `--min_baseq` | `20` | Minimum base quality, passed to `--min-baseq`: a base below it is read as unknown, like `N`; reads still count toward depth (see [Read Filters → Quality Thresholds](../reference/read-filters.md#quality-thresholds)) |
 | `--fragment_qual_threshold` | `10` | Quality margin for [fragment consensus](../reference/counting-metrics.md#fragment-counting) — when R1/R2 disagree on a non-INDEL variant, the higher-quality allele wins only if the difference exceeds this. INDEL conflicts with structural CIGAR evidence bypass this threshold. |
 | `--context_padding` | `5` | Minimum flanking bases for [Phase 3 alignment](../reference/allele-classification.md#phase-3-alignment-fallback) (auto-increased in repeats) |
 | `--adaptive_context` | `true` | Dynamically increase context padding in [tandem repeat regions](../reference/variant-normalization.md#adaptive-context-padding) |
@@ -56,7 +58,7 @@ Complete reference for all pipeline parameters.
 | `--filter_by_sample` | `false` | Filter multi-sample MAF by `Tumor_Sample_Barcode` ([details](samplesheet.md#multi-sample-maf-filtering)) |
 | `--show_normalization` | `false` | Add `norm_*` columns showing left-aligned coordinates in output |
 | `--rescue_mnp` | `false` | Enable [MNP rescue pass](../reference/architecture.md#mnp-rescue-pass-rescue-mnp-v430) — for MNPs whose partial evidence dominates (`partial_alt > alt_count`), reports the best-supported component SNV's counts |
-| `--rescue_homopolymer` | `false` | Dual-count the [homopolymer twin](../reference/variant-normalization.md#step-5-homopolymer-decomposition-detection) and report the form with more ALT reads (`WARN_HOMOPOLYMER_DECOMP`). Off: the row counts the given allele, and `OBSERVED_ALLELE` names the allele the reads carry. |
+| `--rescue_homopolymer` | `false` | **Deprecated.** Deprecated in 6.7.0; removed in 6.8.0. Still accepted and ignored, with a warning; it did nothing useful the diagnostics do not ([`OBSERVED_ALLELE` and `COEXISTING_ALLELE`](../reference/qc-flags.md)). The row counts the given allele. |
 | `--rescue_mnp_threshold` | `1.0` | Maximum disc/len ratio for MNP rescue eligibility (0.0–1.0). `1.0` = all MNPs eligible (C++ compatible). `0.5` = conservative sparse-only mode. `0.0` = disable rescue eligibility (diagnostics still emitted). |
 
 ## UMI & BAQ Options
@@ -64,7 +66,8 @@ Complete reference for all pipeline parameters.
 | Parameter | Default | Description |
 |:----------|:--------|:------------|
 | `--umi_tag` | `''` | UMI BAM tag for deduplication (e.g., `XM`, `RX`). When set, reads sharing the same UMI are grouped as a single observation. |
-| `--apply_baq` | `false` (DNA) / `true` (RNA) | Apply Base Alignment Quality downgrade. Reduces false positives near indels and splice junctions (CIGAR `N`). See [BAQ Options](../cli/dna.md#baq-options). |
+| `--apply_baq` | `false` | **DNA** Base Alignment Quality downgrade (matches `gbcms dna`, off). Reduces false positives near indels. See [BAQ Options](../cli/dna.md#baq-options). |
+| `--rna_apply_baq` | `true` | **RNA** Base Alignment Quality downgrade (matches `gbcms rna`, on): RNA BAMs typically lack BQSR. The penalty applies near a read's indels only; a splice junction (CIGAR `N`) lowers no base's quality. Set `false` to pass `--no-baq`. |
 
 ## RNA-Specific Options
 
@@ -72,21 +75,18 @@ These parameters are only used when `--mode rna` is specified.
 
 | Parameter | Default | Description |
 |:----------|:--------|:------------|
+| `--gtf` | `''` | Path to an Ensembl/GENCODE GTF, plain or `.gtf.gz`. Enables exon-boundary distance, per-transcript counts and ASJD, and supplies each variant's gene strand, which `--enforce_strandedness` needs (without it every read counts as sense). See [GTF loading](#gtf-loading-rna). |
 | `--rna_editing_db` | `''` | Path to [REDIportal](http://srv00.recas.ba.infn.it/atlas/index.html) editing database file (e.g., `TABLE1_hg38_v3.txt`). Flags ALT sites that overlap known A→I RNA editing positions. |
-| `--enforce_strandedness` | `true` | Enforce strand-specific library prep. Disable with `false` for unstranded RNA-seq libraries (`--no-strandedness` equivalent). |
+| `--enforce_strandedness` | `true` | Filter reads by orientation relative to the gene strand (needs `--gtf` for the strand). `false` passes `--no-strandedness`, which only stops the filtering. For an unstranded RNA-seq library set `--strandedness unstranded` instead. |
 | `--strandedness` | `'reverse'` | RNA library strand protocol: `'reverse'` (dUTP/fr-firststrand, featureCounts `-s 2` — the FORTE default), `'forward'` (fr-secondstrand, `-s 1`), or `'unstranded'` (`-s 0`). Sets the read→transcript-strand fold used by `--enforce_strandedness` and ASJD strand-discordance; `'unstranded'` disables both. |
 | `--library_type` | `'capture'` | `'capture'` (default) or `'amplicon'`. Amplicon mode treats R1 and R2 as **independent observations** (no fragment-level consensus) and auto-disables strandedness — use it for amplicon/primer-based RNA panels where mates aren't independent fragments. |
 
 !!! tip "RNA mode defaults"
-    RNA mode uses different PairHMM gap penalties by default (`gap_open=5e-3`, `gap_extend=0.25`) to tolerate RT-induced stutter at homopolymers. These can be overridden via the alignment backend parameters below.
+    RNA mode uses its own PairHMM gap penalties (`--rna_gap_open_prob 5e-3`, `--rna_gap_extend_prob 0.25`, the `gbcms rna` defaults) to tolerate RT-induced stutter at homopolymers, and its own BAQ switch (`--rna_apply_baq`, on). The `--gap_*` and `--apply_baq` params are DNA's and do not reach RNA tasks. See the alignment backend parameters below.
 
-## GTF Index Caching (RNA) — deprecated
+## GTF loading (RNA)
 
-The GTF index cache is gone in 6.6.0: each `GBCMS_RNA` task loads the GTF (plain or `.gtf.gz`) in a few seconds (2 s for a whole Ensembl GTF), so the `GBCMS_BUILD_GTF_CACHE` step was removed.
-
-| Parameter | Default | Description |
-|:----------|:--------|:------------|
-| `--gtf_cache` | `null` | Deprecated in 6.6.0 and ignored; the pipeline warns when it is set. Removed in 6.7.0. |
+Each `GBCMS_RNA` task loads the GTF (plain or `.gtf.gz`) in a few seconds (2 s for a whole Ensembl GTF). There is no index cache: `--gtf_cache` and the `GBCMS_BUILD_GTF_CACHE` step were deprecated in 6.6.0 and removed in 6.7.0.
 
 !!! tip "Cohorts on shared storage: pass the `.gtf.gz`"
     Every task reads the GTF. The Ensembl GRCh38 GTF is 1.46 GB plain and 61 MB
@@ -98,11 +98,16 @@ The GTF index cache is gone in 6.6.0: each `GBCMS_RNA` task loads the GTF (plain
 | Parameter | Default | Description |
 |:----------|:--------|:------------|
 | `--alignment_backend` | `pairhmm` | Phase 3 alignment backend: `pairhmm` (WFA2 + PairHMM, default) or `sw` (Smith-Waterman). See [CLI Reference](../cli/dna.md#alignment-backend). |
+| `--read_judge` | `rules` | **DNA** read judgment, passed as `--read-judge`: `rules` (the size-specific rules, the default) or `sequence` (the sequence judge, opt-in; `haplotype` is its former name). The RNA module does not pass it: the sequence judge refuses RNA mode. See [CLI Reference](../cli/dna.md#read-judgment). |
 | `--llr_threshold` | `2.3` | PairHMM log-likelihood ratio threshold for confident calls |
-| `--gap_open_prob` | `1e-4` | PairHMM gap-open probability for non-repeat regions |
-| `--gap_extend_prob` | `0.1` | PairHMM gap-extend probability for non-repeat regions |
-| `--gap_open_prob_repeat` | `1e-2` | PairHMM gap-open probability for tandem repeat regions |
-| `--gap_extend_prob_repeat` | `0.5` | PairHMM gap-extend probability for tandem repeat regions |
+| `--gap_open_prob` | `1e-4` | **DNA** PairHMM gap-open probability for non-repeat regions |
+| `--gap_extend_prob` | `0.1` | **DNA** PairHMM gap-extend probability for non-repeat regions |
+| `--gap_open_prob_repeat` | `1e-2` | **DNA** PairHMM gap-open probability for tandem repeat regions |
+| `--gap_extend_prob_repeat` | `0.5` | **DNA** PairHMM gap-extend probability for tandem repeat regions |
+| `--rna_gap_open_prob` | `5e-3` | **RNA** PairHMM gap-open probability for non-repeat regions (the `gbcms rna` default; the `--gap_*` params above are DNA's) |
+| `--rna_gap_extend_prob` | `0.25` | **RNA** PairHMM gap-extend probability for non-repeat regions |
+| `--rna_gap_open_prob_repeat` | `1e-2` | **RNA** PairHMM gap-open probability for tandem repeat regions |
+| `--rna_gap_extend_prob_repeat` | `0.5` | **RNA** PairHMM gap-extend probability for tandem repeat regions |
 
 ## Merge Options
 
@@ -113,6 +118,14 @@ These parameters control the multi-BAM merge step. Requires a `bam_type` column 
 | `--merge_counts` | `false` | Enable multi-BAM merge — combine per-type MAFs into a single output with type-prefixed count columns. Requires `bam_type` in samplesheet. |
 | `--merge_add_combined` | `true` | When both `duplex` and `simplex` inputs are present, compute additive `simplex_duplex_*` combined columns (20 columns including strand bias). |
 | `--merge_legacy_naming` | `false` | Use `t_{metric}_{type}` naming (genotype_variants compatible). |
+
+## QC Summary Options
+
+Each `gbcms dna` / `gbcms rna` task already ends its log with a [QC summary](../reference/qc-flags.md#end-of-run-summary). This parameter adds one for the whole run.
+
+| Parameter | Default | Description |
+|:----------|:--------|:------------|
+| `--qc_summary` | `false` | After all samples finish, run [`gbcms summarize`](../cli/summarize.md) over every output (merged MAFs included) and publish to `${params.outdir}/gbcms/qc_summary/`: MultiQC custom content (`gbcms_qc_summary_mqc.json`, and `gbcms_qc_warning_mqc.json` only when a row needs a look) and one `<name>.qc_summary.json` per output. Nothing else changes. |
 
 ## Resource Limits
 

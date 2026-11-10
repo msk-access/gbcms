@@ -16,6 +16,7 @@ include { GBCMS_DNA_WF }          from './workflows/dna'
 include { GBCMS_RNA_WF }          from './workflows/rna'
 include { FILTER_MAF }            from './modules/local/gbcms/filter_maf/main'
 include { PIPELINE_SUMMARY }      from './modules/local/gbcms/pipeline_summary/main'
+include { QC_SUMMARY }            from './modules/local/gbcms/qc_summary/main'
 include { asBool }                from './modules/local/utils/main'
 
 // Helper: Check if a MAF file has at least one data row (not just header/comments).
@@ -44,9 +45,10 @@ workflow {
     if (!(params.mode in ['dna', 'rna'])) {
         error "Invalid mode '${params.mode}'. Must be 'dna' or 'rna'. Use --mode dna|rna"
     }
-    // Deprecated in 6.6.0, removed in 6.7.0: there is no GTF index cache to build.
-    if (params.gtf_cache != null) {
-        log.warn "--gtf_cache is deprecated and ignored: the GTF index cache is gone (each task loads the GTF in a few seconds). It will be removed in 6.7.0."
+    // The mFSD report reads its statistics from the MAF output, and gbcms refuses it
+    // with VCF output: fail at launch, not in every sample's task.
+    if (params.mode == 'dna' && asBool(params.mfsd_report) && params.format != 'maf') {
+        error "--mfsd_report requires --format maf (the report reads its mFSD statistics from the MAF output)"
     }
 
     log.info """
@@ -197,10 +199,25 @@ workflow {
             ch_ready,
             ch_fasta_tuple
         )
+        ch_outputs = GBCMS_RNA_WF.out.counts
     } else {
         GBCMS_DNA_WF (
             ch_ready,
             ch_fasta_tuple
+        )
+        // The merged MAFs too: a combined cell that is NA shows only there.
+        ch_outputs = GBCMS_DNA_WF.out.counts.mix(GBCMS_DNA_WF.out.merged)
+    }
+
+    //
+    // STEP 4: QC summary of every output, once all samples are done (--qc_summary)
+    //
+    if (asBool(params.qc_summary)) {
+        QC_SUMMARY(
+            ch_outputs
+                .map { _id, files -> files }
+                .flatten()
+                .collect()
         )
     }
 }

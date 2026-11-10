@@ -226,3 +226,119 @@ def test_rs_default_backend_is_pairhmm():
 
     sig = _rs.count_bam_binned.__text_signature__
     assert 'alignment_backend="pairhmm"' in sig, f"unexpected default in {sig}"
+
+
+# ── The read judgment (--read-judge, #304) ───────────────────────────────────
+
+
+@patch("gbcms.cli.Pipeline")
+def test_cli_read_judge_defaults_to_the_rules(mock_pipeline_cls, tmp_path):
+    """Without --read-judge the size-specific rules count the reads."""
+    vcf, bam, fasta, output_dir = _make_test_files(tmp_path)
+    mock_pipeline_cls.return_value.run.return_value = {"samples_processed": 1, "failed_samples": []}
+    result = runner.invoke(app, _base_args(vcf, bam, fasta, output_dir))
+    assert result.exit_code == 0
+    assert mock_pipeline_cls.call_args[0][0].alignment.read_judge == "rules"
+
+
+@patch("gbcms.cli.Pipeline")
+def test_cli_read_judge_sequence_reaches_the_config(mock_pipeline_cls, tmp_path):
+    """--read-judge sequence propagates to the config the engine reads."""
+    vcf, bam, fasta, output_dir = _make_test_files(tmp_path)
+    mock_pipeline_cls.return_value.run.return_value = {"samples_processed": 1, "failed_samples": []}
+    args = _base_args(vcf, bam, fasta, output_dir) + ["--read-judge", "sequence"]
+    result = runner.invoke(app, args)
+    assert result.exit_code == 0
+    assert mock_pipeline_cls.call_args[0][0].alignment.read_judge == "sequence"
+
+
+@patch("gbcms.cli.Pipeline")
+def test_cli_read_judge_haplotype_is_the_sequence_judge(mock_pipeline_cls, tmp_path):
+    """The judge's former name still runs it, for an old command line."""
+    vcf, bam, fasta, output_dir = _make_test_files(tmp_path)
+    mock_pipeline_cls.return_value.run.return_value = {"samples_processed": 1, "failed_samples": []}
+    args = _base_args(vcf, bam, fasta, output_dir) + ["--read-judge", "haplotype"]
+    result = runner.invoke(app, args)
+    assert result.exit_code == 0
+    assert mock_pipeline_cls.call_args[0][0].alignment.read_judge == "sequence"
+
+
+def test_config_takes_the_former_name_as_the_sequence_judge_with_a_warning(caplog):
+    """The configuration takes 'haplotype' as 'sequence', says it is deprecated, and
+    rejects anything else."""
+    with caplog.at_level("WARNING", logger="gbcms.models.core"):
+        assert AlignmentConfig(read_judge="haplotype").read_judge == "sequence"
+    assert any(
+        "deprecated" in r.getMessage() and "sequence" in r.getMessage() for r in caplog.records
+    )
+    assert AlignmentConfig(read_judge="Sequence").read_judge == "sequence"
+    with pytest.raises(ValueError, match="'rules' or 'sequence'"):
+        AlignmentConfig(read_judge="haplotypes")
+
+
+def test_cli_invalid_read_judge(tmp_path):
+    """An unknown read judgment is rejected at parse time."""
+    vcf, bam, fasta, output_dir = _make_test_files(tmp_path)
+    args = _base_args(vcf, bam, fasta, output_dir) + ["--read-judge", "haplotypes"]
+    assert runner.invoke(app, args).exit_code != 0
+
+
+@pytest.mark.parametrize("token", ["sequence", "haplotype"])
+@patch("gbcms.cli.Pipeline")
+def test_cli_rna_refuses_the_sequence_judge(mock_pipeline_cls, tmp_path, token):
+    """The sequence judge does not judge spliced reads yet: RNA refuses it up front
+    (by its name or its former one) rather than counting every spliced read as depth only."""
+    vcf, bam, fasta, output_dir = _make_test_files(tmp_path)
+    args = ["rna"] + _base_args(vcf, bam, fasta, output_dir)[1:] + ["--read-judge", token]
+    result = runner.invoke(app, args)
+    assert result.exit_code != 0
+    assert not mock_pipeline_cls.called
+
+
+def test_engine_refuses_the_sequence_judge_in_rna_mode(tmp_path):
+    """The engine refuses it too, for a caller that skips the CLI."""
+    from gbcms import _rs
+
+    vcf, bam, fasta, _ = _make_test_files(tmp_path)
+    with pytest.raises(ValueError, match="RNA"):
+        _rs.count_bam_binned(
+            str(bam),
+            [],
+            [],
+            20,
+            20,
+            True,
+            True,
+            True,
+            False,
+            False,
+            False,
+            1,
+            mode="rna",
+            reference_fasta=str(fasta),
+            read_judge="sequence",
+        )
+
+
+def test_engine_rejects_an_unknown_read_judge(tmp_path):
+    """The engine parses the token strictly: a typo fails loudly, never counts with the
+    other judgment."""
+    from gbcms import _rs
+
+    vcf, bam, fasta, _ = _make_test_files(tmp_path)
+    with pytest.raises(ValueError, match="read_judge"):
+        _rs.count_bam_binned(
+            str(bam),
+            [],
+            [],
+            20,
+            20,
+            True,
+            True,
+            True,
+            False,
+            False,
+            False,
+            1,
+            read_judge="Haplotype",
+        )

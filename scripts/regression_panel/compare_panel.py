@@ -139,15 +139,20 @@ def attempts(out, build):
     return {rid: x for rid, (_o, x) in latest.items()}
 
 
+def failed_runs(out, build):
+    """Runs whose latest attempt in OUT/BUILD did not exit 0, sorted. A run that failed
+    can leave a partial output (a crash partway through writing), so the tools that read
+    outputs leave these runs out. No time records: no run is known to have failed."""
+    return sorted(r for r, x in attempts(out, build).items() if str(x.get("exit")) != "0")
+
+
 def main():
     tier, out, base, new = sys.argv[1:5]
     rep = sys.argv[5] if len(sys.argv) > 5 else os.path.join(out, f"compare_{base}_vs_{new}")
     os.makedirs(rep, exist_ok=True)
     runs = read_runs(tier)
     att = {b: attempts(out, b) for b in (base, new)}
-    failed = {
-        b: sorted(r for r, x in att[b].items() if str(x.get("exit")) != "0") for b in (base, new)
-    }
+    failed = {b: failed_runs(out, b) for b in (base, new)}
     hdr = collections.defaultdict(lambda: [set(), set()])
     summ = collections.defaultdict(collections.Counter)
     cells = collections.Counter()

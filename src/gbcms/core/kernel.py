@@ -9,7 +9,9 @@ Handles conversion between:
 
 Ensures consistent representation of variants:
 - SNPs: 0-based index of the base.
-- Insertions: 0-based index of the ANCHOR base (preceding the insertion).
+- Insertions: 0-based index of the ANCHOR base (preceding the insertion; -1 for a MAF
+  insertion at Start 0, before the contig's first base). A MAF row of any kind at Start 0
+  is -1: preparation resolves an insertion and fails every other row visibly.
 - Deletions: 0-based index of the ANCHOR base (preceding the deletion).
 
 VCF <-> MAF conversion follows vcf2maf / maf2vcf (github.com/mskcc/vcf2maf):
@@ -58,6 +60,10 @@ class CoordinateKernel:
         Returns:
             Normalized Variant object
         """
+        if pos < 1:
+            # Only a MAF row can start before the first base (Start_Position 0, which
+            # preparation fails visibly): a VCF POS is a base of the contig.
+            raise ValueError(f"VCF POS must be >= 1 (got {pos}) at {chrom}")
         norm_chrom = CoordinateKernel.normalize_chromosome(chrom)
 
         # VCF POS is the first REF base: the anchor for an indel, the first
@@ -113,7 +119,9 @@ class CoordinateKernel:
             if ref == "-":  # Insertion
                 vtype = VariantType.INSERTION
                 # MAF Start_Position is the anchor base (1-based).
-                # Convert to 0-based: internal_pos = Start_Position - 1.
+                # Convert to 0-based: internal_pos = Start_Position - 1. Start 0 puts the
+                # insertion before the contig's first base: its anchor is -1, which
+                # preparation resolves to the base after.
                 internal_pos = start_pos - 1
             else:  # Deletion (alt == '-')
                 vtype = VariantType.DELETION
@@ -218,7 +226,8 @@ class CoordinateKernel:
         base) is written as-is at Start, and no base is fetched. An event at
         position 1 has no base before it: as the VCF spec requires, the base
         after the event is appended instead and POS stays 1 (maf2vcf skips such
-        rows).
+        rows). That covers an insertion at Start 0 too, which lies before the
+        first base: the base after it is position 1's.
 
         Args:
             start: MAF Start_Position (1-based).
@@ -235,8 +244,11 @@ class CoordinateKernel:
             return start, ref, alt
         pos = start if not ref else start - 1
         if pos < 1:
-            after = base_at(start + len(ref))
-            return start, ref + after, alt + after
+            # Nothing precedes the event: a deletion or delins at Start 1, or an insertion
+            # at Start 0 (before the first base). The base after the event is appended; for an
+            # insertion that is position 1's, for the others the one past the REF bases.
+            after = base_at(start + len(ref) if ref else 1)
+            return (start if ref else 1), ref + after, alt + after
         anchor = base_at(pos)
         return pos, anchor + ref, anchor + alt
 

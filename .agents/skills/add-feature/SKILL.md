@@ -1,6 +1,6 @@
 ---
 name: add-feature
-description: Procedure for adding a feature to gbcms following its Git Flow and Rust/Python architecture (branch from develop, plan the layer, implement, sync type stubs, add tests with the 4 counting invariants, update docs/CHANGELOG, QA, PR to develop). Use when starting new feature work.
+description: "Steps to add a feature: branch from develop, pick the layer (Rust or Python), implement, sync the type stub, test with the counting invariants, update docs and CHANGELOG, run QA, PR to develop. Use when starting new feature work."
 ---
 
 # add-feature
@@ -17,7 +17,8 @@ description: Procedure for adding a feature to gbcms following its Git Flow and 
    - Check existing code for reusable patterns (don't re-implement)
 
 3. **Implement**:
-   - Rust: `rust/src/` → rebuild with `maturin develop --release`
+   - Rust: `rust/src/` → rebuild with `maturin develop --release` from the repo root, with
+     `VIRTUAL_ENV` set (rust-python-ffi, "Build & environment")
    - Python: `src/gbcms/`
    - CLI option: add to `cli.py`, validate in `models/core.py`
    - Type stubs: update `src/gbcms/_rs.pyi` (the single stub for `gbcms._rs`)
@@ -30,12 +31,12 @@ description: Procedure for adding a feature to gbcms following its Git Flow and 
 
 6. **Run QA** (see the qa-check skill).
 
-   **Real-data acceptance** for count-changing work: run every assay the change reaches
-   (IMPACT tumour with its matched normal; ACCESS duplex + simplex through `gbcms merge`),
-   one BAM at a time, and score against the reads — reads' own bases are the evidence (not the aligner's placement, not sign-out): gbcms genotypes, it does not call.
-   Build base and candidate in isolation (`git archive <sha>` + own venv, `BUILT_FROM`
-   recorded); once the PR merges, delete those builds and gzip raw `--trace` logs
-   (memory: harness-cleanup-after-merge).
+   **Real-data acceptance** for count-changing work follows
+   `.agents/rules/decision-protocol.md` (every data type, more than one truth source, DNA and RNA
+   judged separately, scored against the reads' own bases). Build base and candidate in isolation
+   (`git archive <sha>` and its own venv, the commit recorded beside each build; rust-python-ffi
+   "Build & environment"; layout in `docs/harness/measurement-harness.md`). After the PR merges, run
+   the retirement checklist there (delete the builds, gzip raw `--trace` logs).
 
 7. **PR to develop**:
    ```bash

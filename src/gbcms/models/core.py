@@ -10,6 +10,7 @@ Config hierarchy:
     └── GbcmsRnaConfig     — RNA-specific defaults (strandedness, editing, pairhmm)
 """
 
+import logging
 import sys
 from pathlib import Path
 
@@ -25,6 +26,8 @@ else:
 
 
 from pydantic import BaseModel, Field, field_validator, model_validator
+
+logger = logging.getLogger(__name__)
 
 __all__ = [
     "VariantType",
@@ -55,7 +58,12 @@ class Variant(BaseModel):
     """Normalized representation of a genomic variant."""
 
     chrom: str
-    pos: int = Field(ge=0, description="0-based position of the variant")
+    pos: int = Field(
+        ge=-1,
+        description="0-based position of the variant. -1 is a MAF row at Start_Position 0, "
+        "before the contig's first base: preparation resolves an insertion there (it has no "
+        "anchor base) and fails any other row (START_BEFORE_CONTIG)",
+    )
     ref: str
     alt: str
     variant_type: VariantType
@@ -202,6 +210,32 @@ class AlignmentConfig(BaseModel):
         description="PairHMM gap-extend probability for tandem repeat regions.",
     )
 
+    read_judge: str = Field(
+        default="rules",
+        description=(
+            "Read judgment: 'rules' (the size-specific rules, default) or 'sequence' "
+            "(the sequence judge: which of the row's candidate sequences each read's own "
+            "bases spell at the row; #304). 'haplotype', its former name, is taken as "
+            "'sequence' with a warning."
+        ),
+    )
+
+    @field_validator("read_judge")
+    @classmethod
+    def validate_read_judge(cls, v: str) -> str:
+        """Validate the read judgment is a supported value; the judge's former name
+        ('haplotype') is taken as 'sequence', with a warning."""
+        v = v.lower().strip()
+        if v == "haplotype":
+            logger.warning(
+                "read judge 'haplotype' is deprecated: it is the sequence judge, "
+                "'--read-judge sequence'; counting with it."
+            )
+            v = "sequence"
+        if v not in ("rules", "sequence"):
+            raise ValueError(f"Invalid read judge '{v}'. Must be 'rules' or 'sequence'.")
+        return v
+
     @field_validator("backend")
     @classmethod
     def validate_backend(cls, v: str) -> str:
@@ -241,8 +275,8 @@ class OutputConfig(BaseModel):
         default=False,
         description=(
             "Enable Mutant Fragment Size Distribution (mFSD) analysis. "
-            "Adds 34 mFSD columns (KS test, LLR, mean sizes, pairwise comparisons, "
-            "derived metrics) to MAF output and 7 MFSD INFO fields to VCF. "
+            "Adds 41 mFSD columns (KS test, LLR, mean sizes, pairwise comparisons, "
+            "derived metrics) to MAF output and 13 MFSD INFO fields to VCF. "
             "Required when mfsd_parquet=True."
         ),
     )
@@ -268,7 +302,8 @@ class OutputConfig(BaseModel):
         default=False,
         description=(
             "Generate an interactive HTML report with per-variant fragment size "
-            "distributions. Implies mfsd=True and mfsd_parquet=True. Output: "
+            "distributions. Implies mfsd=True and mfsd_parquet=True; requires "
+            "format='maf'. Output: "
             "<sample>.mfsd_report.html alongside the main output."
         ),
     )
@@ -314,6 +349,12 @@ class OutputConfig(BaseModel):
                 "mfsd_parquet=True requires mfsd=True. "
                 "Enable mFSD analysis before requesting Parquet export."
             )
+        # The report reads its per-variant statistics from the main output as a MAF.
+        if self.mfsd_report and self.format != OutputFormat.MAF:
+            raise ValueError(
+                "mfsd_report=True requires format='maf': the report reads its mFSD "
+                "statistics from the MAF output."
+            )
         return self
 
 
@@ -345,9 +386,10 @@ class GbcmsBaseConfig(BaseModel):
         default=False,
         description=(
             "Apply heuristic BAQ (Base Alignment Quality) downgrade near "
-            "indels and splice junctions. Subtracts 20 from base qualities "
-            "within 5bp of alignment indels or CIGAR N (splice junctions) to "
-            "reduce false positive variant calls from alignment artifacts. "
+            "indels. Subtracts 20 from base qualities within 5bp of a read's "
+            "insertions and deletions to reduce false positive variant calls "
+            "from alignment artifacts (a splice junction, CIGAR N, lowers "
+            "none). "
             "Off by default for DNA (upstream BQSR/consensus already "
             "recalibrates). Overridden to True for RNA mode."
         ),
@@ -398,11 +440,9 @@ class GbcmsBaseConfig(BaseModel):
     rescue_homopolymer: bool = Field(
         default=False,
         description=(
-            "Dual-count the homopolymer twin: for a delins whose REF is a run of one "
-            "base and whose ALT is the base after the run (CCCCCC>T), also count "
-            "the run with its last base replaced (CCCCCT) and report whichever has "
-            "more ALT reads, flagged WARN_HOMOPOLYMER_DECOMP. Off by default: the row "
-            "counts the given allele, and OBSERVED_ALLELE names what the reads carry."
+            "Deprecated in 6.7.0; removed in 6.8.0. Warns and is ignored: the row "
+            "counts the given allele, and OBSERVED_ALLELE and COEXISTING_ALLELE name "
+            "the allele the reads carry."
         ),
     )
     rescue_mnp_threshold: float = Field(
@@ -462,28 +502,29 @@ class GbcmsRnaConfig(GbcmsBaseConfig):
 
     Inherits all shared fields from GbcmsBaseConfig. Overrides:
     - mode = "rna"
-    - Default MAPQ = 1 (STAR assigns low MAPQ to novel splice junctions)
+    - Default MAPQ = 1 (keeps the primaries of reads STAR placed at two to four loci,
+      MAPQ 3 or 1; see docs/reference/read-filters.md)
     - Default alignment backend = pairhmm (WFA2 + marginalized PairHMM)
     - Gap penalties relaxed for RT stutter tolerance
     - Strandedness filtering enabled by default
     - RNA editing database support
-    - BAQ enabled by default (RNA BAMs typically lack BQSR; the
-      splice-proximity penalty reduces false positives at exon
-      boundaries — see docs/reference/rna-splice-handling.md)
+    - BAQ enabled by default (RNA BAMs typically lack BQSR; it lowers
+      qualities near a read's indels only — a splice junction lowers
+      none; see docs/reference/rna-splice-handling.md)
     """
 
     mode: str = "rna"
 
     # RNA BAMs typically do not go through GATK BQSR or consensus
     # calling (e.g., fgbio), so raw sequencer BQ values are preserved.
-    # Enabling BAQ applies a -20 BQ penalty within 5bp of indels AND
-    # splice junctions (CIGAR N/RefSkip), mimicking the effect of GATK
-    # SplitNCigarReads' overhang clipping without modifying the BAM.
+    # Enabling BAQ applies a -20 BQ penalty within 5bp of a read's
+    # insertions and deletions. A splice junction (CIGAR N/RefSkip)
+    # lowers no base's quality: a base is judged by its own quality.
     apply_baq: bool = Field(
         default=True,
         description=(
-            "Apply heuristic BAQ quality downgrade near indels and splice "
-            "junctions. On by default for RNA because upstream pipelines "
+            "Apply heuristic BAQ quality downgrade near indels. On by "
+            "default for RNA because upstream pipelines "
             "typically do not run BQSR or consensus calling. "
             "Disable with --no-baq if BAMs have already been quality-adjusted."
         ),
@@ -532,14 +573,6 @@ class GbcmsRnaConfig(GbcmsBaseConfig):
             "at annotated splice junctions. Adds exon_boundary_dist column "
             "to output. Only chromosomes with variants are loaded "
             "(variant-guided streaming)."
-        ),
-    )
-
-    gtf_cache_dir: Path | None = Field(
-        default=None,
-        description=(
-            "Deprecated in 6.6.0 and ignored (removed in 6.7.0). The GTF index cache "
-            "is gone: the GTF loads in a few seconds without one."
         ),
     )
 
@@ -605,34 +638,31 @@ class GbcmsRnaConfig(GbcmsBaseConfig):
                 raise ValueError(f"GTF file must have .gtf or .gtf.gz extension, got: {v.name}")
         return v
 
-    @field_validator("gtf_cache_dir")
-    @classmethod
-    def ignore_gtf_cache_dir(cls, v: Path | None) -> None:
-        """Warn that the GTF cache is deprecated, and drop the setting."""
-        if v is not None:
-            import logging
-
-            logging.getLogger("gbcms.models").warning(
-                "--gtf-cache-dir is deprecated and ignored: the GTF index cache is gone "
-                "(the GTF loads in a few seconds without one). It will be removed in 6.7.0."
-            )
-        return None
-
     @model_validator(mode="after")
     def validate_amplicon_strandedness(self) -> "GbcmsRnaConfig":
-        """Auto-disable strandedness for amplicon libraries.
+        """Read amplicon libraries unstranded, and enforce no strand when unstranded.
 
-        Amplicon libraries are not strand-specific, so enforcing dUTP
-        strandedness filtering would incorrectly discard ~50% of reads.
-        This model-level guard ensures both CLI and programmatic callers
-        get correct behavior without needing to know the dependency.
+        Amplicon libraries are not strand-specific: folding their reads under a
+        stranded protocol mislabels sense/antisense (and ASJD strand discordance),
+        and enforcing it would discard ~50% of reads. An unstranded protocol has no
+        transcript strand, so enforcement would be a silent no-op. The CLI applies
+        both rules before building the config; applying them here too gives
+        programmatic callers the same configuration.
         """
-        if self.library_type == "amplicon" and self.enforce_strandedness:
-            import logging
+        import logging
 
-            logging.getLogger("gbcms.models").warning(
-                "library_type='amplicon' is incompatible with enforce_strandedness=True. "
-                "Auto-disabling strandedness filtering (amplicon libraries are not strand-specific)."
+        log = logging.getLogger("gbcms.models")
+        if self.library_type == "amplicon" and self.strandedness != "unstranded":
+            log.warning(
+                "library_type='amplicon' with strandedness=%r: reading the library as "
+                "unstranded (amplicon libraries are not strand-specific).",
+                self.strandedness,
+            )
+            self.strandedness = "unstranded"
+        if self.strandedness == "unstranded" and self.enforce_strandedness:
+            log.info(
+                "strandedness='unstranded' with enforce_strandedness=True: disabling "
+                "strandedness filtering (no transcript strand to filter against)."
             )
             self.enforce_strandedness = False
         return self

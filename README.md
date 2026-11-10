@@ -29,7 +29,14 @@
 pip install gbcms
 ```
 
-**From source (requires Rust):**
+A release ships a prebuilt wheel for every CPython from 3.10 on Linux x86_64 (glibc 2.28+:
+RHEL 8 and newer) and on Apple silicon Macs (macOS 11+), and the source distribution. On
+Intel Macs and older Linux, `pip` builds the source, which needs a Rust toolchain and a C
+compiler. The exact platform matrix and
+build prerequisites are on the
+[Installation page](https://msk-access.github.io/gbcms/getting-started/installation/#platform-support).
+
+**From source (Rust toolchain + C compiler):**
 ```bash
 git clone https://github.com/msk-access/gbcms.git
 cd gbcms
@@ -146,6 +153,12 @@ gbcms normalize \
 ```bash
 gbcms convert --variants variants.vcf --output variants.maf
 gbcms convert --variants variants.maf --fasta hg19.fa --output variants.vcf
+```
+
+### CLI: QC summary of finished outputs
+```bash
+gbcms summarize results/*.maf                                   # the block a run logs
+gbcms summarize --format multiqc --output-dir qc/ results/*.maf # MultiQC custom content
 ```
 
 ### CLI: Multiple Samples (Sequential)

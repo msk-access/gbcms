@@ -21,6 +21,10 @@ inside it (Ensembl VEP's overlap view). SNVs and insertions (one-base REF) are
 unchanged, and BAQ still applies to multi-base variants away from edges.
 
 Committed red (xfail-strict) before the implementation; flipped green with it.
+
+Since 2026-11-03 (RJ-31, #292) a splice junction lowers no base's quality, so the junction
+penalty described above no longer exists; the tests below pin the distance rule and what
+the exception still lifts (the penalty of a read's own indels).
 """
 
 import pytest
@@ -69,8 +73,7 @@ def _mnp(pos, n):
 
 
 def _unspliced(hap, pos, n, prefix):
-    """M-only reads over `pos` (pre-mRNA / retained-intron reads): no N, so no
-    splice-junction penalty."""
+    """M-only reads over `pos` (pre-mRNA / retained-intron reads): no N, so no splice."""
     out = []
     for i in range(n):
         s = pos - 50 + (i % 5)
@@ -214,8 +217,8 @@ def test_rescue_counts_a_far_component_under_the_mnps_rule(tmp_path):
     """Ten reads splice at a cryptic donor 3bp before the annotated one and carry
     only DONOR-6's change. The MNP row (span distance 5: no BAQ) holds them as
     partial ALT. The DONOR-6 component is re-counted under the MNP row's rule, so
-    it holds the same ten reads (on its own distance, 6, BAQ masked that base in
-    every one of them, and rescue found nothing to adopt)."""
+    it holds the same ten reads (on its own distance, 6, the rule is the same: a
+    splice lowers no base's quality, and rescue found nothing to adopt)."""
     ref, alt, change = _mnp(DNP, 2)
     far_only = _mutate(_REF, {DNP: change[DNP]})
     reads = spliced(_REF, DONOR, 500, 30, "ref") + spliced(far_only, DONOR - 3, 500, 10, "cryptic")
@@ -292,13 +295,16 @@ def test_one_base_ref_variants_keep_the_first_base_distance(tmp_path):
     assert [r["exon_boundary_dist"] for r in rows] == ["7", "9"]
 
 
-# ── Guard: BAQ still applies one base beyond the window ──────────────────────
+# ── Guard: one base beyond the window, a splice still lowers no quality ───────
 def test_baq_still_applies_to_an_mnp_ending_six_bases_from_the_edge(tmp_path):
-    """DNP at DONOR-7..DONOR-6 (span distance 6). Its carriers splice at a novel
-    donor 3bp after it, whose N penalty masks both MNP bases (a junction's
-    penalty is never spared), so they are not counted ALT, as before."""
+    """DNP at DONOR-7..DONOR-6 (span distance 6, outside the exception). Its carriers
+    splice at a novel donor 3bp after it and hold the MNP in their own bases; no
+    splice lowers a base's quality, so all ten count ALT. (The test's name is from
+    when the novel donor's N penalty masked both MNP bases and BAQ "still applied".)"""
     pos = DONOR - 7
     ref, alt, change = _mnp(pos, 2)
     carriers = spliced(_mutate(_REF, change), pos + 5, 500, 10, "novel")
     (row,) = _run(tmp_path, [(pos, ref, alt)], _unspliced(_REF, pos, 20, "ref") + carriers)
-    assert (int(row["ref_count"]), int(row["alt_count"])) == (20, 0)
+    # Was (20, 0) until #292 option B (operator, 2026-11-03): a splice no longer lowers
+    # base quality, and the 10 reads carry the MNP in their own bases.
+    assert (int(row["ref_count"]), int(row["alt_count"])) == (20, 10)

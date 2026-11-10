@@ -188,6 +188,20 @@ def test_carriers_written_further_off_are_alt(tmp_path, backend):
 
 
 @pytest.mark.parametrize("backend", BACKENDS)
+def test_reads_starting_on_the_anchor_hold_its_window(tmp_path, backend):
+    """The +8 goes between the first two G's of a GGG run and cannot slide: its window
+    is the junction with a base each side (RJ-3), however the run beside it goes on.
+    Reads starting on the anchor hold it: REF reads REF, carriers ALT."""
+    a, ref, alt = U, CONTIG[U], CONTIG[U] + INS8
+    assert CONTIG[a : a + 3] == "GGG"
+    reads = [
+        make_read(f"r{i}", CONTIG[a : a + L], a, ((0, L),), flag=16 * (i % 2)) for i in range(4)
+    ]
+    reads += [read(f"c{i}", i, a, INS8, a + 1, start=a) for i in range(4)]
+    assert _count(tmp_path, f"a{backend}", reads, a, ref, alt, backend) == (4, 4, 0)
+
+
+@pytest.mark.parametrize("backend", BACKENDS)
 def test_another_allele_written_outside_the_window_is_not_ref(tmp_path, backend):
     """A>AT before a C: a read inserting a C after the C (the A>AC allele, written
     one junction right) slides onto the junction: another allele, never REF."""

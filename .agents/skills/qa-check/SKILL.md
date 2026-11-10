@@ -1,21 +1,43 @@
 ---
 name: qa-check
-description: Procedure for the gbcms pre-merge DEV QA sweep — ruff, black, mypy, pytest, cargo test, clippy, and a staged-data-file guard. Use before merging or when asked to QA a change. NOTE: this is developer QA (lint/test). For genomic read-level QC (filters, BQ gating, BAQ) see the read-filters-qc skill.
+description: "The pre-commit and pre-merge DEV gate: ruff, CI's black, mypy, clippy, cargo test, pytest (with the agent-skill checks), a staged-data-file guard, every exit code read. Use before every commit or merge. Developer QA, not genomic QC (see read-filters-qc)."
 ---
 
 # qa-check
 
-Run the full lint/test gate. Fix order: ruff → black → mypy → clippy.
+The one home of the lint and test gate. Fix order: ruff → black → mypy → clippy.
+
+Run all of it for a docs-, skills- or Nextflow-only change too: contract tests read
+`docs/` (every `docs/**/*.md`), `nextflow/`, the README and `.agents/` (skill frontmatter,
+and every code name a skill or rule mentions), so a moved or reworded file can fail them.
 
 ```bash
-ruff check src/ tests/
-black --check src/ tests/
-mypy src/
-python -m pytest tests/ --no-header -q
-cd rust && cargo test && cargo clippy --all-targets -- -D warnings && cd ..
+ruff check src/ tests/;                          echo "ruff rc=$?"
+uvx --from 'black>=26.5' black --check src/ tests/; echo "black rc=$?"   # CI's black, not the venv's
+mypy src/;                                       echo "mypy rc=$?"
+(cd rust && cargo clippy --all-targets -- -D warnings; echo "clippy rc=$?"; cargo test; echo "cargo test rc=$?")
+python -m pytest tests/ --no-header -q > /tmp/pytest.log 2>&1; echo "pytest rc=$?"; tail -3 /tmp/pytest.log
 git status && git diff --stat
-git diff --cached --name-only | grep -E '\.(parquet|tsv|csv|bam|bai)$'   # must be empty
+git diff --cached --name-only | grep -Ei '\.(parquet|bam|bai|cram|crai|tsv|csv|maf|dat|vcf|bcf|sam|bed|fastq|fq)(\.(gz|bgz))?$' | grep -v '^tests/testdata/'   # must be empty (the pre-commit hook enforces it)
 ```
+
+**Read every exit code; never gate on a pipe.** `pytest | tail && git commit` commits when
+pytest fails, because the pipeline's status is `tail`'s (it happened: a failing fixture was
+committed). Redirect to a log and test `$?`, or `set -o pipefail`. The same holds for
+`cargo test | grep`. Read a background gate's result in a step of its own, and commit only in the
+next step: printing the result and committing in one command commits before anyone reads it (it
+happened: `cat gate.out; git commit` committed over `pytest=1`). The gate covers the tree it ran
+on: an edit made after it, docs included, needs the gate again before the commit (it happened: a
+plan paragraph added while the gate ran was committed ungated). `git cherry-pick`, `git merge`
+and `git rebase` make commits too: use `git cherry-pick --no-commit` or `git merge --no-commit`,
+run the gate, then commit (it happened: two cherry-picked rule commits were made before the gate
+ran on their new tree).
+
+**Lint tools** run at CI's versions. The shared `.venv`'s black (25.9) lags CI's latest and
+disagrees on some formatting; CI installs the newest from the `dev` group. A fresh scratch venv
+from that group (rust-python-ffi) has the right ones; `uvx --from 'black>=26.5' black` works
+anywhere. For clippy, `rustup update stable` first (CI uses stable; a stale local clippy missed
+a lint that failed CI under `-D warnings`). `ruff` and `mypy` have shown no skew.
 
 Report on pass:
 ```

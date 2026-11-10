@@ -73,7 +73,7 @@ despite parallel processing. Compression is Zstandard level 1.
 | `0` REF | Molecule carried the reference allele. **First-class** — reference observations are themselves signal for some analyses (e.g. back-mutation). |
 | `1` ALT | Molecule carried the alternate allele. |
 | `2` N | Ambiguous base. In consensus BAMs this marks a **strand-discordant** molecule — diagnostic, not noise. |
-| `3` OTHER | A third allele, no fragment consensus, or (for an indel) a molecule whose reads all start or end inside the event's repeat tract, so they cannot tell the alleles apart ([informative reads](allele-classification.md#informative-reads-for-indels)). |
+| `3` OTHER | A third allele, no fragment consensus, or (for an indel) a molecule whose reads all start or end inside the event's repeat tract, so they cannot tell the alleles apart ([informative reads](allele-classification.md#informative-reads-for-indels)). An all-uninformative molecule is OTHER here so the rows reconcile with `dpf`, and it gets no mFSD class: observations and mFSD share one classifier and keep both behaviours (operator, 2026-10-01, H3 #204). |
 
 !!! info "N rows depend on `--min-baseq`"
     N bases carry low quality, so they are usually filtered before reaching fragment
@@ -163,6 +163,7 @@ for obs in result.observations:
 | `filters` | `ReadFilters` — which reads are excluded. |
 | `quality` | `QualityThresholds` — MAPQ and base-quality gates. |
 | `alignment` | `AlignmentConfig` — backend and PairHMM parameters. Defaults to `pairhmm`. |
+| `read_judge` | `"rules"` or `"sequence"`, as `--read-judge` takes it. Defaults to the `alignment` config's (`"rules"` unless it is set there). Both preparation and counting get it. |
 | `umi_tag` | BAM tag holding the UMI (e.g. `"MI"`). Folded into `molecule_hash`, so it decides what counts as one molecule. |
 | `threads`, `apply_baq`, `library_type` | Worker threads; BAQ; `capture` (default) or `amplicon`. |
 | `config` | A whole `GbcmsDnaConfig` to take settings from — convenient if you already have one. |

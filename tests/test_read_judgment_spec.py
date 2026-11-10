@@ -7,17 +7,30 @@ the operator before an expectation is edited (AGENTS.md).
 """
 
 import pytest
-from read_judgment_cases import DECISIONS, EXPECT, cases, run
+from read_judgment_cases import DECISIONS, EXPECT, PENDING, cases, run
 
 CASES = cases()
+PARAMS = [
+    (
+        pytest.param(
+            c,
+            id=c.id,
+            marks=pytest.mark.xfail(strict=True, reason="decided; the rule is being built"),
+        )
+        if c.id in PENDING
+        else pytest.param(c, id=c.id)
+    )
+    for c in CASES
+]
 
 
 def test_every_case_has_an_expectation_and_a_decision():
     assert {c.id for c in CASES} == set(EXPECT)
     assert {c.group for c in CASES} == set(DECISIONS)
+    assert PENDING <= set(EXPECT)
 
 
-@pytest.mark.parametrize("case", CASES, ids=lambda c: c.id)
+@pytest.mark.parametrize("case", PARAMS)
 def test_the_case_gets_its_call(tmp_path, case):
     got, verdicts = run(case, tmp_path)
     want = EXPECT[case.id]

@@ -211,6 +211,44 @@ def test_amplicon_auto_disables_strandedness(tmp_path):
     ), "amplicon mode should auto-disable enforce_strandedness via model_validator"
 
 
+def _rna_config(tmp_path, **kwargs):
+    vcf = tmp_path / "dummy.vcf"
+    vcf.write_text("##fileformat=VCFv4.2\n")
+    fasta = tmp_path / "dummy.fa"
+    fasta.write_text(">chr1\nACGT\n")
+    (tmp_path / "dummy.fa.fai").write_text("chr1\t4\t6\t4\t5\n")
+    return GbcmsRnaConfig(
+        variant_file=vcf,
+        bam_files={},
+        reference_fasta=fasta,
+        output=OutputConfig(directory=tmp_path),
+        **kwargs,
+    )
+
+
+@pytest.mark.parametrize("strandedness", ["reverse", "forward", "unstranded"])
+def test_amplicon_reads_unstranded_for_programmatic_callers(tmp_path, strandedness):
+    """The model applies the amplicon rule the CLI applies: an amplicon library is
+    read unstranded (no read folds to a transcript strand) and nothing is enforced."""
+    config = _rna_config(
+        tmp_path, library_type="amplicon", strandedness=strandedness, enforce_strandedness=True
+    )
+    assert config.strandedness == "unstranded"
+    assert config.enforce_strandedness is False
+
+
+def test_unstranded_protocol_disables_enforcement_for_programmatic_callers(tmp_path):
+    """As on the CLI: an unstranded protocol has no transcript strand to enforce."""
+    config = _rna_config(tmp_path, strandedness="unstranded", enforce_strandedness=True)
+    assert config.enforce_strandedness is False
+
+
+def test_capture_keeps_its_strand_protocol(tmp_path):
+    config = _rna_config(tmp_path, library_type="capture", strandedness="forward")
+    assert config.strandedness == "forward"
+    assert config.enforce_strandedness is True
+
+
 # ── v5.0.0: rescue_mnp_threshold Config Validation ─────────────────────
 
 

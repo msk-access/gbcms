@@ -1,24 +1,28 @@
 """Target contract for wrong-length pure-indel evidence (issue #91).
 
 A read whose CIGAR proves a pure insertion/deletion of a DIFFERENT length at
-the variant anchor is evidence of a *different allele* (or a truncated
-representation, for complex insertion sequences) — never a definitive REF or
-full ALT call:
+the variant anchor is evidence of a *different allele* — never a definitive REF
+or full ALT call. A truncated copy of a long insert is another allele too (D2 of
+#278, RJ-27): the CIGAR path's 90% identity band counts it ALT only where the
+exact-carrier rule cannot judge the row.
 
-  - pure DEL, single wrong-length D op outside the >=50bp band
-      -> neither + partial_alt
-  - pure INS, wrong length, observed insert NOT a high-identity substring of a
-    non-low-complexity expected insert -> neither + partial_alt
-  - pure INS truncation of a complex expected insert -> ALT (same event)
-  - >=50bp band is placement-aware: reads deleting essentially the whole
-    expected span (<=3 retained, <=3 changed outside) -> structural ALT,
-    covering split representations (regime-2 protection); net-matching but
-    DISPLACED deletions (M ops across the expected span) are rejected ->
-    partial, and shifted same-length candidates keep Phase-3 arbitration
+  - pure DEL, a wrong-length D op (any length; the >=50bp length band is
+    retired, RJ-24) -> neither + partial_alt
+  - pure INS, wrong length, observed insert unrelated to the expected insert
+    -> neither + partial_alt
+  - pure INS truncation of a complex expected insert -> neither + partial_alt
+    (another allele by its bases)
+  - a deletion written as two ops with bases kept between, or net-matching but
+    DISPLACED deletions (M ops across the expected span) -> partial: another
+    allele by its bases. These deletions are unprepared here, so the CIGAR
+    checks judge them; a prepared 50+ bp deletion is judged by its bases at the
+    POS breakpoint (RJ-24, tests/test_long_deletion_contract.py)
   - windowed (not-at-anchor) wrong-length ops: repeat tract -> neither +
     partial_alt; unique context -> REF at anchor + partial_alt (noise is
     surfaced, never silently absorbed)
-  - delins/complex variants -> Phase-3 (unchanged)
+  - delins/complex variants -> not the pure-indel wrong-length rule: the
+    exact-carrier rule judges them (RJ-4), the CIGAR checks and Phase 3 only
+    where it cannot judge the row
 
 Every counting assertion runs through count_checked (binning invariance) and
 asserts the counting invariants.
@@ -210,16 +214,15 @@ def test_del_large_40_vs_100(tmp_path):
     assert (c.rd, c.ad, c.partial_alt) == (8, 0, 6)
 
 
-def test_del_large_split_representation_stays_alt(tmp_path):
-    """Regime-2 protection: an aligner may emit one large deletion as two D
-    ops separated by a few matched bases. D(60)+2M+D(40) against an annotated
-    102bp deletion removes 100 of the 102 expected-span bases (2 retained,
-    0 outside) — within the placement-aware band, so these reads must keep
-    counting as ALT, not be demoted by the wrong-length rule."""
+def test_del_large_split_representation_is_another_allele(tmp_path):
+    """D(60)+2M+D(40) against an annotated 102bp deletion keeps 2 of the 102
+    expected-span bases: by its bases another allele, not the ALT (partial
+    evidence). The 3-base length band that called it the same event is retired:
+    no real read needed it (RJ-24)."""
     ref = _mk_ref(n=800)
     bam = _bam(tmp_path, ref, _ref_reads(ref, 300) + _split_del_reads(ref, 300, 60, 2, 40))
     c = _count(bam, _del_variant(ref, 300, 102))
-    assert c.ad == 6
+    assert (c.ad, c.partial_alt) == (0, 6)
 
 
 def test_del_large_net_matching_but_displaced_not_alt(tmp_path):
@@ -287,14 +290,17 @@ def test_ins_unique_context_1bp_vs_2bp(tmp_path):
     assert (c.rd, c.ad, c.partial_alt) == (8, 0, 6)
 
 
-def test_ins_truncation_of_complex_insert_counts_alt(tmp_path):
-    """Regime 3: sequencing errors truncate long inserted sequences, producing
-    shorter I ops whose sequence is a prefix of the expected insert. Sign-out
-    counts these as the same event; so must we (containment rule)."""
+def test_ins_truncation_of_complex_insert_is_another_allele(tmp_path):
+    """Regime 3: reads whose insert is a prefix of the expected one, the reference
+    after it. Sign-out counts them as the same event (the CIGAR path's 90% identity
+    band, kept where the exact-carrier rule cannot judge); judged by their bases they
+    show an 11-base insertion, not the ALT's 19: another allele, partial evidence (D2,
+    operator 2026-10-16). Reads ending inside the insert, or written short with its
+    rest as mismatches, stay ALT by their bases."""
     ref = _mk_ref()
     bam = _bam(tmp_path, ref, _ref_reads(ref, 200) + _ins_reads(ref, 200, COMPLEX_INS[:11]))
     c = _count(bam, _ins_variant(ref, 200, COMPLEX_INS))
-    assert (c.rd, c.ad, c.partial_alt) == (8, 6, 0)
+    assert (c.rd, c.ad, c.partial_alt) == (8, 0, 6)
 
 
 def test_ins_unrelated_insert_stays_partial(tmp_path):
@@ -364,11 +370,11 @@ def test_ins_repeat_tract_windowed_wrong_length_stays_partial(tmp_path):
 
 # ═════════════════════════ delins guard (regime 2) ═══════════════════════
 def test_delins_reads_keep_phase3_routing(tmp_path):
-    """Complex AAA>G vs plain 1bp-del reads: the wrong-length rule must NOT
-    apply to delins — Phase-3 owns this class (validated on the curated
-    internal set). This test pins the routing by asserting the wrong-length
-    reads are not force-converted to partial via the pure-indel rule:
-    whatever Phase-3 decides, ad stays 0 and the classification is stable
+    """Complex AAA>G vs plain 1bp-del reads: the pure-indel wrong-length rule must
+    NOT apply to delins — the exact-carrier rule judges this class (RJ-4), the
+    CIGAR checks and Phase 3 only where it cannot judge the row. This test pins
+    the routing by asserting the wrong-length reads are not force-converted to
+    partial via the pure-indel rule: ad stays 0 and the classification is stable
     before and after the fix."""
     ref = _mk_ref(plants=HOMOPOLY)
     bam = _bam(tmp_path, ref, _ref_reads(ref, 200) + _del_reads(ref, 200, 1))

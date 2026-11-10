@@ -436,6 +436,12 @@ mod tests {
             shift_region: None,
             event_ref: None,
             boundary_span: None,
+            listed_neighbours: Vec::new(),
+            reach_rows: Vec::new(),
+            reach_unrecorded: false,
+            judge_routed: false,
+            whole_ref: None,
+            listed_indels: Vec::new(),
         }
     }
 
@@ -479,6 +485,12 @@ mod tests {
             shift_region: None,
             event_ref: None,
             boundary_span: None,
+            listed_neighbours: Vec::new(),
+            reach_rows: Vec::new(),
+            reach_unrecorded: false,
+            judge_routed: false,
+            whole_ref: None,
+            listed_indels: Vec::new(),
         };
         assert!(build_haplotype_matrix(&v, &[]).is_none());
     }

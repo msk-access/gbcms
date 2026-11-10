@@ -4,7 +4,7 @@ This directory contains a Nextflow workflow for running `gbcms` on multiple samp
 
 ## Prerequisites
 
-1. [Nextflow](https://www.nextflow.io/docs/latest/getstarted.html) (>=22.10.1)
+1. [Nextflow](https://www.nextflow.io/docs/latest/getstarted.html) 24.04.0 or later (the manifest enforces `nextflowVersion = '!>=24.04.0'`)
 2. [Docker](https://docs.docker.com/engine/installation/) or [Singularity](https://www.sylabs.io/guides/3.0/user-guide/)
 
 ## Quick Start
@@ -88,6 +88,8 @@ nextflow run nextflow/main.nf \
 | Parameter | Description | Default |
 |-----------|-------------|---------|
 | `--outdir` | Output directory | `results` |
+| `--publish_dir_mode` | How Nextflow stages results into `--outdir` (`copy`, `symlink`, `link`, `move`, ...) | `copy` |
+| `--tracedir` | Directory for the execution trace, report, timeline and DAG files | `${params.outdir}/pipeline_info` |
 | `--format` | Output format (`vcf` or `maf`) | `vcf` |
 | `--suffix` | Suffix to append to output filenames | `''` (empty) |
 | `--column_prefix` | Prefix for gbcms count columns in MAF output | `''` (empty) |
@@ -100,7 +102,8 @@ nextflow run nextflow/main.nf \
 | `--context_padding` | Minimum flanking bases for alignment | `5` |
 | `--adaptive_context` | Auto-increase context in tandem repeats | `true` |
 | `--umi_tag` | UMI BAM tag for deduplication (e.g., `XM`, `RX`) | `''` (disabled) |
-| `--apply_baq` | Apply BAQ recalibration (config default off; the RNA CLI enables it by default) | `false` |
+| `--apply_baq` | Apply BAQ recalibration (DNA; matches `gbcms dna`) | `false` |
+| `--rna_apply_baq` | Apply BAQ recalibration (RNA; matches `gbcms rna`) | `true` |
 | `--filter_duplicates` | Filter duplicate reads | `true` |
 | `--filter_secondary` | Filter secondary alignments | `true` |
 | `--filter_supplementary` | Filter supplementary alignments | `true` |
@@ -109,6 +112,7 @@ nextflow run nextflow/main.nf \
 | `--filter_indel` | Filter reads with indels | `false` |
 | `--filter_by_sample` | Filter multi-sample MAF by Tumor_Sample_Barcode | `false` |
 | `--alignment_backend` | Phase 3 alignment: `pairhmm` (default), `sw` (Smith-Waterman), or `hmm` (alias for `pairhmm`) | `pairhmm` |
+| `--read_judge` | Read judgment (DNA only): `rules` (the size-specific rules) or `sequence` (the sequence judge, opt-in, #304; `haplotype` is its former name) | `rules` |
 
 ### RNA-Specific
 | Parameter | Description | Default |
@@ -118,7 +122,6 @@ nextflow run nextflow/main.nf \
 | `--enforce_strandedness` | Filter reads to the transcript's sense strand (requires `--gtf` for `gene_strand`). `--strandedness unstranded` disables it. | `true` |
 | `--library_type` | `capture` (default) or `amplicon`. Amplicon treats R1/R2 as independent observations (no fragment consensus) and disables strandedness. | `capture` |
 | `--gtf` | GTF (plain or `.gtf.gz`) for exon-boundary / per-transcript / ASJD annotation and `gene_strand` back-fill | `''` (disabled) |
-| `--gtf_cache` | Deprecated in 6.6.0 and ignored (warns when set); removed in 6.7.0. Each task loads the GTF in a few seconds. | `null` |
 
 ### Feature Columns & Merge
 | Parameter | Description | Default |
@@ -128,10 +131,11 @@ nextflow run nextflow/main.nf \
 | `--mfsd_report` | Generate the HTML mFSD report | `false` |
 | `--rescue_mnp` | Enable the MNP-rescue second pass | `false` |
 | `--rescue_mnp_threshold` | Maximum discriminating/length ratio for MNP rescue eligibility | `1.0` |
-| `--rescue_homopolymer` | Dual-count the homopolymer twin (`WARN_HOMOPOLYMER_DECOMP`); off counts the given allele | `false` |
+| `--rescue_homopolymer` | Deprecated in 6.7.0, removed in 6.8.0; accepted and ignored with a warning (the row counts the given allele; `OBSERVED_ALLELE` and `COEXISTING_ALLELE` name what the reads carry) | `false` |
 | `--merge_counts` | Enable the `MERGE_COUNTS` process (multi-BAM merge; needs `bam_type` in the samplesheet) | `false` |
 | `--merge_add_combined` | Compute `simplex_duplex_*` combined columns during merge | `true` |
 | `--merge_legacy_naming` | Use `t_{metric}_{type}` naming (genotype_variants compat) | `false` |
+| `--qc_summary` | After all samples, run `gbcms summarize` over every output and publish MultiQC custom content and a JSON per output to `gbcms/qc_summary/` | `false` |
 
 See [Full Parameter Reference](../docs/nextflow/parameters.md) for all options including PairHMM tuning parameters.
 
@@ -180,7 +184,8 @@ Pipeline info and logs are in `${params.outdir}/pipeline_info/`.
 |--------|-------------|
 | `GBCMS_DNA` | DNA allele counting via `gbcms dna` |
 | `GBCMS_RNA` | RNA allele counting via `gbcms rna` |
-| `GBCMS_NORMALIZE` | Variant normalization via `gbcms normalize` |
+| `GBCMS_NORMALIZE` | Variant normalization via `gbcms normalize`. Defined in `modules/local/gbcms/normalize` but included by no workflow, so a run never executes it; run `gbcms normalize` directly |
 | `MERGE_COUNTS` | Merge per-BAM counts into simplex/duplex combined columns (`--merge_counts`) |
+| `QC_SUMMARY` | QC flag summary of every output as MultiQC custom content and JSON (`--qc_summary`) |
 | `FILTER_MAF` | Pre-filter multi-sample MAF by sample |
 | `PIPELINE_SUMMARY` | Aggregate filtering statistics |

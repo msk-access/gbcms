@@ -211,18 +211,23 @@ def test_a_masked_first_inserted_base_does_not_withdraw_a_carrier(tmp_path):
     assert _count_reads(tmp_path, ref, "G", "G" + INSERT10, carrier) == (5, 5, 0)
 
 
-def test_a_large_deletion_with_a_small_insertion_at_its_far_junction_stays_alt(tmp_path):
-    """A unique 57bp deletion, the carriers write D(57) then I(TT): within the
-    large-deletion band's tolerance (≤3 changed bases), as D(56)+I(TT) already is."""
+def test_a_large_deletion_with_a_small_insertion_at_its_far_junction_is_another_allele(
+    tmp_path,
+):
+    """A unique 57bp deletion, the carriers write D(57) then I(TT): by their bases
+    they carry the deletion with TT inserted at its junction, another allele
+    (partial evidence). The 3-base length band that absorbed it is retired: 50+ bp
+    deletions are judged by their bases at the POS breakpoint (RJ-24)."""
     events = [(A + 1, "D", 57), (A + 58, "I", "TT")]
     ref = UNIQUE57
-    assert _count_reads(tmp_path, ref, ref[A : A + 58], ref[A], _ops(ref, events)) == (5, 5, 0)
+    assert _count_reads(tmp_path, ref, ref[A : A + 58], ref[A], _ops(ref, events)) == (5, 0, 5)
 
 
-def test_soft_clipped_bases_behind_a_hard_clip_are_not_read(tmp_path):
-    """GA>G in G AAAAA T, carriers ending two bases into the run, the rest of the
-    read soft-clipped and then hard-clipped: the clipped bases are not read, so the
-    carriers fit both alleles and are uninformative."""
+def test_soft_clipped_bases_behind_a_hard_clip_are_read(tmp_path):
+    """GA>G in G AAAAA T, carriers aligned two bases into the run, the rest of the
+    read soft-clipped and then hard-clipped: the soft-clipped bases are the read's
+    own (RJ-13) and show the run one A short and the T after it, so the carriers are
+    ALT."""
 
     def carrier(s):
         left = A + 1 - s
@@ -230,14 +235,15 @@ def test_soft_clipped_bases_behind_a_hard_clip_are_not_read(tmp_path):
         return seq, ((0, left), (2, 1), (0, 2), (4, 6), (5, 3))
 
     c = _count_reads(tmp_path, HOMOPOLYMER, "GA", "G", carrier, full=True)
-    assert (c.rd, c.ad, c.partial_alt) == (5, 0, 0)
+    assert (c.rd, c.ad, c.partial_alt) == (5, 5, 0)
 
 
-def test_a_misplaced_deletion_ambiguous_at_a_masked_base_is_not_alt(tmp_path):
+def test_a_misplaced_deletion_ambiguous_at_a_masked_base_is_alt(tmp_path):
     """CG>C deletes a G of the run after C C. The carriers' CIGAR deletes the first
     C instead, and the base where "deleted a C" (C GGGGGGG) and "deleted a G"
-    (CC GGGGGG) differ is an N: their bases cannot tell the two alleles apart, so
-    not ALT (a real RC case)."""
+    (CC GGGGGG) differ is an N (a real RC case). Their bases show the ALT's length and
+    fit the ALT; "deleted a C" is no allele named at the locus, so it is no other
+    allele to tell the ALT from (RJ-25): ALT, wherever the CIGAR put the gap."""
 
     def carrier(s):
         left = A - 1 - s
@@ -245,8 +251,7 @@ def test_a_misplaced_deletion_ambiguous_at_a_masked_base_is_not_alt(tmp_path):
         seq = (hap[: left + 1] + "N" + hap[left + 2 :])[:READ]
         return seq, ((0, left), (2, 1), (0, READ - left))
 
-    rd, ad, partial = _count_reads(tmp_path, CCG7, "CG", "C", carrier)
-    assert ad == 0
+    assert _count_reads(tmp_path, CCG7, "CG", "C", carrier) == (5, 5, 0)
 
 
 def test_a_misplaced_deletion_whose_read_base_settles_it_is_alt(tmp_path):
@@ -303,13 +308,13 @@ def test_a_deletion_carrier_reading_past_the_run_stays_alt(tmp_path):
 @pytest.mark.parametrize(
     "ref_allele, events, expected",
     [
-        # The 57bp deletion written after a 2bp insertion: within the large-deletion
-        # band, as the same pair written D-first is.
-        (UNIQUE57[A : A + 58], [(A + 1, "I", "TT"), (A + 1, "D", 57)], (5, 5, 0)),
+        # The 57bp deletion written after a 2bp insertion: another allele by its
+        # bases, as the same pair written D-first is (RJ-24 retired the length band).
+        (UNIQUE57[A : A + 58], [(A + 1, "I", "TT"), (A + 1, "D", 57)], (5, 0, 5)),
         # An 8bp deletion written after a 1bp insertion: another allele.
         ("G" + SPAN8, [(A + 1, "I", "T"), (A + 1, "D", 8)], (5, 0, 5)),
     ],
-    ids=["57bp-band", "8bp"],
+    ids=["57bp", "8bp"],
 )
 def test_a_deletion_written_after_an_insertion_is_judged(tmp_path, ref_allele, events, expected):
     """The aligner may write an I/D pair at the junction in either order; the

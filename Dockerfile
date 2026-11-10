@@ -87,8 +87,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     bash \
     && rm -rf /var/lib/apt/lists/*
 
-# Runtime dependencies from the hash-pinned lock (linux/amd64, Python 3.11; refreshed
-# at each release, see the release guide), then the wheel without resolving anything,
+# Runtime dependencies from the hash-pinned lock (resolved for linux/amd64 and Python 3.11,
+# with the hashes of every platform's wheels, so the arm64 image installs the same versions;
+# refreshed at each release, see the release guide), then the wheel without resolving anything,
 # then pip check: the image holds exactly the locked versions, and they satisfy
 # gbcms's own requirements, so a lock that no longer does fails the build here.
 COPY docker/requirements.lock /app/requirements.lock
@@ -99,6 +100,12 @@ RUN pip install --no-cache-dir --require-hashes --no-deps -r /app/requirements.l
 
 # Verify installation
 RUN python -c "from gbcms import _rs; import gbcms; print(f'gbcms {gbcms.__version__} ready')"
+
+# Singularity and Apptainer (the RHEL clusters' runtimes) bind the caller's HOME into the
+# container, and a Python imports packages from ~/.local before its own: the packages
+# that a user put there with pip's --user option would replace the locked ones. Turn the
+# user site off.
+ENV PYTHONNOUSERSITE=1
 
 ENTRYPOINT ["gbcms"]
 CMD ["--help"]

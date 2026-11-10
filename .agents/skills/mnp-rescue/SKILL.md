@@ -1,6 +1,6 @@
 ---
 name: mnp-rescue
-description: Reference for gbcms MNP rescue and diagnostic flags — rescue intent and candidate gate, row adoption and the gbcms_rescue audit format, --rescue-mnp-threshold semantics, and the strongly-typed gbcms_diagnostic / gbcms_rescue fields. Use when touching the MNP rescue pass, diagnostic-flag computation, or their tests/stubs.
+description: "MNP rescue and diagnostic flags: candidate gate, row adoption, the gbcms_rescue audit format, --rescue-mnp-threshold, and the gbcms_diagnostic / gbcms_rescue fields. Use when touching the rescue pass, diagnostic flags, or their tests and stubs."
 ---
 
 # MNP Rescue & Diagnostic Flags
@@ -34,8 +34,8 @@ calls share `_engine_kwargs()` so components classify reads exactly like the mai
 `method=decomposed;outcome=<rescued|skipped_grouped|haplotype_confirmed|no_improvement|ref_validation_failed>;original_ref=R;original_alt=A;original_partial=P;original_confirmed=C[;adopted=chr:pos(R>A)][;positions=chr:pos(R>A):<ad|ref_fail>+...]`
 - Reset for every sample (the prepared list is shared across BAMs). Positions join with `+`,
   never `,` — VCF emits it as the Number=1 `GR` INFO and parsers split commas.
-- Labels (flag, audit, logs) use the contig as the output row writes it (`_output_contig`:
-  an input MAF's own `Chromosome`, else the internal name).
+- Labels (flag, audit, logs) use the contig as the output row writes it (`output_chrom`:
+  the contig as the input file spelled it, else the normalized name).
 - `gbcms merge` warns per row when duplex/simplex rescue outcomes differ, with or without
   `--add-combined` (counts unchanged).
 - Rescued rows keep the shape flags `MNP_DISC_RATIO`/`MNP_RESCUE_ELIGIBLE`; unresolved rows =

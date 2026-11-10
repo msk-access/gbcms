@@ -14,13 +14,21 @@ gbcms/
 │   ├── pipeline.py      # Orchestration, progress, Parquet dispatch
 │   ├── normalize.py     # Standalone normalization workflow
 │   ├── convert.py       # Standalone VCF <-> MAF conversion
+│   ├── merge.py         # `gbcms merge`: per-BAM-type MAFs (duplex, simplex) -> one, simplex_duplex_* columns
+│   ├── observations.py  # Per-molecule observation export (public API; companion Parquet)
+│   ├── deprecations.py  # Deprecation notices shared by the CLI, Pipeline and Python API (--rescue-homopolymer)
+│   ├── rescue_audit.py  # The gbcms_rescue audit contract, shared by the MNP rescue pass and merge
+│   ├── qc_summary.py    # End-of-run QC summary: the flag tier table, read from the written output, one log block
+│   ├── qc_export.py     # `gbcms summarize`: the QC summary as text, JSON, a cohort TSV or MultiQC content
 │   ├── _rs.pyi          # Primary Rust type stubs (authoritative)
 │   ├── core/
 │   │   └── kernel.py    # Coordinates; the one VCF<->MAF rule (vcf2maf/maf2vcf) + type labels
 │   ├── io/
 │   │   ├── input.py     # VcfReader (skips uncountable ALTs), MafReader
 │   │   ├── output.py    # VcfWriter, MafWriter (mFSD/RNA column gating)
-│   │   └── reference.py # Reference bases for MAF -> VCF anchors
+│   │   ├── reference.py # Reference bases for MAF -> VCF anchors
+│   │   ├── atomic.py    # Atomic output files (temp file + fsync + rename)
+│   │   └── batch.py     # Polars batch I/O for post-processing (merge, mFSD report)
 │   ├── models/
 │   │   └── core.py      # GbcmsConfig, OutputConfig, AlignmentConfig (Pydantic)
 │   ├── report/
@@ -33,9 +41,12 @@ gbcms/
 │       ├── types.rs     # Variant, BaseCounts PyO3 bindings
 │       ├── counting/
 │       │   ├── engine.rs        # Main counting loop, genomic binning, Rayon par_iter()
-│       │   ├── variant_checks.rs # check_snp/mnp/ins/del/complex, windowed scan
-│       │   ├── carrier.rs       # Exact-carrier rule for complex variants (delins, Del+SNV, structural MNP)
+│       │   ├── variant_checks.rs # splice triage; check_snp/mnp/ins/del/complex CIGAR checks, windowed scan
+│       │   ├── carrier.rs       # Exact-carrier rule: pure indels, delins, Del+SNV, structural MNP; neighbouring-change guard
+│       │   ├── junction.rs      # Junction judge for pure deletions of 50 bp or more
+│       │   ├── window.rs        # allele_kind, read/guard/discrimination windows, informative-read tests
 │       │   ├── observed.rs      # OBSERVED_ALLELE / COEXISTING_ALLELE: the allele the reads carry
+│       │   ├── utils.rs         # ClassifyResult/ClassifyPhase, haplotype and masked-compare helpers
 │       │   ├── alignment.rs     # Smith-Waterman
 │       │   ├── pairhmm.rs       # PairHMM backend, LLR scoring
 │       │   ├── pangenome.rs     # Haplotype matrix for complex phase
@@ -43,7 +54,13 @@ gbcms/
 │       │   ├── rna.rs           # RNA validation, strandedness, splice junctions, editing sites
 │       │   ├── mfsd.rs          # Fragment size distribution (KS test, LLR)
 │       │   ├── parquet_writer.rs # Arrow/ZSTD native Parquet
-│       │   └── fragment.rs      # Re-export shim for shared::fragment
+│       │   ├── fragment.rs      # Re-export shim for shared::fragment
+│       │   └── judge/           # The sequence judge, opt-in (--read-judge sequence, #304)
+│       │       ├── mod.rs       # site_for (a row's site), found indels, per-row verdict caches
+│       │       ├── haplotypes.rs # Site: its states and contexts, the rules that admit them
+│       │       ├── graph.rs     # The graph scorer: one programme per site state
+│       │       ├── score.rs     # Per-haplotype affine aligner (the alignments a call is read on)
+│       │       └── decide.rs    # The call (margin, fit, telling bases) as a ClassifyResult
 │       ├── annotation/          # v5.0.0: GTF-informed annotation
 │       │   ├── mod.rs           # AnnotationIndex (COITree, splice sites, transcript introns)
 │       │   ├── gtf.rs           # GTF loader (plain or gzip/BGZF, variant-guided streaming)
@@ -52,13 +69,19 @@ gbcms/
 │       │   ├── fragment.rs      # FragmentEvidence, QNAME/UMI hashing
 │       │   ├── stats.rs         # Fisher's exact test, strand bias
 │       │   ├── bam_utils.rs     # median_qual, find_read_pos
+│       │   ├── contig.rs        # Contig-name normalization across BAM/GTF/VCF (chrM vs MT)
 │       │   ├── filters.rs       # ReadFilter, FilterCounts
 │       │   └── baq.rs           # Heuristic BAQ (Li 2011)
-│       └── normalize/           # Left-alignment, decomp, fasta, repeat
+│       └── normalize/           # Variant preparation (PreparedVariant)
+│           ├── mod.rs, engine.rs, types.rs  # entry, preparation engine, PreparedVariant
+│           ├── left_align.rs    # Left-alignment
+│           ├── decomp.rs        # Homopolymer-twin detection (a delins miscollapsed in a run)
+│           ├── fasta.rs         # Reference windows
+│           └── repeat.rs        # Tandem-repeat detection and adaptive padding
 ├── nextflow/            # Nextflow pipeline wrapper
-├── tests/               # 255 Python tests (15+ files)
+├── tests/               # pytest suite: contract tests, census.py, helpers.py (`ls tests`)
 ├── docs/                # MkDocs documentation
-└── .agents/             # Agent rules, workflows, skills
+└── .agents/             # Agent rules, skills, memory, learnings; archive/ holds retired plans
 ```
 
 ## Rust/Python Boundary
@@ -86,10 +109,11 @@ gbcms/
 5. **4-layer CLI validation**: Parse-time (Typer) → Pre-model (cli.py) → Model-time (Pydantic) → No silent skips.
 6. **Fragment counting always on**: Quality-weighted consensus; discards counted in DPF not RDF/ADF.
 7. **Windowed indel detection**: ±5bp scan expanding to `max(5, repeat_span + 2)`.
-8. **Dual alignment backends**: SW (default) or PairHMM (`--alignment-backend hmm`).
+8. **Dual alignment backends**: PairHMM (the CLI default, `--alignment-backend pairhmm`; `hmm` is an alias; WFA2 triage runs in front of it) or Smith-Waterman (`sw`, opt-in). They are the residual fallback behind the exact-carrier and junction rules (counting-engine skill).
 9. **Genomic binning**: ~10kb bins, one `bam.fetch()` per bin, max 200 variants/bin.
-10. **COITree for annotation**: Platform-portable metadata access via `Borrow` trait (nosimd vs NEON/AVX backends). The index is built per run from the GTF (plain or gzip/BGZF; ~2 s for a whole Ensembl GTF, ~6.5 s for GENCODE comprehensive; each line's feature and chromosome read before anything else is parsed); there is no disk cache (`--gtf-cache-dir` / `build-gtf-cache` are deprecated no-ops in 6.6.0, removed in 6.7.0).
+10. **COITree for annotation**: Platform-portable metadata access via `Borrow` trait (nosimd vs NEON/AVX backends). The index is built per run from the GTF (plain or gzip/BGZF; ~2 s for a whole Ensembl GTF, ~6.5 s for GENCODE comprehensive; each line's feature and chromosome read before anything else is parsed); there is no disk cache (the 6.6.0 build-gtf-cache command and its cache-dir option are gone).
 11. **Diagnostic flags**: `gbcms_diagnostic` and `gbcms_rescue` are strongly-typed Rust fields, not dynamic attributes.
+12. **Statistics stay in Rust** (KS, LLR, Fisher in `counting/mfsd.rs` and `shared/stats.rs`); there is no scipy dependency. The exact KS p-value is a self-contained Rust DP, checked against SciPy reference values baked into the tests as literals.
 
 ## Binning invariance
 
@@ -102,12 +126,15 @@ threads, or extra rows that move where bins start. The Benjamini-Hochberg q-valu
 (`mfsd_qval_alt_ref`, `asjd_qval`) are computed over the rows of a call, so they are
 excepted when the set of rows changes. It follows that every bin's fetch must hold
 each member's read window `[pos − pad, pos + ref_len + pad)`, `pad = max(5,
-repeat_span + 2)`, the anchor's included.
+repeat_span + 2)`, the anchor's included, and its guard window
+(`window::guard_window`): for a variant the exact-carrier rule judges, a whole read's
+reach (300 bases) each side of its REF span, the fragments the guard's placed-apart
+check reads.
 
 **How it is checked.**
 - `build_genomic_bins` property test (Rust): every variant in exactly one bin whose
-  fetch holds its window, over random clusters × window {1, 7, 100, 10k} × cap
-  {1, 2, 3, 200}.
+  fetch holds its read window and its guard window, over random clusters × window
+  {1, 7, 100, 10k} × cap {1, 2, 3, 200}.
 - `tests/test_binning_invariance.py`: the geometries above on synthetic DNA pairs
   (plain; BAQ + UMI + mFSD; siblings, a decomposed twin, overlapping mates), clip
   carriers aligned past a long anchor (the one read shape in which an under-fetched
@@ -127,7 +154,7 @@ repeat_span + 2)`, the anchor's included.
 `tests/test_read_census.py`): each read judged by its own bases across the event's
 tract, with the decided rules (REF needs one base past the first difference, ALT only
 that base). Open decisions are strict xfails there. A second engine sharing the
-classifier cannot see classification bugs, which is why the per-variant `count_bam`
+classifier cannot see classification bugs, which is why the per-variant counting
 oracle was retired (#170).
 
 ## Type Stub Synchronization
@@ -135,5 +162,4 @@ oracle was retired (#170).
 - `src/gbcms/_rs.pyi` is the **single** stub for the `gbcms._rs` extension module —
   edit it whenever the `#[pyo3(get)]` fields or `#[pyo3(signature)]` params change
 - It includes: `BaseCounts`, `PreparedVariant`, diagnostic fields, ASJD fields, nucleosomal fractions
-- (Historical: a top-level `src/gbcms_rs.pyi` used to mirror this; it stubbed a module
-  nothing imports and was removed in LO-1. Don't reintroduce it.)
+- There is no second stub (AGENTS.md invariant 5)

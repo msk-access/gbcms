@@ -1,14 +1,16 @@
 ---
 name: read-filters-qc
-description: Reference for gbcms read-level (genomic) QC — BAM flag filters (duplicate/secondary/supplementary/qc-failed/improper-pair/indel), MAPQ and base-quality gating, heuristic BAQ near indels/splice junctions, and QC diagnostics (mq0_count, n_count, alt/ref distance-to-end). Use when changing filtering or quality gating. NOTE: this is genomic QC — for the dev lint/test sweep see the qa-check skill.
+description: "Genomic read QC: BAM flag filters, MAPQ and base-quality gating, heuristic BAQ near indels, QC diagnostics (mq0_count, n_count, distance to read end). Use when changing filtering or quality gating. The developer lint/test gate is qa-check."
 ---
 
 # Read Filters & Quality Gating (genomic QC)
 
 ## Phase 0 universal filters (`shared/filters.rs`)
 
-`ReadFilter::passes()` checks, in order: duplicate → secondary → supplementary →
-qc-failed → improper-pair → indel(CIGAR I/D) → no bases (SEQ `*`, always on).
+`ReadFilter::passes()` checks, in order: unmapped (always on: a record placed at its mate's
+position is no observation, and at `--min-mapq 0` nothing else would screen it) → duplicate →
+secondary → supplementary → qc-failed → improper-pair → indel(CIGAR I/D) → no bases (SEQ `*`,
+always on).
 Rejections are tallied in `FilterCounts` for debug logging; no-bases records are
 also warned once per counting pass (not in DP, fragments or `mq0_count`).
 
@@ -29,13 +31,15 @@ RNA does NH:i:1 rescue of low-MAPQ unique reads; `mq0_count` tracks MAPQ==0 read
 
 ## Heuristic BAQ (`shared/baq.rs`, Li 2011)
 
-- Downgrades BQ within `BAQ_RADIUS = 5` bp of any Ins/Del/RefSkip by
-  `BAQ_PENALTY = 20` (clamped at 0). Allocation-free when the read has no indel/N.
-- For RNA, the RefSkip (N) penalty substitutes for GATK SplitNCigarReads overhang
-  clipping.
-- Default: **DNA off, RNA on** (`--apply-baq` / `--no-baq`). The Nextflow modules
-  encode this asymmetry — DNA passes `--apply-baq` only if true; RNA passes
-  `--no-baq` only if false.
+- Downgrades BQ within `BAQ_RADIUS = 5` bp of any Ins/Del by `BAQ_PENALTY = 20`
+  (clamped at 0). Allocation-free when the read has no indel. A RefSkip (N) lowers no
+  base's quality (RJ-31, 2026-11-03; it reversed the junction penalty of 4.1.0): a base
+  is judged by its own quality, as in GATK after SplitNCigarReads.
+- At a variant within 5 bp of an annotated exon edge (with a GTF) BAQ is skipped: the
+  penalty of a read's other indels is lifted there.
+- Default: **DNA off, RNA on** (`--apply-baq` / `--no-baq`). The Nextflow modules keep
+  separate params: DNA passes `--apply-baq` only if `apply_baq` is true; RNA passes
+  `--apply-baq` or `--no-baq` explicitly from `rna_apply_baq`.
 
 ## QC diagnostic outputs
 

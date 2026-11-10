@@ -63,9 +63,29 @@ nextflow run nextflow/main.nf \
     --mode rna \
     --format maf \
     --rna_editing_db /path/to/TABLE1_hg38_v3.txt \
+    --gtf /path/to/Homo_sapiens.GRCh38.111.gtf.gz \
     --enforce_strandedness \
     -profile docker
 ```
+
+Strand enforcement needs the `--gtf`, which supplies each variant's gene strand; without it
+every read counts as sense.
+
+### Unstranded RNA
+
+```bash
+nextflow run nextflow/main.nf \
+    --input samplesheet.csv \
+    --variants variants.maf \
+    --fasta reference.fa \
+    --mode rna \
+    --format maf \
+    --strandedness unstranded \
+    -profile docker
+```
+
+`--strandedness unstranded` also turns off ASJD's strand-discordance check, which
+`--enforce_strandedness false` does not.
 
 ## MAF Output
 

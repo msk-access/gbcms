@@ -65,8 +65,9 @@ pub fn left_align_variant(
 
     // Phase 2: Right-trim — remove matching trailing bases
     // Keep at least 1 base in each allele (VCF anchor requirement)
-    while r.len() > 1 && a.len() > 1
-        && r.last().unwrap().eq_ignore_ascii_case(a.last().unwrap())
+    while r.len() > 1
+        && a.len() > 1
+        && matches!((r.last(), a.last()), (Some(x), Some(y)) if x.eq_ignore_ascii_case(y))
     {
         r.pop();
         a.pop();
@@ -89,4 +90,40 @@ pub fn left_align_variant(
         || !r.eq_ignore_ascii_case(&original_ref)
         || !a.eq_ignore_ascii_case(&original_alt);
     (cur_pos, r, a, was_modified)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn right_trim_stops_at_one_base_per_allele() {
+        // One A deleted from a run of three, in the context C AAA T: the right-trim
+        // walks the matching tail until the shorter allele is its anchor C alone, never
+        // past it, and the deletion lands at the start of the run.
+        let reference = b"CAAAT";
+        let (pos, r, a, modified) = left_align_variant(2, b"AA", b"A", reference, 0, 100);
+        assert_eq!((pos, r.as_slice(), a.as_slice(), modified), (0, &b"CA"[..], &b"C"[..], true));
+    }
+
+    #[test]
+    fn matching_tails_trim_whatever_their_case() {
+        // A soft-masked (lowercase) reference and upper-case alleles: the tails compare
+        // equal ignoring case, so the result is the same as for the upper-case run.
+        let (pos, r, a, modified) = left_align_variant(2, b"AA", b"A", b"caaat", 0, 100);
+        assert_eq!((pos, r.as_slice(), a.as_slice(), modified), (0, &b"ca"[..], &b"c"[..], true));
+    }
+
+    #[test]
+    fn an_insertion_trims_to_its_anchor_too() {
+        // One A inserted into a run of three: C AAA T, A>AA at the run's last base.
+        let (pos, r, a, modified) = left_align_variant(3, b"A", b"AA", b"CAAAT", 0, 100);
+        assert_eq!((pos, r.as_slice(), a.as_slice(), modified), (0, &b"C"[..], &b"CA"[..], true));
+    }
+
+    #[test]
+    fn a_snv_is_never_trimmed() {
+        let (pos, r, a, modified) = left_align_variant(1, b"A", b"C", b"GAC", 0, 100);
+        assert_eq!((pos, r.as_slice(), a.as_slice(), modified), (1, &b"A"[..], &b"C"[..], false));
+    }
 }

@@ -28,10 +28,12 @@ from rich.progress import (
 )
 
 from .core.kernel import CoordinateKernel
+from .deprecations import warn_rescue_homopolymer_deprecated
 from .io.atomic import atomic_path, commit_partial, discard_partial, partial_path
-from .io.input import MafReader, VariantReader, VcfReader
+from .io.input import MafReader, VariantReader, VcfReader, variant_format
 from .io.output import MafWriter, VcfWriter, build_identity, declared_contigs
 from .models.core import GbcmsBaseConfig, OutputFormat, Variant, VariantType
+from .qc_summary import QcSummary, Skipped, log_qc_summary, summarize_output
 from .rescue_audit import (
     MNP_RESCUE_ELIGIBLE,
     OUTCOME_HAPLOTYPE_CONFIRMED,
@@ -215,13 +217,9 @@ def run_implications(cfg: Any) -> list[str]:
             "(by read name where a read lacks it)"
         )
     # --rescue-mnp has its own WARNING at run start (rescued rows' counts).
-    if cfg.rescue_homopolymer:
-        out.append(
-            "--rescue-homopolymer: a row whose corrected allele wins reports it "
-            "(WARN_HOMOPOLYMER_DECOMP)"
-        )
     if o.mfsd:
-        out.append("--mfsd adds 40 fragment-size (mFSD) columns")
+        added = len(MafWriter.column_names(mfsd=True)) - len(MafWriter.column_names())
+        out.append(f"--mfsd adds {added} fragment-size (mFSD) columns")
     if cfg.show_normalization:
         out.append("--show-normalization adds the norm_* columns")
     if o.observations_parquet:
@@ -351,21 +349,7 @@ def read_variant_file(path: Path) -> list[Variant]:
     Format is selected by extension. This is the pre-normalization read, so no
     reference is required.
     """
-    reader: VariantReader
-    name_lower = path.name.lower()
-    if (
-        path.suffix.lower() == ".vcf"
-        or name_lower.endswith(".vcf.gz")
-        or name_lower.endswith(".vcf.bgz")
-    ):
-        reader = VcfReader(path)
-    elif path.suffix.lower() == ".maf":
-        reader = MafReader(path)
-    else:
-        raise ValueError(
-            f"Unsupported variant file format: '{path.suffix}'. "
-            "Expected .vcf, .vcf.gz, .vcf.bgz, or .maf."
-        )
+    reader: VariantReader = MafReader(path) if variant_format(path) == "maf" else VcfReader(path)
     variants = list(reader)
     if hasattr(reader, "close"):
         reader.close()
@@ -479,6 +463,8 @@ class Pipeline:
             config: Configuration object with input/output paths and filter settings.
         """
         self.config = config
+        if config.rescue_homopolymer:
+            warn_rescue_homopolymer_deprecated()
         self.console = Console()
         self._stats: dict[str, int | float] = {
             "samples_processed": 0,
@@ -489,6 +475,10 @@ class Pipeline:
         self._reference_contigs: list[tuple[str, int]] = []
         self._declared_contigs: list[tuple[str, int | None]] = []
         self._logged_naming: set[tuple[str, str]] = set()
+        # One QC tally per written sample, for the end-of-run summary.
+        self._qc_summaries: list[QcSummary] = []
+        # Samples whose output could not be read for it: named in the summary, not dropped.
+        self._qc_skipped: list[Skipped] = []
 
     def _log_naming_difference(
         self, variants: list[Variant], other_names: list[str], other: str
@@ -544,7 +534,7 @@ class Pipeline:
 
         # 2. Prepare variants: MAF anchor → validate REF → left-align → ref_context
         #    This replaces the old _validate_variants() + manual ref_context fetch.
-        is_maf = self.config.variant_file.suffix.lower() == ".maf"
+        is_maf = variant_format(self.config.variant_file) == "maf"
         rs_input = [
             _get_rs().Variant(
                 v.chrom,
@@ -562,7 +552,8 @@ class Pipeline:
             is_maf,
             self.config.threads,
             self.config.quality.adaptive_context,
-            self.config.rescue_homopolymer,
+            False,  # the homopolymer twin is never built; --rescue-homopolymer is ignored
+            read_judge=self.config.alignment.read_judge,
         )
 
         # Split into valid (for counting) and all (for output)
@@ -731,6 +722,14 @@ class Pipeline:
             len(self._failed_samples),
             self._stats["total_time"],
         )
+        # Last in the log: which flags fired, which rows need a look, what to do.
+        # A sample that failed has no output to check; one whose output could not be read was
+        # not checked either. Both are named, so the check never reads as complete.
+        not_checked = [
+            *self._qc_skipped,
+            *(Skipped(f["name"], f"counting failed ({f['error']})") for f in self._failed_samples),
+        ]
+        log_qc_summary(self._qc_summaries, not_checked)
 
         # Include failed_samples in returned stats for callers
         return {**self._stats, "failed_samples": self._failed_samples}
@@ -814,7 +813,7 @@ class Pipeline:
             # Written through a temp file renamed once counting succeeds, so a
             # failed run leaves no partial Parquet.
             _obs_path: str | None = None
-            _obs_final = self.config.output.directory / f"{sample_name}.observations.parquet"
+            _obs_final = self._output_file(sample_name, "observations.parquet")
             if self.config.output.observations_parquet:
                 _obs_path = str(partial_path(_obs_final))
             _count_fn = (
@@ -871,18 +870,37 @@ class Pipeline:
             if _obs_path:
                 commit_partial(_obs_final)
                 logger.info("Wrote per-molecule observations → %s", _obs_final)
+            self._tally_qc(sample_name)
             self._stats["samples_processed"] += 1
 
             sample_time = time.perf_counter() - sample_start
             logger.debug("Sample %s completed in %.3fs", sample_name, sample_time)
 
         except Exception as e:
-            discard_partial(self.config.output.directory / f"{sample_name}.observations.parquet")
+            discard_partial(self._output_file(sample_name, "observations.parquet"))
             # logger.exception captures the traceback; the stored message
             # names the exception class because str(e) alone can be a bare
             # dictionary key (KeyError) or even empty.
             logger.exception("Error processing sample %s", sample_name)
             self._failed_samples.append({"name": sample_name, "error": f"{type(e).__name__}: {e}"})
+
+    def _tally_qc(self, sample_name: str) -> None:
+        """Tally the QC flags of the sample's written output for the end-of-run
+        summary. It reads the output and writes nothing, so counts, columns and rows
+        are as written; a failure to read it is logged and never fails the run."""
+        ext = "vcf" if self.config.output.format == OutputFormat.VCF else "maf"
+        try:
+            self._qc_summaries.append(
+                summarize_output(self._output_file(sample_name, ext), sample_name, ext)
+            )
+        except Exception as exc:
+            self._qc_skipped.append(Skipped(sample_name, f"{type(exc).__name__}: {exc}"))
+            logger.warning(
+                "QC summary skipped for sample %s (%s: %s); the output is unaffected",
+                sample_name,
+                type(exc).__name__,
+                exc,
+            )
 
     def _engine_kwargs(self) -> dict[str, Any]:
         """Counting-engine settings shared by every ``count_bam_binned`` call for a sample.
@@ -903,6 +921,7 @@ class Pipeline:
             "threads": self.config.threads,
             "fragment_qual_threshold": self.config.quality.fragment_qual_threshold,
             "alignment_backend": align_cfg.backend,
+            "read_judge": align_cfg.read_judge,
             "hmm_llr_threshold": align_cfg.hmm_llr_threshold,
             "hmm_gap_open": align_cfg.hmm_gap_open,
             "hmm_gap_extend": align_cfg.hmm_gap_extend,
@@ -1012,7 +1031,11 @@ class Pipeline:
                 the same stretch: a caveat for reading the VAF.
                 Both are named when n >= 3, n > m, n is at least 5% of the scanned
                 reads, and the allele is not already an input row. Counts stay the
-                given allele's (count the given allele).
+                given allele's (count the given allele). At a deletion of 50 bp or
+                more, each other unit count present at its breakpoint (listed, or
+                spelled on 3 or more fragments) that takes ALT calls is named the same
+                way, at the deletion's anchor: n fragments whose ALT call it takes, m
+                that tell the given count from it (OBSERVED_ALLELE where m is 0).
             SW_FALLBACK(n): under the PairHMM backend, n depth reads could not
                 be evaluated by the pangenomic haplotype matrix (reference context
                 missing — e.g. an indel near a contig end — or not containing the
@@ -1020,6 +1043,47 @@ class Pipeline:
                 they were scored by Smith-Waterman where it can run, otherwise
                 left NEITHER, so counts here came partly from a different scorer
                 or are missing reads.
+            POSSIBLE_MINORITY_HAPLOTYPE(chrom:pos:REF>ALT:c/n): a change at the base
+                where the ALT's reads written without their gap show the ALT's own
+                base, carried by c of the n reads placed apart from the event: too
+                few (or in one pair orientation) for a haplotype's, so it was left
+                unmasked; a minority haplotype carrying it would count ALT where its
+                reads read as the ALT. Counts stand.
+            MNV_SHARED(chrom:pos:REF>ALT:n/m): under the sequence judge (also at an SNV
+                row routed to it under the rules), at a
+                substitution (an SNV) with a co-listed row holding its change (an MNV
+                containing it): n of the row's m ALT reads spell that MNV whole. Those
+                carriers count at both rows (a read carrying the SNV's base is its ALT,
+                whatever else is listed), so one molecule can enter both rows' AD and
+                mFSD size distributions. One flag per such MNV. Counts stand.
+            INDEL_SHARED(chrom:pos:REF>ALT:n/m): under the sequence judge (also at a routed
+                SNV row), at a row with
+                a listed row that is its ALT with listed neighbours (a delins that is two
+                listed deletions together): n of the row's m ALT reads spell that row
+                whole. Those carriers count at each row that holds them (RJ-28's indel
+                twin), so one molecule can enter several rows' AD and mFSD size
+                distributions. One flag per such row. Counts stand.
+            NO_TELLING_BASE: under the sequence judge, at a pure insertion of 50 bp or
+                more, no base within the haplotypes the judge reads tells REF's equal window
+                from the ALT's once the guard's masks are read (the run reaches past the
+                reads, or masks take every base that would tell), so every read is depth
+                only: RD and AD 0 explained, not missing reads.
+            UNEXPLAINED_READS(n/m): under the sequence judge, n of the row's m DP
+                reads fit none of its candidate sequences (REF, ALT, the other alleles
+                at its site, with every context) within ten confident mismatches. The
+                fit rule makes such a read depth only where its aligner places it
+                elsewhere at least as well (XS >= AS); otherwise its bases at the row
+                decide it, so a row with many may count foreign reads (a paralog's, or
+                reads placed at a homozygous deletion). Counts stand.
+            UNIT_COUNT_UNSPANNED(change:bases/longest): at a deletion of 50 bp or
+                more, another allele at its breakpoint (another unit count of a run
+                beside it, `change` its length change, deleted bases negative) reads
+                like the given deletion past what a read can spell: a read must hold
+                `bases` bases from the junction windows' first base (the first difference
+                and 24 more) to spell the count in full, and the longest is `longest`.
+                A count nobody listed that no read can spell is held for nothing, so the
+                given deletion's alt_count may include its carriers; a listed one is held
+                (its reads are partial evidence). The flag changes no count.
         """
         flags: list[str] = []
 
@@ -1092,6 +1156,60 @@ class Pipeline:
                 f"{name}({variant.chrom}:{counts.observed_pos}:"
                 f"{counts.observed_ref}>{counts.observed_alt}:{observed}/{given})"
             )
+
+        # At a long deletion beside a run, another unit count present at its breakpoint holds
+        # the ALT calls: a read counts ALT only where its bases tell the given count from it.
+        # Named in the same form: n fragments whose ALT call it takes, m that tell the given count
+        # (OBSERVED_ALLELE where none does). The counts stand as written.
+        held = getattr(counts, "unit_count_allele", "")
+        for entry in held.split("+") if held else ():
+            allele, tally = entry.rsplit(":", 1)
+            name = "OBSERVED_ALLELE" if tally.split("/")[1] == "0" else "COEXISTING_ALLELE"
+            named = [
+                f"{k}({variant.chrom}:{allele}:" for k in ("OBSERVED_ALLELE", "COEXISTING_ALLELE")
+            ]
+            if not any(f.startswith(p) for p in named for f in flags):
+                flags.append(f"{name}({variant.chrom}:{entry})")
+
+        # A change at the ALT's shifted base the reads placed apart show on too few of
+        # them (or in one pair orientation) for a haplotype's, left unmasked: a minority
+        # haplotype carrying it would count ALT. The counts stand; the flag names it.
+        minority = getattr(counts, "possible_minority", "")
+        if minority:
+            flags.append(f"POSSIBLE_MINORITY_HAPLOTYPE({variant.chrom}:{minority})")
+
+        # An SNV listed beside an MNV holding its change counts the MNV's carriers as its
+        # ALT (the sequence judge): name how many of its ALT reads spell each such MNV, so
+        # the reads the two rows share are visible. The counts stand.
+        shared = getattr(counts, "mnv_shared", "")
+        for entry in shared.split("+") if shared else ():
+            flags.append(f"MNV_SHARED({variant.chrom}:{entry})")
+
+        # Its indel twin: a row listed beside another listed row that is its ALT with
+        # listed neighbours (a delins that is two listed deletions together) counts that
+        # row's carriers as its ALT; name how many of its ALT reads spell each such row,
+        # so one molecule counting at several rows is visible. The counts stand.
+        shared = getattr(counts, "indel_shared", "")
+        for entry in shared.split("+") if shared else ():
+            flags.append(f"INDEL_SHARED({variant.chrom}:{entry})")
+
+        # Reads the sequence judge found no candidate sequence explains: depth only where
+        # the aligner doubts them too (the fit rule), else judged by their bases at the
+        # row. Named so a row counting foreign reads is visible. The counts stand.
+        unexplained = getattr(counts, "unexplained_reads", 0)
+        if unexplained > 0:
+            flags.append(f"UNEXPLAINED_READS({unexplained}/{counts.dp})")
+
+        # A long deletion's other unit count reading like it past what a read can spell: no
+        # read can tell an unlisted one's carriers apart, so nothing is held for it (a listed
+        # one is held); the flag names it and changes no count.
+        unspanned = getattr(counts, "unit_count_unspanned", "")
+        if unspanned:
+            flags.append(f"UNIT_COUNT_UNSPANNED({unspanned})")
+
+        # A long insertion's equal windows no base tells apart: every read depth only.
+        if getattr(counts, "untold_windows", False):
+            flags.append("NO_TELLING_BASE")
 
         return flags
 
@@ -1297,6 +1415,7 @@ class Pipeline:
             False,  # is_maf: synthetic 0-based coordinates, no MAF anchor handling
             self.config.threads,
             self.config.quality.adaptive_context,
+            read_judge=self.config.alignment.read_judge,
         )
         # Each component is counted under its MNP row's exon-edge rule: the
         # boundary distance is measured over the MNP's REF span, so an adopted
@@ -1422,6 +1541,17 @@ class Pipeline:
             return []
         return contigs
 
+    def _output_file(self, sample_name: str, kind: str) -> Path:
+        """``{output-dir}/{sample}{suffix}.{kind}``: the main output (``kind`` is
+        ``maf``/``vcf``) and each companion file (``fsd.parquet``,
+        ``mfsd_report.html``, ``observations.parquet``).
+
+        Built from the sample name and suffix, never by swapping the main output's
+        extension: ``Path.with_suffix`` drops dotted suffixes (``.genotyped``) and
+        dotted sample names (``S.1``), which mispairs a companion with its output
+        and lets two samples write the same file."""
+        return self.config.output.directory / f"{sample_name}{self.config.output.suffix}.{kind}"
+
     def _write_output(
         self,
         sample_name: str,
@@ -1438,8 +1568,7 @@ class Pipeline:
             prepared: PreparedVariant objects for normalization/validation info.
         """
         ext = "vcf" if self.config.output.format == OutputFormat.VCF else "maf"
-        suffix = self.config.output.suffix
-        output_path = self.config.output.directory / f"{sample_name}{suffix}.{ext}"
+        output_path = self._output_file(sample_name, ext)
 
         writer: VcfWriter | MafWriter
         if self.config.output.format == OutputFormat.VCF:
@@ -1517,7 +1646,7 @@ class Pipeline:
         # only the counted (real BaseCounts) rows and say how many were left
         # out, so a row-count difference vs the MAF/VCF is explained.
         if self.config.output.mfsd_parquet:
-            fsd_path = output_path.with_suffix("").with_suffix(".fsd.parquet")
+            fsd_path = self._output_file(sample_name, "fsd.parquet")
             counted = [
                 (v, c)
                 for v, c in zip(variants, counts_list, strict=True)
@@ -1554,7 +1683,7 @@ class Pipeline:
                 try:
                     from .report import generate_mfsd_report
 
-                    report_path = output_path.with_suffix("").with_suffix(".mfsd_report.html")
+                    report_path = self._output_file(sample_name, "mfsd_report.html")
                     generate_mfsd_report(
                         parquet_path=fsd_path,
                         maf_path=output_path,

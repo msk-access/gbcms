@@ -18,6 +18,7 @@ from pathlib import Path
 
 import typer
 
+from .io.input import variant_format
 from .io.output import build_identity
 from .models.core import (
     AlignmentConfig,
@@ -31,9 +32,10 @@ from .models.core import (
     StrEnum,  # canonical backport (Python ≤ 3.10 compatible), defined in models.core
 )
 from .pipeline import Pipeline
+from .qc_export import SummaryFormat
 from .utils import setup_logging
 
-__all__ = ["app", "dna", "rna", "normalize", "convert", "merge"]
+__all__ = ["app", "dna", "rna", "normalize", "convert", "merge", "summarize"]
 
 logger = logging.getLogger(__name__)
 
@@ -50,13 +52,15 @@ class AlignmentBackend(StrEnum):
     PAIRHMM = "pairhmm"
 
 
-# Valid variant file extensions (checked before Pydantic config construction).
-# .vcf.gz  — bgzip/gzip-compressed VCF (tabix-indexable, most common HPC format)
-# .vcf.bgz — BGZip-compressed VCF, alternative extension used by some pipelines
-# .vcf     — uncompressed VCF
-# .maf     — Mutation Annotation Format
-_VALID_VARIANT_EXTENSIONS: frozenset[str] = frozenset({".vcf", ".maf"})
-_COMPRESSED_VCF_SUFFIXES: tuple[str, ...] = (".vcf.gz", ".vcf.bgz")
+class ReadJudge(StrEnum):
+    """CLI-exposed read judgments: the size-specific rules, or the sequence judge.
+    HAPLOTYPE is the sequence judge's former name, kept for old command lines (the
+    configuration takes it as 'sequence' and warns)."""
+
+    RULES = "rules"
+    SEQUENCE = "sequence"
+    HAPLOTYPE = "haplotype"
+
 
 # Column-prefix charset: only letters, digits, underscores
 _COLUMN_PREFIX_RE = re.compile(r"^[A-Za-z0-9_]*$")
@@ -74,12 +78,10 @@ _RESCUE_MNP_HELP = (
 )
 
 _RESCUE_HOMOPOLYMER_HELP = (
-    "Dual-count the homopolymer twin: for a delins whose REF is a run of one base and "
-    "whose ALT is the base after the run (CCCCCC>T), also count CCCCCT and report "
-    "whichever has more ALT reads, flagged WARN_HOMOPOLYMER_DECOMP. Both counts accept "
-    "near-matches, so the winner can report another allele's reads under the row's "
-    "label. Off by default: the row counts the given allele, and OBSERVED_ALLELE in "
-    "gbcms_diagnostic names the allele the reads carry."
+    "Deprecated in 6.7.0; removed in 6.8.0. Accepted and ignored, with a warning: it did "
+    "nothing useful the diagnostics do not. The row counts the given allele, and "
+    "OBSERVED_ALLELE and COEXISTING_ALLELE in gbcms_diagnostic name the allele the reads "
+    "carry."
 )
 
 app = typer.Typer(help="gbcms: Get Base Counts Multi-Sample")
@@ -97,31 +99,15 @@ def _log_command() -> str:
     return command_line
 
 
-def _is_compressed_vcf(path: Path) -> bool:
-    """Return True if *path* has a compressed-VCF suffix (.vcf.gz or .vcf.bgz).
-
-    BGZip (.vcf.bgz) and gzip (.vcf.gz) are both block-gzip compatible and
-    are handled identically by pysam.  We accept both so users can pass
-    tabix-indexed .bgz files without renaming.
-    """
-    name_lower = path.name.lower()
-    return any(name_lower.endswith(suffix) for suffix in _COMPRESSED_VCF_SUFFIXES)
-
-
 def _variant_format(path: Path) -> str:
-    """``"vcf"`` or ``"maf"`` by extension; an unsupported extension is logged
-    and exits 1 before any I/O (every command that reads a variant file)."""
-    if _is_compressed_vcf(path) or path.suffix.lower() == ".vcf":
-        return "vcf"
-    if path.suffix.lower() == ".maf":
-        return "maf"
-    logger.error(
-        "Unsupported variant file extension '%s'. "
-        "Expected .vcf, .vcf.gz, .vcf.bgz, or .maf. Got: %s",
-        path.suffix.lower(),
-        path,
-    )
-    raise typer.Exit(code=1)
+    """``"vcf"`` or ``"maf"`` by extension (:func:`gbcms.io.input.variant_format`); an
+    unsupported extension is logged and exits 1 before any I/O (every command that
+    reads a variant file)."""
+    try:
+        return variant_format(path)
+    except ValueError as e:
+        logger.error("%s", e)
+        raise typer.Exit(code=1) from e
 
 
 def _exit_on_sample_failure(result: dict) -> None:
@@ -254,7 +240,7 @@ def dna(
         help=(
             "Generate an interactive HTML report with per-variant fragment "
             "size distributions and graded fragment-size evidence. "
-            "Implies --mfsd and --mfsd-parquet. Output: "
+            "Implies --mfsd and --mfsd-parquet; requires --format maf. Output: "
             "<sample>.mfsd_report.html alongside the main output."
         ),
     ),
@@ -287,7 +273,16 @@ def dna(
     ),
     # Quality thresholds
     min_mapq: int = typer.Option(20, "--min-mapq", help="Minimum mapping quality"),
-    min_baseq: int = typer.Option(20, "--min-baseq", help="Minimum base quality"),
+    min_baseq: int = typer.Option(
+        20,
+        "--min-baseq",
+        help=(
+            "Minimum base quality. A base below it is read as unknown, like N: it "
+            "supports no allele and counts against none. Reads are not dropped: a "
+            "read still counts toward depth and is judged on its other bases. "
+            "0 masks only N bases."
+        ),
+    ),
     fragment_qual_threshold: int = typer.Option(
         10,
         "--fragment-qual-threshold",
@@ -393,6 +388,17 @@ def dna(
             "Invalid values are rejected at parse time."
         ),
     ),
+    read_judge: ReadJudge = typer.Option(
+        ReadJudge.RULES,
+        "--read-judge",
+        help=(
+            "Read judgment: 'rules' (the size-specific rules, default; an SNV row beside a "
+            "listed indel or delins is judged by 'sequence') or 'sequence' "
+            "(which of the row's candidate sequences each read's own bases spell at the "
+            "row; opt-in while it is measured, #304). 'haplotype' is its former name "
+            "(deprecated)."
+        ),
+    ),
     hmm_llr_threshold: float = typer.Option(
         2.3,
         "--llr-threshold",
@@ -457,6 +463,16 @@ def dna(
         if not mfsd_parquet:
             mfsd_parquet = True
             logger.info("--mfsd-report implies --mfsd-parquet; auto-enabled.")
+
+    # The report reads its per-variant statistics from the main output as a MAF
+    # (CLI-level check matches the model-level validator).
+    if mfsd_report and output_format != OutputFormat.MAF:
+        logger.error(
+            "--mfsd-report requires --format maf: the report reads its mFSD statistics "
+            "from the MAF output. Re-run with --format maf, or drop --mfsd-report "
+            "(--mfsd-parquet still writes the raw fragment sizes)."
+        )
+        raise typer.Exit(code=1)
 
     # Validate --mfsd-parquet requires --mfsd (CLI-level check matches model-level validator).
     if mfsd_parquet and not mfsd:
@@ -525,6 +541,7 @@ def dna(
         # This is required because AlignmentConfig.validate_backend operates on str.
         alignment_config = AlignmentConfig(
             backend=alignment_backend.value,
+            read_judge=read_judge.value,
             hmm_llr_threshold=hmm_llr_threshold,
             hmm_gap_open=hmm_gap_open,
             hmm_gap_extend=hmm_gap_extend,
@@ -598,9 +615,10 @@ def rna(
     apply_baq: bool = typer.Option(
         True,
         "--apply-baq/--no-baq",
-        help="Apply heuristic BAQ quality downgrade near indels and splice "
-        "junctions. On by default for RNA (upstream pipelines typically "
-        "lack BQSR). Disable with --no-baq if BAMs are pre-calibrated.",
+        help="Apply heuristic BAQ quality downgrade near indels. A splice "
+        "junction lowers no base's quality. On by default for RNA (upstream "
+        "pipelines typically lack BQSR). Disable with --no-baq if BAMs are "
+        "pre-calibrated.",
     ),
     # UMI (shared)
     umi_tag: str | None = typer.Option(
@@ -614,7 +632,8 @@ def rna(
         "--enforce-strandedness/--no-strandedness",
         help=(
             "Filter reads by strand orientation relative to gene strand. "
-            "Disable for unstranded RNA-seq libraries (or pass --strandedness unstranded)."
+            "For an unstranded library pass --strandedness unstranded instead: "
+            "--no-strandedness only stops the filtering."
         ),
     ),
     strandedness: str = typer.Option(
@@ -642,14 +661,6 @@ def rna(
             "variants are loaded."
         ),
     ),
-    gtf_cache_dir: Path | None = typer.Option(
-        None,
-        "--gtf-cache-dir",
-        help=(
-            "Deprecated in 6.6.0 and ignored; removed in 6.7.0. The GTF index cache "
-            "is gone: the GTF loads in a few seconds without one."
-        ),
-    ),
     # Library type flag
     library_type: str = typer.Option(
         "capture",
@@ -667,7 +678,16 @@ def rna(
         "--min-mapq",
         help="Minimum mapping quality (default: 1 for STAR-aligned reads).",
     ),
-    min_baseq: int = typer.Option(20, "--min-baseq", help="Minimum base quality"),
+    min_baseq: int = typer.Option(
+        20,
+        "--min-baseq",
+        help=(
+            "Minimum base quality. A base below it is read as unknown, like N: it "
+            "supports no allele and counts against none. Reads are not dropped: a "
+            "read still counts toward depth and is judged on its other bases. "
+            "0 masks only N bases."
+        ),
+    ),
     fragment_qual_threshold: int = typer.Option(
         10,
         "--fragment-qual-threshold",
@@ -768,6 +788,14 @@ def rna(
             "'sw' (Smith-Waterman) or 'pairhmm' (WFA2 + PairHMM, default for RNA)."
         ),
     ),
+    read_judge: ReadJudge = typer.Option(
+        ReadJudge.RULES,
+        "--read-judge",
+        help=(
+            "Read judgment: 'rules' (the size-specific rules, default). 'sequence' does "
+            "not judge spliced reads yet and is refused in RNA mode (#304)."
+        ),
+    ),
     hmm_llr_threshold: float = typer.Option(
         2.3,
         "--llr-threshold",
@@ -822,6 +850,13 @@ def rna(
         logger.warning(
             "--preserve-barcode has no effect when the variant file is not a MAF.",
         )
+
+    if read_judge in (ReadJudge.SEQUENCE, ReadJudge.HAPLOTYPE):
+        logger.error(
+            f"--read-judge {read_judge.value} does not judge spliced reads yet; RNA mode needs "
+            "--read-judge rules."
+        )
+        raise typer.Exit(code=1)
 
     cpu_count = os.cpu_count() or 1
     if threads > cpu_count:
@@ -897,6 +932,7 @@ def rna(
 
         alignment_config = AlignmentConfig(
             backend=alignment_backend.value,
+            read_judge=read_judge.value,
             hmm_llr_threshold=hmm_llr_threshold,
             hmm_gap_open=hmm_gap_open,
             hmm_gap_extend=hmm_gap_extend,
@@ -921,7 +957,6 @@ def rna(
             strandedness=strandedness,
             rna_editing_db=rna_editing_db,
             gtf=gtf,
-            gtf_cache_dir=gtf_cache_dir,
             library_type=library_type,
             rescue_mnp=rescue_mnp,
             rescue_mnp_threshold=rescue_mnp_threshold,
@@ -937,48 +972,6 @@ def rna(
     # Exit non-zero if any sample failed (or none were processed). Outside the
     # try so typer.Exit isn't caught by `except Exception` above.
     _exit_on_sample_failure(result)
-
-
-@app.command("build-gtf-cache")
-def build_gtf_cache(
-    gtf: Path = typer.Option(
-        ...,
-        "--gtf",
-        "-g",
-        exists=True,
-        help="Path to the GTF annotation file (Ensembl/GENCODE).",
-    ),
-    variants: Path = typer.Option(
-        ...,
-        "--variants",
-        "-v",
-        exists=True,
-        help="Variant file (VCF/MAF) for the cohort.",
-    ),
-    gtf_cache_dir: Path = typer.Option(
-        ...,
-        "--gtf-cache-dir",
-        help="Directory the cache was written into (no longer written).",
-    ),
-    verbose: bool = typer.Option(False, "--verbose", "-V", help="Enable verbose debug logging"),
-):
-    """
-    Deprecated in 6.6.0: does nothing; removed in 6.7.0.
-
-    It pre-built a GTF index cache for a cohort. The GTF now loads in a few
-    seconds (plain or .gtf.gz), so there is no cache to build. The command still
-    checks its options, so a pipeline that calls it keeps working until it is
-    removed.
-    """
-    setup_logging(verbose=verbose, trace=False)
-
-    _variant_format(variants)
-
-    logger.warning(
-        "build-gtf-cache is deprecated and does nothing: the GTF index cache is gone "
-        "(the GTF loads in a few seconds without one). Drop this step and "
-        "--gtf-cache-dir; both will be removed in 6.7.0."
-    )
 
 
 @app.command()
@@ -1344,6 +1337,82 @@ def _parse_bam_arg(bam_arg: Path) -> tuple[str, Path]:
         parts = bam_str.split(":", 1)
         return parts[0], Path(parts[1])
     return bam_arg.stem, bam_arg
+
+
+@app.command()
+def summarize(
+    outputs: list[Path] = typer.Argument(
+        ...,
+        exists=True,
+        dir_okay=False,
+        readable=True,
+        help="Finished gbcms outputs: .maf or .vcf from gbcms dna, rna or merge.",
+    ),
+    output_format: SummaryFormat = typer.Option(
+        SummaryFormat.TEXT,
+        "--format",
+        help=(
+            "text: the block a run logs, on standard output. json: one "
+            "<sample>.qc_summary.json per output, beside it. tsv: one cohort table. "
+            "multiqc: MultiQC custom content (*_mqc.json)."
+        ),
+    ),
+    output_dir: Path | None = typer.Option(
+        None,
+        "--output-dir",
+        "-o",
+        file_okay=False,
+        help=(
+            "Where json, tsv and multiqc files are written. Default: json beside each "
+            "output, tsv on standard output, multiqc in the current directory."
+        ),
+    ),
+    verbose: bool = typer.Option(False, "--verbose", "-V", help="Enable verbose debug logging"),
+):
+    """
+    Summarize the QC flags of finished outputs: which fired, on how many rows, which
+    rows need a look, and what to do about each.
+
+    Reads each output once and changes nothing in it. The text format is the block
+    gbcms dna and rna log at the end of a run, for one sample or many; the other
+    formats are the same summary as JSON, a cohort table, or MultiQC content. Every
+    flag is defined on the QC Flags page of the docs. The exit code is 0 whether or
+    not rows need a look.
+
+    Example::
+
+        gbcms summarize results/*.maf
+        gbcms summarize --format multiqc --output-dir qc/ results/*.maf
+    """
+    from .qc_export import (
+        render_tsv,
+        summarize_inputs,
+        text_report,
+        write_summaries,
+    )
+
+    setup_logging(verbose=verbose, trace=False)
+    summaries, skipped = summarize_inputs(outputs, keep_rows=output_format is SummaryFormat.JSON)
+
+    try:
+        if output_format is SummaryFormat.TEXT:
+            # The block names every input that was not checked; no second message.
+            typer.echo(text_report(summaries, skipped))
+        else:
+            # Standard error: the table or the files are the output, and the line is not part of it.
+            for item in skipped:
+                typer.echo(f"not checked: {item.sample}: {item.reason}", err=True)
+            if output_format is SummaryFormat.TSV and output_dir is None:
+                typer.echo(render_tsv(summaries), nl=False)
+            else:
+                write_summaries(summaries, outputs, output_format, output_dir, skipped)
+    except (OSError, ValueError) as e:
+        logger.error("%s", e)
+        raise typer.Exit(code=1) from e
+    # An input that was refused or could not be read is an error, as it was before; the
+    # others are summarized all the same.
+    if skipped:
+        raise typer.Exit(code=1)
 
 
 if __name__ == "__main__":

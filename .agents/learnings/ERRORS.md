@@ -11,6 +11,28 @@ Newest at the top.
 
 ---
 
+## [ERR-20261103-001] CI's macOS build got no hosted arm64 runner
+- **What happened:** on PR #407, `Build (macOS arm64)` (`wheels.yml`, `runs-on: macos-latest`) ended as
+  cancelled after 15 minutes with no runner and no steps: "The job was not acquired by Runner of type
+  hosted even after multiple attempts", with the notice "Due to capacity constraints, jobs targeting
+  macOS arm64 runners may experience longer queue times". `gh pr checks` lists it as a failure. The
+  macOS test job in the Tests workflow passed on the same commit; the PR's code was not at fault.
+- **Rule/hook involved:** none at fault.
+- **Environment fix:** rerun the failed jobs (`gh run rerun <run> --failed`). If it repeats, read the job's
+  annotations (`gh api repos/<owner>/<repo>/check-runs/<job>/annotations`) before changing any workflow.
+- **Date:** 2026-11-03
+
+## [ERR-20261031-001] CI's macOS build cancelled by a GitHub runner-image brownout
+- **What happened:** on PR #396, `Build (macOS arm64)` (`wheels.yml`, `runs-on: macos-14`) was cancelled
+  with no steps run: "This job failed because of a scheduled macOS 14 runner image brownout. macOS 14
+  runner images will be retired on November 2, 2026" (actions/runner-images#13518). Every other check
+  passed; the PR's code was not at fault.
+- **Rule/hook involved:** none at fault. The release and wheel workflows and their contract test
+  (`tests/test_macos_wheel_contract.py`) pinned `macos-14`, which the provider retires.
+- **Environment fix:** the macOS jobs run on `macos-latest` (arm64; operator, 2026-10-31); the test pins
+  that label; the wheel tag stays `macosx_11_0_arm64` (set by `MACOSX_DEPLOYMENT_TARGET`, not the runner).
+- **Date:** 2026-10-31
+
 ## [ERR-20261007-001] Local `mkdocs build --strict` aborted on "has no git logs"
 - **What happened:** at the 6.6.0 cut, the strict docs build stopped on one
   warning, `[git-revision-date-localized-plugin] '.../docs' has no git logs`.

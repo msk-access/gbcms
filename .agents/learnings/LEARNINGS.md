@@ -15,6 +15,376 @@ Newest at the top. Before promoting an edit, grep `REJECTED.md` for the target +
 topic — don't re-propose a vetoed dead end. Promote by delta edit, never by
 regenerating a section.
 
+**Memory names in older entries.** The memory files were merged in #317, so an older entry's
+`[[name]]` or `.agents/memory/<name>.md` points here:
+- `working-agreements`: harness-stay-small, describe-labels-in-brackets, model-per-task
+- `genotyper-not-caller`: genotyper-not-caller, count-the-given-allele, identity-band-annotation-tolerance
+- `decided-counting-rules`: tolerant-deletion-deliberate, rna-mapq-default, mapq0-loci-pms2, vaf-informative-reads
+- `mfsd-graded-evidence`: mfsd-graded-evidence, fragmentomics-reference
+- `msk-assay-facts`: abra2-junction-placement, abra2-collapse-artifacts, access-xs1-xs2-consensus, production-aligner-settings, qcfail-flag-absent-msk-data
+- `references`: lancet2-reference, downstream-org-containers-modules
+- `.agents/rules/decision-protocol.md`: decisions-worked-examples, best-not-least-bad, better-than-standard, survey-several-tools, test-across-data-types, fix-the-class-not-the-row, holistic-effects-map, external-review-measure-first, parameters-are-user-settable, read-rule-register-to-the-end
+- `.agents/rules/security.md`: cbioportal-stays-local
+- `.agents/rules/git-conventions.md`: merge-with-gh-when-asked, github-sub-issues, commit-before-review-workflows
+- `.agents/rules/code-quality.md`: no-ticket-labels-in-code, deps-pyproject-source-of-truth; test-changes-need-operator-notice is in `AGENTS.md`
+- `docs/harness/measurement-harness.md`: harness-cleanup-after-merge, long-runs-visible, hpc-partitions, macos-no-timeout-command, trace-output-wraps, harness-references, other-tools-harness, vcf2maf-oracle, giab-truth-arm, pysam-validation-oracle, cluster-aware-oracle, census-mirrors-read-inputs
+- `.agents/skills/qa-check` and `rust-python-ffi`: pipe-masks-gate-exit, black-version-skew-venv-vs-ci, worktree-tests-need-isolated-venv, maturin-develop-repo-root-only
+- Deleted as fixed or covered: wfa-bq-gate-contract, engine-output-aware, nextflow-cli-default-divergence (AGENTS.md invariants 2 and 3, the nextflow-pipeline skill), bin-anchor-coverage (`architecture.md`), claudelicious-reference (`docs/harness/00-plan.md`)
+
+---
+
+## [LRN-20261109-002] rule-trigger | a traced gate run used plain `gbcms --trace`, against the harness doc
+- **Status:** resolved (one clause added).
+- **Cause:** rule-trigger.
+- **Summary:**
+  - The 6.7.0 gate's read-by-read check traced 95 runs with plain `gbcms --trace` and
+    `COLUMNS=60000`. Every line was padded to 60,000 characters inside the line, and the judge
+    re-read each trace twice per row with a lazy regex: hours instead of minutes.
+  - `docs/harness/measurement-harness.md` §Traces already says to trace through `r2/plain_trace.py`.
+    The rule existed; it was not read before the runner was written.
+  - In the same check, one command listed a gate report folder (`gate_local/out_rel670`); the auto-mode
+    classifier stopped it before it ran. Same class as LRN-20261105-002; the rule stands.
+- **Promotion target:** `docs/harness/measurement-harness.md` §Traces — `DONE:` where the padding
+  sits and how a parser cuts it. Read §Traces before writing any traced runner.
+
+## [LRN-20261109-001] rule-body | a gate exception was called explained from class counts; signed-out rows had gone to AD 0
+- **Status:** resolved (rule promoted).
+- **Cause:** rule-body.
+- **Summary:**
+  - The 6.7.0 gate's read-by-read check found 1,241 lost ALT reads. I called the exception
+    "explained by the decided rule" from class-level counts (reads carrying another allele).
+  - The operator (2026-11-09): "I dont understand how can Signout event got to AD 0, that does not
+    make any sense, we should check and understand each".
+  - Checked one by one, the 19 zero-ALT signed-out rows split into six causes. Two are gaps the class
+    count had hidden: a listed change beside an indel (#417 class, also for an insertion), and a
+    same-start complex row that no row credits.
+- **Promotion target:** `docs/development/regression-panel.md` §The gate — `DONE:` every signed-out
+  row whose matched ALT falls to 0, or below a tenth of the previous release's, is checked on its own
+  before the decision is taken by class.
+
+## [LRN-20261105-002] rule-trigger | the main session listed a copy-back lane, which holds patient outputs
+- **Status:** resolved (rule promoted).
+- **Cause:** rule-trigger.
+- **Summary:**
+  - Looking for how rq3 had been copied back, the main session ran `ls` on `hpc/out/rq3R` and
+    `hpc/out/rq3S`. Both lanes hold patient outputs, whose folder names are sample IDs. The auto-mode
+    check refused the command, so nothing was printed.
+  - The rule says "a patient folder". I read the copy-back lanes as harness output, not as patient
+    folders, so the rule did not fire.
+- **Promotion target:** `.agents/rules/security.md` ("Tool output leaves the machine") — `DONE:` the
+  rule names the copy-back lanes (`hpc/out/<label>/`) and their clones (`out_<label>/`, `across/`,
+  `wes/`, `germ/`, `xdata/gatex/`) as patient folders; find a lane's copy command in the ledger or
+  `hpc/PLAN.md` §6, not by listing it.
+- **Related:** LRN-20261103-001.
+
+## [LRN-20261105-001] environment | a restart emptied the session scratchpad, and the tools were in it
+- **Status:** resolved (rule promoted).
+- **Cause:** environment.
+- **Summary:**
+  - On 2026-11-05 a restart deleted the hp1 scorer, a PR body, the rq scorers' tools, and the gate
+    scripts and their venvs. They had been written to the session scratchpad (`/private/tmp/...`),
+    which a restart empties. The work had to be rebuilt.
+  - The failure is external (the scratchpad's lifetime), but the record must still say where tools
+    live, so the rule is in the measurement harness.
+- **Promotion target:** `docs/harness/measurement-harness.md` ("Rules for running") — `DONE:`
+  measurement tools, PR bodies, gate scripts and venvs go under `~/test/gbcms/harness/`, never in
+  the session scratchpad.
+- **Related:** the gate script `~/test/gbcms/harness/plan670/gates/gate_wt.sh` (a persistent path).
+
+## [LRN-20261103-001] rule-body | a scorer listed a patient folder, and its names are sample IDs
+- **Status:** resolved (rule promoted).
+- **Cause:** rule-body.
+- **Summary:**
+  - The z67 scorer (Sonnet, briefed by the main session) ran a mistyped `ls` on a patient run
+    root. The folder names it printed hold germline sample IDs. No position, read name or BAM name
+    was shown. Afterwards it printed patient text only through a sanitizer it had tested first. The
+    same day, the routing scorer's `ls` of a patient folder was blocked before any output.
+  - security.md covered printed lines, stderr and the sanitizer's test, but not listing a folder.
+    My briefs said "totals only" and named the rule, but not "never list".
+- **Promotion target:** `.agents/rules/security.md` ("Tool output leaves the machine") — `DONE:`
+  never list a patient folder; take paths from the manifest inside a sanitized script; every brief
+  that touches patient files says so.
+- **Related:** LRN-20261030-003 (stderr through the sanitizer); the agent-guards design (a guard
+  that refuses file tools and listings on protected roots).
+
+## [LRN-20261102-003] rule-body | an edit made after the gate was committed with it
+- **Status:** resolved (rule promoted).
+- **Cause:** rule-body.
+- **Summary:**
+  - On `chore/plan-first`, the gate ran on the plan page and REJECTED.md and passed. While its
+    result was being read, the operator chose option B, and I added that paragraph to the plan page.
+    I then committed it with the gated files (f1dad1f5). No code changed. A full gate on the
+    committed tree passed afterwards, and I reported the slip.
+  - The qa-check skill said to read each exit code and to commit in a later step. It did not say
+    that the gate covers only the tree it ran on.
+- **Promotion target:** `.agents/skills/qa-check/SKILL.md` ("Read every exit code") — `DONE:` an edit
+  made after the gate, docs included, needs the gate again before the commit.
+- **Recurred 2026-11-03:** moving this rule to its own docs branch, I cherry-picked two commits. The
+  cherry-pick made them before the gate ran on the new tree (the content had been gated on the plan
+  branch). Nothing was pushed; the gate ran before the push. `DONE:` the same skill line now says
+  that cherry-pick, merge and rebase commit too: use
+  `git cherry-pick --no-commit` or `git merge --no-commit`, run the gate, then commit.
+- **Related:** LRN-20261031-001 (a gate result read and a commit made in one command).
+
+## [LRN-20261102-002] rule-body | PRs merged on green checks with a bot review unread
+- **Status:** resolved (rule promoted); the findings are being fixed.
+- **Cause:** rule-body.
+- **Summary:**
+  - I merged #392 (macOS wheel) and #396 (#264's long-insertion windows) when their checks were
+    green, without reading Greptile's review. Each had one valid finding: #392's filename check
+    accepts any macOS minimum; #396's mirrored masks are placed without the candidates' listed
+    context changes, so a listed indel between the anchor and a masked position moves the mask.
+  - I then called #402 (the PHI read guard) ready while its review said 0 of 5, "do not merge",
+    with seven valid holes. The operator asked: "Did you read greptile bot review".
+  - The merge rule (`git-conventions.md`, "Merging") said to check the PR's checks; it said
+    nothing about the bot review.
+- **Promotion target:** `.agents/rules/git-conventions.md` ("Merging") — `DONE:` read Greptile's
+  summary and every inline comment before a PR is called ready or merged; report each finding with a
+  verdict; an unread finding blocks the merge as a failing check does. `MEMORY.md`'s merge line
+  names it.
+- **Related:** `working-agreements` ("Every failed task is reported").
+
+## [LRN-20261031-002] rule-trigger | review fixes went back to the builder round after round, each a row-level condition
+- **Status:** resolved (rule promoted); the #297 re-frame waits for the operator.
+- **Cause:** rule-trigger.
+- **Summary:**
+  - On #297 (the narrow unit-run rule) I sent each adversarial review's findings to the builder as a
+    fix list, four rounds in two days. The rule gained about ten conditions: the narrow run, deletions
+    only, the placement test, the nearest-count diagnostic, option (b)'s presence test, a 3-fragment
+    floor, a placement test on both sides of the 5% share, a depth rule, a new diagnostic name. Each
+    was justified by named rows (10:11885357, p1b_022 and others). The spike-in then found the next
+    boundary row (soft-clipped deciders).
+  - `decision-protocol.md` §3 already said "a narrowing made to pass a bar is a signal that the
+    mechanism was wrong", but nothing triggered it: it was not part of the step where I forward
+    review findings, and the reviewer briefs did not ask "instance or mechanism?".
+  - Option (b) also decided that a listed input allele was absent, against invariant 7 ("input
+    alleles are taken as correct"). I presented it without saying so. The operator saw the drift
+    (2026-10-31: "i feel we regressed and made certain row level decisions vs category level").
+- **Promotion target:** `.agents/rules/decision-protocol.md` §3 — `DONE:` count the conditions before
+  a second fix round; a condition only named rows justify stops the loop and goes to the operator
+  as a class question with one class-level option; reviewers are asked "instance or mechanism?";
+  options are tested against invariant 7 before they reach the operator.
+- **Related:** `working-agreements` ("Also standing"); `genotyper-not-caller`.
+
+## [LRN-20261031-001] rule-body | a gate result read and a commit made in one command
+- **Status:** resolved (rule promoted).
+- **Cause:** rule-body.
+- **Summary:**
+  - The gate ran in the background. I then ran one command that printed its output and committed
+    and pushed the record branch. The output showed `pytest=1` (a stale `_rs.cpython-310-darwin.so`
+    in the main checkout shadowed the new abi3 build, which #235's test catches), but the commit had
+    already run. No PR was open; the branch was fixed and gated again before any PR.
+  - The qa-check rule said "read every exit code; never gate on a pipe", but not that reading and
+    committing must be separate steps.
+- **Promotion target:** `.agents/skills/qa-check/SKILL.md` ("Read every exit code") — `DONE:` read a
+  background gate's result in its own step; commit only in the next step.
+- **Related:** the pipe-masks-gate-exit note (now in the qa-check skill).
+
+## [LRN-20261030-003] rule-body | the PHI sanitizer filtered stdout but not library warnings on stderr
+- **Status:** resolved (rule promoted).
+- **Cause:** rule-body.
+- **Summary:**
+  - An agent comparing gbcms with the C++ tool wrote its sanitizer first, as the rule says, but
+    passed only stdout through it. htslib's "index older than data" warning on stderr printed WES
+    patient BAM file names (sample IDs) into two tool outputs: one name, then twelve. No position or
+    read name was shown. The agent reported it, masked its log and silenced the warnings.
+  - The rule said "every printed line" but named no stderr, and library warnings are easy to miss.
+- **Promotion target:** `.agents/rules/security.md` (patient BAM slices, the sanitizer bullet) —
+  `DONE:` the sanitizer covers stderr; library warnings print file names; merge stderr into the
+  filtered stream or keep it in a file that never prints.
+- **Second slip, same day:** another agent's masking command did not mask and printed five DMP BAM
+  stems from a region list. `DONE:` the sanitizer is tested on a made-up line holding each kind of
+  identifier before it sees patient data.
+- **Related:** the 2026-10-29 sanitizer-first rule (#372).
+
+## [LRN-20261030-002] rule-trigger | follow-up work went to the agent at hand, not the model the task needs
+- **Status:** resolved (rule promoted).
+- **Cause:** rule-trigger.
+- **Summary:**
+  - The operator asked (2026-10-30) whether delegation still follows the model-per-task rule.
+  - New agents got explicit models. But follow-up work went to the two long-lived agents because
+    they were already running: an Opus agent was given the C++ timing tables (Sonnet work).
+  - No fresh adversarial review was planned before count decisions; Greptile was the only outside read.
+  - The rule fired when an agent was spawned, and stayed silent when work was handed to an agent
+    already running.
+- **Promotion target:** `.agents/memory/working-agreements.md` ("Model per task") — `DONE:` the rule
+  holds for follow-up work; routine aggregation goes to a new Sonnet or Haiku agent; a fresh Fable or
+  Opus agent reviews each count-changing option before it goes to the operator.
+- **Related:** [[working-agreements]].
+
+## [LRN-20261030-001] rule-trigger | status tables and relayed agent reports went out as bare labels
+- **Status:** resolved (rule promoted).
+- **Cause:** rule-trigger.
+- **Summary:**
+  - The operator asked again (2026-10-30) for plain descriptions with labels in brackets. My
+    status table listed builds, HPC jobs and runs by label only (`c61hs`, `hyR`, `htM`, item A).
+  - The rule existed in `working-agreements.md`, but it stayed silent in two places. The index
+    line read each turn said only "labels in brackets", and the rule's examples covered rules and
+    phases, not build, job or run labels.
+  - Agent reports arrive full of labels, and I relayed them without a rewrite.
+  - The table also showed two memory changes the operator thought were done, with no reason given.
+- **Promotion target:**
+  - `.agents/memory/MEMORY.md` (the working-agreements line) — `DONE:` names every label kind and
+    says the rule holds in tables and relayed reports.
+  - `.agents/memory/working-agreements.md` ("Explain so the operator can follow") — `DONE:` adds
+    the bullet "Build, job and run labels are labels too": rewrite relays, ask agents for the same
+    form, and say why work is back.
+- **Related:** [[working-agreements]].
+
+## [LRN-20261026-001] rule-body | an amended read rule was read from its superseded text
+- **Status:** open: promotion waits on the operator re-confirming RJ-20.
+- **Cause:** rule-body.
+- **Summary:**
+  - On #304 I said the sequence judge "breaks RJ-20" (an unreadable insert of the ALT's length should be neither + partial), queued a port, recorded it on #304 and in CONTINUITY, and wrote it into #329's Read Filters text.
+  - RJ-20 was amended on 2026-10-15 (#278): such an insert inside the discrimination window *is* the ALT. Both paths follow the amended rule, and `tests/test_unreadable_insert_contract.py` pins it.
+  - The register row states the old rule first and the amendment last. `allele-classification.md` (§Insertion, the wrong-length table, the flowchart) and `glossary.md` (`has_unreadable_insert`) were never updated. The fix round caught it before any code changed.
+- **Promotion target:**
+  - `docs/reference/read-judgment.md`: an amended row leads with the current rule, history after.
+  - `docs/reference/allele-classification.md`, `glossary.md` and `read-filters.md` (#329): state the current rule.
+  - Memory `read-rule-register-to-the-end`: read the whole row and the contract test's docstring before stating a rule (done).
+
+## [LRN-20261024-001] rule-body | a docs-only change still runs the whole test suite
+- **Status:** resolved (rule promoted)
+- **Cause:** rule-body
+- **Summary:** PR #321 (harness accuracy) moved a retired plan into `docs/archive/` and
+  was pushed after the hook and path checks but without pytest, because it changed no
+  code. Its CI failed on all four test legs: a docs contract walks every `docs/**/*.md`
+  for stale mFSD wording, and the old plan carried it. Contract tests read `docs/`,
+  `nextflow/` and the README, so no change is "docs only" to the suite.
+  The plan moved to `.agents/archive/` (no test edited).
+- **Promotion target:** `.agents/skills/qa-check/SKILL.md`: the full gate runs for a
+  docs-, skills- or Nextflow-only change too, and a file moved into `docs/` is checked
+  against the tests that walk it. (Done.)
+
+## [LRN-20261021-001] rule-body | every option offered for a decision is measured, not estimated
+- **Status:** resolved (rule promoted)
+- **Cause:** rule-body
+- **Summary:** On #294 three guard options were offered with only the current rule
+  measured; the others' failure rates were reasoned from thresholds. The operator asked
+  whether each was measured. Prototyping and running all of them on the same sets and
+  HG002 changed the picture: the simulators wrote every fragment in one pair
+  orientation (so the orientation option failed for an artifact of the data), option
+  2's low-depth risk had no test set, and the tolerance amendment, measured, reversed my
+  recommendation (then four existing contracts caught its false ALT on another allele's
+  reads, fixed by forgiving one-off errors only).
+- **Promotion target:** `.agents/memory/decisions-worked-examples.md`: every option
+  offered is prototyped and measured on the same sets and truth arm, the sets mirroring
+  a real library (both orientations, errors, low depth and depth). (Done.)
+
+## [LRN-20261020-001] rule-body | a run's waiter watches its process, not a marker in its log
+- **Status:** resolved (rule promoted)
+- **Cause:** rule-body
+- **Summary:** On #294 two background waiters polled a run's log for its closing
+  marker. A restart reused the log name and overwrote it, and a killed run never wrote
+  its marker, so both waiters hung until killed by hand; the operator asked whether the
+  tasks were still running and said the waiting was launched wrongly.
+  The operator then asked why only the waiter showed: the runs were launched detached
+  on a stale premise (a 30-minute tracked-task limit; tracked tasks ran 6+ hours).
+- **Promotion target:** `.agents/memory/long-runs-visible.md` "How to apply": launch the
+  run itself as the tracked background task (tee a log); `nohup` only to outlive the
+  session, then a waiter looping on `kill -0 <runner pid>`; one runner per log name; a
+  run and its waiter stop together; clear partial outputs before a restart. (Done.)
+
+## [LRN-20261014-001] rule-body | the best route holds in the analysis and in the implementation
+- **Status:** resolved (rule promoted)
+- **Cause:** rule-body
+- **Summary:** On #277 the locus-aware rule looked finished after the first synthetic
+  competitor arm. Five more synthetic shapes and a count-neutral diagnostic each found
+  something the real arms and HG002 could not: a germline SNP in the grown repeat taken
+  for a rival; ALT carriers aligned around the anchor counted as REF molecules (an
+  alignment-trusting tally, which also made me call a real rival false); a rival's
+  reference base read as a change REF carries; the MNP check judging the same question
+  without the rule; and a pre-existing silent loss of REF reads to a germline SNP inside
+  the grown event (RD -33..-50% on 4 real rows). The operator asked that both the
+  analysis before implementation and the implementation itself take the best and most
+  accurate route, past the current standard, testing and implementing wherever we can.
+- **Promotion target:** `.agents/rules/code-quality.md` — `DONE:` two Step Review items:
+  analysis stresses each candidate with synthetic shapes (guarded risk, realistic mix,
+  phantom, natural quality), scores what matters, checks the oracle trusts no alignment,
+  and sizes a suspected defect with a count-neutral diagnostic; implementation turns
+  every stress shape into a red-first test, lands the rule in every path judging the
+  same question, unit-tests each component, and reruns the measurements.
+- **Related:** [[best-not-least-bad]], [[better-than-standard]], [[genotyper-not-caller]].
+
+## [LRN-20261013-001] rule-body | a decision is not settled by picking the least-bad measured option
+- **Status:** resolved (rule promoted)
+- **Cause:** rule-body
+- **Summary:** On #277 every candidate rule had a cost, and I recommended the one that
+  cost least on HG002 (the first cut) with its repeat-position defect pinned as a known
+  limit. The operator agreed but corrected the approach: the aim is the best and most
+  accurate rule, not the least-bad. The comparison was incomplete: HG002 germline hets
+  cannot show the risk the rule guards (another allele of the same length at the locus),
+  so no candidate was measured where it matters.
+- **Promotion target:** `.agents/rules/code-quality.md` — `DONE:` a Step Review
+  Discipline item: when every option costs something, name what the measurements cannot
+  see, measure it, and look for a rule better on every axis before recommending; only
+  then recommend with the residual named.
+- **Related:** [[best-not-least-bad]], [[better-than-standard]].
+
+## [LRN-20261012-002] rule-body | a new test file's name is checked before it is written
+- **Status:** resolved (rule promoted)
+- **Cause:** rule-body
+- **Summary:** I wrote new C39 placement tests to `tests/test_carrier_placement_contract.py`
+  through a Python heredoc (`open(p, "w")`), which bypasses the Write tool's
+  read-before-overwrite guard. The name was already the C37 (#245) contract; its five
+  tests vanished and the suite still passed (1445). Caught only because the count fell
+  short of the reviewer's 1453 plus the four new tests.
+- **Promotion target:** `.agents/rules/code-quality.md` — `DONE:` under Test Invariants:
+  a new test file starts with `git ls-files tests/<name>.py` empty, or is created with
+  the Write tool; a shell write once replaced a contract unseen.
+- **Related:** check the test count against the last known count after adding tests.
+
+## [LRN-20261012-001] rule-trigger | count-changing ticket work skipped the every-data-type acceptance rule
+- **Status:** resolved (rule promoted)
+- **Cause:** rule-trigger
+- **Summary:** C40's choices (k, read-on, the placement candidate) were measured on GIAB
+  HG002 (one genome, BWA-MEM, germline hets, mostly tandem-repeat deletions) and on panel
+  sign-out (not truth), with the matched-normal arm skipped and no ACCESS, WES or RNA
+  run. The rule that acceptance covers every assay (LRN-20260923-001) lives in
+  add-feature step 6, which plan-driven ticket work never loads, so it stayed silent.
+  The operator also widened the tool survey to tools of other applications that judge
+  reads alike, and noted DNA and RNA may need different rules.
+- **Promotion target:** `.agents/rules/code-quality.md` (AFTER implementing each step) —
+  `DONE:` a count-changing step needs real-data acceptance on every data type it reaches
+  and more than one truth source; `.agents/skills/add-feature/SKILL.md` step 6 — `DONE:`
+  adds WES/WGS, RNA, normals as hom-REF controls, spike-ins, DNA/RNA judged separately;
+  memory `survey-several-tools` — `DONE:` SV/graph genotypers, realigners, split-read and
+  RNA indel tools.
+- **Related:** [[test-across-data-types]], [[survey-several-tools]], LRN-20260923-001.
+
+## [LRN-20261009-001] rule-trigger | an external review is checked against tickets, REJECTED.md and measurements before tickets
+- **Status:** resolved (rule promoted)
+- **Cause:** rule-trigger
+- **Summary:** asked to "verify what makes sense" in an outside review, I compared it
+  with current behaviour only and offered to file tickets. The existing rule (grep
+  `REJECTED.md` before re-proposing) never fired, because the proposals were not mine,
+  and I neither mapped them to the open tickets nor measured their value. The operator
+  asked to measure first; measuring showed most of the value was already covered
+  (existing flags caught 39 of 43 low-explainability rows) and found an open ticket
+  (C33 #214) already fixed.
+- **Promotion target:** `AGENTS.md` (Learning loop) — `DONE:` one line: an external
+  review or proposal is mapped to behaviour, open tickets, `REJECTED.md` and prior
+  probes, and measured on our data, before any ticket is filed.
+- **Related:** [[external-review-measure-first]] memory.
+
+## [LRN-20261008-001] rule-body | a VAF claim follows the documented definition
+- **Status:** resolved (rule promoted)
+- **Cause:** rule-body
+- **Summary:** asked how to read the AR 9 bp GGC-repeat deletion (6.6.0: RD 17, AD 15,
+  DP 191), I said to compute VAF as ALT/depth (7.9%). The operator asked whether not
+  using depth was right. It is: gbcms's `vaf` is AD/(RD+AD) (documented in
+  docs/index.md and architecture.md); DP includes the reads that end inside the
+  tract and cannot be judged, so AD/DP is biased low. The informative VAF is 48% in
+  the tumor and 0% in the matched normal: a high-fraction somatic event the clinical
+  6.6% understated. Same failure family as LRN-20260923-002: a claim stated without
+  checking the documented definition.
+- **Promotion target:** `DONE:` new memory `.agents/memory/vaf-informative-reads.md`
+  and its MEMORY.md index line (the rule in the line itself, so it is in view each
+  session). The docs were already right; nothing in the code to change. 6.7.0
+  candidates noted to the operator: the two meanings of `total_count` (per-sample DP
+  vs merged ref+alt) in the output docs, spanning bias in repeats (#253), and a
+  diagnostic when RD+AD is a small share of DP.
+
 ---
 
 ## [LRN-20261005-002] rule-trigger | a review-agent prompt names the venv maturin installs into
@@ -156,7 +526,7 @@ regenerating a section.
   it, caveats go to the status-reason and diagnostic columns.
 - **Promotion target:** `AGENTS.md` invariant 7 "Count the given allele";
   `.agents/memory/bam-is-truth.md` clarifies that a finding is never ALT evidence; new
-  memory `count-the-given-allele.md`; `CYCLE_6.6.0_PLAN.md` C1 drops the exception,
+  memory `count-the-given-allele.md`; `.agents/archive/CYCLE_6.6.0_PLAN.md` C1 drops the exception,
   and C3 is re-scoped to report the given allele, with the default-on decomposition
   as an open decision.
 

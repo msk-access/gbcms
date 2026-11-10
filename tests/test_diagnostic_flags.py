@@ -272,3 +272,103 @@ def test_non_discriminating_locus_flag():
     counts.non_discriminating_locus = True
     _make_pipeline()._compute_diagnostics([pv], [counts])
     assert "NON_DISCRIMINATING_LOCUS" in pv.gbcms_diagnostic
+
+
+def test_possible_minority_haplotype_flag():
+    """POSSIBLE_MINORITY_HAPLOTYPE names the change at the ALT's shifted base that too few
+    of the reads placed apart carry for a haplotype's (left unmasked), with c/n; absent
+    when the counts carry none (the field empty, or missing on a FAIL row's zero counts)."""
+    pv = _mock_prepared_variant(ref_allele="G", alt_allele="GC", variant_type="INSERTION")
+    counts = _mock_counts(ad=34)
+    counts.possible_minority = "830:T>C:2/75"
+    _make_pipeline()._compute_diagnostics([pv], [counts])
+    assert pv.gbcms_diagnostic == "POSSIBLE_MINORITY_HAPLOTYPE(chr1:830:T>C:2/75)"
+    pv = _mock_prepared_variant(ref_allele="G", alt_allele="GC", variant_type="INSERTION")
+    counts = _mock_counts(ad=34)
+    counts.possible_minority = ""
+    _make_pipeline()._compute_diagnostics([pv], [counts])
+    assert "POSSIBLE_MINORITY_HAPLOTYPE" not in pv.gbcms_diagnostic
+
+
+def test_mnv_shared_flag():
+    """MNV_SHARED names, per co-listed MNV holding a substitution's change, how many of the
+    row's ALT reads spell it whole (n/m); one flag per entry ('+'-joined in the counts);
+    absent when the field is empty or missing."""
+    pv = _mock_prepared_variant()
+    counts = _mock_counts(ad=20)
+    counts.mnv_shared = "100:AC>TG:10/20"
+    _make_pipeline()._compute_diagnostics([pv], [counts])
+    assert pv.gbcms_diagnostic == "MNV_SHARED(chr1:100:AC>TG:10/20)"
+    pv = _mock_prepared_variant()
+    counts = _mock_counts(ad=20)
+    counts.mnv_shared = "100:AC>TG:10/20+99:GAC>CTG:3/20"
+    _make_pipeline()._compute_diagnostics([pv], [counts])
+    assert pv.gbcms_diagnostic.split(";") == [
+        "MNV_SHARED(chr1:100:AC>TG:10/20)",
+        "MNV_SHARED(chr1:99:GAC>CTG:3/20)",
+    ]
+    pv = _mock_prepared_variant()
+    counts = _mock_counts(ad=20)
+    counts.mnv_shared = ""
+    _make_pipeline()._compute_diagnostics([pv], [counts])
+    assert "MNV_SHARED" not in pv.gbcms_diagnostic
+
+
+def test_unexplained_reads_flag():
+    """UNEXPLAINED_READS(n/m) names how many of the row's DP reads fit none of its candidate
+    sequences under the haplotype judge; absent at 0 or when the field is missing."""
+    pv = _mock_prepared_variant()
+    counts = _mock_counts(dp=40, ad=10)
+    counts.unexplained_reads = 3
+    _make_pipeline()._compute_diagnostics([pv], [counts])
+    assert pv.gbcms_diagnostic == "UNEXPLAINED_READS(3/40)"
+    for value in (0, None):
+        pv = _mock_prepared_variant()
+        counts = _mock_counts(dp=40, ad=10)
+        if value is not None:
+            counts.unexplained_reads = value
+        _make_pipeline()._compute_diagnostics([pv], [counts])
+        assert "UNEXPLAINED_READS" not in pv.gbcms_diagnostic
+
+
+def test_unit_count_unspanned_flag():
+    """UNIT_COUNT_UNSPANNED(change:bases/longest) names a long deletion's other unit count
+    that reads like it past the longest read at the site (#297); absent when the field is
+    empty or missing."""
+    pv = _mock_prepared_variant(ref_allele="A" * 61, alt_allele="A", variant_type="DELETION")
+    counts = _mock_counts(dp=24, ad=24)
+    counts.unit_count_unspanned = "-120:188/150"
+    _make_pipeline()._compute_diagnostics([pv], [counts])
+    assert pv.gbcms_diagnostic == "UNIT_COUNT_UNSPANNED(-120:188/150)"
+    for value in ("", None):
+        pv = _mock_prepared_variant(ref_allele="A" * 61, alt_allele="A", variant_type="DELETION")
+        counts = _mock_counts(dp=24, ad=24)
+        if value is not None:
+            counts.unit_count_unspanned = value
+        _make_pipeline()._compute_diagnostics([pv], [counts])
+        assert "UNIT_COUNT_UNSPANNED" not in pv.gbcms_diagnostic
+
+
+def test_a_unit_count_holding_the_alt_calls_is_named():
+    """At a long deletion, another unit count present at its breakpoint that takes ALT calls
+    is named in the OBSERVED_ALLELE form (n fragments whose ALT call it takes, m that tell the
+    given count from it): OBSERVED_ALLELE where m is 0, else COEXISTING_ALLELE; one per entry,
+    never twice for an allele the observed-allele diagnostic already names."""
+    deleted = "A" * 61
+    pv = _mock_prepared_variant(ref_allele=deleted, alt_allele="A", variant_type="DELETION")
+    counts = _mock_counts(dp=24, ad=0, partial_alt=20)
+    counts.unit_count_allele = f"100:{'C' * 73}>C:3/0+100:{'C' * 49}>C:5/2"
+    _make_pipeline()._compute_diagnostics([pv], [counts])
+    assert pv.gbcms_diagnostic.split(";") == [
+        "ZERO_ALT",
+        "PARTIAL_DOMINANT",
+        f"OBSERVED_ALLELE(chr1:100:{'C' * 73}>C:3/0)",
+        f"COEXISTING_ALLELE(chr1:100:{'C' * 49}>C:5/2)",
+    ]
+    pv = _mock_prepared_variant(ref_allele=deleted, alt_allele="A", variant_type="DELETION")
+    counts = _mock_counts(dp=24, ad=4)
+    counts.observed_reads, counts.observed_given_reads = 7, 4
+    counts.observed_pos, counts.observed_ref, counts.observed_alt = 100, "C" * 73, "C"
+    counts.unit_count_allele = f"100:{'C' * 73}>C:3/1"
+    _make_pipeline()._compute_diagnostics([pv], [counts])
+    assert pv.gbcms_diagnostic == f"COEXISTING_ALLELE(chr1:100:{'C' * 73}>C:7/4)"

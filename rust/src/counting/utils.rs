@@ -133,6 +133,12 @@ pub struct ClassifyResult {
     /// defined. Such a read counts although its aligned span stops short of the
     /// variant position; the engine admits it in DNA only.
     pub clip_admissible: bool,
+    /// The exact-carrier rule decided this read (REF or ALT) from windows read
+    /// from the right flank (an RNA exon edge cuts the left one). Both alleles'
+    /// molecules hold those windows from the same starts, one starting inside the
+    /// longer allele included, so the engine counts such a read although it does
+    /// not overlap the variant position, in either mode.
+    pub read_from_right: bool,
     /// Whether the PairHMM backend's pangenomic haplotype matrix could not
     /// evaluate this read (reference context missing, or not containing the
     /// variant), so it was scored by the Smith-Waterman fallback — or, where SW
@@ -151,6 +157,12 @@ pub struct ClassifyResult {
     /// here), and a fragment whose reads are all like this is left out of the mFSD
     /// classes.
     pub uninformative: bool,
+    /// A REF call withdrawn because the read reaches another allele of REF's length at the
+    /// locus and tells REF from it by no base (RJ-25; an allele past the read's end does not
+    /// count): that allele or REF. The sibling REF guard still
+    /// checks it, so a co-annotated sibling's allele it carries is partial evidence
+    /// here (RJ-5).
+    pub ref_untold: bool,
     /// An ALT call on a pure indel withdrawn because the read spans neither
     /// ALT-side window and its bases could not be judged: no prepared reference
     /// holds the event (an unprepared variant), or the deciding base lies past the
@@ -173,6 +185,23 @@ pub struct ClassifyResult {
     pub alt_by_bases: bool,
     /// The exact-carrier rule judged the read.
     pub carrier_judged: bool,
+    /// The junction judge (a deletion of 50+ bp at its POS breakpoint) judged the read.
+    pub junction_judged: bool,
+    /// The haplotype judge's ALT call at a substitution, on a read that also spells whole
+    /// a co-listed row holding the row's change (an MNV beside its component SNV): one
+    /// bit per such row, in `judge::listed_holders` order. Diagnostic only (MNV_SHARED).
+    pub spells_listed: u32,
+    /// The haplotype judge's ALT call on a read that also spells whole an allele at the
+    /// row's site that is the row's ALT with listed neighbours (a delins that is two
+    /// listed deletions together, RJ-28's indel twin): one bit per such allele, in the
+    /// site's order (`judge::Site::x_spellings`, the first 64); the engine names the
+    /// listed ones. Diagnostic only (INDEL_SHARED).
+    pub spells_listed_indel: u64,
+    /// The haplotype judge found the read's bases fit none of the row's candidate
+    /// sequences (REF, ALT, the other alleles at its site, with every context) within ten
+    /// confident mismatches, whether or not the fit rule made it depth only. Diagnostic
+    /// only (UNEXPLAINED_READS).
+    pub fits_none: bool,
 }
 
 impl ClassifyResult {
@@ -197,14 +226,20 @@ impl ClassifyResult {
             covers_locus: true,
             mnp_confirmed: false,
             clip_admissible: false,
+            read_from_right: false,
             sw_fallback: false,
             uninformative: false,
+            ref_untold: false,
             alt_unjudged: false,
             carrier_fallback: false,
             ref_withdrawn: false,
             alt_withdrawn: false,
             alt_by_bases: false,
             carrier_judged: false,
+            junction_judged: false,
+            spells_listed: 0,
+            spells_listed_indel: 0,
+            fits_none: false,
         }
     }
 

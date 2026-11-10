@@ -192,6 +192,7 @@ Every N/masked/partial path must produce a deterministic, traceable outcome:
 | ALT = "N" in input VCF/MAF | `FAIL` + reason `ALT_CONTAINS_N` | — | — | `warn` (validation) |
 | ALT equal to REF in input VCF/MAF | `FAIL` + reason `ALT_EQUALS_REF` | — | — | `warn` (validation) |
 | Allele that is not a base sequence (IUPAC code, stray character; `-` outside MAF input) | `FAIL` + reason `NON_SEQUENCE_ALLELE` | — | — | `warn` (validation) |
+| MAF row at `Start_Position` 0 that is not a dash insertion | `FAIL` + reason `START_BEFORE_CONTIG` | — | — | `warn` (validation) |
 | ThirdAllele with partial match | neither + partial | — | +1 | `trace` |
 
 ---
@@ -242,14 +243,14 @@ awk -F'\t' 'NR==2 {print "REF="$41, "ALT="$42}' output/*.maf
 ### Real-World Validation
 
 ```bash
-# Compare gbcms vs samtools for a SNP
-# Position: chr1:11168293 G>A
+# Compare gbcms vs samtools for a SNP (set CHROM and POS to the variant)
+CHROM=1; POS=1000000
 
 # gbcms output
-awk -F'\t' '$5=="1" && $6=="11168293" {print "REF="$41, "ALT="$42}' output.maf
+awk -F'\t' -v c="$CHROM" -v p="$POS" '$5==c && $6==p {print "REF="$41, "ALT="$42}' output.maf
 
 # samtools output
-samtools mpileup -r 1:11168293-11168293 -q 20 -f ref.fa sample.bam | \
+samtools mpileup -r "$CHROM:$POS-$POS" -q 20 -f ref.fa sample.bam | \
     awk '{gsub(/\^.|\$/,"",$5); print "DP="$4, "Pileup="$5}'
 ```
 

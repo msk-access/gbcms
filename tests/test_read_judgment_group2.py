@@ -83,15 +83,16 @@ def test_a_longer_deletion_over_the_anchor_is_not_the_alt(tmp_path):
     assert census(bam, contig, v).ad == 0
 
 
-def test_a_deleted_anchor_with_every_window_base_masked_is_not_alt(tmp_path):
+def test_a_deleted_anchor_with_every_window_base_masked_is_alt(tmp_path):
     """GA>G; the reads delete the anchor and every base left between their aligned
-    flanks is N, the shared flank base too. Nothing at the event is read: not ALT."""
+    flanks is N, the shared flank base too. Their confident flanks lie the ALT's
+    length apart: ALT where its bases show the length (D5, operator 2026-10-15)."""
     contig = _contig("CCAGAAGTC")
     reads = _deleting_anchor(contig, 1, masked_at=(A + 1, A + 2, A + 3))
     fa, bam = write_contig(tmp_path, contig, reads, "masked")
     v = _prepared(fa, "GA", "G")
     c = _count(bam, v)
-    assert c.ad == 0 and c.rd == 0, (c.rd, c.ad, c.partial_alt)
+    assert (c.rd, c.ad, c.partial_alt) == (0, 4, 0)
 
 
 # ── C16: an exact-carrier ALT call needs quality-weighted evidence ───────────

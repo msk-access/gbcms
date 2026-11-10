@@ -30,9 +30,11 @@ import glob
 import random
 
 import pysam
-from helpers import count_bam_checked, make_read, read_maf_output
+import pytest
+from helpers import count_bam_checked, count_checked, make_read, read_maf_output
 from typer.testing import CliRunner
 
+from gbcms import _rs
 from gbcms.cli import app
 
 runner = CliRunner()
@@ -208,7 +210,7 @@ def test_anchor_inside_intron_carries_no_information(tmp_path):
 
 def test_gap_representation_does_not_flip_the_call(tmp_path):
     """The same 100bp gap at the anchor: as D(100) it is deletion evidence
-    (in-band → ALT); as N(100) it is asserted splicing — NO evidence either
+    (its junction → ALT, RJ-24); as N(100) it is asserted splicing — NO evidence either
     way. Pre-fix the N form counts definitive REF, so the REF/ALT ledger
     flips on the aligner's arbitrary D-vs-N representation choice. Fixed:
     D reads → ALT, N reads → excluded."""
@@ -373,16 +375,16 @@ def test_insertion_after_junction_is_examined(tmp_path):
     vcf = _vcf(tmp_path, rows_v)
     bam = _bam(tmp_path, ref, carriers + refs)
     fasta = _fasta(tmp_path, ref)
-    # Default RNA BAQ stacks splice + indel penalties on the inserted bases
-    # (they sit within 5bp of both the N and the I), so the sequence cannot
-    # be verified at >= min_baseq: honest outcome is partial evidence, never
-    # REF absorption. (With --gtf, boundary suppression restores the quals
-    # at annotated junctions.)
+    # Default RNA BAQ spares the variant's own insertion (its bases are the evidence) and
+    # a splice lowers no quality (RJ-31), so the carriers' inserted bases are read at
+    # Q30 and spell the ALT: ALT because the bases say so. The REF reads' bases at the
+    # junction keep their quality; read on into exon 2, their bases show REF. (Until
+    # RJ-31 the junction penalty, not spared, stacked on the insertion's and left the
+    # inserted bases unreadable, and an unreadable insert of the ALT's length counted
+    # ALT whatever it spelled, RJ-20: see the wrong-insert test below.)
     r = _run(tmp_path, vcf, bam, fasta)[0]
-    assert (int(r["ref_count"]), int(r["alt_count"])) == (0, 0)
-    assert (
-        int(r["partial_alt"]) == 4
-    ), f"BAQ-unverifiable junction inserts must carry partial evidence, got {r['partial_alt']}"
+    assert (int(r["ref_count"]), int(r["alt_count"])) == (5, 4)
+    assert int(r["partial_alt"]) == 0
     # Without BAQ the inserted bases keep their real quality and the post-N
     # inspection confirms the exact-sequence match: full ALT, read and
     # fragment level.
@@ -391,6 +393,41 @@ def test_insertion_after_junction_is_examined(tmp_path):
         int(r["alt_count"]) == 4
     ), f"junction-adjacent I carriers must count ALT, got ad={r['alt_count']}"
     assert int(r["alt_count_fragment"]) == 4
+
+
+@pytest.mark.parametrize("extra", [(), ("--no-baq",)], ids=["baq", "no-baq"])
+def test_a_wrong_insert_after_a_junction_is_not_alt(tmp_path, extra):
+    """M-N-I-M, as above, but the carriers' inserted bases (CCA) are not the ALT's (TG
+    plus a base): their bases say another allele, so no read counts ALT, with BAQ on or
+    off. (The junction penalty used to leave the inserted bases below the bar, and an
+    unreadable insert of the ALT's length counted ALT whatever it spelled: 4 false ALT.)"""
+    ref = _mk_ref()
+    intron_start, gap = 280, 40
+    anchor = intron_start + gap - 1
+    last = "A" if ref[anchor] != "A" else "C"
+    ins_seq = "TG" + last
+    wrong = "CCA"
+    assert wrong != ins_seq and len(wrong) == len(ins_seq)
+    rows_v = [(anchor + 1, ref[anchor], ref[anchor] + ins_seq)]
+    e2 = intron_start + gap
+    carriers = []
+    for i in range(4):
+        s = intron_start - 40 - (i % 4)
+        left = intron_start - s
+        right = READ_LEN - left - len(wrong)
+        seq = ref[s:intron_start] + wrong + ref[e2 : e2 + right]
+        carriers.append(
+            make_read(f"wc{i}", seq, s, ((0, left), (3, gap), (1, len(wrong)), (0, right)))
+        )
+    refs = _spliced_reads(ref, intron_start, gap, 5, prefix="ir")
+    r = _run(
+        tmp_path,
+        _vcf(tmp_path, rows_v),
+        _bam(tmp_path, ref, carriers + refs),
+        _fasta(tmp_path, ref),
+        extra=extra,
+    )[0]
+    assert (int(r["ref_count"]), int(r["alt_count"])) == (5, 0)
 
 
 def test_spliced_over_insertion_carries_no_information(tmp_path):
@@ -519,8 +556,9 @@ def test_spliced_reads_count_the_same_under_any_bin_geometry(tmp_path):
     """N-CIGAR reads: the splice-skip exclusion, the post-N deletion reads (depth
     only: no aligned base flanks a deletion at the junction) and span-aligned REF
     testimony count the same with one variant per bin (count_checked compares
-    every field)."""
-    from helpers import build_bam, count_checked
+    every field). Counted as the CLI's rna command counts, against the reference: the
+    junction reads are judged on the reference spliced along their junctions."""
+    from helpers import write_contig
 
     from gbcms._rs import Variant
 
@@ -546,7 +584,7 @@ def test_spliced_reads_count_the_same_under_any_bin_geometry(tmp_path):
     for i in range(3):  # pre-mRNA reads with aligned bases across the locus
         s = anchor - 50 + i
         reads.append(make_read(f"pm{i}", ref[s : s + rl], s, ((0, rl),)))
-    bam = build_bam(tmp_path, reads)
+    fa, bam = write_contig(tmp_path, ref, reads, chrom="chr1")
     pad = 8
     v = Variant(
         chrom="chr1",
@@ -557,7 +595,7 @@ def test_spliced_reads_count_the_same_under_any_bin_geometry(tmp_path):
         ref_context=ref[anchor - pad : p0 + 2 + pad],
         ref_context_start=anchor - pad,
     )
-    c = count_checked(bam, [v], min_mapq=0, min_baseq=0)[0]
+    c = count_checked(bam, [v], min_mapq=0, min_baseq=0, mode="rna", reference_fasta=fa)[0]
     assert c.dp >= c.rd + c.ad
     assert c.dpf >= c.rdf + c.adf
     assert c.rd == c.rd_fwd + c.rd_rev
@@ -618,13 +656,11 @@ def test_mq0_tracking_precedes_strandedness_filter(tmp_path):
     assert c.ad == c.ad_fwd + c.ad_rev
 
 
-def test_large_deletion_band_near_junction(tmp_path):
-    """The ≥50bp in-band resolution verifies deleted bases through
-    ref_context at genomic offsets. Pre-removal, the co-occurring spliced
-    population made consensus splicing drain the intron from ref_context, so
-    the band's context guard read shifted bytes and rejected in-band
-    carriers. Pinned green: the guard verifies against genomic context
-    regardless of how many reads splice over the span."""
+def test_large_deletion_near_junction(tmp_path):
+    """A 60bp deletion with reads spliced over its span present: the spliced reads
+    are excluded (no observation there), and the exact carriers and REF reads are
+    judged by their bases at the POS breakpoint (RJ-24) on the genomic reference,
+    however many reads splice over the span."""
     ref = _mk_ref()
     anchor, glen = 300, 60
     if ref[anchor] == ref[anchor + glen]:  # pin against left-alignment
@@ -633,16 +669,12 @@ def test_large_deletion_band_near_junction(tmp_path):
     rows_v = [(anchor + 1, ref[anchor : anchor + 1 + glen], ref[anchor])]
     reads = (
         _exonic_reads(ref, anchor, 6)
-        # in-band carriers: D(59) for an expected D(60) — 1 span base
-        # retained, nothing changed outside → same event, band-verified
-        + _del_reads(ref, anchor + 1, 59, 4)
+        + _del_reads(ref, anchor + 1, glen, 4)  # exact carriers
         + _spliced_reads(ref, anchor + 1, 100, 5)  # N over the span
     )
     rows = _run(tmp_path, _vcf(tmp_path, rows_v), _bam(tmp_path, ref, reads), _fasta(tmp_path, ref))
     r = rows[0]
-    assert (
-        int(r["alt_count"]) == 4
-    ), f"in-band carriers must stay ALT with spliced reads present, got ad={r['alt_count']}"
+    assert int(r["alt_count"]) == 4, r["alt_count"]
     assert int(r["ref_count"]) == 6
     assert int(r["total_count"]) == 10  # spliced-over reads excluded
 
@@ -798,18 +830,17 @@ def test_span_ref_testimony_yields_to_competing_indel(tmp_path):
 
 
 def test_span_ref_survives_zero_quality_consensus(tmp_path):
-    """Span-aligned REF is coverage evidence, not base-quality evidence: the
-    attributed qual is the first exon base after the junction, which BAQ
-    legitimately zeroes when the raw quality is ≤20. The fragment layer must
-    still resolve REF (rd>0 with rdf=0 was the exact ALT-side divergence
-    fixed earlier — this pins its REF mirror)."""
+    """Bases at min BQ decide (#278): junction reads whose every base is Q15, below
+    min BQ 20 before BAQ lowers any, show no allele: depth only, read and fragment
+    alike. The pre-mRNA reads count REF at both levels (rd>0 with rdf=0 was the
+    exact ALT-side divergence fixed earlier — this pins its REF mirror)."""
     ref = _mk_ref()
     intron_start, gap = 280, 40
     anchor = intron_start + gap - 1  # 319, spliced out; span [320, 322)
     rows_v = [(anchor + 1, ref[anchor : anchor + 1 + DEL_LEN], ref[anchor])]
     e2 = intron_start + gap
     juncs = []
-    for i in range(3):  # junction REF reads with raw Q15 → BAQ-zeroed near the N
+    for i in range(3):  # junction REF reads with raw Q15, under min BQ with or without BAQ
         s = intron_start - 40 - i
         left = intron_start - s
         right = READ_LEN - left
@@ -831,10 +862,8 @@ def test_span_ref_survives_zero_quality_consensus(tmp_path):
         _fasta(tmp_path, ref),
     )
     r = rows[0]
-    assert int(r["ref_count"]) == 5
-    assert (
-        int(r["ref_count_fragment"]) == 5
-    ), f"BAQ-zeroed span-REF must survive fragment consensus, got rdf={r['ref_count_fragment']}"
+    assert int(r["ref_count"]) == 2
+    assert int(r["ref_count_fragment"]) == 2, f"rd and rdf agree, got rdf={r['ref_count_fragment']}"
     assert int(r["total_count_fragment"]) == 5
 
 
@@ -869,3 +898,56 @@ def test_span_ref_testimony_excludes_deleted_span_coverage(tmp_path):
         int(r["ref_count"]) == 3
     ), f"mixed M/D span coverage must not count REF, got rd={r['ref_count']}"
     assert int(r["total_count"]) == 5
+
+
+# A delins TGC>CA in a stretch no run or tandem unit touches, and a germline SNP on
+# the base before it that every REF read carries: the exact-carrier guard masks that
+# base (it recurs on REF reads), so it fits either allele's window.
+_MASK_AT = 300
+
+
+def _mask_ref() -> str:
+    rng = random.Random(7)
+    ref = [rng.choice("ACGT") for _ in range(1200)]
+    ref[_MASK_AT - 6 : _MASK_AT + 9] = "GATCAG" + "TGC" + "ATGTCA"
+    return "".join(ref)
+
+
+def _mask_reads(ref: str, snp_at: int, spliced: bool, tag: str) -> list:
+    """Six REF reads carrying a SNP at `snp_at`; spliced ones end their exon one
+    base past the event's first right-flank base and resume 100 bases on."""
+    seq_ref = ref[:snp_at] + ("A" if ref[snp_at] != "A" else "C") + ref[snp_at + 1 :]
+    j, gap, out = _MASK_AT + 4, 100, []
+    for i in range(6):
+        s = _MASK_AT - 40 - i
+        if spliced:
+            left = j - s
+            seq = seq_ref[s:j] + seq_ref[j + gap : j + gap + 100 - left]
+            out.append(make_read(f"{tag}{i}", seq, s, ((0, left), (3, gap), (0, 100 - left))))
+        else:
+            out.append(make_read(f"{tag}{i}", seq_ref[s : s + 100], s, ((0, 100),)))
+    return out
+
+
+@pytest.mark.parametrize("snp_at", [1100, _MASK_AT - 1])
+def test_spliced_reads_keep_the_masked_flank_base(tmp_path, snp_at):
+    """Six unspliced and six spliced REF molecules carrying the same SNP, far away
+    (a control) or on the flank base the guard masks: a spliced read is judged on
+    windows rebuilt over the reference spliced at its junction, and the mask stays
+    on that base there, so all twelve are REF in RNA as in DNA."""
+    ref = _mask_ref()
+    reads = _mask_reads(ref, snp_at, False, "u") + _mask_reads(ref, snp_at, True, "s")
+    bam = _bam(tmp_path, ref, reads)
+    fa = str(_fasta(tmp_path, ref))
+    (pv,) = _rs.prepare_variants(
+        [_rs.Variant(BAM_CONTIG, _MASK_AT, ref[_MASK_AT : _MASK_AT + 3], "CA", "COMPLEX")],
+        fa,
+        5,
+        False,
+        1,
+        True,
+    )
+    for mode in ("dna", "rna"):
+        (c,) = count_checked(str(bam), [pv.variant], mode=mode, reference_fasta=fa, min_mapq=1)
+        assert c.dp >= c.rd + c.ad and c.rd == c.rd_fwd + c.rd_rev
+        assert (c.rd, c.ad) == (12, 0), (mode, c.rd, c.ad)

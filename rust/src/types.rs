@@ -20,7 +20,7 @@ pub struct Variant {
     /// Read by the Phase-3 haplotypes, the pangenome matrix and the sibling guard;
     /// the exact-carrier rule and the windowed indel checks fall back to it without
     /// an `event_ref` (the windowed checks also where `event_ref` does not hold the
-    /// bases; the in-band large-deletion check reads its deleted bases from it).
+    /// bases).
     #[pyo3(get, set)]
     pub ref_context: Option<String>,
     /// Genomic start position (0-based) of the ref_context string.
@@ -65,6 +65,54 @@ pub struct Variant {
     /// row's rule and reports the row's distance.
     #[pyo3(get, set)]
     pub boundary_span: Option<(i64, i64)>,
+
+    /// The input's other substitution rows inside the reference prep holds for a
+    /// deletion of 50 bp or more (`event_ref`): 0-based POS, REF, ALT. A change its
+    /// carriers share that one of them lists is that row's allele, a neighbour, never
+    /// another breakpoint's (#285). Empty for any other variant, and for one prep did
+    /// not make.
+    #[pyo3(get)]
+    pub listed_neighbours: Vec<(i64, String, String)>,
+
+    /// The input's other rows (PASS) whose REF span lies within a read's reach of this
+    /// row's (`judge::READ_REACH` each side): 0-based POS, REF, ALT, upper case, in
+    /// position order. The haplotype judge builds this row's haplotypes from them; prep
+    /// fills it from the whole input, so no bin geometry can change it. The decomposed
+    /// twin carries its parent's.
+    #[pyo3(get)]
+    pub reach_rows: Vec<(i64, String, String)>,
+
+    /// Prep was told the rules, so it left `reach_rows` unrecorded (the rules read them only
+    /// at a row routed to the judge, `judge_routed`). The sequence judge refuses such a row: judged without the rows in its reach,
+    /// its reads would be weighed against too few candidate sequences, silently. False for
+    /// a row built by hand, never prepared, which lists no other row.
+    pub reach_unrecorded: bool,
+
+    /// Prep routed this row to the sequence judge although the call is told the rules
+    /// (RJ-25, 2026-11-03): an SNV row (one base differing, after trimming: REF and ALT one base
+    /// each, or a same-length row kept with its padding), where the input lists an indel or
+    /// delins whose REF span meets the row's site (the judge's `meets`, after its `beside`
+    /// step). The rules' single-base check weighs no listed allele that changes the
+    /// length, so a read that spells one counts ALT; the judge holds that allele as a site
+    /// state and calls the read partial evidence, as a deletion of 50 bp or more already goes
+    /// to a by-bases junction judge. Whole-input, so no bin geometry can change it; the row
+    /// records its rows in reach. Prep's; not exposed to Python.
+    pub judge_routed: bool,
+
+    /// Reference bases a whole read reaches each side of an event the exact-carrier rule
+    /// judges, with their 0-based start (covering `event_ref`): a read the aligner placed
+    /// a unit off in a repeat is read whole over all its bases. For a deletion of 50 bp or
+    /// more, as many bases again past it as it deletes: its other alleles at its breakpoint
+    /// are read past where they first differ from it (#297). Prep's; None otherwise.
+    pub whole_ref: Option<(i64, String)>,
+
+    /// The input's other insertion, deletion and delins rows (PASS) inside the reference
+    /// prep holds for a deletion of 50 bp or more (`whole_ref`, else `event_ref`): 0-based
+    /// POS, REF, ALT, upper case. Another allele at the deletion's breakpoint whose bases are
+    /// the ALT's with one of them applied is the deletion with that listed neighbour, never
+    /// another allele (#297; `listed_neighbours` holds the substitution rows). Empty for any
+    /// other variant. Prep's; not exposed to Python.
+    pub listed_indels: Vec<(i64, String, String)>,
 }
 
 #[pymethods]
@@ -99,6 +147,12 @@ impl Variant {
             shift_region,
             event_ref,
             boundary_span,
+            listed_neighbours: Vec::new(),
+            reach_rows: Vec::new(),
+            reach_unrecorded: false,
+            judge_routed: false,
+            whole_ref: None,
+            listed_indels: Vec::new(),
         }
     }
 }
@@ -122,7 +176,10 @@ pub struct DecisionTally {
     pub carrier_judged: u64,
     /// Reads it could not judge, left to the previous classifier (warned).
     pub carrier_fallback: u64,
-    /// REF reads excluded as a sibling's ALT (the multi-allelic REF guard).
+    /// Reads the junction judge decided or left as depth (deletions of 50+ bp).
+    pub junction_judged: u64,
+    /// REF reads excluded as a sibling's ALT (the multi-allelic REF guard), REF reads
+    /// withdrawn for another allele of REF's length included.
     pub sibling_ref_excluded: u64,
     /// ALT reads claimed by a sibling (the AD-claiming guard).
     pub sibling_alt_claimed: u64,
@@ -139,6 +196,7 @@ impl DecisionTally {
         self.alt_by_bases += o.alt_by_bases;
         self.carrier_judged += o.carrier_judged;
         self.carrier_fallback += o.carrier_fallback;
+        self.junction_judged += o.junction_judged;
         self.sibling_ref_excluded += o.sibling_ref_excluded;
         self.sibling_alt_claimed += o.sibling_alt_claimed;
         self.clip_admitted += o.clip_admitted;
@@ -472,6 +530,59 @@ pub struct BaseCounts {
     /// OBSERVED_ALLELE's n/m).
     #[pyo3(get)]
     pub observed_given_reads: u32,
+    /// A change at the ALT's shifted base too few of the reads placed apart from the
+    /// event carry to be a haplotype's (or carried in one pair orientation), left
+    /// unmasked, as `POS:REF>ALT:c/n` (1-based POS; c carriers of n reads placed apart);
+    /// empty when none. Diagnostic only (feeds POSSIBLE_MINORITY_HAPLOTYPE); no count
+    /// changes.
+    #[pyo3(get)]
+    pub possible_minority: String,
+    /// Under the haplotype judge, at a substitution: per co-listed row holding its change
+    /// (an MNV beside its component SNV, whose carriers count as this row's ALT), how many
+    /// of the ALT reads spell that row whole, as `POS:REF>ALT:n/m` (1-based POS; n of the
+    /// m ALT reads), several joined by `+`; empty when none. Diagnostic only (feeds
+    /// MNV_SHARED); no count changes.
+    #[pyo3(get)]
+    pub mnv_shared: String,
+    /// Under the haplotype judge: per listed row that is this row's ALT with listed
+    /// neighbours (a delins that is two listed deletions together, RJ-28's indel twin,
+    /// whose carriers count as this row's ALT), how many of the ALT reads spell that row
+    /// whole, as `POS:REF>ALT:n/m` (1-based POS; n of the m ALT reads), several joined by
+    /// `+`; empty when none. Diagnostic only (feeds INDEL_SHARED); no count changes.
+    #[pyo3(get)]
+    pub indel_shared: String,
+    /// Under the haplotype judge: reads counted in DP whose bases fit none of the row's
+    /// candidate sequences (REF, ALT, the other alleles at its site, with every context)
+    /// within ten confident mismatches. The fit rule makes such a read depth only where
+    /// its aligner places it elsewhere at least as well (XS >= AS); otherwise its margin
+    /// decides it. 0 under the rules. Diagnostic only (feeds UNEXPLAINED_READS); no count
+    /// changes.
+    #[pyo3(get)]
+    pub unexplained_reads: u32,
+    /// At a deletion of 50 bp or more: another allele at its breakpoint (another unit count
+    /// of a run beside it, #297) that reads like the ALT past what a read can spell, as
+    /// `CHANGE:BASES/LONGEST` (its length change, deleted bases negative; the bases a read
+    /// must hold from the junction windows' first base to spell it in full: the first
+    /// difference and 24 more; the longest read); empty when none. No read can tell an
+    /// unlisted one's carriers from the ALT's, so the rule holds nothing for it (a listed one
+    /// is held wherever it first differs). Diagnostic only (feeds UNIT_COUNT_UNSPANNED); no
+    /// count changes.
+    #[pyo3(get)]
+    pub unit_count_unspanned: String,
+    /// At a deletion of 50 bp or more: each other unit count present at its breakpoint that
+    /// takes ALT calls (listed, or found from the reads; an ALT read counts only where its
+    /// bases tell the given count from it), as `POS:REF>ALT:n/m` (1-based POS of the given
+    /// deletion's anchor; n fragments fitting the ALT's windows whose ALT call it takes, m
+    /// that tell the given count from it), several joined by `+`; empty when none. Diagnostic only (feeds
+    /// OBSERVED_ALLELE where m is 0, else COEXISTING_ALLELE); no count changes.
+    #[pyo3(get)]
+    pub unit_count_allele: String,
+    /// Under the sequence judge, at a pure insertion of 50 bp or more: no base within the
+    /// haplotypes the judge reads tells REF's equal window from the ALT's once the guard's
+    /// masks are read (a run past the reads' reach, or masks over every telling base), so
+    /// every read is depth only. Diagnostic only (feeds NO_TELLING_BASE); no count changes.
+    #[pyo3(get)]
+    pub untold_windows: bool,
     /// Reads processed with the requested `--umi-tag` present. Internal only
     /// (no Python getter): summed per BAM to warn when a requested UMI tag is
     /// never seen and fragment grouping silently fell back to QNAME.

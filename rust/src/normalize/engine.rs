@@ -22,7 +22,8 @@ use super::repeat::{find_tandem_repeat, compute_adaptive_padding, first_change_o
 /// Prepare variants for counting in a single pass over the reference FASTA.
 ///
 /// For each variant, this function performs (in order; see `prepare_single_variant`):
-/// 1. **Malformed-allele rejection** — EMPTY_ALLELE / ALT_EQUALS_REF FAIL rows
+/// 1. **Malformed-row rejection** — EMPTY_ALLELE / NON_SEQUENCE_ALLELE / ALT_EQUALS_REF /
+///    START_BEFORE_CONTIG FAIL rows
 /// 2. **MAF anchor fetch** — if `is_maf`, resolve `-` alleles to VCF-style
 /// 3. **REF validation** — check REF against the reference genome; reject an
 ///    ALT containing N (ALT_CONTAINS_N)
@@ -46,11 +47,16 @@ use super::repeat::{find_tandem_repeat, compute_adaptive_padding, first_change_o
 /// * `adaptive_context` — If true, dynamically increase padding in repeat regions
 /// * `rescue_homopolymer` — If true, build each deletion's homopolymer twin
 ///   (`decomposed_variant`) for dual-counting; off, no twin is built
+/// * `read_judge` — The read judgment the rows will be counted with (`rules`, the
+///   default, or `sequence`, as `count_bam_binned` takes it). Each row's rows within a
+///   read's reach (`Variant::reach_rows`) are recorded for the sequence judge, and under the
+///   rules for the SNV rows routed to it (`Variant::judge_routed`), which read them;
+///   prepared for the rules, a row is marked so the judge refuses it
 ///
 /// # Returns
 /// One `PreparedVariant` per input variant, in the same order.
 #[pyfunction]
-#[pyo3(signature = (variants, fasta_path, context_padding, is_maf, threads=1, adaptive_context=true, rescue_homopolymer=false))]
+#[pyo3(signature = (variants, fasta_path, context_padding, is_maf, threads=1, adaptive_context=true, rescue_homopolymer=false, read_judge="rules"))]
 #[allow(clippy::too_many_arguments)]
 pub fn prepare_variants(
     py: Python<'_>,
@@ -61,7 +67,11 @@ pub fn prepare_variants(
     threads: usize,
     adaptive_context: bool,
     rescue_homopolymer: bool,
+    read_judge: &str,
 ) -> PyResult<Vec<PreparedVariant>> {
+    // The rows in reach serve the sequence judge, and under the rules the SNV rows routed to it.
+    let reach_rows = crate::counting::judge::parse_read_judge(read_judge).map_err(pyo3::exceptions::PyValueError::new_err)?
+        == crate::counting::judge::ReadJudge::Haplotype;
     info!(
         "prepare_variants: {} variants, is_maf={}, context_padding={}, adaptive={}, \
          rescue_homopolymer={}, threads={}",
@@ -128,6 +138,15 @@ pub fn prepare_variants(
         Ok(mut r) => {
             // Post-processing: assign multi-allelic group IDs
             assign_multi_allelic_groups(&mut r);
+            assign_listed_neighbours(&mut r);
+            assign_judge_routing(&mut r);
+            if reach_rows {
+                assign_reach_rows(&mut r, false);
+            } else {
+                // under the rules only a routed row weighs the rows in its reach
+                mark_reach_unrecorded(&mut r);
+                assign_reach_rows(&mut r, true);
+            }
 
             // Log summary
             let valid = r.iter().filter(|p| p.gbcms_status == "PASS").count();
@@ -196,6 +215,181 @@ fn grouping_reach(v: &Variant) -> (i64, i64, Option<(i64, i64)>) {
     let (lo, hi) = (v.pos, v.pos + v.ref_allele.len() as i64);
     let window = is_length_changing(v).then(|| (lo - window_pad(v), hi + window_pad(v)));
     (lo, hi, window)
+}
+
+/// Whether the listed row `s` meets the site of the substitution row `x` (POS `x_pos`, `x_len`
+/// bases) as the sequence judge reads it (`judge::haplotypes`, `meets` after `beside`): `s`
+/// changes the length and its REF span overlaps `x`'s. A pure insertion or deletion anchored
+/// on `x`'s last base changes no base `x` names; the judge re-anchors it on the next base,
+/// where it no longer meets `x`.
+pub(crate) fn meets_snv_site(x_pos: i64, x_len: usize, s_pos: i64, s_ref: &str, s_alt: &str) -> bool {
+    let x_end = x_pos + x_len as i64;
+    let anchored_here = s_pos == x_end - 1
+        && matches!(
+            crate::counting::window::allele_kind(s_ref, s_alt),
+            Some(crate::counting::window::AlleleKind::Insertion | crate::counting::window::AlleleKind::Deletion)
+        );
+    s_ref.len() != s_alt.len() && !anchored_here && s_pos < x_end && x_pos < s_pos + s_ref.len() as i64
+}
+
+/// Whether a row is a single-base substitution: REF and ALT of one length with one base
+/// differing (an SNV after a shared prefix and suffix are trimmed; prep keeps a same-length
+/// row's alleles as given).
+fn is_single_base_substitution(v: &Variant) -> bool {
+    let (r, a) = (v.ref_allele.as_bytes(), v.alt_allele.as_bytes());
+    r.len() == a.len() && r.iter().zip(a).filter(|(x, y)| !x.eq_ignore_ascii_case(y)).count() == 1
+}
+
+/// Routes to the sequence judge, under the rules, each SNV row (one base differing, after
+/// trimming) whose site an indel or delins of the same input meets (`Variant::judge_routed`;
+/// RJ-25, 2026-11-03). Whole-input, from the rows that passed prep, so no bin geometry and no
+/// other call can change it. The decomposed twin follows its parent.
+fn assign_judge_routing(variants: &mut [PreparedVariant]) {
+    // the length-changing rows by chromosome: (POS, REF, ALT), in position order
+    let mut changing: std::collections::HashMap<String, Vec<(i64, String, String)>> = std::collections::HashMap::new();
+    for p in variants.iter().filter(|p| p.gbcms_status == "PASS") {
+        let v = &p.variant;
+        if v.ref_allele.len() != v.alt_allele.len() {
+            changing.entry(v.chrom.clone()).or_default().push((v.pos, v.ref_allele.clone(), v.alt_allele.clone()));
+        }
+    }
+    for rows in changing.values_mut() {
+        rows.sort();
+    }
+    let longest = changing.values().flatten().map(|r| r.1.len() as i64).max().unwrap_or(0);
+    let mut routed = 0usize;
+    for p in variants.iter_mut().filter(|p| p.gbcms_status == "PASS") {
+        let v = &p.variant;
+        let Some(rows) = changing.get(&v.chrom).filter(|_| is_single_base_substitution(v)) else {
+            continue;
+        };
+        let x_end = v.pos + v.ref_allele.len() as i64;
+        // rows starting before the SNV's span ends and long enough to reach it
+        let from = rows.partition_point(|r| r.0 < v.pos - longest);
+        if rows[from..].iter().take_while(|r| r.0 < x_end).any(|(pos, r, a)| meets_snv_site(v.pos, v.ref_allele.len(), *pos, r, a)) {
+            p.variant.judge_routed = true;
+            if let Some(twin) = p.decomposed_variant.as_mut() {
+                twin.judge_routed = true;
+            }
+            routed += 1;
+        }
+    }
+    if routed > 0 {
+        info!("prepare_variants: {routed} SNV row(s) beside a listed indel or delins are routed to the sequence judge");
+    }
+}
+
+/// Records on each row the input's other rows within a read's reach of it
+/// (`Variant::reach_rows`), for the haplotype judge; the decomposed twin carries its
+/// parent's. Whole-input, so the rows a read is weighed against never depend on the bin.
+/// With `only_routed`, on the rows routed to the judge under the rules alone.
+fn assign_reach_rows(variants: &mut [PreparedVariant], only_routed: bool) {
+    let reach = crate::counting::judge::READ_REACH;
+    let mut by_chrom: std::collections::HashMap<String, Vec<(i64, String, String)>> =
+        std::collections::HashMap::new();
+    for p in variants.iter().filter(|p| p.gbcms_status == "PASS") {
+        let v = &p.variant;
+        by_chrom.entry(v.chrom.clone()).or_default().push((
+            v.pos,
+            v.ref_allele.to_ascii_uppercase(),
+            v.alt_allele.to_ascii_uppercase(),
+        ));
+    }
+    for rows in by_chrom.values_mut() {
+        rows.sort();
+        rows.dedup();
+    }
+    let longest = by_chrom.values().flatten().map(|r| r.1.len() as i64).max().unwrap_or(1);
+    for p in variants.iter_mut().filter(|p| p.gbcms_status == "PASS" && (!only_routed || p.variant.judge_routed)) {
+        let v = &p.variant;
+        let Some(rows) = by_chrom.get(&v.chrom) else { continue };
+        let own = (v.pos, v.ref_allele.to_ascii_uppercase(), v.alt_allele.to_ascii_uppercase());
+        let (lo, hi) = (v.pos - reach, v.pos + v.ref_allele.len() as i64 + reach);
+        let from = rows.partition_point(|r| r.0 < lo - longest);
+        let near: Vec<(i64, String, String)> = rows[from..]
+            .iter()
+            .take_while(|r| r.0 < hi)
+            .filter(|r| **r != own && r.0 + r.1.len() as i64 > lo)
+            .cloned()
+            .collect();
+        if let Some(twin) = p.decomposed_variant.as_mut() {
+            twin.reach_rows = near.clone();
+        }
+        p.variant.reach_rows = near;
+    }
+}
+
+/// Marks every row prepared for the rules, and its decomposed twin, as holding no rows in
+/// reach (`Variant::reach_unrecorded`): the sequence judge refuses them, never judging a
+/// read without the rows it is weighed against. A row routed to the judge records them.
+fn mark_reach_unrecorded(variants: &mut [PreparedVariant]) {
+    for p in variants.iter_mut().filter(|p| !p.variant.judge_routed) {
+        p.variant.reach_unrecorded = true;
+        if let Some(twin) = p.decomposed_variant.as_mut() {
+            twin.reach_unrecorded = true;
+        }
+    }
+}
+
+/// Records on each deletion of 50 bp or more the input's other substitution rows
+/// (SNVs and MNPs that passed prep) inside the reference prep holds for it, as
+/// `Variant::listed_neighbours`. Its junction guard takes a change the carriers share
+/// that one of them lists as that row's allele: the input is taken as correct, so a
+/// read that is the deletion with a listed neighbour carries the deletion (#285).
+/// Siblings are not this list: a nearby SNV is never a co-annotation sibling, which
+/// would claim the deletion's REF reads.
+fn assign_listed_neighbours(variants: &mut [PreparedVariant]) {
+    let mut substitutions: std::collections::HashMap<String, Vec<(i64, String, String)>> =
+        std::collections::HashMap::new();
+    // The indel rows too, for `Variant::listed_indels` (#297).
+    let mut indels: std::collections::HashMap<String, Vec<(i64, String, String)>> = std::collections::HashMap::new();
+    for p in variants.iter().filter(|p| p.gbcms_status == "PASS") {
+        let v = &p.variant;
+        let row = (v.pos, v.ref_allele.to_ascii_uppercase(), v.alt_allele.to_ascii_uppercase());
+        if v.ref_allele.len() == v.alt_allele.len() && !v.ref_allele.eq_ignore_ascii_case(&v.alt_allele) {
+            substitutions.entry(v.chrom.clone()).or_default().push(row);
+        } else if v.ref_allele.len() != v.alt_allele.len() {
+            indels.entry(v.chrom.clone()).or_default().push(row);
+        }
+    }
+    for rows in substitutions.values_mut().chain(indels.values_mut()) {
+        rows.sort();
+        rows.dedup();
+    }
+    // A deletion of 50 bp or more: the indel rows inside the reference held for reads past it.
+    for p in variants.iter_mut().filter(|p| p.gbcms_status == "PASS") {
+        let v = &p.variant;
+        if crate::counting::junction::reference_past(v) == 0 {
+            continue;
+        }
+        let (Some(rows), Some((start, seq))) = (indels.get(&v.chrom), v.whole_ref.as_ref().or(v.event_ref.as_ref())) else {
+            continue;
+        };
+        let end = start + seq.len() as i64;
+        let from = rows.partition_point(|r| r.0 < *start);
+        let own = (v.pos, v.ref_allele.to_ascii_uppercase(), v.alt_allele.to_ascii_uppercase());
+        let listed: Vec<(i64, String, String)> = rows[from..]
+            .iter()
+            .take_while(|r| r.0 < end)
+            .filter(|r| r.0 + r.1.len() as i64 <= end && **r != own)
+            .cloned()
+            .collect();
+        p.variant.listed_indels = listed;
+    }
+    for p in variants.iter_mut().filter(|p| p.gbcms_status == "PASS") {
+        let v = &p.variant;
+        let (Some(rows), Some((start, seq))) = (substitutions.get(&v.chrom), v.event_ref.as_ref()) else {
+            continue;
+        };
+        if crate::counting::junction::reference_past(v) == 0 {
+            continue;
+        }
+        let end = start + seq.len() as i64;
+        let from = rows.partition_point(|r| r.0 < *start);
+        let listed: Vec<(i64, String, String)> =
+            rows[from..].iter().take_while(|r| r.0 < end).filter(|r| r.0 + r.1.len() as i64 <= end).cloned().collect();
+        p.variant.listed_neighbours = listed;
+    }
 }
 
 /// Assign group IDs to co-annotated variants so the engine can evaluate them
@@ -451,8 +645,10 @@ fn indel_shift_region(
 /// Reference bases around the event: its change interval (the shift region for
 /// a pure indel), widened to the alleles' own span, plus [`EVENT_REF_MARGIN`]
 /// bases on each side (room to left-align the alleles reads carry there), and
-/// more where a complex variant's exact-carrier windows need it: an event grown
-/// through a long repeat, with its flank and padding. For the observed-allele
+/// more where a complex variant's exact-carrier rule needs it: an event grown
+/// through a long repeat, with its flank and the reach of the neighbouring-change
+/// guard on each side. Past a deletion of 50 bp or more it also holds as many bases
+/// as the deletion removes (`junction::reference_past`). For the observed-allele
 /// diagnostic and the exact-carrier rule; None when the fetch fails.
 fn event_core_ref(reader: &mut fasta::IndexedReader<File>, v: &Variant, tally: &PrepTally) -> Option<(i64, String)> {
     let (c_lo, c_hi) = window::change_interval(v);
@@ -461,7 +657,10 @@ fn event_core_ref(reader: &mut fasta::IndexedReader<File>, v: &Variant, tally: &
     // check compares the two stretches that far past the event on either side.
     let ins_len = (v.alt_allele.len() as i64 - v.ref_allele.len() as i64).max(0);
     let margin = EVENT_REF_MARGIN.max(ins_len + 3);
-    let (mut left, mut right) = (margin, margin);
+    // Past a long deletion, as many bases again as it deletes: its guard tests a
+    // deletion of up to twice the length as another breakpoint.
+    let past = (margin + crate::counting::junction::reference_past(v)).min(EVENT_REF_MAX_MARGIN.max(margin));
+    let (mut left, mut right) = (margin, past);
     loop {
         let lo = (from - left).max(0);
         let hi = to + right;
@@ -475,10 +674,9 @@ fn event_core_ref(reader: &mut fasta::IndexedReader<File>, v: &Variant, tally: &
         // A window that came back short reached the contig end.
         let at_contig_end = lo + (seq.len() as i64) < hi;
         let seq = String::from_utf8_lossy(&seq).to_ascii_uppercase();
-        // Fetch more on a short side, up to the cap or a contig end. (Padding the
-        // exact-carrier windows move away from a contig end always fits in the
-        // other side's margin: an event grown far enough to exhaust it is past
-        // LONG_EVENT, whose junction windows are not padded.)
+        // Fetch more on a short side, up to the cap or a contig end. (At a contig
+        // end the rule still judges with the flank there is: the guard reads only
+        // the bases the reference holds.)
         let (short_left, short_right) = carrier::reference_short(lo, &seq, v).unwrap_or((false, false));
         let more_left = short_left && lo > 0 && left < EVENT_REF_MAX_MARGIN;
         let more_right = short_right && !at_contig_end && right < EVENT_REF_MAX_MARGIN;
@@ -495,6 +693,27 @@ fn event_core_ref(reader: &mut fasta::IndexedReader<File>, v: &Variant, tally: &
             right = (right * 2).min(EVENT_REF_MAX_MARGIN);
         }
     }
+}
+
+/// The reference a whole read reaches each side of an event the exact-carrier rule
+/// judges (`Variant::whole_ref`): its change interval plus
+/// [`carrier::WHOLE_READ_REACH`] each side, and at least the event reference. For a
+/// deletion of 50 bp or more (the junction judge's), as many bases again past it as it
+/// deletes: its other alleles at its breakpoint, up to twice its length, are read a whole
+/// read's reach past where they first differ from it (#297). None for any other variant,
+/// or when the fetch fails.
+fn whole_read_ref(reader: &mut fasta::IndexedReader<File>, v: &Variant) -> Option<(i64, String)> {
+    let past = crate::counting::junction::reference_past(v);
+    if !carrier::judges(v) && past == 0 {
+        return None;
+    }
+    let (c_lo, c_hi) = window::change_interval(v);
+    let (mut lo, mut hi) = ((c_lo.min(v.pos) - carrier::WHOLE_READ_REACH).max(0), c_hi.max(v.pos + v.ref_allele.len() as i64) + past + carrier::WHOLE_READ_REACH);
+    if let Some((s, seq)) = &v.event_ref {
+        (lo, hi) = (lo.min(*s), hi.max(s + seq.len() as i64));
+    }
+    let seq = fetch_window(reader, &v.chrom, lo as u64, hi as u64).ok().filter(|s| !s.is_empty())?;
+    Some((lo, String::from_utf8_lossy(&seq).to_ascii_uppercase()))
 }
 
 /// Reference margin kept around each event (`Variant::event_ref`).
@@ -546,7 +765,8 @@ impl PrepTally {
 /// Process a single variant through the full preparation pipeline.
 ///
 /// Steps:
-/// 0. Reject malformed alleles (EMPTY_ALLELE, NON_SEQUENCE_ALLELE, ALT_EQUALS_REF)
+/// 0. Reject malformed alleles (EMPTY_ALLELE, NON_SEQUENCE_ALLELE, ALT_EQUALS_REF) and a
+///    row before the contig's first base that is not a MAF insertion (START_BEFORE_CONTIG)
 ///    as FAIL rows.
 /// 1. MAF anchor resolution for dash alleles (FETCH_FAILED when the fetch fails).
 /// 2. REF validation (a REF ≥90% similar to the FASTA is corrected to it,
@@ -554,10 +774,11 @@ impl PrepTally {
 /// 3. Left-alignment for indels and delins (not MNPs).
 /// 4. `ref_context` fetch for indels and delins, adaptively padded in repeats.
 /// 5. The homopolymer twin (`decomposed_variant`), only with
-///    `rescue_homopolymer`, with its own `event_ref`.
+///    `rescue_homopolymer`, with its own `event_ref` and `whole_ref`.
 ///
 /// Then `repeat_span` (scanned at the first changed base), the shift region
-/// (`indel_shift_region`) and `event_ref` (`event_core_ref`).
+/// (`indel_shift_region`), `event_ref` (`event_core_ref`) and `whole_ref`
+/// (`whole_read_ref`).
 fn prepare_single_variant(
     reader_result: &mut Result<fasta::IndexedReader<File>, anyhow::Error>,
     variant: &Variant,
@@ -587,6 +808,10 @@ fn prepare_single_variant(
     // - ALT_EQUALS_REF: an ALT equal to its REF (bases compared case-insensitively;
     //   "-" for both in a MAF) describes no change, so every read would match both
     //   alleles and the counts would mean nothing.
+    // - START_BEFORE_CONTIG (checked after the allele checks): a variant at position -1,
+    //   a MAF row at Start_Position 0. No base is there, so nothing can be counted or
+    //   fetched; only a MAF dash insertion can lie before the first base (resolved in
+    //   Step 1 to the first base's anchor). Kept as a FAIL row, not dropped.
     // - NON_SEQUENCE_ALLELE: an allele that is not a base sequence (an IUPAC code
     //   such as R, a placeholder such as '.', a stray character from a hand edit)
     //   matches no read base, so it would count 0 silently. Bases are A, C, G, T
@@ -601,6 +826,11 @@ fn prepare_single_variant(
         Some(("NON_SEQUENCE_ALLELE", "an allele is not a base sequence (A, C, G, T, N or a MAF '-')"))
     } else if variant.ref_allele.eq_ignore_ascii_case(&variant.alt_allele) {
         Some(("ALT_EQUALS_REF", "ALT equals REF, no change to count"))
+    } else if variant.pos < 0 && !(is_maf && variant.ref_allele == "-") {
+        Some((
+            "START_BEFORE_CONTIG",
+            "the row starts before the contig's first base (Start_Position 0); only a MAF insertion can lie there",
+        ))
     } else {
         None
     };
@@ -731,6 +961,12 @@ fn prepare_single_variant(
                 shift_region: None,
                 event_ref: None,
                 boundary_span: None,
+                listed_neighbours: Vec::new(),
+                reach_rows: Vec::new(),
+                reach_unrecorded: false,
+                judge_routed: false,
+                whole_ref: None,
+                listed_indels: Vec::new(),
             },
             gbcms_status: verdict,
             gbcms_status_reason: reason,
@@ -769,6 +1005,12 @@ fn prepare_single_variant(
                 shift_region: None,
                 event_ref: None,
                 boundary_span: None,
+                listed_neighbours: Vec::new(),
+                reach_rows: Vec::new(),
+                reach_unrecorded: false,
+                judge_routed: false,
+                whole_ref: None,
+                listed_indels: Vec::new(),
             },
             gbcms_status: "FAIL".to_string(),
             gbcms_status_reason: "ALT_CONTAINS_N".to_string(),
@@ -983,6 +1225,12 @@ fn prepare_single_variant(
                     shift_region: None,
                     event_ref: None,
                     boundary_span: None,
+                    listed_neighbours: Vec::new(),
+                    reach_rows: Vec::new(),
+                    reach_unrecorded: false,
+                    judge_routed: false,
+                    whole_ref: None,
+                    listed_indels: Vec::new(),
                 }
             })
         })
@@ -995,6 +1243,7 @@ fn prepare_single_variant(
     // back in a long run).
     let decomposed_variant = decomposed_variant.map(|mut twin| {
         twin.event_ref = event_core_ref(reader, &twin, tally);
+        twin.whole_ref = whole_read_ref(reader, &twin);
         twin
     });
 
@@ -1028,8 +1277,15 @@ fn prepare_single_variant(
         shift_region,
         event_ref: None,
         boundary_span: None,
+        listed_neighbours: Vec::new(),
+        reach_rows: Vec::new(),
+        reach_unrecorded: false,
+        judge_routed: false,
+        whole_ref: None,
+        listed_indels: Vec::new(),
     };
     prepared.event_ref = event_core_ref(reader, &prepared, tally);
+    prepared.whole_ref = whole_read_ref(reader, &prepared);
 
     Ok(PreparedVariant {
         variant: prepared,
@@ -1056,6 +1312,84 @@ fn prepare_single_variant(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn prepared(chrom: &str, pos: i64, r: &str, a: &str, status: &str) -> PreparedVariant {
+        PreparedVariant {
+            variant: Variant::new(chrom.into(), pos, r.into(), a.into(), "COMPLEX".into(), None, 0, 0, None, None, None, None),
+            gbcms_status: status.into(),
+            gbcms_status_reason: String::new(),
+            gbcms_diagnostic: String::new(),
+            gbcms_rescue: String::new(),
+            was_anchor_resolved: false,
+            was_left_aligned: false,
+            original_pos: pos,
+            original_ref: r.into(),
+            original_alt: a.into(),
+            decomposed_variant: None,
+            multi_allelic_group: None,
+        }
+    }
+
+    #[test]
+    fn an_snv_meets_a_listed_indel_or_delins_by_the_judges_test() {
+        // the SNV at 100, one base
+        let meets = |pos: i64, r: &str, a: &str| meets_snv_site(100, 1, pos, r, a);
+        assert!(meets(95, "ACGTACGTACG", "A"), "a deletion over its base");
+        assert!(meets(99, "ACG", "A"), "a deletion starting one base before");
+        assert!(meets(100, "C", "TA"), "a delins whose anchor changes, at its base");
+        assert!(meets(98, "ACGT", "TT"), "a delins over it");
+        assert!(!meets(100, "ACGT", "A"), "a pure deletion anchored on its base: re-anchored beside it");
+        assert!(!meets(100, "A", "ATT"), "a pure insertion anchored on its base: re-anchored beside it");
+        assert!(!meets(99, "A", "ATT"), "a pure insertion anchored before it");
+        assert!(!meets(101, "ACG", "A"), "a deletion starting past it");
+        assert!(!meets(90, "ACGT", "A"), "a deletion ending before it");
+        assert!(!meets(98, "ACG", "TTT"), "a substitution is no length change");
+        // a same-length row of 8 bases with one base differing keeps its span [100, 108): the
+        // judge re-anchors a pure indel on its last base, 107
+        let wide = |pos: i64, r: &str, a: &str| meets_snv_site(100, 8, pos, r, a);
+        assert!(wide(105, "ACGTAC", "A"), "a deletion over its last bases");
+        assert!(wide(100, "ACGT", "A"), "a pure deletion anchored on its first base is not re-anchored");
+        assert!(wide(107, "A", "TT"), "a delins on its last base");
+        assert!(!wide(107, "ACG", "A"), "a pure deletion anchored on its last base is re-anchored");
+        assert!(!wide(108, "ACGT", "A"), "a deletion starting past its span");
+    }
+
+    #[test]
+    fn only_an_snv_beside_a_listed_length_change_is_routed_to_the_judge() {
+        let mut rows = vec![
+            prepared("1", 100, "C", "T", "PASS"),          // 0: the SNV a deletion covers
+            prepared("1", 95, "ACGTACGTACG", "A", "PASS"), // 1: the deletion
+            prepared("1", 300, "C", "T", "PASS"),          // 2: an SNV with only a same-length neighbour
+            prepared("1", 299, "AC", "GT", "PASS"),        // 3: an MNV over it
+            prepared("1", 500, "C", "T", "PASS"),          // 4: an SNV a deletion anchors on
+            prepared("1", 500, "CGTA", "C", "PASS"),       // 5
+            prepared("1", 700, "AC", "GT", "PASS"),        // 6: an MNV a deletion covers
+            prepared("1", 695, "ACGTACGTAC", "A", "PASS"), // 7
+            prepared("1", 900, "C", "T", "PASS"),          // 8: an SNV a failed row covers
+            prepared("1", 895, "ACGTACGTAC", "A", "FAIL"), // 9
+            prepared("2", 100, "C", "T", "PASS"),          // 10: the first SNV's position on another contig
+            prepared("1", 1100, "CAAAAA", "AAAAAA", "PASS"), // 11: an SNV kept with its padding, one base differing
+            prepared("1", 1098, "ACGTACGT", "A", "PASS"),  // 12: a deletion over it
+            prepared("1", 1300, "CAAAAA", "AAATAA", "PASS"), // 13: two bases differ: an MNV
+            prepared("1", 1298, "ACGTACGT", "A", "PASS"),  // 14: a deletion over it
+        ];
+        rows[0].decomposed_variant = Some(rows[0].variant.clone());
+        assign_judge_routing(&mut rows);
+        let routed: Vec<bool> = rows.iter().map(|p| p.variant.judge_routed).collect();
+        assert_eq!(
+            routed,
+            vec![true, false, false, false, false, false, false, false, false, false, false, true, false, false, false],
+            "the SNV with a deletion over it, and the padded SNV: not the MNV, the anchored SNV or the failed row's"
+        );
+        assert!(rows[0].decomposed_variant.as_ref().is_some_and(|t| t.judge_routed), "the twin follows its parent");
+        // under the rules a routed row records the rows in its reach, and no other does
+        mark_reach_unrecorded(&mut rows);
+        assign_reach_rows(&mut rows, true);
+        assert!(!rows[0].variant.reach_unrecorded, "routed: its rows recorded");
+        assert!(rows[0].variant.reach_rows.iter().any(|r| r.1 == "ACGTACGTACG"), "the deletion among them");
+        assert!(rows[2].variant.reach_unrecorded && rows[2].variant.reach_rows.is_empty(), "not routed: as the rules prepare it");
+    }
+
 
     #[test]
     fn test_variant_type_for_needs_a_shared_anchor() {

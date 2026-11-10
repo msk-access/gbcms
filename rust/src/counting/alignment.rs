@@ -317,14 +317,14 @@ pub fn classify_by_alignment<F: Fn(u8, u8) -> i32>(
     // can find shifted alignments that reduce the score difference from 3
     // to exactly 2. Strict > would incorrectly classify these as ambiguous.
     let margin = 2;
-    let mut is_alt = alt_aln.score >= ref_aln.score + margin;
-    let mut is_ref = ref_aln.score >= alt_aln.score + margin;
+    // The scores the call is made on: the semiglobal pair, or the local pair where
+    // the fallback below re-scores. The nearby-evidence and tie checks after the
+    // call read the same pair, so partial_alt follows the scores that decided.
+    let (mut alt_score, mut ref_score) = (alt_aln.score, ref_aln.score);
 
     trace!(
-        "classify_by_alignment: alt_score={} ref_score={} margin={} is_ref={} is_alt={} \
-         read_len={} ref_hap={} alt_hap={}",
-        alt_aln.score, ref_aln.score, margin, is_ref, is_alt,
-        read_len, ref_hap.len(), alt_hap.len()
+        "classify_by_alignment: alt_score={} ref_score={} margin={} read_len={} ref_hap={} alt_hap={}",
+        alt_score, ref_score, margin, read_len, ref_hap.len(), alt_hap.len()
     );
 
     // Dual-trigger local fallback for indel/complex variants.
@@ -352,8 +352,8 @@ pub fn classify_by_alignment<F: Fn(u8, u8) -> i32>(
         && ref_allele_len != alt_allele_len;
 
     if is_complex {
-        let diff = (alt_aln.score - ref_aln.score).abs();
-        let max_score = std::cmp::max(alt_aln.score, ref_aln.score);
+        let diff = (alt_score - ref_score).abs();
+        let max_score = std::cmp::max(alt_score, ref_score);
         let perfect_score = read_len as i32;
         let is_borderline = diff <= margin + 1;
         let is_poor = max_score < perfect_score / 2;
@@ -364,19 +364,14 @@ pub fn classify_by_alignment<F: Fn(u8, u8) -> i32>(
                  → local fallback",
                 diff, max_score, perfect_score, is_borderline, is_poor
             );
-            let alt_local = alt_aligner.local(&masked_seq, &alt_hap);
-            let ref_local = ref_aligner.local(&masked_seq, &ref_hap);
-
-            is_alt = alt_local.score >= ref_local.score + margin;
-            is_ref = ref_local.score >= alt_local.score + margin;
-
-            trace!(
-                "Phase 3 local result: alt_local={} ref_local={} is_alt={} is_ref={}",
-                alt_local.score, ref_local.score, is_alt, is_ref
-            );
+            alt_score = alt_aligner.local(&masked_seq, &alt_hap).score;
+            ref_score = ref_aligner.local(&masked_seq, &ref_hap).score;
+            trace!("Phase 3 local result: alt_local={} ref_local={}", alt_score, ref_score);
         }
     }
 
+    let is_alt = alt_score >= ref_score + margin;
+    let is_ref = ref_score >= alt_score + margin;
     if is_alt {
         ClassifyResult::is_alt(med_qual, ClassifyPhase::Alignment)
     } else if is_ref {
@@ -384,11 +379,11 @@ pub fn classify_by_alignment<F: Fn(u8, u8) -> i32>(
         // Propagate nearby evidence: read was classified as REF, but if ALT
         // alignment score was close (within 2× margin), there is structural
         // ALT support worth tracking for partial_alt/PARTIAL_DOMINANT diagnostic.
-        if alt_aln.score > 0 && alt_aln.score + 2 * margin >= ref_aln.score {
+        if alt_score > 0 && alt_score + 2 * margin >= ref_score {
             r.has_nearby_evidence = true;
             trace!(
                 "Phase 3 SW: REF wins but ALT score close (alt={}, ref={}, margin={}) → has_nearby_evidence=true",
-                alt_aln.score, ref_aln.score, margin
+                alt_score, ref_score, margin
             );
         }
         r
@@ -399,22 +394,87 @@ pub fn classify_by_alignment<F: Fn(u8, u8) -> i32>(
         // This preserves an unbiased VAF = AD/(RD+AD) — critical for low-VAF
         // cfDNA detection where even a handful of misrouted reads can push
         // a variant below the Limit of Detection.
-        let max_score = std::cmp::max(alt_aln.score, ref_aln.score);
+        let max_score = std::cmp::max(alt_score, ref_score);
         if max_score >= (read_len as i32) / 2 {
-            trace!("Ambiguous tie (alt={}, ref={}) — routing to neither to preserve unbiased VAF", alt_aln.score, ref_aln.score);
+            trace!("Ambiguous tie (alt={}, ref={}) — routing to neither to preserve unbiased VAF", alt_score, ref_score);
             let mut r = ClassifyResult::new(false, false, med_qual, ClassifyPhase::Alignment);
             // Propagate nearby evidence: tie means ALT had non-trivial
             // alignment support — worth tracking for partial_alt.
-            if alt_aln.score > 0 {
+            if alt_score > 0 {
                 r.has_nearby_evidence = true;
                 trace!(
                     "Phase 3 SW: tie with ALT score {} > 0 → has_nearby_evidence=true",
-                    alt_aln.score
+                    alt_score
                 );
             }
             r
         } else {
             ClassifyResult::neither(ClassifyPhase::Alignment)
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::counting::engine::sw_score;
+
+    /// 25 reference bases each side of the event.
+    const LEFT: &str = "TGCAGTCCATGACCTGAGTACGGTA";
+    const RIGHT: &str = "CTTGAAGCGTCAATGGCATTCAGAC";
+
+    /// A complex row (both alleles longer than one base, of different lengths) with
+    /// its reference context: the rows the local re-scoring applies to.
+    fn delins(ref_allele: &str, alt_allele: &str) -> Variant {
+        Variant::new(
+            "1".into(), 1000 + LEFT.len() as i64, ref_allele.into(), alt_allele.into(), "COMPLEX".into(),
+            Some(format!("{LEFT}{ref_allele}{RIGHT}")), 1000, 0, None, None, None, None,
+        )
+    }
+
+    /// The semiglobal and the local (ALT, REF) scores of `read` on the row's haplotypes,
+    /// and the read's call, all at Q30.
+    fn call(v: &Variant, read: &str) -> ((i32, i32), (i32, i32), ClassifyResult) {
+        let (ref_hap, alt_hap) = build_haplotypes(v).unwrap();
+        let mut alt_aligner = Aligner::new(SW_GAP_OPEN, SW_GAP_EXTEND, &sw_score);
+        let mut ref_aligner = Aligner::new(SW_GAP_OPEN, SW_GAP_EXTEND, &sw_score);
+        let r = read.as_bytes();
+        let semiglobal = (alt_aligner.semiglobal(r, &alt_hap).score, ref_aligner.semiglobal(r, &ref_hap).score);
+        let local = (alt_aligner.local(r, &alt_hap).score, ref_aligner.local(r, &ref_hap).score);
+        let quals = vec![30u8; r.len()];
+        (semiglobal, local, classify_by_alignment(r, &quals, v, 20, &mut alt_aligner, &mut ref_aligner))
+    }
+
+    #[test]
+    fn a_ref_call_made_on_the_local_scores_reads_its_nearby_evidence_from_them() {
+        // Junk at both read ends: the semiglobal scores are low (6, 12) and the local
+        // re-scoring calls REF on (17, 21). ALT within two margins of REF on the
+        // scores that made the call: nearby evidence (partial_alt), which the
+        // semiglobal pair (6 + 4 < 12) would deny.
+        let v = delins("GC", "GATC");
+        let (semiglobal, local, r) = call(&v, "AAGCCCGCGCTGCGTAGCCTTGAAGCGTCAATGGTTCAT");
+        assert_eq!((semiglobal, local), ((6, 12), (17, 21)), "the shape this test needs");
+        assert!(r.is_ref && !r.is_alt);
+        assert!(r.has_nearby_evidence, "local ALT 17 is within 4 of local REF 21");
+
+        // The other direction: the semiglobal pair (2, 3) would call ALT close, but the
+        // local scores that made the REF call (10, 15) put it more than 4 below.
+        let (semiglobal, local, r) = call(&v, "ATTAATGGGTAGCCTTGAAGCGGTAGGGCTGATA");
+        assert_eq!((semiglobal, local), ((2, 3), (10, 15)), "the shape this test needs");
+        assert!(r.is_ref && !r.is_alt);
+        assert!(!r.has_nearby_evidence, "local ALT 10 is more than 4 below local REF 15");
+    }
+
+    #[test]
+    fn a_tie_on_the_local_scores_is_judged_on_them() {
+        // Semiglobal (10, 10) and local (21, 21) both tie. The local scores reach half
+        // the read (31 bases), so the read is a scored neither with ALT support
+        // (partial_alt); the semiglobal pair (10 < 15) would make it a bare neither.
+        let v = delins("AT", "GCA");
+        let (semiglobal, local, r) = call(&v, "TGGCTCCACAAGTCCATGACCTGAGTACGGT");
+        assert_eq!((semiglobal, local), ((10, 10), (21, 21)), "the shape this test needs");
+        assert!(!r.is_ref && !r.is_alt);
+        assert!(r.has_nearby_evidence, "local ALT 21 > 0 on a tie that reaches half the read");
+        assert_eq!(r.qual, 30, "a scored neither carries the read's median quality");
     }
 }

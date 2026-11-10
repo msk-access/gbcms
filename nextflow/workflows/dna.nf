@@ -22,6 +22,7 @@ workflow GBCMS_DNA_WF {
     main:
     
     ch_versions = channel.empty()
+    ch_merged   = channel.empty()
 
     //
     // MODULE: Run gbcms dna (per-BAM genotyping)
@@ -72,9 +73,11 @@ workflow GBCMS_DNA_WF {
 
         MERGE_COUNTS ( ch_grouped )
         ch_versions = ch_versions.mix(MERGE_COUNTS.out.versions)
+        ch_merged   = MERGE_COUNTS.out.merged_maf
     }
 
     emit:
     counts   = GBCMS_DNA.out.counts
+    merged   = ch_merged  // channel: [ val(sample_id), path(merged_maf) ]; empty without --merge_counts
     versions = ch_versions
 }

@@ -116,8 +116,10 @@ count-affecting merge since the previous release, run on the changed rows only.
    skipped one is still named. Row 0 is the previous release built as a wheel, so a
    difference between its image and a wheel build is named as such; the last row is
    the commit the release ships.
-2. **The wheels.** One manylinux wheel per commit, built as the release builds it
-   (the *Checkpoint wheels* workflow; each wheel is an artifact named `wheel-<sha>`).
+2. **The wheels.** One manylinux wheel per commit, built as releases up to 6.6.0 built
+   theirs (the *Checkpoint wheels* workflow, `manylinux_2_34` with the system OpenSSL,
+   because commits before 6.7.0 still link libcurl; each wheel is an artifact named
+   `wheel-<sha>`).
    Before a release the workflow is not yet on the default branch, where GitHub
    requires a manually run workflow to be, so start it with a push: a branch
    `checkpoint-wheels/X.Y.Z` that commits the list as
@@ -131,19 +133,25 @@ count-affecting merge since the previous release, run on the changed rows only.
    holding the changed rows and every row within 100 bp of a kept row's span, closed
    transitively (siblings classify together), and `ATTRIB/runs.tsv`. The mfsd and rna
    arms keep their full variant files: their Benjamini–Hochberg q-values are computed
-   across the run's rows.
+   across the run's rows. Like `compare_panel.py`, every step reads the builds' time
+   records. It leaves out, and names, a run whose latest attempt failed in either
+   version: a crash partway through writing leaves a partial MAF that would otherwise read
+   as changed rows. No manual setting aside is needed.
 4. **Each build on them**, into `ATTRIB/out`: the two versions first, then every
    checkpoint as `cp_<sha>` (`run_panel.sh TIER ATTRIB/runs.tsv cp_<sha> cp_<sha>/bin/gbcms … ATTRIB/out`).
 5. **`attribute.py check`** confirms the reduction changed nothing: every reduced row
    equals the full run's, in both versions. `gbcms_status_reason` is exempt on context
    rows only (it names the co-annotation group, which the reduction may cut at its
-   edge), never on a changed row. It exits 1 when a row differs.
+   edge), never on a changed row. It exits 1 when a row differs, or when a reduced run's
+   latest attempt failed (it names the run to re-submit).
 6. **`attribute.py attribute TIER OUT 6.5.0 6.6.0 ATTRIB checkpoints.tsv`** traces each
    changed cell through the checkpoints: `attribution_cells.tsv` (each cell and the
    intervals where it changed; a row in one version only is traced as its presence,
    column `(row)`), `attribution_summary.tsv` (per checkpoint, arm and column),
    `unattributed.tsv` (cells whose trail misses a checkpoint's output or does not end at
-   the candidate's value). It exits 1 when any cell is unattributed.
+   the candidate's value). A reduced run whose latest attempt failed counts as missing
+   output, whatever its MAF holds, and is named to re-submit. It exits 1 when any cell
+   is unattributed.
 
 ## The gate
 
@@ -154,7 +162,11 @@ The candidate is tagged when:
 - **concordance by stratum** is reported for both versions; any stratum whose fraction
   within max(2 reads, 10%) of the sign-out (matched level) falls by more than 5 points,
   and the top discordant rows, are adjudicated read by read (the read census, or the
-  reads themselves) before the tag;
+  reads themselves) before the tag. A class-level count does not close it: every
+  signed-out row whose matched ALT falls to 0, or below a tenth of the previous
+  release's, is checked on its own (the listed rows around it, the changes its ALT
+  reads share, its count under each read judgment), and the decision is then taken by
+  class;
 - **run time and peak memory** per arm stay within 1.5× of the previous release, or
   the excess is explained (wall time summed over the runs paired across the builds that
   took 10 s or more, at least 3 per arm; peak memory over paired runs).

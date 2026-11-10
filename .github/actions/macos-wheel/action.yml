@@ -1,0 +1,69 @@
+name: Build the macOS wheel
+description: >
+  The recipe for the macOS wheel (maturin on the runner it is built for). The release
+  workflow and the wheel checks both use it, so what the checks install is what a release
+  publishes. Run actions/checkout and actions/setup-python first (the interpreter below
+  must be on the PATH). On an Apple silicon runner (macos-latest) it builds the arm64 wheel.
+
+inputs:
+  interpreter:
+    description: >
+      A Python for maturin to read its settings from (maturin -i). The extension uses
+      Python's stable ABI (abi3-py310), so the wheel is tagged cp310-abi3 and installs on
+      every CPython from 3.10 on, whichever interpreter this is.
+    required: false
+    default: python3.10
+  commit:
+    description: The commit the wheel is built from, recorded in output provenance (rust/build.rs).
+    required: true
+  out:
+    description: The folder the wheel is written to.
+    required: false
+    default: dist
+
+runs:
+  using: composite
+  steps:
+    - name: Build the wheel
+      uses: PyO3/maturin-action@v1
+      env:
+        GBCMS_BUILD_COMMIT: ${{ inputs.commit }}
+        # Apple silicon starts at macOS 11: the wheel is tagged macosx_11_0_arm64
+        MACOSX_DEPLOYMENT_TARGET: '11.0'
+      with:
+        command: build
+        # Don't pass --manifest-path here; it's in pyproject.toml [tool.maturin]
+        args: --release --out ${{ inputs.out }} -i ${{ inputs.interpreter }}
+
+    # The wheel promises macOS 11. The tests run on macos-latest, so they would accept a wheel
+    # that needs a newer macOS: check the tag and every binary in the wheel against the floor
+    # instead, as the Linux build checks its glibc floor.
+    - name: Check the wheel's macOS floor
+      shell: bash
+      env:
+        OUT: ${{ inputs.out }}
+        FLOOR: '11.0'
+      run: |
+        python3 - <<'PY'
+        import glob, os, re, subprocess, tempfile, zipfile
+        floor = tuple(map(int, os.environ["FLOOR"].split(".")))
+        (wheel,) = glob.glob(os.path.join(os.environ["OUT"], "*.whl"))  # one wheel for every Python
+        platform = wheel[: -len(".whl")].split("-")[-1]
+        m = re.fullmatch(r"macosx_(\d+)_(\d+)_arm64", platform)
+        assert m, platform
+        tag = tuple(map(int, m.groups()))
+        print(wheel, "->", platform, "floor", floor)
+        assert tag <= floor, (platform, floor)
+        with tempfile.TemporaryDirectory() as tmp:
+            zipfile.ZipFile(wheel).extractall(tmp)
+            binaries = [os.path.join(d, f) for d, _, fs in os.walk(tmp) for f in fs if f.endswith((".so", ".dylib"))]
+            assert binaries, "the wheel holds no binary"
+            for b in binaries:
+                # LC_BUILD_VERSION gives "minos X.Y"; the older LC_VERSION_MIN_MACOSX gives "version X.Y"
+                loads = subprocess.run(["otool", "-l", b], check=True, capture_output=True, text=True).stdout
+                mins = re.findall(r"cmd LC_(?:BUILD_VERSION|VERSION_MIN_MACOSX)\n(?:.*\n)*?\s+(?:minos|version) (\d+)\.(\d+)", loads)
+                assert mins, (b, "no minimum macOS in its load commands")
+                need = max(tuple(map(int, v)) for v in mins)
+                print(os.path.relpath(b, tmp), "needs macOS", "%d.%d" % need)
+                assert need <= floor, (b, need, floor)
+        PY

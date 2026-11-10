@@ -24,9 +24,11 @@
 //! let mean = mfsd::calc_mean(&alt_sizes);
 //! ```
 
-use log::trace;
+use log::{trace, warn};
 use rust_htslib::bam::record::Cigar;
 use rust_htslib::bam::Record;
+
+use crate::types::Variant;
 
 /// Minimum number of fragments required in each class for the KS test.
 /// Below this threshold, `ks_test` returns `(f64::NAN, 1.0)` to signal
@@ -236,6 +238,53 @@ pub fn calc_physical_insert_size(record: &Record) -> i32 {
     physical
 }
 
+/// The physical size of the fragment `record` belongs to, read as the allele it is
+/// called: [`calc_physical_insert_size`], and, for an ALT read whose fragment spans
+/// the variant on the reference while its own CIGAR does not write the allele's
+/// length change there (a carrier written as a soft clip, or judged by its bases), that
+/// change too. The molecule carries the ALT, so it is shorter (a deletion) or longer
+/// (an insertion) than the reference span TLEN measures. A fragment whose aligned span
+/// does not cover the variant (a carrier aligned from past a deletion) is left as
+/// TLEN gives it: its span never held the deleted bases. A deletion written as a
+/// splice (N) near the variant counts as the change written.
+pub fn allele_insert_size(record: &Record, variant: &Variant, is_alt: bool) -> i32 {
+    let base = calc_physical_insert_size(record);
+    let change = variant.alt_allele.len() as i64 - variant.ref_allele.len() as i64;
+    if !is_alt || change == 0 || base == 0 {
+        return base;
+    }
+    let (ev_lo, ev_hi) = (variant.pos, variant.pos + variant.ref_allele.len() as i64);
+    let start = record.pos().min(record.mpos());
+    let end = start + record.insert_size().unsigned_abs() as i64;
+    if start > ev_lo || end < ev_hi {
+        return base;
+    }
+    // The change the read's own CIGAR writes at the variant, wherever an aligner may
+    // place it (within the change's length of the event).
+    let reach = change.unsigned_abs() as i64;
+    let near = |rp: i64| rp >= ev_lo - reach && rp <= ev_hi + reach;
+    let (mut written, mut rp) = (0i64, record.pos());
+    for op in record.cigar().iter() {
+        match op {
+            Cigar::Del(l) | Cigar::RefSkip(l) => {
+                if near(rp) {
+                    written -= *l as i64;
+                }
+                rp += *l as i64;
+            }
+            Cigar::Ins(l) if near(rp) => written += *l as i64,
+            Cigar::Match(l) | Cigar::Equal(l) | Cigar::Diff(l) => rp += *l as i64,
+            _ => {}
+        }
+    }
+    let size = base as i64 + (change - written);
+    trace!(
+        "allele_insert_size: {}:{} ALT, physical {} + unwritten change {} → {}",
+        variant.chrom, variant.pos + 1, base, change - written, size,
+    );
+    if size > 0 { size as i32 } else { base }
+}
+
 // ── Two-Sample Kolmogorov-Smirnov Test ───────────────────────────────────────
 
 /// Two-sample Kolmogorov-Smirnov test.
@@ -246,7 +295,8 @@ pub fn calc_physical_insert_size(record: &Record) -> i32 {
 /// series (see [`ks_p_value`]).
 ///
 /// Returns `(f64::NAN, 1.0)` if either slice has fewer than [`MIN_FOR_KS`]
-/// fragments — callers should check `mfsd_ks_valid` before interpreting results.
+/// fragments, or any size is NaN — callers should check `mfsd_ks_valid` before
+/// interpreting results.
 ///
 /// # Arguments
 /// * `a` – Fragment sizes for the first class (e.g., ALT fragments).
@@ -259,11 +309,20 @@ pub fn ks_test(a: &[f64], b: &[f64]) -> (f64, f64) {
         return (f64::NAN, 1.0);
     }
 
-    // Sort copies for CDF walks
+    // A NaN has no place in an ordering: sorting could not place it, and the merge-walk
+    // below would never step past it. Fragment sizes are integers read from alignments,
+    // so none occurs; if one ever does, the test is invalid (D = NaN, p = 1.0), as with
+    // too few fragments.
+    if a.iter().chain(b).any(|x| x.is_nan()) {
+        warn!("ks_test: a fragment size is NaN, so no KS statistic is computed");
+        return (f64::NAN, 1.0);
+    }
+
+    // Sort copies for CDF walks (total order: no NaN is left)
     let mut a_sorted = a.to_vec();
     let mut b_sorted = b.to_vec();
-    a_sorted.sort_unstable_by(|x, y| x.partial_cmp(y).unwrap());
-    b_sorted.sort_unstable_by(|x, y| x.partial_cmp(y).unwrap());
+    a_sorted.sort_unstable_by(f64::total_cmp);
+    b_sorted.sort_unstable_by(f64::total_cmp);
     let (n, m) = (a_sorted.len(), b_sorted.len());
 
     // Merge-walk the two ECDFs, taking the gap after each block of tied values. The
@@ -428,6 +487,31 @@ mod tests {
     }
 
     // ─── ks_test ──────────────────────────────────────────────────────────────
+
+    #[test]
+    fn ks_test_with_a_nan_size_is_invalid_not_a_panic() {
+        // A NaN has no place in an ordering. Fragment sizes are integers read from
+        // alignments, so none occurs; if one ever does, the test is invalid
+        // (D = NaN, p = 1.0, as with too few fragments) in either class.
+        let ok: Vec<f64> = (100..110).map(f64::from).collect();
+        let mut with_nan = ok.clone();
+        with_nan[3] = f64::NAN;
+        for (a, b) in [(&with_nan, &ok), (&ok, &with_nan), (&with_nan, &with_nan)] {
+            let (d, p) = ks_test(a, b);
+            assert!(d.is_nan(), "D is NaN");
+            assert_eq!(p, 1.0);
+        }
+    }
+
+    #[test]
+    fn ks_test_orders_infinite_sizes_like_any_other() {
+        // Not NaN, so valid input: +inf sorts last and the merge-walk ends.
+        let a: Vec<f64> = vec![1.0, 2.0, 3.0, 4.0, f64::INFINITY];
+        let b: Vec<f64> = vec![1.0, 2.0, 3.0, 4.0, 5.0];
+        let (d, p) = ks_test(&a, &b);
+        assert!((d - 0.2).abs() < 1e-12, "D = {d}");
+        assert!(p > 0.99, "p = {p}");
+    }
 
     #[test]
     fn test_ks_insufficient_n() {
@@ -699,6 +783,39 @@ mod tests {
         rec.set(b"r1", Some(cigar), &seq, &qual);
         rec.set_insert_size(tlen);
         rec
+    }
+
+    /// A read at `pos` whose mate starts at `mpos`, the fragment spanning `tlen`.
+    fn placed(cigar: &CigarString, pos: i64, mpos: i64, tlen: i64) -> Record {
+        let mut rec = mock_record(cigar, tlen);
+        rec.set_pos(pos);
+        rec.set_mpos(mpos);
+        rec
+    }
+
+    fn variant(pos: i64, r: &str, a: &str) -> Variant {
+        Variant::new("1".into(), pos, r.into(), a.into(), "INDEL".into(), None, 0, 0, None, None, None, None)
+    }
+
+    #[test]
+    fn an_alt_fragment_is_sized_as_the_molecule_carrying_the_alt() {
+        // 60 bases deleted after the anchor at 100; the fragment runs from 40 to its
+        // mate's end at 267 on the reference: 227, of which the molecule lacks 60.
+        let del = variant(100, &"A".repeat(61), "A");
+        let d_op = placed(&CigarString(vec![Cigar::Match(61), Cigar::Del(60), Cigar::Match(39)]), 40, 200, 227);
+        assert_eq!(allele_insert_size(&d_op, &del, true), 167, "the CIGAR writes the deletion: as before");
+        let clipped = placed(&CigarString(vec![Cigar::Match(61), Cigar::SoftClip(39)]), 40, 200, 227);
+        assert_eq!(calc_physical_insert_size(&clipped), 227);
+        assert_eq!(allele_insert_size(&clipped, &del, true), 167, "a clip-written carrier: the deletion taken off");
+        assert_eq!(allele_insert_size(&clipped, &del, false), 227, "a REF read: its molecule spans the bases");
+        // Aligned from past the deletion (its left part clipped): the span never held
+        // the deleted bases.
+        let past = placed(&CigarString(vec![Cigar::SoftClip(20), Cigar::Match(80)]), 161, 200, 119);
+        assert_eq!(allele_insert_size(&past, &del, true), 119);
+        // A 10-base insertion written as a clip: the molecule is longer than its span.
+        let ins = variant(100, "A", "AGGGGGGGGGG");
+        let ins_clip = placed(&CigarString(vec![Cigar::Match(61), Cigar::SoftClip(39)]), 40, 200, 227);
+        assert_eq!(allele_insert_size(&ins_clip, &ins, true), 237);
     }
 
     #[test]

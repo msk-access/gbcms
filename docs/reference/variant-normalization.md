@@ -117,8 +117,8 @@ past the end fails validation.
 Every variant that reaches REF validation gets a **type label derived from its
 final alleles** (after anchor resolution, REF correction and alignment), with the
 same rule the readers use. A row rejected before that (`EMPTY_ALLELE`,
-`NON_SEQUENCE_ALLELE`, `ALT_EQUALS_REF`, a failed MAF anchor fetch) keeps the
-reader's label.
+`NON_SEQUENCE_ALLELE`, `ALT_EQUALS_REF`, `START_BEFORE_CONTIG`: see [QC Flags](qc-flags.md);
+a failed MAF anchor fetch) keeps the reader's label.
 
 | Condition | Assigned Type |
 |:----------|:-------------|
@@ -197,10 +197,10 @@ Adaptive padding=13: GCTTAAAAA... + REF/ALT + ...AAAAATTGAC  (anchored)
 
 ## Step 5: Homopolymer Decomposition Detection
 
-Some variant callers merge nearby events in a homopolymer run into one complex variant with an inflated deletion, e.g. `CCCCCC→T` where the reads show a smaller change at the run's end. With `--rescue-homopolymer`, gbcms also counts a **corrected allele** for such calls and reports whichever of the two more reads support.
+Some variant callers merge nearby events in a homopolymer run into one complex variant with an inflated deletion, e.g. `CCCCCC→T` where the reads show a smaller change at the run's end. `--rescue-homopolymer` is **deprecated in 6.7.0 and removed in 6.8.0**: it is accepted, warns and is ignored, and gbcms builds and counts no corrected allele. Until 6.6.x, with the flag, gbcms also counted a **corrected allele** for such calls and reports whichever of the two more reads support.
 
 !!! info "Off by default: the row counts the given allele"
-    gbcms takes the input allele as correct. By default the row reports the given allele's counts. When the reads carry a different allele, `gbcms_diagnostic` names it: `OBSERVED_ALLELE(chrom:pos:REF>ALT:n/0)` when no read carries the given allele, `COEXISTING_ALLELE(...:n/m)` when the given allele is present beside a more frequent one. Prep still builds the corrected allele; it is counted only with `--rescue-homopolymer`.
+    gbcms takes the input allele as correct. By default the row reports the given allele's counts. When the reads carry a different allele, `gbcms_diagnostic` names it: `OBSERVED_ALLELE(chrom:pos:REF>ALT:n/0)` when no read carries the given allele, `COEXISTING_ALLELE(...:n/m)` when the given allele is present beside a more frequent one. The flag is deprecated and ignored (6.7.0).
 
     The twin became opt-in because its arbitration is not an exact haplotype match. At the case it was built for (SOX2, below), the reads carry `CCCCT`, a 1bp deletion plus C→T, not the twin `CCCCCT`. The twin wins there by tolerance. At other real twin loci it claims most of the called allele's own exact carriers. `OBSERVED_ALLELE` names `CCCCT` exactly.
 
@@ -245,7 +245,7 @@ Step 3: corrected_alt = C × (ref_len - 1) + alt_last = CCCCC + T = CCCCCT
 
 ### Dual-Counting Flow
 
-With `--rescue-homopolymer` (`prepare_variants(..., rescue_homopolymer=True)`), the corrected variant is stored in `PreparedVariant.decomposed_variant`; without it, prep builds no twin. During counting, **both** the original and corrected alleles are counted independently. The result with the higher `alt_count` wins:
+Historical (the flag is ignored in 6.7.0, removed in 6.8.0): with `--rescue-homopolymer`, the corrected variant is stored in `PreparedVariant.decomposed_variant`; without it, prep builds no twin. During counting, **both** the original and corrected alleles are counted independently. The result with the higher `alt_count` wins:
 
 ```mermaid
 flowchart TD
@@ -273,9 +273,9 @@ The corrected allele is scored as unique sequence (`repeat_span` 0). In RNA with
     The flag appears only when the corrected allele got more ALT support than the called one. If the original gets more, it is used as-is with a normal `PASS` status. The comparison is not an exact haplotype match, though. Reads at real loci carry several forms: the called delins, the corrected allele, a 1bp deletion plus the change, or other alleles of the run. Both classifiers can claim reads of forms neither describes exactly. Inspect the reads at flagged loci; a redesign is tracked in the project plan.
 
 !!! example "Real-World: SOX2"
-    **SOX2** at chr3:181430901: `CCCCCC→T` (6bp→1bp, net −5bp). The reads carry `CCCCT`.
+    **SOX2**, `CCCCCC→T` (6bp→1bp, net −5bp). The reads carry `CCCCT`.
     - **Default:** the row reports `CCCCCC→T` (alt=3), and `gbcms_diagnostic` names `CCCCT`.
-    - **With `--rescue-homopolymer`:** the corrected `CCCCCC→CCCCCT` (alt=79) wins, and the row reports `gbcms_status = PASS`, `gbcms_status_reason = WARN_HOMOPOLYMER_DECOMP`.
+    - **With `--rescue-homopolymer` (before 6.7.0):** the corrected `CCCCCC→CCCCCT` (alt=79) wins, and the row reports `gbcms_status = PASS`, `gbcms_status_reason = WARN_HOMOPOLYMER_DECOMP`.
 
 ---
 

@@ -41,14 +41,14 @@ flowchart LR
 !!! info "Allele-Length and Anchor-Base Routing"
     Dispatch uses `ref_allele.len()` and `alt_allele.len()` as the primary selector. For `N×1` variants (deletion format) and `1×N` variants (insertion format), it additionally checks whether the anchor base substitutes (`alt_allele[0] ≠ ref_allele[0]`):
 
-    - **Pure deletion** (`alt[0] == ref[0]`) → `check_deletion` — e.g., `AC→A` where anchor A is preserved
+    - **Pure deletion** (`alt[0] == ref[0]`) → judged by its bases with the [exact-carrier rule](#the-exact-carrier-rule) (RJ-27, since 6.7.0); `check_deletion` only where the rule cannot judge it (no prepared reference, or one without the event's flank) — e.g., `AC→A` where anchor A is preserved
     - **Complex Del+SNV** (`alt[0] ≠ ref[0]`) → the [exact-carrier rule](#the-exact-carrier-rule) — e.g., `GC→T` where anchor G also substitutes to T
-    - **Pure insertion** (`alt[0] == ref[0]`) → `check_insertion` — e.g., `A→AC`
+    - **Pure insertion** (`alt[0] == ref[0]`) → judged by its bases with the exact-carrier rule (RJ-27, since 6.7.0); `check_insertion` only where the rule cannot judge it — e.g., `A→AC`
     - **Complex Ins+SNV** (`alt[0] ≠ ref[0]`) → the exact-carrier rule — e.g., `C→TA`, `A→CCC`. Before 6.6.0 these went to `check_insertion`, which compares only the inserted bases, so reads that keep the anchor counted ALT (on WES, 156 of 463 ALT reads at 10 such loci; #121)
 
     This distinction is critical: the pure-indel CIGAR safeguards cannot correctly classify reads that simultaneously carry the anchor substitution. The exact-carrier rule reads the substituted anchor as part of the allele.
 
-    `check_deletion` falls back to Phase 3 only for an in-band large deletion (≥50bp, another length within 3bp) whose deleted bases differ (see [Deletion — Windowed Safeguards](#windowed-scan-safeguards-1)); a same-length deletion of another haplotype is a distinct allele.
+    A pure deletion of 50 bp or more is judged by its bases at the POS breakpoint ([the junction judge](#deletions-of-50-bp-or-more), RJ-24), however the aligner wrote it. `check_deletion` reaches Phase 3 only for a read that spans the anchor with no aligned base on it and no deletion over it (in practice, its anchor inside a splice N); a same-length deletion of another haplotype is a distinct allele.
 
 ---
 
@@ -127,6 +127,17 @@ Bases inserted after an **anchor** position. The anchor is the last reference ba
 | Position | 0-based index of the **anchor** base |
 | Quality check | Quality-masked sequence comparison |
 
+!!! note "Which path judges an insertion"
+    Since 6.7.0 a pure insertion is judged by its bases with the
+    [exact-carrier rule](#the-exact-carrier-rule) (RJ-27). The CIGAR walk below runs only for
+    an insertion the rule cannot judge (no prepared reference, or one without the event's
+    flank). The paths differ on an insert of the ALT's length whose bases are all unreadable
+    (N or below `--min-baseq`):
+
+    - under the exact-carrier rule it is the **ALT**, where no other allele of that length is
+      at the locus (RJ-20, amended 2026-10-15);
+    - on the CIGAR walk it is neither + `partial_alt`.
+
 ### Algorithm
 
 The insertion check uses a **single CIGAR walk** with four detection strategies:
@@ -181,12 +192,16 @@ flowchart LR
     - **Right length, confident base mismatch** (mismatches on ≥`--min-baseq` bases) — a
       same-length **third allele** → neither + `partial_alt`. Phase 3 must not arbitrate here
       either: alignment scoring promotes a wrong-sequence insert to ALT because it still beats
-      the gapped REF alignment.
+      the gapped REF alignment. Measured when the rule landed (#91, local panels): ad unchanged
+      everywhere; three insertion rows moved a total of 8 provably mismatched reads from `rd`
+      to partial, the largest 6 reads on one insertion row.
     - **Right length, no readable inserted base** (each N or below `--min-baseq`, or the
       insert runs past the read end) — the read carries the insertion's length, not its
       sequence: flag `has_unreadable_insert`, and the read is neither + `partial_alt` unless
-      the variant is also written readably elsewhere in it (RJ-20). Never Phase 3: REF pays
-      for the gap there, so length alone would win ALT.
+      the variant is also written readably elsewhere in it. Never Phase 3: REF pays
+      for the gap there, so length alone would win ALT. This is the CIGAR walk only; the
+      exact-carrier rule, which judges most insertions, counts such an insert inside the
+      window as the ALT where no other allele of that length is at the locus (RJ-20, amended).
 
     See [Wrong-Length Pure Indels](#wrong-length-pure-indels-partial_alt) for the full rule and
     its validation.
@@ -352,41 +367,125 @@ Bases deleted after an **anchor** position. Mirrors insertion but looks for `Del
 
     `check_deletion`'s CIGAR safeguards compare anchor bases assuming the anchor is preserved. For these variants, the anchor changes — feeding them to `check_deletion` would incorrectly classify all DEL reads as REF (alt=0).
 
-### Algorithm
+### Deletions of 50 bp or more { #deletions-of-50-bp-or-more }
 
-Same single-walk strategy as insertion, with four additional features:
+A prepared pure deletion of 50 bp or more is judged by **its bases at the POS
+breakpoint**, however the aligner wrote it: a D op, a soft clip, or a split read
+(RJ-24, since 6.7.0). Short-read aligners without realignment write most of these
+carriers as clips (on HG002, BWA-MEM wrote 1,958 of the junction carriers that
+way), so a CIGAR-only rule read VAF 0.000 at 287 of 300 heterozygous deletions.
 
-1. **Placement-aware large-deletion band** — For large deletions (≥50bp), a wrong-length D at
-   the anchor still counts as the annotated event when the read deletes essentially the whole
-   expected span: at most 3 expected-span bases retained, and at most 3 bases deleted/inserted
-   outside the span (within the scan region, and at least the discrimination window). This accepts single-op breakpoint wobble AND
-   split representations (`D(60)+2M+D(40)` for a ~100bp deletion) in pure CIGAR space, while
-   rejecting net-matching but *displaced* deletions whose M ops across the span prove the event
-   is absent. The 50bp threshold is an **artifact-size prior**: slippage/stutter/alignment
-   artifacts are small, so an observed ≥50bp D op is essentially always a real deletion in that
-   molecule — the band only decides *which* event it belongs to. (Validated pure large
-   deletions, 12–539bp, all align as a single exact-length D at the anchor, so the ≤3bp slop is
-   insurance, not an observed need.)
+- **One window per allele, of equal length, read from the left flank:** 4 clean
+  flank bases ending at the anchor, the microhomology (the bases the deletion can
+  slide right through, shared by both alleles), then 4 clean bases of the allele's
+  own continuation: the deleted bases for REF, the right flank for ALT. A REF and
+  an ALT molecule hold their windows from the same read starts.
+- **Nothing past the window is read**, for either allele: checking REF through
+  every deleted base it covers would expose it to errors the ALT reading never
+  meets (measured: HG002 103 vs 100 of 166 deletions in band, the panel 40 vs 29
+  of 60 within 10% of sign-out).
+- **Placement:** the read is read from its aligned first window base. One whose
+  left flank is not aligned there (in its soft clip, under its own deletion, or
+  written over the deleted bases' end as mismatches) is placed from the right flank,
+  which both alleles share, as the ALT's window sits there; REF's window ends inside
+  the deleted bases, which no ALT molecule holds. The placement is a hypothesis, so
+  the read's confident bases (at or above `--min-baseq`, not N) must favour the left
+  flank over the deleted bases REF has before the right flank by one base read at
+  `--min-baseq`, and by more than nothing (a guard-masked flank base weighs nothing
+  for ALT, the deleted base it is weighed against stays read): a REF molecule starting inside the deleted span behind a poor clip
+  shows the same right flank as a carrier, and nothing of the left flank. It is ALT
+  where it fits, else another allele; written over the deleted bases' end, only
+  where it fits. Hard-clipped bases are absent, so a hard-clipped record holds no
+  window on its own.
+- **Outcomes:** REF or ALT when the read fits exactly one window (bases below
+  `--min-baseq`, and N, fit anything; ALT also needs one minimum-quality base's
+  evidence); fitting neither, another allele (`partial_alt` when closer to ALT);
+  not holding the windows, or crossing a splice inside them, depth only. A read
+  fitting REF whose own alignment deletes or inserts 5+ bases inside the deleted
+  span is another allele (C26).
+- **Depth:** a decided read whose windows read soft-clipped bases inside its
+  fragment counts toward depth in DNA, as for complex variants.
+- **A change recurring** at one window offset on an allele's reads (3+ fragments,
+  20% of that allele's reads) is a separate event, masked at that offset in both
+  windows: in the flank and microhomology, which both alleles share, one the REF
+  reads carry too (a germline SNP or MNP, a run included, on 3 or more REF reads);
+  one of the ALT reads' own with no own change at either neighbouring base (the base
+  either side of the windows included); and past the junction, one on the REF reads
+  with none recurring beside it (a run there, on reads fitting REF within a base, is
+  another breakpoint: another allele). A run of changes on the ALT reads alone is
+  an indel at the junction: another allele, not masked. The isolated changes on
+  the ALT reads alone name the larger allele in `gbcms_diagnostic` (the deletion
+  with the changes); beside a run none is named. Masks never take every offset where REF and ALT
+  differ: those stay read, and a read changed there is neither.
+- **Another unit count beside a run** (#297, RJ-24 amended 2026-10-30 and 2026-10-31, rule X): where the
+  bases past the deletion repeat with the period of another allele at its breakpoint
+  (one more or one fewer unit of a tandem run whose deleted copy differs from it, so
+  the windows stop at the copy's differing base), that allele reads like the ALT
+  through the windows and on to its first difference. Every such allele is computed
+  exactly from the reference (the other deletions at the deletion's breakpoint, fewer
+  bases or more up to twice the given, and the listed rows; a reference N tells nothing),
+  never by a run detector. An insertion at the breakpoint (a tandem copy of the bases
+  before it) is not looked for: a REF read inside the copy fits it as well as REF. A listed
+  one is always a candidate (rule X, operator 2026-10-31: the input is taken as correct, so
+  no read need show the count, and a listed count is held wherever it first differs, past every
+  read's reach too: the reads that cannot reach the difference are partial evidence); one nobody
+  listed counts only where it is present at the
+  site, spelled in full by its own
+  bases on 3 or more fragments the aligner places here (XS below AS; MAPQ above 0 where
+  it writes no XS) and 5% of those telling the ALT from it: read on 24
+  bases past its first difference, fitting it but for one base past the windows, with
+  its base at two or more of the bases where it and the ALT differ and the ALT's at
+  none, and fitting REF worse by two) and the longest read at the
+  site can reach that difference, an ALT call stands only where the read's confident
+  bases where the two differ favour the ALT by one base read at `--min-baseq` (a base
+  fitting neither costs both alike, an error; one base of the other's against three of
+  the ALT's is forgiven); otherwise the read is the ALT or that allele: neither, with
+  partial evidence (RJ-25), and a read whose own bases spell an unlisted count in full is never ALT
+  whatever the presence floor (partial evidence; depth only where the aligner doubts its placement),
+  the floor deciding only the reads that cannot tell. So the given count's reads that end before the first
+  difference stay partial evidence at a listed count that no molecule carries (the cost
+  of rule X: the S1 rows in the listed form); the same reads with the count unlisted
+  and unshown are ALT. A read that fits the deletion with a listed row applied
+  past the junction (an indel or a substitution the input names) as well, but for one
+  base and whose confident bases show that row's change, is the deletion with that neighbour: it
+  spells no other allele and its ALT call stands; a row no read carries makes no read a neighbour's. The windows do not grow: REF, told from both at the junction, keeps its reads
+  and the sibling claim its window. A site with no other
+  count keeps its reads. Where an unlisted count's difference lies past what a read can spell (the
+  first difference and 24 bases), nothing is
+  held, the counts stand and `gbcms_diagnostic` names the row,
+  `UNIT_COUNT_UNSPANNED(change:bases/longest)`. Under the sequence judge the alleles
+  found so are site states, so its reads tie the same way. The allele that holds the
+  calls is named, `OBSERVED_ALLELE` or `COEXISTING_ALLELE` at the deletion's anchor,
+  listed or not.
+- **RNA:** the same, after splice triage (a deletion written as a splice N stays
+  excluded).
 
-2. **Wrong-length rule** — A wrong-length D at the anchor that fails the band is a **distinct
-   allele** in the same tract → neither + `partial_alt`, never Phase 3. See
+The length band that used to credit a deletion of another length within 3 bases
+(and split `D+M+D` representations) is retired: it credited no real read on the
+panel or HG002. A deletion the prepared reference cannot hold the windows of, or an
+unprepared one, keeps the CIGAR checks below.
+
+### Algorithm (CIGAR checks)
+
+Same single-walk strategy as insertion, with three additional features:
+
+1. **Wrong-length rule** — A wrong-length D at the anchor is a **distinct allele** in the
+   same tract → neither + `partial_alt`, never Phase 3. See
    [Wrong-Length Pure Indels](#wrong-length-pure-indels-partial_alt).
 
-3. **A windowed deletion that fails S3** — an exact-length deletion elsewhere is ALT when the
+2. **A windowed deletion that fails S3** — an exact-length deletion elsewhere is ALT when the
    read's bases spell the ALT despite where its gap sits (compensating mismatches); otherwise,
-   at 5bp or more, another allele (`has_distinct_allele_nearby`). Only an **in-band** deletion
-   (≥50bp, another length) whose deleted bases differ flags `has_in_band_mismatch` for
-   Phase-3 arbitration. Short deletions (<5bp) that fail S3 remain CIGAR-definitive REF — they
-   are almost certainly unrelated spurious deletions. See
+   at 5bp or more, another allele (`has_distinct_allele_nearby`). Short deletions (<5bp)
+   that fail S3 remain CIGAR-definitive REF — they are almost certainly unrelated spurious
+   deletions. See
    [Case 3 in the Complex Indels guide](complex-indels.md#case-3-tp53-12bp-left-alignment-shifted-deletion).
 
-4. **Haplotype fallback** — When no CIGAR match is found and the read doesn't cover the anchor
-   with a Match op (e.g., a soft-clip at the anchor), falls back to Phase 3 for
-   haplotype-based comparison — but only when the read actually spans the anchor position.
-   Reads mapping entirely inside a large deleted span carry no information about the variant
-   and are classified neither.
+3. **Haplotype fallback** — A read that spans the anchor with no aligned base on it and no
+   deletion over it (in practice, its anchor inside a splice N) goes to Phase 3 for
+   haplotype-based comparison. Reads mapping entirely inside a large deleted span carry no
+   information about the variant and are classified neither.
 
-#### Part A — CIGAR-Based Strict + Band Detection
+#### Part A — CIGAR-Based Strict Detection
 
 ```mermaid
 flowchart LR
@@ -399,9 +498,7 @@ flowchart LR
     NextDel -->|No| RefCov
     NextDel -->|Yes| LenMatch{"Length matches exactly?"}
     LenMatch -->|Yes| StrictAlt(["🔴 ALT — strict"]):::alt
-    LenMatch -->|No| Band{"≥50bp AND read deletes\nthe expected span?\n(≤3 retained, ≤3 outside)"}
-    Band -->|Yes| BandAlt(["🔴 ALT — in-band\n(wobble / split representation)"]):::alt
-    Band -->|No| WLPartial(["⚪ Neither + partial\n(distinct allele)"]):::partial
+    LenMatch -->|No| WLPartial(["⚪ Neither + partial\n(distinct allele)"]):::partial
     RefCov --> WinCheck
 
     classDef start fill:#9b59b6,color:#fff,stroke:#7d3c98,stroke-width:2px;
@@ -417,7 +514,7 @@ flowchart TD
     WinIn(["→ from CIGAR walk"]):::entry --> CheckWin{"Del within window?\n(±max(5, repeat_span+2),\nor a placement in the shift region)"}
     CheckWin -->|No| Continue["Continue walk"]
     CheckWin -->|Yes| S1{"S1: Length check"}
-    S1 -->|"Exact match, or\n≥50bp with |Δlen| ≤ 3"| S3{"S3: Same haplotype?\n(in-band: bases over the overlap)"}
+    S1 -->|"Exact match"| S3{"S3: Same haplotype?"}
     S1 -->|"Wrong length, ≥5bp"| FlagWL["Flag has_distinct_allele_nearby"]:::partialflag
     S1 -->|"Wrong length, <5bp"| Continue
     S3 -->|Yes| Only{"The read's only change\nacross the window?"}
@@ -426,10 +523,8 @@ flowchart TD
     S3 -->|No| DSpells{"Exact length and the read's\nbases spell the ALT?"}
     DSpells -->|Yes| S2
     DSpells -->|"No, exact length ≥ 5"| FlagWL
-    DSpells -->|"No, in-band ≥ 50bp"| FlagIB["Flag has_in_band_mismatch\n(Phase 3)"]:::fallback
     DSpells -->|"No, < 5bp"| Continue
     S2 --> Continue
-    FlagIB --> Continue
     FlagWL --> Continue
     Continue --> MoreOps{"More ops?"}
     MoreOps -->|Yes| CheckWin
@@ -437,7 +532,6 @@ flowchart TD
 
     classDef entry fill:#3498db,color:#fff,stroke:#2471a3,stroke-width:2px;
     classDef next fill:#3498db,color:#fff,stroke:#2471a3,stroke-width:2px;
-    classDef fallback fill:#f39c12,color:#fff,stroke:#d68910,stroke-width:2px;
     classDef partialflag fill:#8e44ad,color:#fff,stroke:#6c3483,stroke-width:2px;
 ```
 
@@ -448,12 +542,10 @@ flowchart TD
     EvalIn(["→ from windowed scan"]):::entry --> Win{"Windowed match found?"}
     Win -->|Yes| WinAlt(["🔴 ALT — windowed"]):::alt
     Win -->|No| Spans{"Ref coverage at anchor?"}
-    Spans -->|No| AnchorSpan{"Read spans anchor?\n(e.g. soft-clip at anchor)"}
+    Spans -->|No| AnchorSpan{"Read spans anchor?\n(its anchor in a splice N)"}
     AnchorSpan -->|Yes| CPX(["🔄 Phase 3"]):::fallback
     AnchorSpan -->|No| Neither(["⧯ Neither\n(no variant information)"]):::neither
-    Spans -->|Yes| IBCheck{"has_in_band_mismatch?"}
-    IBCheck -->|Yes| CPXP(["🔄 Phase-3 arbitration\n(partial propagated on non-ALT)"]):::fallback
-    IBCheck -->|No| WLCheck{"has_distinct_allele_nearby?"}
+    Spans -->|Yes| WLCheck{"has_distinct_allele_nearby?"}
     WLCheck -->|"Yes, the read changes\nthe discrimination window"| WLPartial(["⚪ Neither + partial\n(another allele, RJ-7)"]):::partial
     WLCheck -->|"Yes, outside the window"| RefSep(["✅ REF\n(a separate event, RJ-8)"]):::ref
     WLCheck -->|No| Ref(["✅ REF"]):::ref
@@ -472,17 +564,27 @@ Three layers of validation prevent false-positive windowed matches:
 
 | Safeguard | Check | Purpose |
 |:----------|:------|:--------|
-| **S1** | Deleted length matches expected `ref_len − 1` exactly, or is within the ≥50bp ±3bp band | Wrong-length deletions never match; ≥5bp ones flag `has_distinct_allele_nearby` (distinct-allele candidates), <5bp ones are alignment noise (CIGAR-definitive) |
+| **S1** | Deleted length matches expected `ref_len − 1` exactly | Wrong-length deletions never match; ≥5bp ones flag `has_distinct_allele_nearby` (distinct-allele candidates), <5bp ones are alignment noise (CIGAR-definitive) |
 | **S2** | Closest match wins (minimum distance from anchor) | When multiple candidates exist, picks the most likely |
-| **S3** | An exact-length deletion gives the variant's haplotype: the reference between the two placements repeats with period `len` (the same bases in a homopolymer, a rotation such as `AC` for `CA` in an STR), and it is the read's only change across the discrimination window (otherwise a distinct allele). An in-band (≥50bp) length compares the deleted bases over the overlapping span | Verifies the shifted Del is the same event. Before 6.6.0 S3 compared the deleted bases themselves, so a rotated STR placement under 5bp counted REF (#189) |
-| **del_len ≥ 5 guard** | A same-length Del that fails S3 counts ALT when the read's bases across the window spell the ALT (the aligner misplaced the gap with compensating mismatches); otherwise, at ≥5bp, it is a distinct allele (`has_distinct_allele_nearby`). An in-band (≥50bp) one whose bases differ flags `has_in_band_mismatch` | Short (1–4bp) Dels failing S3 are almost certainly spurious noise — CIGAR remains definitive. A same-length one ≥5bp gives another haplotype: Phase 3 called such reads ALT (44–94% of synthetic cases; on the RC set every one it reached was another allele by its bases), so it is partial evidence instead (#191) |
+| **S3** | An exact-length deletion gives the variant's haplotype: the reference between the two placements repeats with period `len` (the same bases in a homopolymer, a rotation such as `AC` for `CA` in an STR), and it is the read's only change across the discrimination window (otherwise a distinct allele) | Verifies the shifted Del is the same event. Before 6.6.0 S3 compared the deleted bases themselves, so a rotated STR placement under 5bp counted REF (#189) |
+| **del_len ≥ 5 guard** | A same-length Del that fails S3 counts ALT when the read's bases across the window spell the ALT (the aligner misplaced the gap with compensating mismatches); otherwise, at ≥5bp, it is a distinct allele (`has_distinct_allele_nearby`) | Short (1–4bp) Dels failing S3 are almost certainly spurious noise — CIGAR remains definitive. A same-length one ≥5bp gives another haplotype: Phase 3 called such reads ALT (44–94% of synthetic cases; on the RC set every one it reached was another allele by its bases), so it is partial evidence instead (#191) |
 
-!!! note "has_in_band_mismatch Phase 3 Fallback"
-    Only an in-band large deletion (≥50bp, another length within 3bp) whose deleted bases differ over the overlap flags `has_in_band_mismatch` and goes to Phase-3 haplotype arbitration (WFA+PairHMM under the default backend), propagating `partial_alt` evidence when Phase 3 does not confirm ALT. A same-length deletion that gives another haplotype is judged by the read's bases: ALT when they spell the ALT across the window (the aligner wrote the gap elsewhere with compensating mismatches), otherwise, at ≥5bp, a distinct allele, not Phase 3 (before 6.6.0 Phase 3 often called it ALT; #191). A deletion the aligner wrote elsewhere in the event's shift region (left-alignment moves the caller's anchor left of the reads' `D`) gives the same haplotype and passes S3 directly.
+!!! note "No Phase 3 for a deletion written elsewhere"
+    A same-length deletion that gives another haplotype is judged by the read's bases: ALT when they spell the ALT across the window (the aligner wrote the gap elsewhere with compensating mismatches), otherwise, at ≥5bp, a distinct allele, not Phase 3 (before 6.6.0 Phase 3 often called it ALT; #191). A deletion the aligner wrote elsewhere in the event's shift region (left-alignment moves the caller's anchor left of the reads' `D`) gives the same haplotype and passes S3 directly.
 
     Example: **TP53 `GACCGTGCAAGT→-` (12bp)** — left-alignment moves the anchor 3bp left of the actual `D(12)` position in reads. That placement gives the same haplotype, so S3 (same haplotype) accepts it; before 6.6.0 S3 compared the deleted bases, failed, and Phase 3 classified these reads as ALT.
 
     Short deletions (1–4bp) failing S3 use CIGAR-definitive REF: a 1bp Del that gives another haplotype is almost certainly an unrelated noise deletion, not a left-alignment artifact.
+
+!!! note "Considered and not needed: a repeat-aware gate for deletions under 5bp (#92)"
+    The windowed rule drops a wrong-length deletion under 5bp as noise, while an insertion of any size is flagged and resolved by repeat. A gate that also flagged a sub-5bp windowed deletion falling inside the variant's tract (so the tract resolved it to neither + `partial_alt`) was measured on 2026-09-22 on real MSI-high truth data and not built ([#92 comment](https://github.com/msk-access/gbcms/issues/92#issuecomment-5780293921)). Panel: 6 MSI-high samples (MSI scores 45-53) carrying 246 signed-out small indels at classic MSI target tracts (TGFBR2 A×10, MSH3 A×8, RNF43 C×7, JAK1 T×8, NOTCH4 AGC×7, …), plus a thin MSS control (one locus); the comment also says "all 247 covered loci".
+
+    - **Truth concordance at the MSI loci was already excellent:** median ad-versus-sign-out relative error **+1.4%** (IQR +0.6% to +2.9%) across all 247 covered loci. The wrong-length rule does not degrade MSI genotyping.
+    - **Real stutter was present and already handled:** 35 of 247 loci show 3 or more same-tract wrong-length ops (for example an expected D1 with a D2 ladder ×20; an expected D6 in a triplet tract with D3×92, D9×5, D12×3). Across them **481 stutter reads are flagged `partial_alt` against 35 not flagged (93%)**. Left-alignment collapses same-tract ops onto the shared anchor, where the anchor-position wrong-length rule fires (neither + `partial_alt`), so the windowed <5bp dismissal rarely sees real stutter: real stutter is not displaced from the anchor.
+    - **The residual does not justify a rule:** unflagged stutter is about 0.14 reads per locus. Off-length sub-5bp ops run at 11.7 per 1000 dp at MSI-high signed-out loci against 0 at the MSS control.
+
+    The gate assumed stutter would be absorbed silently into `rd`; the measurement shows the anchor-position rule already separates it. The measurement used the CIGAR path, which then judged every deletion. Since 6.7.0 a prepared deletion is judged by its bases (RJ-27), and the noise rule above runs only where the exact-carrier rule cannot judge the row
+    (REJ-20260922-002 in `.agents/learnings/REJECTED.md`).
 
 !!! warning "No Interior REF for Large Deletions"
     Reads that map **entirely within** a large deleted span never see the anchor junction and carry no information about whether the deletion is present. They are classified **neither** — an earlier interior-REF shortcut was removed because it massively inflated `rd` (claiming thousands of interior reads as REF evidence for a ~1kb deletion). Only reads spanning the anchor position contribute to any count.
@@ -518,6 +620,13 @@ Read 3 (REF):  CIGAR = 12M
 
 ## Wrong-Length Pure Indels (partial_alt) { #wrong-length-pure-indels-partial_alt }
 
+!!! note "Which path applies"
+    These are the CIGAR checks' rules. Since 6.7.0 every prepared pure indel is judged by
+    its bases (RJ-27; RJ-7 as amended), in RNA on the read's spliced reference (RJ-19); the CIGAR
+    checks' length gates (the under-5 bp windowed noise gate, the insert identity band) apply only
+    where the rule cannot judge: on the FORTE RNA arms that was no read of about 1.24M (measured
+    2026-10-27 on the FORTE RNA slices).
+
 A read whose CIGAR proves a **pure indel of a different length** at the variant anchor is
 evidence of a **different allele** — never definitive REF, and never the queried ALT. This is
 the load-bearing rule for repeat-tract loci, where coexisting distinct-length populations are
@@ -530,11 +639,10 @@ as the annotated event inflated VAF several-fold at such loci.
 | Evidence at/near the anchor | Classification |
 |:----------------------------|:---------------|
 | Exact-length, sequence-verified indel | **ALT** (structural) |
-| ≥50bp deletion within the placement-aware band (≤3 span bases retained, ≤3 changed outside — covers breakpoint wobble and split `D+M+D` representations) | **ALT** (structural) |
 | Insertion that is a truncation of the expected insert (≥4bp, ≥90% identity, both sequences non-low-complexity, at least one base readable) | **ALT** (structural) |
 | Any other wrong-length pure indel at the anchor | **Neither + `partial_alt`** |
 | Same-length insertion with confidently mismatching bases | **Neither + `partial_alt`** (third allele) |
-| Same-length insertion with no readable inserted base (each N or below `--min-baseq`), at the anchor or shifted inside the discrimination window | **Neither + `partial_alt`** (RJ-20: the length, not the sequence) |
+| Same-length insertion with no readable inserted base (each N or below `--min-baseq`), at the anchor or shifted inside the discrimination window | On these CIGAR checks, **Neither + `partial_alt`** (the length, not the sequence). Under the exact-carrier rule, which judges most insertions: **ALT** where no other allele of that length is at the locus (RJ-20, amended 2026-10-15) |
 | The same outside the discrimination window | A separate event (RJ-8): **REF** unless the read has another indel in the window |
 | A shifted same-length insertion with a readable base of its own | Judged over every placement it can take as well (RJ-21): **ALT** when one shows the ALT by read bases (at the junction as the strict path would, or the variant's haplotype) or the read's bases spell the ALT across the window; else **neither + `partial_alt`** when a placement sits inside the discrimination window, or a fewest-mismatch placement does with every junction it can reach scored by its readable mismatches (RJ-22: readable mismatches beside the insert block the slide); a separate event (**REF**) when none does |
 | Windowed wrong-length op inside the discrimination window (any of the read's indels there) | **Neither + `partial_alt`** (RJ-7; deletions only when the op is ≥5bp — 1–4bp windowed Ds are alignment noise → plain REF; insertions at any size) |
@@ -546,13 +654,13 @@ wrong-sequence insert to ALT because it still beats the gapped REF alignment. De
 variants are unaffected — they route to `check_complex`, whose Phase-3 realignment correctly
 resolves split and mismatch-absorbed representations of one event.
 
-### Why the 50bp gate
+### Deletions of 50 bp or more
 
-The gate is an **artifact-size prior**, not an event-rarity claim: slippage, stutter, and
-alignment artifacts produce small spurious indel ops, while a read essentially never acquires a
-≥50bp deletion by artifact. Above the gate, an observed big D op is trusted as a *real* deletion
-in that molecule and the band decides whether it is the annotated event; below it, wrong-length
-ops are artifacts or genuine distinct slippage alleles, so no length tolerance is extended.
+A deletion of another length is another allele at any size. From 50 bp a prepared
+deletion is judged by its bases at the POS breakpoint
+([RJ-24](#deletions-of-50-bp-or-more)); the 3-base length band that used to credit
+another length there, on the premise that a large D op is never an artifact, is
+retired: it credited no real read on the panel or HG002.
 
 ### Reading the output
 
@@ -664,6 +772,7 @@ flowchart TD
 | Condition | Result | partial_alt | has_n_base |
 |:----------|:-------|:------------|:-----------|
 | All unmasked match ALT | **ALT** | 0 | true if any N at discrim. pos |
+| All unmasked match ALT, but no base read tells the ALT from another allele of its length at the locus ([RJ-25](#the-exact-carrier-rule)) | Neither | partial (nearby) | true if any N at discrim. pos |
 | All unmasked match REF | **REF** | 0 | true if any N at discrim. pos |
 | Mixed unmasked (some ALT, some REF/other) | **ThirdAllele** → Neither (terminal) | `positions_matching_alt` | true if any N at discrim. pos |
 | All discriminating positions masked | **LowQuality** → Neither (terminal) | `positions_matching_alt` | true if any N at discrim. pos |
@@ -700,10 +809,11 @@ Variants where REF and ALT differ in both sequence **and** length. It also cover
 
 A read is REF or ALT for a complex variant only when **its own bases carry that allele across the whole event**. Nothing is inferred: gbcms counts the allele it is given.
 
-- **The window** is the event plus two reference bases of flank on each side.
+- **The windows.** Each allele's window is its event plus two reference bases of flank on each side.
   - The event is every base where REF and ALT can differ over all equivalent placements: the union of the minimal difference trimmed from the left first and from the right first, grown through any tandem repeat touching either end on either allele (unit 1–6 bases, or the length change). An aligner may place an indel anywhere in such a repeat, including a run the ALT's own bases continue: for `TA>ACC` after `AAA`, the inserted A can sit anywhere in the run. So a delins in or beside a repeat is judged over its whole ambiguity.
-  - The shorter allele's window is padded with reference flank until both are the same length. That way neither allele is favoured by where reads start.
+  - **One pair of equal-length windows at one flank** (RJ-23, since 6.7.0). Both alleles are read inward from the same flank: the shorter allele's whole window, and as many of the longer allele's bases. A read holding them is read on through the rest of the longer allele's window as far as it reaches, and a later base that contradicts an allele rules that allele out (one A more than the ALT's run is not the ALT). Windows of equal length at one flank give a REF and an ALT molecule the same number of read starts that can judge them, so neither allele is favoured by where reads start. The flank is the POS (left) flank; an RNA variant whose left flank an exon edge cuts reads from the right, and a read judged there counts although it starts past POS (inside the longer allele), as the other allele's molecule starting at the same place would: otherwise the POS gate would drop only the longer allele's reads. Before 6.7.0 the shorter window was padded with flank to the longer one's length, which cost reads (a third of them on long delins), and long events were read at both junctions, which let the longer allele count at either end. The windows run on past the event through any bases the shorter allele's flank shares with the longer allele's next bases, and on through two bases from where they first differ, as a long deletion's run through its microhomology: a read carrying only a substitution of the event's bases then shows the longer allele's bases where the shorter allele's differ, and is neither allele.
 - **The window is read where it sits.** It is read from the read position aligned to the window's first reference base, and back from the one aligned to its last; the closer reading counts. The flank bases are outside the event, so they align the same way on either allele. Inside the event the read's bases are taken as one stretch, so where the aligner put an indel or a soft clip does not matter, and an indel it placed past one flank leaves the other in place. A copy of the window elsewhere in the read is never a match.
+- **Placed from the other flank.** A read whose reading flank lies in its soft clip, under its own deletion, or aligned at the event's other copy (an aligner placing a carrier by its far part, its flank over the event's last bases as mismatches) is placed from the other flank as the allele its bases favour would sit there. Each allele's window is placed from that flank at its own length, and the read's confident bases (at or above `--min-baseq`, not N) must mismatch one allele by at least one base read at `--min-baseq` more than the other; bases below it weigh nothing, so a REF molecule behind a poor clip, whose clip happens to fit the ALT, shows no placement and is depth only. The read counts for that allele where it fits; otherwise it carries another allele (`partial_alt` when the favoured allele is the ALT). One placed through aligned bases counts only where its allele fits, and counts although it starts past POS, as the other allele's molecule starting there would.
 - **Masked bases.** Bases below `--min-baseq` (and N) match anything. This is the only tolerance, and it is the same quality rule every backend applies. `n_count` counts a read only when an N sits among the compared bases.
 - **Outcome.** A read decides only when it holds both the REF and the ALT window.
 
@@ -714,18 +824,25 @@ A read is REF or ALT for a complex variant only when **its own bases carry that 
   | matches both (only through masked bases) | neither |
   | matches neither, and is closer to ALT | neither, counted as `partial_alt` |
   | matches neither, and is not closer to ALT | neither |
-  | cannot hold both windows (it ends in or next to the event) | depth only: no allele, no `partial_alt`, no mFSD class |
+  | cannot hold the pair (it ends before the shorter allele's window's length) | depth only: no allele, no `partial_alt`, no mFSD class |
 
-  A read one confident base off the given ALT carries a different allele. A read that ends inside the event cannot show either, like a pure-indel read ending inside its tract.
-- **Long events.** When the windows exceed 50 bases, no read can hold them whole. Both alleles are then judged by equal-length junction windows at each end, read inward from the flank: through one base past the first base where the alleles differ, and through the shorter allele when it fits in 50 bases, so a short ALT is read base by base. The left junction reads it from the left flank; the right one from just before its first difference, so repeat growth on the left does not favour the longer allele's reads. A read must match the same allele at every junction it holds; a mismatch at one rules it out.
+  A read one confident base off the given ALT carries a different allele. A read that ends before holding the pair cannot show either, like a pure-indel read ending inside its tract; a read that holds it and ends inside the longer allele is judged by the bases it has.
+- **Long events.** When both alleles' windows exceed 50 bases, no read can hold the shorter one whole. The pair then ends one base past the first base where the alleles differ, read from the flank nearer it (an event ending a long run is out of a read's reach from the other), and is read on as above. Read from the right flank, a read the rule decides counts although it starts past POS, as for an RNA exon edge below.
+- **A change beside the event.** A change that recurs within 25 bases of the event, at a fixed distance, on the fragments carrying either allele's core (at least 3 fragments, overlapping mates once, and 20% of those reading the base) is a separate event, as another indel outside the window is (RJ-8), masked in both windows so a read carrying the given allele counts whatever it shows there: a change the REF fragments carry too (a germline SNP or MNP, background on both haplotypes, a run included; on 3 or more REF fragments, as one REF read's error is no background), and an isolated change of the ALT fragments' own (no own change at either neighbouring base, the base past the window included). A run of changes on the ALT fragments alone is an indel or MNP beside the event: another allele, not masked. The isolated changes on the ALT fragments alone (under 5% of the REF fragments) make their haplotype larger than the given allele (beside a run none is named: the per-base tallies cannot spell an indel; the observed allele names what the reads' alignments carry), a phased neighbour or an event the input under-describes; the counts stay the given allele's, and `gbcms_diagnostic` names the larger allele under the rule every observed allele follows (`OBSERVED_ALLELE` or `COEXISTING_ALLELE`: more carriers than the given allele, 5% of the reads read, not already an input row).
+- **A change inside the grown event** (RJ-23, amended 2026-10-14). A change the REF molecules carry inside the repeat the event was grown through, off the given allele's own bases (a germline SNP in the run), is background too: masked in both windows where it sits on each allele (left of the given allele at the same place, right of it shifted by the length change), so a REF read carrying it counts REF and a carrier carrying it counts ALT. It is found from the molecules placed by their bases (below), so a read written with its gap elsewhere is still read. A change on the ALT molecules alone stays unmasked for an event changing the length (it may be the event's own sequence); for an MNP, which has nothing to place, the run is beside it, so an isolated one is its phased neighbour, masked and named. Carriers all clipped short of the windows' reach cannot show such a neighbour; a carrier aligned with a clip or an indel at the block counts once its fellows show it. An MNP's bases it keeps inside its core sit on both alleles as well: background there (a germline SNP, in cis or in trans) is masked too, on both routes; a change there on the ALT molecules alone is another allele. A mask inside the event's span takes the reference's base and the background's only: a third base there is still another allele's (beside the event a mask takes any base). Inside a delins the bases kept depend on the alignment, so a change there is not masked.
+- **Masks that hide the difference** (RJ-27, amended 2026-10-20, #294). In a repeat whose units differ at single bases, the base telling a one-unit insertion from REF can be the one the guard masks (a germline SNP turning the next unit into the inserted one, so both haplotypes read alike over a short read). The windows then read on to the next base telling the alleles apart, which prep fetches far enough to hold whatever the guard masks; a read short of it is depth only unless its own bases, held as far as before, fit one allele alone and exactly. Leaving such a mask unapplied was tried and rejected: it counted the SNP's reads as the insertion.
+- **The ALT's own base, shifted.** Where the aligner writes an ALT read without its gap, the read shows past the shorter allele's tract the ALT's base there, which looks like a change on the REF fragments; a germline SNP can give the same base. Where it is the REF fragments' most common change there, background or on more than 1% of them, the fragments placed apart from the event tell them apart: those reading the base whose bases where the reference and that shifted ALT differ past it (aligned with it, no length change between) show the reference's more often (within 300 bases of the variant's REF span). Carried by three or more of them, and 3% of them (above the errors at one base, random or most systematic ones), it is a haplotype's change and is masked, though it be under the REF fragments' background share (a minority haplotype, after a tumour's gain or loss, reads as the ALT over a short read). Otherwise, read by 15 or more, a background change there is the ALT's own base: not masked, and spelling no other allele; with fewer it is masked where it is background. Where the reads placed apart come in both pair orientations, carriers too one-sided against that balance for a haplotype's (a binomial chance under 0.1%; twelve all one way, not eight) are an artifact (oxoG, FFPE), not a haplotype's change. A haplotype showing on fewer of the reads placed apart is taken for errors, and its reads count ALT: with 30 to 45 of them, an SNP haplotype on 5–10% of the molecules in about a third of runs; at depth, any under 3% of the molecules. Such a row, carried by two or more of the reads placed apart and over 1% of them, is named in `gbcms_diagnostic` (POSSIBLE_MINORITY_HAPLOTYPE). A systematic error giving that base on 3% of them in both orientations masks it, and the ALT's reads short of the next telling base are depth only.
+- **An error both readings share** decides nothing. A read whose bases place no length change and whose REF and ALT readings miss exactly the same confident bases is read on past the windows with those bases unread, not counted for the allele whose tolerance happens to fit the length the aligner wrote. Past the windows one error there the other allele's reading does not share is forgiven where that reading misses three or more, the read writes that allele's length, and the error recurs on no other fragment (recurring, it is another allele's base); within the windows only a shared error is tolerated.
+- **Reads placed a unit or a copy off** are read whole. A read whose alignment is not clean (another event of its own inside the discrimination window, or one its bases place nowhere; or, placing no length change, two or more confident changes from the reference within 300 bases of the variant's REF span) and that is not spliced is placed ungapped on each allele's haplotype, every readable base of it, over that reach of reference, the guard's masks as in the windows (other alleles at the locus are built on the reference before them). An allele fits where its windows read exactly and at most one confident base elsewhere mismatches. The read is that allele where it fits so and the other allele (its event's bases open, weighed at every placement holding as much of it as the shorter allele's windows, from either flank) and every other allele at the locus miss by more. A read fitting the longer allele only from inside its event is depth only (RJ-23); otherwise the read keeps its call. In an imperfect repeat a read that reaches no unique sequence either side is still placed by the aligner (#290).
+- **Other alleles at the locus** (RJ-25, since 6.7.0). A read that fits the ALT counts ALT only when, for every other allele of the ALT's length at the locus, it reads a base telling the two apart (the ALT's base, at or above `--min-baseq`); otherwise it is that allele or the ALT, neither with partial evidence. Where the reads show no other allele nothing changes: a carrier reading only the event's length, or an MNP read with a differing base below `--min-baseq`, counts ALT. The other alleles are every co-annotated sibling of the ALT's length whose span meets the event's site and that differs from it inside the window (a listed allele is always another allele: the input is taken as correct, so no fragment need show it, since 2026-11-02), and those the variant's own reads spell in full on 3 or more fragments and on 5% of the fragments spelling the allele they are nearest (REF or the ALT; the larger when as near), placed by their bases from the left flank as the windows read them, not where the aligner wrote the gap. An SNV row where the same input lists an indel or delins whose span meets the row's site is counted by the sequence judge also under the rules (the single-base check weighs no listed allele that changes the length, so a read that spells one counted ALT; RJ-25, 2026-11-03). MNV rows stay on the rules. Not another allele: one whose every difference from the ALT is a change from the reference the REF molecules carry too (a separate event on both haplotypes); one differing only where the guard masks (the ALT with a separate event); and, for an MNP, one differing only beside the MNP's own bases (the ALT with a phased neighbour). A molecule is REF's or the ALT's when its bases, the event's included, favour that allele over the other placed the same way, with at most two changes beside the event. The base-by-base MNP check below follows the same rule for every read it calls ALT. A read that fits REF follows it beside the other alleles of REF's length (not another allele: one whose every difference from REF is a change from the ALT's base the ALT molecules carry too, at a base the event keeps), on both routes, as far as the read reaches (since 2026-11-02): an allele whose first to last difference from REF the read's span does not overlap does not contest it, as a read ending inside a long event is judged by the bases it has (RJ-9); one the read reaches and cannot tell (the base unread, below `--min-baseq` or masked) leaves it neither. The core of a delins that replaces 50 REF bases or more (4 bases in from both ends) is as a long deletion's deleted bases: a substitution wholly inside it is a context of REF's molecules, so a read that carries it keeps its REF call (RJ-24). A read the MNP check calls REF that is ALT for a co-annotated sibling there is partial evidence (RJ-5); on the exact-carrier route such a read does not fit REF, and is neither. The 1-fragment-and-5% test that made a listed component of an event part of it (2026-10-14) is gone for listed alleles (2026-11-02): a carrier that reads only a component's base cannot tell the event from it and is partial evidence. It stays for an allele nobody listed (3 fragments and 5%).
 - **MNP reads with an indel.** An MNP read with an insertion or deletion in the block or right beside it, or a clip in it, is judged by this rule; an aligner may write a block shifted by one base as an insertion before it and a deletion after. Its ALT calls with every window base read count toward `mnp_confirmed_alt`. Other MNP reads, including those with an indel further off (a germline one nearby), are compared base by base.
 - **Carriers in soft-clipped bases (DNA).** A read the rule decides from its own bases, with a window that reads its soft-clipped bases, counts even when its aligned span stops short of the variant position, provided every base read lies inside a well-defined fragment (past the fragment end a clip is adapter). Undecided clipped reads stay out of depth. See [counting metrics](counting-metrics.md).
-- **Spliced reads (RNA).** A read spliced in a window's flank or padding is judged on windows built over the reference spliced at its own junctions (the far exon read from the FASTA): its next bases come from the next exon, so both alleles continue there, and growth and flank are measured on the spliced sequence. A junction starting inside the bases where the alleles differ and running past them (or ending inside them) splices the haplotypes at the event's edge; any other splice through those bases leaves the read depth only. An RNA read's soft clip that reaches an exon edge or junction end is not read (it may hold the next exon's bases); other clips are.
+- **Spliced reads (RNA).** A read spliced in a window's flank is judged on windows built over the reference spliced at its own junctions (the far exon read from the FASTA): its next bases come from the next exon, so both alleles continue there, and growth and flank are measured on the spliced sequence. A junction starting inside the bases where the alleles differ and running past them (or ending inside them) splices the haplotypes at the event's edge; any other splice through those bases leaves the read depth only. An RNA read's soft clip that reaches an exon edge or junction end is not read (it may hold the next exon's bases); other clips are.
 - **Same on both backends.** The rule uses no alignment scoring, so `pairhmm` and `sw` give identical counts for complex variants.
-- **When the rule cannot run.** `prepare_variants` fetches reference until it holds the event, grown through any repeat, with its flank and padding (up to 16,384 bases each side, clamped at a contig end: the window holds the bases that exist). A variant without that reference (one built without `prepare_variants`, or an event whose two flank bases would pass a contig end) keeps the previous classifier below. Every variant of a normal run is prepared. A record stored without its bases (SEQ `*`) is not read.
+- **When the rule cannot run.** `prepare_variants` fetches reference until it holds the event, grown through any repeat, with its flank and the neighbouring-change reach of 25 bases, and until the windows, with every base the guard could mask masked, reach a base telling the alleles apart (up to 16,384 bases each side, clamped at a contig end: the window holds the bases that exist). For reading reads whole it also holds a whole read's reach, 300 bases each side of the change (`Variant.whole_ref`, not exposed to Python), which every bin's fetch covers. A variant without that reference (one built without `prepare_variants`, or an event whose two flank bases would pass a contig end) keeps the previous classifier below. Every variant of a normal run is prepared. A record stored without its bases (SEQ `*`) is not read.
 
 !!! info "Why not a tolerant score"
-    Local alignment, likelihoods and an edit-distance margin all credit near-matches to the given allele. On real complex variants, those scores credited reads carrying other alleles, and reads that end inside the event. VarDict's rescue and Mutect2's `--alleles` mode do the same. gbcms reports the given allele's exact support and names a different allele the reads carry in `gbcms_diagnostic` (`OBSERVED_ALLELE` / `COEXISTING_ALLELE`).
+    Local alignment, likelihoods and an edit-distance margin all credit near-matches to the given allele. On real complex variants, those scores credited reads carrying other alleles, and reads that end inside the event. VarDict's rescue and Mutect2's `--alleles` mode do the same (VarDictJava and GATK Mutect2 source: VarDict's rescue moves near-matching reads in by soft-clip consensus with up to 3 mismatches and counts REF as one base; Mutect2 credits each read's best haplotype by likelihood, so under `--alleles` a read carrying a slightly different, unassembled allele can be credited to the given one). The measurements are in [Read Judgment](read-judgment.md), evidence behind RJ-4. gbcms reports the given allele's exact support and names a different allele the reads carry in `gbcms_diagnostic` (`OBSERVED_ALLELE` / `COEXISTING_ALLELE`).
 
 ### Previous classifier (variants without a reference; pure-indel Phase 3)
 
@@ -945,6 +1062,7 @@ When Phase 2 and Phase 2.5 both fail, the engine expands to the full `ref_contex
 1. **Pangenomic haplotype matrix** — build `REF_hap` and `ALT_hap` extended with flanking context
 2. **WFA fast-path triage** (`wfa2lib-rs`) — edit-distance alignment resolves ~70-80% of reads instantly at O(s²) cost; if the edit-distance gap between REF and ALT is unambiguous, the read is classified immediately
 3. **Marginalized PairHMM** (escalated only when WFA is ambiguous) — integrates per-base quality probabilities into alignment scoring, producing a Log-Likelihood Ratio (LLR) confidence score; default threshold 2.3 ≈ ln(10)
+   — the read is aligned whole against each haplotype, whose ends are free, as the `sw` backend's semiglobal alignment does: every read base is explained, and haplotype bases the read does not reach cost nothing
 
 **Alternative backend: `sw`**
 
@@ -980,7 +1098,9 @@ Two conditions detect low-confidence semiglobal results:
 | **Borderline** | `abs(alt_score - ref_score) ≤ margin + 1` | Score difference barely decisive |
 | **Poor quality** | `max(scores) < read_len / 2` | Both haplotypes heavily penalized |
 
-When **either** trigger fires, the engine retries with **local alignment** (`Aligner::local()`), which soft-clips the bad flank and finds the best matching substring without penalizing overhangs on either side.
+When **either** trigger fires, the engine retries with **local alignment** (`Aligner::local()`), which soft-clips the bad flank and finds the best matching substring without penalizing overhangs on either side. The call then rests on the local scores, and so do the checks after it: a REF call's nearby evidence (ALT within twice the margin: `partial_alt`) and a tie's (the best score reaching half the read) (#195).
+
+Only complex rows the exact-carrier rule cannot judge reach this step (direct API use, a failed reference fetch, a contig end). On every arm measured on 2026-10-30 (about 4.5 million read calls under each backend) none did.
 
 !!! tip "Performance: Aligner Reuse"
     SW aligners are created **once per variant** (in every counting path) and reused for all of its reads. The `bio::alignment::pairwise::Aligner` reuses internal DP buffers, avoiding repeated heap allocation.
@@ -1030,11 +1150,26 @@ repeat context kept for alignment.
 A read spans a window with one aligned block, between its splices (RJ-17,
 6.6.0): a splice is not reference coverage, so an RNA read spliced inside the
 window shows none of it past the splice, as a read ending there shows none.
+An exon piece that a junction at a pure deletion's edge begins and the read's
+end closes inside the deleted bases holds part of them and no flank base of its
+own: it is depth only, never REF, with BAQ on or off (amended 2026-10-30,
+#292).
 
 Reads that fail the rule count toward `DP` and `DPF` but are neither REF nor ALT,
 the same as GATK's AD, which counts only informative reads. The rule does not
 apply to substitution-bearing events (SNV, MNP, delins): they have no shift
 region, and their first base already discriminates.
+
+**A worked example: counting by base against by allele** (#253, measured 2026-10-08).
+A 9bp deletion in a 51bp trinucleotide repeat, in an IMPACT tumor and its matched
+normal. By base at the indel's position, as IGV, bam-readcount, the original
+GetBaseCounts and the clinical counts do: 159 reads show the reference base, but
+only 16 of them cross the tract. The deletion count of 24 is every length together;
+the given 9bp deletion is 15 of them. By allele, the tumor's `vaf` is 15/31 ≈ 48%
+and the normal's crossing reads show 0/23 (a working note of the same measurement
+says 0/24). So it is a high-fraction somatic event, which by-base counting reports
+at 6.6%. Whether allele-level VAF needs a spanning-bias correction (the shorter
+allele crosses the tract more often) is measured against germline hets in C41 #264.
 
 **The ALT side (6.6.0, #188).** An ALT call stands from the CIGAR alone when the
 read spans C10's windows read on the ALT haplotype, `[lo − 1, hi + 2)` or
@@ -1065,8 +1200,8 @@ inspected as one right after an aligned block is; a deleted anchor followed by
 an insertion is judged by the read's bases (a re-inserted anchor with the insert
 is the ALT). A same-length insertion of other bases beside another indel in the
 window is another allele, not Phase 3's to arbitrate. At 50bp or more the
-large-deletion band judges the read, counting every change across the
-discrimination window. Splices there remain the RNA rules' business.
+junction judge reads the read's bases at the POS breakpoint (RJ-24). Splices there
+remain the RNA rules' business.
 
 ---
 
@@ -1076,7 +1211,7 @@ When multiple variants have overlapping REF spans at the same locus, reads carry
 
 ### Phase 1: Annotation
 
-During normalization, `assign_multi_allelic_groups()` groups co-annotated variants with a fixed-point sweep over sorted `(chrom, pos)` coordinates, under two criteria: variants whose REF spans intersect (any types — tagged `MULTI_ALLELIC`), and length-changing variants whose scan windows (`max(5, repeat_span+2)` each side) overlap (tagged `TRACT_CLUSTER` when window-only). Groups close transitively and may be non-contiguous in position order; members share a `multi_allelic_group` ID and the tag is appended to `gbcms_status_reason` (the verdict stays `PASS`). Within a group the engine assigns AD exclusively: a read's ALT call is demoted to `partial_alt` when a sibling explains it strictly better by span-explanation cost, or exactly as well as the row's ALT does (the two alleles differ only at bases the read has masked, so the read is either), and an alignment-phase ALT not confirmed exactly by the read's own span reconstruction is demoted as ambiguous; anchor-exact CIGAR evidence is never contested.
+During normalization, `assign_multi_allelic_groups()` groups co-annotated variants with a fixed-point sweep over sorted `(chrom, pos)` coordinates, under two criteria: variants whose REF spans intersect (any types — tagged `MULTI_ALLELIC`), and length-changing variants whose scan windows (`max(5, repeat_span+2)` each side) overlap (tagged `TRACT_CLUSTER` when window-only). Groups close transitively and may be non-contiguous in position order; members share a `multi_allelic_group` ID and the tag is appended to `gbcms_status_reason` (the verdict stays `PASS`). Within a group the engine assigns AD exclusively: a read's ALT call is demoted to `partial_alt` when a sibling explains it strictly better by span-explanation cost, or exactly as well as the row's ALT does (the two alleles differ only at bases the read has masked, so the read is either), and an alignment-phase ALT not confirmed exactly by the read's own span reconstruction is demoted as ambiguous; anchor-exact CIGAR evidence is never contested. An ALT call the exact-carrier rule made is contested by its bases instead: the whole read is placed ungapped anywhere on this row's ALT and on each sibling's, and a sibling placing it with as few confident mismatches or fewer claims it; the aligned REF re-test is not run for it (RJ-5, amended 2026-10-22).
 
 One allele given on two rows is not its own sibling: the same row given verbatim (a cohort MAF listing a recurrent indel once per sample), or one allele written two ways (a repeat unit inserted at either end of the repeat, which normalization makes one variant). Before 6.6.0 each twin was the other's: an indel carrier the aligner wrote anywhere but the junction fit both exactly, so it counted at neither row, while one written at the junction counted at both (and `--rescue-mnp` skipped an MNP given twice as grouped). Each row's sibling list now holds one entry per other allele and never its own, so each row counts every carrier; the rows keep their group and tag. A row given verbatim is noted at INFO; one allele given two ways warns, naming the rows.
 
@@ -1113,7 +1248,14 @@ They are documented constants, not tuned per locus: an earlier
 `dynamic_sw_gap_extend` logistic curve rounded to −1 for every `repeat_span`,
 and traced real runs (ACCESS duplex, MSI-high) confirmed SW scores nothing
 under the default backend on well-formed input, so the curve was removed
-(issue #92).
+(issue #92). The traced runs were an ACCESS duplex sample and the heaviest MSI-high
+sample: 42 tract indels and 31 Phase-3 classifications, with zero Smith-Waterman
+fallback invocations ([#92 comment](https://github.com/msk-access/gbcms/issues/92#issuecomment-5788174498)).
+Under the default PairHMM backend the pangenomic matrix builds on well-formed input
+(prep supplies `ref_context`), and on the explicit SW backend the old function was a
+constant −1 anyway. Making the relaxation real (a curve reaching 0 for deep repeats)
+was not adopted: it would change SW alignment scores on a path that never fires, at
+the cost of a validation pass (REJ-20260923-005 in `.agents/learnings/REJECTED.md`).
 
 Smith-Waterman has two roles:
 

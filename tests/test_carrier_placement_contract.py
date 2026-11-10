@@ -47,19 +47,19 @@ def _count(tmp_path, name, reads, pos, ref, alt, backend, contig=CONTIG):
 
 
 @pytest.mark.parametrize("backend", BACKENDS)
-def test_the_strict_path_keeps_a_junction_alt_with_a_substitution_in_the_tract(tmp_path, backend):
+def test_a_substitution_every_carrier_shares_inside_the_tract_is_another_allele(tmp_path, backend):
     """G>GA before A10, and G>GCA before (CA)x6: the ALT written at the junction with a
-    substitution inside the run (A>C) or tract (C>G). Sliding the insert along the
-    repeat would take the substitution in as another insert with no mismatch, but the
-    read is the given ALT plus one substitution, and it stays ALT, as a REF read with a
-    substitution in the window stays REF. (The census needs the window to be one
-    allele exactly, so it reads both as neither: its first documented limit.)"""
+    substitution inside the run (A>C) or tract (C>G). One such read is the ALT with an
+    error; carried by all four (two or more fragments and 5% of those fitting it),
+    inside the event the substitution recurs: another allele at the locus, partial
+    evidence (D4, operator 2026-10-15). Sliding the insert along the repeat to take it
+    in places it nowhere else."""
     reads = [read(f"a{i}", i, P, "A", P + 1, sub=(P + 4, "C")) for i in range(4)]
     reads += [ref_read(f"r{i}", i, P) for i in range(4)]
-    assert _count(tmp_path, f"ka{backend}", reads, P, "G", "GA", backend) == (4, 4, 0)
+    assert _count(tmp_path, f"ka{backend}", reads, P, "G", "GA", backend) == (4, 0, 4)
     reads = [read(f"c{i}", i, R, "CA", R + 1, sub=(R + 3, "G")) for i in range(4)]
     reads += [ref_read(f"r{i}", i, R) for i in range(4)]
-    assert _count(tmp_path, f"kc{backend}", reads, R, "G", "GCA", backend) == (4, 4, 0)
+    assert _count(tmp_path, f"kc{backend}", reads, R, "G", "GCA", backend) == (4, 0, 4)
 
 
 @pytest.mark.parametrize("backend", BACKENDS)
@@ -114,12 +114,13 @@ def _gct_contig():
 
 @pytest.mark.parametrize("off", [7, 10])
 @pytest.mark.parametrize("backend", BACKENDS)
-def test_a_carrier_written_past_the_scan_window_is_another_allele(tmp_path, backend, off):
+def test_a_carrier_written_past_the_scan_window_is_alt(tmp_path, backend, off):
     """C>CTGT after (GCT)n, as on FORTE STAR: the ALT with its anchor read as T, written
     as +TCT before a G of the tract, 7 or 10 junctions left (past the scan pad, the tract
-    not the variant's own repeat). No slide reaches the window base by base; scored, its
-    fewest-mismatch placements include the variant's junction, so the scan-window gate
-    admits it and it is another allele, not REF."""
+    not the variant's own repeat). Placed by its bases at the variant's junction, it is
+    the ALT with one substitution 7 or 10 bases left, in the flank, outside the window:
+    the ALT plus a separate SNV (D3, operator 2026-10-15), as GATK and bcftools count
+    it."""
     contig, a = _gct_contig()
     j, reads = a - off, []
     for i in range(4):
@@ -134,7 +135,7 @@ def test_a_carrier_written_past_the_scan_window_is_another_allele(tmp_path, back
         make_read(f"r{i}", contig[a - 40 - i : a + 60 - i], a - 40 - i, ((0, L),)) for i in range(4)
     ]
     got = _count(tmp_path, f"g{backend}{off}", reads, a, "C", "CTGT", backend, contig=contig)
-    assert got == (4, 0, 4)
+    assert got == (4, 4, 0)
 
 
 @pytest.mark.parametrize("backend", BACKENDS)

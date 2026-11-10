@@ -89,7 +89,7 @@ Corrections vs v1:
   hierarchy, not a trade between them.
   **ACCESS v1 (Marianas) — verified in detail.** No per-read tier marker exists: a single `@RG`,
   aligner tags only (`AS/XS/NM/MQ`), and `YA/YM/YO/YX` turn out to be **ABRA2 realignment
-  annotations** (values like `1:2361920:850M2I473M`), present in *both* duplex and simplex at
+  annotations** (values like `chrom:pos:850M2I473M`), present in *both* duplex and simplex at
   0.2–0.4% — not tier. Tier is therefore recoverable **only from which file** a read is in. Also
   verified in a 20 kb window: `duplex ∩ simplex = 0` (**disjoint**, so the union is safe),
   `duplex ⊆ all-unique` and `simplex ⊆ all-unique` both **100%** (qnames are preserved identically

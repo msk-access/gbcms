@@ -1,6 +1,6 @@
 ---
 name: fragment-counting
-description: Reference for fragment-level counting in gbcms — R1/R2 quality-weighted consensus, FAD/FAF (fragment alt depth/fraction), QNAME/UMI deduplication, duplex vs singleton UMI families, strand consistency, and amplicon split. Use when touching shared/fragment.rs or any DPF/RDF/ADF logic, or debugging fragment-level VAF.
+description: "Fragment-level counting: R1/R2 quality-weighted consensus, DPF/RDF/ADF (FAD/FAF in VCF), QNAME/UMI molecule hashing, duplex/simplex merging, amplicon split. Use when touching shared/fragment.rs or any DPF/RDF/ADF logic, or debugging fragment-level VAF."
 ---
 
 # Fragment-Level Counting
@@ -14,9 +14,10 @@ locus, evidence is collapsed to one molecule:
 - **Structural ALT wins**: if either mate carries a CIGAR I/D op matching the ALT
   indel, ALT wins (correct for indels). Caution: a single mate with a spurious
   indel CIGAR can override a high-BQ REF mate.
-- **Discard band**: if mates disagree and neither allele's quality clears the
-  threshold, the fragment is **discarded** — counted in DPF, excluded from RDF/ADF.
-- `fragment_qual_threshold` (default 10) governs the discard band.
+- **Discard band**: if mates disagree and the better allele's quality does not beat the
+  other's by more than the threshold, the fragment is **discarded** — counted in DPF,
+  excluded from RDF/ADF.
+- `fragment_qual_threshold` (`--fragment-qual-threshold`, default 10) governs the discard band.
 
 ## Deduplication / hashing
 
@@ -26,26 +27,28 @@ locus, evidence is collapsed to one molecule:
   per-locus depth.
 - Overlapping mate pairs map to one `mol_hash` → counted once at fragment level.
 
-## FAD / FAF and the invariants
+## Fragment counts (DPF/RDF/ADF; FAD/FAF in VCF) and invariants
 
-```
-assert dpf >= rdf + adf          # DPF includes discarded fragments
-assert adf == adf_fwd + adf_rev  # fragment strand consistency
-assert rdf == rdf_fwd + rdf_rev
-```
+`dpf >= rdf + adf` (AGENTS.md); fragment strand consistency:
+`rdf == rdf_fwd + rdf_rev` and `adf == adf_fwd + adf_rev`.
 
-## UMI families
+## UMI molecules, duplex and simplex
 
-- `singleton_alt_count`: ALT from singleton UMI families (no mate confirmation).
-- `duplex_alt_count`: ALT from duplex families (both strands confirmed).
-- `--umi-tag` selects the tag used for molecule hashing.
+- gbcms does not see UMI families, and cannot tell a duplex read from a singleton one.
+  `--umi-tag` (e.g. `RX`) only changes the molecule key (`hash_molecule(qname, umi)` via
+  `molecule_key` in engine.rs): reads that share a QNAME but carry different UMIs are
+  different molecules.
+- Duplex and simplex are separate BAMs, counted separately and combined afterwards:
+  `gbcms merge` (merge.py) joins the per-BAM-type MAFs and adds the `simplex_duplex_*`
+  columns (`bam_type` in the Nextflow samplesheet).
 
 ## Amplicon mode
 
-`--library-type amplicon` **bypasses** R1/R2 consensus: mates are XOR-split into
-separate fragments (both are PCR duplicates of one template). Disagreeing mates then
-count as two independent fragments rather than discarding — FAF for the same physical
-disagreement differs between capture and amplicon libraries by design.
+`gbcms rna --library-type amplicon` (an RNA option; DNA has none) **bypasses** R1/R2
+consensus: mates are XOR-split into separate fragments (both are PCR duplicates of one
+template). Disagreeing mates then count as two independent fragments rather than
+discarding — FAF for the same physical disagreement differs between capture and amplicon
+libraries by design. It also forces `--strandedness unstranded`.
 
 ## Read-level vs fragment-level (caution)
 

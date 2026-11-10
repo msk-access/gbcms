@@ -1,4 +1,4 @@
-"""C35 #240: an insertion's ALT needs one of the read's own inserted bases read.
+"""An unreadable insert of the ALT's length at its junction is the ALT (RJ-20, #278).
 
 A read whose inserted bases are all N (fgbio masks duplex disagreements to N at
 Q2) or all below min BQ carries the insertion's length but not its sequence. The
@@ -9,10 +9,13 @@ reading (`read_bases_fit_alt`) needed one readable base anywhere between the
 flanks; truncations ignored BQ. On the RC DNA set that was 127 reads, mostly 1bp
 homopolymer insertions with a duplex-masked N inside the run.
 
-Contract (operator, 2026-10-06): such a read is partial (depth and partial_alt,
-never REF or ALT), on every path, as the post-splice path already does. A read
-whose readable inserted bases match the ALT stays ALT. "Readable" is one gate for
-every base: not N and at or above min BQ. The read census holds the same rule.
+C35 (operator, 2026-10-06) made such a read partial on every path. RJ-20 (operator,
+2026-10-15) supersedes it: the read shows the insertion's length between the anchors,
+which fits the ALT alone where no other allele of that length is named, so it is ALT.
+A read whose readable inserted bases match the ALT stays ALT; an unreadable insert of
+another length, or outside the discrimination window, is not the ALT. "Readable" is
+one gate for every base: not N and at or above min BQ. The read census holds the same
+rule.
 """
 
 import random
@@ -94,14 +97,14 @@ def _count(tmp_path, name, reads, pos, ref, alt, backend="pairhmm", with_census=
 
 
 @pytest.mark.parametrize("backend", BACKENDS)
-def test_an_unreadable_insert_at_the_junction_is_partial(tmp_path, backend):
-    """Four each: clean ALT, NNNNN at Q2, the right bases at Q2, REF."""
+def test_an_unreadable_insert_at_the_junction_is_alt(tmp_path, backend):
+    """Four each: clean ALT, NNNNN at Q2, the right bases at Q2, REF (RJ-20)."""
     a, ref, alt = U, CONTIG[U], CONTIG[U] + INS5
     reads = [ins_read(f"c{i}", i, a, INS5) for i in range(4)]
     reads += [ins_read(f"n{i}", i, a, "N" * 5, low=range(5)) for i in range(4)]
     reads += [ins_read(f"q{i}", i, a, INS5, low=range(5)) for i in range(4)]
     reads += [ref_read(f"r{i}", i, a) for i in range(4)]
-    assert _count(tmp_path, f"j{backend}", reads, a, ref, alt, backend) == (4, 4, 8)
+    assert _count(tmp_path, f"j{backend}", reads, a, ref, alt, backend) == (4, 12, 0)
 
 
 def test_a_partly_masked_insert_stays_alt(tmp_path):
@@ -115,58 +118,56 @@ def test_a_partly_masked_insert_stays_alt(tmp_path):
 
 
 @pytest.mark.parametrize("backend", BACKENDS)
-def test_an_unreadable_insert_shifted_in_a_run_is_partial(tmp_path, backend):
+def test_an_unreadable_insert_shifted_in_a_run_is_alt(tmp_path, backend):
     """G>GA before A6: four each of a clean +A at the left junction, a readable +A
     written two bases into the run, the run's extra base masked there (N at Q2, A at
-    Q5; the aligner writes the masked base as the insertion), and REF."""
+    Q5; the aligner writes the masked base as the insertion), and REF. The run one
+    base longer is the ALT however its extra base reads (RJ-20)."""
     a, ref, alt = H, "G", "GA"
     reads = [ins_read(f"c{i}", i, a, "A") for i in range(4)]
     reads += [ins_read(f"s{i}", i, a, "A", shift=2) for i in range(4)]
     reads += [ins_read(f"n{i}", i, a, "N", shift=2, low=(0,)) for i in range(4)]
     reads += [ins_read(f"q{i}", i, a, "A", shift=2, low=(0,), q=5) for i in range(4)]
     reads += [ref_read(f"r{i}", i, a) for i in range(4)]
-    assert _count(tmp_path, f"hp{backend}", reads, a, ref, alt, backend) == (4, 8, 8)
+    assert _count(tmp_path, f"hp{backend}", reads, a, ref, alt, backend) == (4, 16, 0)
 
 
-def test_an_unreadable_insert_after_a_deleted_anchor_is_partial(tmp_path):
+def test_an_unreadable_insert_after_a_deleted_anchor_is_alt(tmp_path):
     """M D(1) I M: the read deletes the anchor and re-inserts it with the insert. Its
-    readable re-inserted anchor is not the insert: four readable carriers are ALT,
-    four with the insert masked are partial."""
+    readable re-inserted anchor is the anchor, and the insert's length is the ALT's:
+    four readable carriers and four with the insert masked are ALT (RJ-20)."""
     a, ref, alt = U, CONTIG[U], CONTIG[U] + INS5
     reads = [deleted_anchor_read(f"d{i}", i, a, INS5) for i in range(4)]
     reads += [deleted_anchor_read(f"n{i}", i, a, "N" * 5, low=range(5)) for i in range(4)]
     reads += [ref_read(f"r{i}", i, a) for i in range(4)]
-    assert _count(tmp_path, "da", reads, a, ref, alt) == (4, 4, 4)
+    assert _count(tmp_path, "da", reads, a, ref, alt) == (4, 8, 0)
 
 
-def test_an_unreadable_truncation_is_partial(tmp_path):
-    """A truncated copy of an 8bp insert (its first five bases at the junction):
-    readable it is the same event (ALT, the identity band unchanged), unreadable
-    (letters at Q5) it is partial."""
+def test_a_truncation_is_partial(tmp_path):
+    """A truncated copy of an 8bp insert (its first five bases at the junction, the
+    reference after): readable or not (letters at Q5), its bases show a five-base
+    insertion, not the ALT: another allele, partial (D2, operator 2026-10-16)."""
     a, ref, alt = T, CONTIG[T], CONTIG[T] + INS8
     reads = [ins_read(f"c{i}", i, a, INS8) for i in range(4)]
     reads += [ins_read(f"t{i}", i, a, INS8[:5]) for i in range(4)]
     reads += [ins_read(f"q{i}", i, a, INS8[:5], low=range(5), q=5) for i in range(4)]
     reads += [ref_read(f"r{i}", i, a) for i in range(4)]
-    # No census: it knows two haplotypes of exact length, and the truncation band is
-    # engine policy (a readable truncation is ALT there, neither in the census).
-    assert _count(tmp_path, "tr", reads, a, ref, alt, with_census=False) == (4, 8, 4)
+    assert _count(tmp_path, "tr", reads, a, ref, alt) == (4, 4, 8)
 
 
 def test_the_census_holds_the_same_rule(tmp_path):
-    """The census judges by bases, two haplotypes, so length alone made an unreadable
-    insert fit the ALT. Its policy now: an insertion's ALT verdict needs the read's own
-    inserted bases (its I ops between the anchors) to hold more readable bases than
-    the bases it deletes there."""
+    """The census judges by bases, two haplotypes: an unreadable insert shows the
+    insertion's length between the anchors, which fits the ALT alone, so it is ALT
+    where no other allele of that length is named (RJ-20, operator 2026-10-15)."""
     a, ref, alt = U, CONTIG[U], CONTIG[U] + INS5
     fa, _ = write_contig(tmp_path, CONTIG, [], "cj")
     w = window_for(_variant(fa, a, ref, alt), CONTIG)
     assert judge(ins_read("c", 0, a, INS5), w) == Verdict.ALT
-    assert judge(ins_read("n", 0, a, "N" * 5, low=range(5)), w) == Verdict.UNREADABLE
-    assert judge(ins_read("q", 0, a, INS5, low=range(5), q=5), w) == Verdict.UNREADABLE
+    assert judge(ins_read("n", 0, a, "N" * 5, low=range(5)), w) == Verdict.ALT
+    assert judge(ins_read("q", 0, a, INS5, low=range(5), q=5), w) == Verdict.ALT
     assert judge(ins_read("p", 0, a, INS5, low=(0, 1), q=5), w) == Verdict.ALT
     assert judge(deleted_anchor_read("d", 0, a, INS5), w) == Verdict.ALT
-    assert judge(deleted_anchor_read("e", 0, a, "N" * 5, low=range(5)), w) == Verdict.UNREADABLE
+    assert judge(deleted_anchor_read("e", 0, a, "N" * 5, low=range(5)), w) == Verdict.ALT
 
 
 # ── From the review ───────────────────────────────────────────────────────────
@@ -183,12 +184,14 @@ def _shaped(name, i, anchor, events, mask=None):
 
 def test_an_unrelated_deletion_does_not_cancel_the_rule(tmp_path):
     """The deleted-anchor shape plus an unrelated D2 twenty bases on: a deletion
-    outside the flanks re-inserts nothing, so it must not offset the anchor."""
+    outside the flanks re-inserts nothing, so it must not offset the anchor. The
+    insert is placed by the bases before the D2 (past it they are shifted): masked or
+    readable, the carriers are ALT (RJ-20), engine and census alike."""
     a, ref, alt = U, CONTIG[U], CONTIG[U] + INS5
     events = [(a, "D", 1), (a + 1, "I", CONTIG[a] + INS5), (a + 21, "D", 2)]
     reads = [_shaped(f"n{i}", i, a, events, ("N", 1, 5)) for i in range(4)]
     reads += [_shaped(f"c{i}", i, a, events) for i in range(4)]
-    assert _count(tmp_path, "ud", reads, a, ref, alt) == (0, 4, 4)
+    assert _count(tmp_path, "ud", reads, a, ref, alt) == (0, 8, 0)
 
 
 @pytest.mark.parametrize("backend", BACKENDS)
@@ -207,9 +210,10 @@ def test_an_unreadable_insert_outside_the_window_is_a_separate_event(tmp_path, b
 
 def test_the_census_nets_deletions_across_the_bases_it_reads(tmp_path):
     """M D3 I M: the read deletes the anchor and the two bases before it and
-    re-inserts them with a masked insert. Its readable inserted bases are the three
-    it deleted, so none is the insert: partial, engine and census alike."""
+    re-inserts them with a masked insert. Netted across the bases it reads, the three
+    it deleted come back and the masked five are the insert's length at the junction:
+    ALT (RJ-20), engine and census alike."""
     a, ref, alt = U, CONTIG[U], CONTIG[U] + INS5
     events = [(a - 2, "D", 3), (a + 1, "I", CONTIG[a - 2 : a + 1] + INS5)]
     reads = [_shaped(f"n{i}", i, a, events, ("N", 3, 5)) for i in range(4)]
-    assert _count(tmp_path, "d3", reads, a, ref, alt) == (0, 0, 4)
+    assert _count(tmp_path, "d3", reads, a, ref, alt) == (0, 4, 0)

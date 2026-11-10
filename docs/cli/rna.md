@@ -20,8 +20,11 @@ RNA mode extends the core DNA counting engine with filters and metrics specific 
 ## Synopsis
 
 ```bash
-gbcms rna [OPTIONS] --variants <FILE> --bam <NAME:PATH>... --fasta <FILE>
+gbcms rna [OPTIONS] --variants <FILE> --bam <NAME:PATH>... --fasta <FILE> --output-dir <DIR>
 ```
+
+`--variants`, `--fasta` and `--output-dir` are required, and so is one of `--bam` or
+`--bam-list`, as in `gbcms dna`.
 
 ## RNA Pipeline Overview
 
@@ -91,7 +94,7 @@ flowchart LR
     transparently.  See [CRAM Support](dna.md#required-arguments) for details.
 
 !!! tip "BAQ is On by Default in RNA Mode"
-    Unlike DNA mode, `--apply-baq` defaults to **on** for RNA. BAQ penalizes bases within 5 bp of both indels and splice junctions (CIGAR `N`), serving as a lightweight alternative to GATK SplitNCigarReads. Disable with `--no-baq` if your upstream workflow already runs SplitNCigarReads or BQSR. See [RNA Splice-Junction Handling](../reference/rna-splice-handling.md).
+    Unlike DNA mode, `--apply-baq` defaults to **on** for RNA. BAQ lowers the quality of bases within 5 bp of a read's insertion or deletion. A splice junction (CIGAR `N`) lowers no base's quality: a base is judged by its own quality, as GATK does after SplitNCigarReads. Disable with `--no-baq` if your upstream workflow already recalibrates base qualities. See [RNA Splice-Junction Handling](../reference/rna-splice-handling.md).
 
 | Option | Description |
 |:-------|:------------|
@@ -110,8 +113,7 @@ These options are **only available** on `gbcms rna`, not on `gbcms dna`.
 
 | Option | Default | Description |
 |:-------|:--------|:------------|
-| `--gtf` | _(none)_ | Path to Ensembl/GENCODE GTF annotation file, plain or gzip/BGZF (`.gtf` or `.gtf.gz`). Enables exon boundary distance, per-transcript counting, and aberrant splice junction detection. Also back-fills each variant's `gene_strand` — required for `--enforce_strandedness` and ASJD strand-discordance to do anything. |
-| `--gtf-cache-dir` | _(none)_ | Deprecated in 6.6.0 and ignored (warns); removed in 6.7.0. The GTF loads in a few seconds, so there is no cache. |
+| `--gtf` | _(none)_ | Path to Ensembl/GENCODE GTF annotation file, plain or gzip/BGZF (`.gtf` or `.gtf.gz`). Enables exon boundary distance, per-transcript counting, and aberrant splice junction detection. Also resolves each variant's gene strand from the annotation (a `gene_strand` column in the input MAF is not read) — required for `--enforce-strandedness` and ASJD strand-discordance to do anything. |
 
 !!! info "What `--gtf` Enables"
     When a GTF file is provided, gbcms builds a `COITree`-based annotation index and adds:
@@ -140,7 +142,8 @@ These options are **only available** on `gbcms rna`, not on `gbcms dna`.
 
 Controls how a read's genomic orientation folds to the **transcript strand** it
 originated from. This fold drives both `--enforce-strandedness` filtering and ASJD
-strand-discordance detection.
+strand-discordance detection. For an unstranded library use `--strandedness
+unstranded` (see [Strandedness Filtering](#strandedness-filtering)).
 
 | Value | featureCounts | Convention | Sense mate |
 |:------|:--------------|:-----------|:-----------|
@@ -167,22 +170,31 @@ strand-discordance detection.
     In **amplicon** libraries, R1 and R2 reads are PCR duplicates of the same template molecule — they are **not** independent fragment ends like in capture libraries. When `--library-type amplicon` is set:
 
     1. **Fragment consensus bypass**: R1 and R2 are treated as independent observations (XOR trick on `mol_hash`), preventing incorrect merging.
-    2. **Strandedness auto-disabled**: Amplicon libraries are not strand-specific, so `--enforce-strandedness` is automatically set to `False` with a warning.
+    2. **Strandedness forced to `unstranded`**: Amplicon libraries are not strand-specific, so the CLI sets `--strandedness unstranded` (logged), which turns off `--enforce-strandedness` and ASJD's strand-discordance check together.
     3. **Effect on counts**: `dpf ≈ dp` (fragment counts approach read counts) because no R1/R2 merging occurs.
 
 ### Strandedness Filtering
 
 | Option | Default | Description |
 |:-------|:--------|:------------|
-| `--enforce-strandedness/--no-strandedness` | `true` | Filter reads by dUTP strand orientation relative to gene strand |
+| `--enforce-strandedness/--no-strandedness` | `true` | Filter reads by their orientation relative to the gene strand, folded under the `--strandedness` protocol |
 
 !!! info "Biological Context: dUTP Stranded Libraries"
     In dUTP-stranded RNA-seq, the second strand (synthesized with dUTP) is degraded, so sequenced reads reflect the **antisense** strand of the original mRNA. The strandedness filter uses the variant's gene strand, resolved from the `--gtf` exons at its position, to determine whether each read's orientation is consistent with the expected transcript direction.
 
-    **Disable** with `--no-strandedness` for unstranded RNA-seq libraries where read orientation is random.
+    **For an unstranded library, pass `--strandedness unstranded`.** It turns off the
+    filter and ASJD's strand-discordance check together, and every read counts as sense
+    (`rna_antisense_depth` is 0). `--no-strandedness` alone only stops the filtering: reads
+    are still folded to a transcript strand under the default `reverse` protocol, so an
+    unstranded library's reads are split into `rna_sense_depth` and `rna_antisense_depth`
+    by a strand that does not exist, and ASJD's `STRAND_DISCORDANT` check runs on that
+    fold. Use `--no-strandedness` to keep a stranded library's antisense reads in the
+    counts while still tallying them in `rna_antisense_depth`.
 
 !!! warning "Amplicon Override"
-    When `--library-type amplicon` is used, `--enforce-strandedness` is **automatically disabled** regardless of the CLI flag value. Amplicon libraries are not strand-specific by design.
+    When `--library-type amplicon` is used, the CLI sets `--strandedness unstranded`, and
+    `--enforce-strandedness` is **automatically disabled** regardless of the flag value.
+    Amplicon libraries are not strand-specific by design.
 
 ```mermaid
 flowchart TD
@@ -225,44 +237,31 @@ flowchart TD
 
 ## Quality Thresholds
 
-RNA mode uses **different MAPQ default** to accommodate STAR aligner behavior:
+| Option | DNA Default | RNA Default |
+|:-------|:------------|:------------|
+| `--min-mapq` | 20 | **1** |
+| `--min-baseq` | 20 | 20 |
+| `--fragment-qual-threshold` | 10 | 10 |
 
-| Option | DNA Default | RNA Default | Rationale |
-|:-------|:------------|:------------|:----------|
-| `--min-mapq` | 20 | **1** | STAR assigns MAPQ 255 to unique, 0–3 to multi-mappers. Low MAPQ threshold with NH:i:1 rescue captures novel splice junctions. |
-| `--min-baseq` | 20 | 20 | Same |
-| `--fragment-qual-threshold` | 10 | 10 | Same |
+`--min-baseq` masks bases, never reads: a base below it is read as unknown, like `N`, and
+the read still counts toward depth, judged on its other bases (see [Read Filters → Quality
+Thresholds](../reference/read-filters.md#quality-thresholds)). BAQ, on by default in RNA
+mode, lowers qualities near a read's insertions and deletions before this threshold applies; a
+splice junction lowers none.
+
+The RNA `--min-mapq 1` default keeps the primary alignments of reads STAR placed at two
+to four loci (MAPQ 3 or 1); the measurement behind it and the cost of unique-only
+counting are in [Read Filters → Why the RNA default is
+`--min-mapq 1`](../reference/read-filters.md#why-the-rna-default-is-min-mapq-1).
 
 ---
 
 ## RNA Read Filters
 
-RNA mode extends the standard [read filter cascade](../reference/read-filters.md) with two additional checks:
-
-### NH:i:1 MAPQ Rescue
-
-STAR assigns MAPQ=0 to reads that map to multiple loci. However, reads with `NH:i:1` (Number of Hits = 1) are uniquely mapped despite low MAPQ — they were assigned low scores because STAR hadn't observed the splice junction before.
-
-```mermaid
-flowchart TD
-    Read(["📖 RNA Read"])
-    Read -->|"read.mapq"| MAPQ{"MAPQ ≥ min_mapq?\n(default: 1)"}
-    MAPQ -->|"Yes — MAPQ=255\nunique alignment"| Pass(["✅ Pass"]):::pass
-    MAPQ -->|"No — MAPQ=0\n(check NH tag)"| NH{"NH:i:1?"}
-    NH -->|"Yes — novel junction\nunique but low MAPQ"| Rescue(["✅ Rescued"]):::rescue
-    NH -->|"No — NH>1\nmulti-mapper"| Drop(["❌ Discard"]):::drop
-
-    classDef pass fill:#27ae60,color:#fff,stroke:#1e8449,stroke-width:2px;
-    classDef rescue fill:#f39c12,color:#fff,stroke:#d68910,stroke-width:2px;
-    classDef drop fill:#e74c3c,color:#fff,stroke:#c0392b,stroke-width:2px;
-```
-
-!!! info "Why MAPQ=1 Default?"
-    Setting `--min-mapq 1` together with NH rescue ensures:
-
-    - **Uniquely mapped** reads (MAPQ=255): ✅ always pass
-    - **Novel junction** reads (MAPQ=0, NH=1): ✅ rescued
-    - **True multi-mappers** (MAPQ=0, NH>1): ❌ filtered
+RNA mode extends the standard [read filter cascade](../reference/read-filters.md) with
+an `NH:i:1` rescue of reads that fail the MAPQ threshold, described in
+[Read Filters → NH:i:1 MAPQ Rescue](../reference/read-filters.md#nhi1-mapq-rescue), and
+the [strandedness filter](#strandedness-filtering) above.
 
 ### Filter Defaults
 
@@ -320,6 +319,21 @@ RNA uses **relaxed gap penalties** to tolerate reverse transcriptase (RT) stutte
     See [Complex Indels](../reference/complex-indels.md) for case studies and read-level examples.
 
     **Note on left-alignment shift (Fix 4):** This fix was motivated by BWA's indel left-alignment behaviour, where the variant anchor can sit several bases left of where the CIGAR `D` op appears in reads. STAR does not left-align indels in the same way, so this scenario is less common in RNA BAMs — but it still applies when STAR places a CIGAR `D` slightly offset from the annotated position, or when the input MAF was derived from a BWA-aligned DNA call set being counted against an RNA BAM.
+
+### Read judgment
+
+| Option | Default | Description |
+|:-------|:--------|:------------|
+| `--read-judge` | `rules` | Only `rules`, the size-specific read rules, in RNA mode. The sequence judge (`sequence`, opt-in for DNA, see [the DNA command](dna.md#read-judgment)) does not judge spliced reads yet, so `gbcms rna --read-judge sequence` exits with an error; RNA under the judge is [#333](https://github.com/msk-access/gbcms/issues/333). |
+
+---
+
+## QC Summary in the Run Log
+
+The run log ends with a **QC summary**: which QC flags fired, on how many rows, which
+rows need a look and what to do about each, then a `WARNING` when any row needs a look or an
+`INFO` line when none does. It reads the output after writing it and changes nothing. See
+[QC Flags → End-of-run summary](../reference/qc-flags.md#end-of-run-summary).
 
 ---
 
@@ -427,11 +441,11 @@ RNA uses **relaxed gap penalties** to tolerate reverse transcriptase (RT) stutte
         --variants mutations.vcf \
         --bam unstranded:aligned.bam \
         --fasta reference.fa \
-        --no-strandedness \ # (1)!
+        --strandedness unstranded \ # (1)!
         --output-dir results/
     ```
 
-    1.  Disables dUTP strand filtering for unstranded RNA-seq protocols.
+    1.  Unstranded RNA-seq protocol: no strand filtering and no ASJD strand-discordance check. `--no-strandedness` is not the same: it only stops the filtering.
 
 === "With UMI Tags"
 
@@ -456,7 +470,7 @@ RNA uses **relaxed gap penalties** to tolerate reverse transcriptase (RT) stutte
 | **Secondary filter** | on | on (same) |
 | **Supplementary filter** | on | on (same) |
 | **QC-failed filter** | on | on (same) |
-| **BAQ default** | off | **on** (no upstream BQSR; splice penalty) |
+| **BAQ default** | off | **on** (no upstream BQSR; indel penalty only) |
 | **Strandedness filter** | N/A | enabled (dUTP) |
 | **RNA editing flagging** | N/A | optional (`--rna-editing-db`) |
 | **GTF annotation** | N/A | optional (`--gtf`) |

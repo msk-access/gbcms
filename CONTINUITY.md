@@ -1,177 +1,77 @@
 # CONTINUITY — where we left off
 
 > Tactical state that must survive a closed laptop or a context summary.
-> Update the **Now** and **Next** sections as work progresses.
+> Update the **Now** and **Next** sections as work progresses. When a "Now" section is finished,
+> move it to `.agents/archive/CONTINUITY_ARCHIVE.md` (older sections live there).
 
-_Last updated: 2026-10-07_
+_Last updated: 2026-11-06_
 
-## Now
-**6.6.0 release in progress.** `release/6.6.0` is cut from develop c01749ab: version
-6.6.0 in `rust/Cargo.toml`, its lock and the Nextflow manifest; the CHANGELOG section
-dated; the cycle plan removed at this cut (a private copy in `~/test/gbcms/plans/`).
-Every 6.6.0 work item is merged (tracker #140); what the release holds is the
-CHANGELOG's 6.6.0 section. One item is open: the release gate, D5 #155.
+## Now — 6.7.0, an interim release (operator, 2026-11-06)
 
-The gate (`docs/development/regression-panel.md`), before the release PR merges:
-1. Checkpoint wheels: `checkpoints.tsv` (6.5.0 to the release head), committed on a
-   pushed `checkpoint-wheels/6.6.0` branch, builds one wheel per checkpoint (CI
-   artifacts, each with its commit's `requirements.lock`).
-2. On HPC: the panel (the local tier `~/test/gbcms/harness/regression_panel/tier_660/`,
-   PHI, carried by the operator: 289 samples, 411 runs) for 6.5.0 from its image and
-   the candidate from its wheel; `compare_panel.py`; `attribute.py` (prepare, the
-   checkpoints on the reduced runs, check, attribute); adjudicate any flagged stratum.
-3. Then: merge the release PR (a merge commit), tag `6.6.0`, check the GitHub Release
-   page, back-merge main into develop, move develop to `6.7.0-dev.0`, clean up.
-4. After the tag: the mskcc-omics-workflows containers repo (`gbcms/6.6.0`
-   Dockerfile) and the modules repo's gbcms modules.
+**Decision (operator, 2026-11-06):** "it does not make sense to do speed if we are still making
+changes to counts". 6.7.0 ships with the count changes merged. Every open 6.7.0 ticket moved to
+6.8.0 (tracker #420); only the cycle tracker #196 stays, to close with the release.
 
-Working rules (carried into 6.7.0): measure first, red-first tests, an adversarial
-review, real-data acceptance per read on a matrix of data types (gbcms is a
-genotyper, not a caller), mount runs one at a time, and community practice as a
-floor, not a ceiling.
+**In 6.7.0 (merged to develop):**
+- #297, one unit-count rule for long deletions in repeats (#404).
+- #264, equal windows for long insertions (#396), and the judge-path follow-up (#413).
+- RNA #292 option B: a splice lowers no base's quality (RJ-31), with the partial-span rule RJ-17 (#415).
+- Class plan B, "tell what the read reaches" (#419; closed #394 and #398):
+  - every listed allele that meets the site is a candidate, with no floor;
+  - a read counts REF only where it tells REF from every candidate whose difference it reaches;
+  - a long delins has a core (50 or more REF bases replaced);
+  - an SNV row beside a listed indel or delins is counted by the judge, also under the rules.
+  - HPC rq3 and rq4: every bar passes. rq4 equals rq3 on the rules path in all 1,078 runs; the
+    judge path moves only #413's shape (partial to depth only at insertions of 50 bp or more).
+- RNA package 3's lean path (#423; closed #343 to #346 and #359): ASJD makes the same sibling
+  calls as the main counts; three pins; RJ-32.
+- `--rescue-homopolymer` is deprecated (#421) and removed in 6.8.0 (#261): hp1 found that the
+  twin wins at 1 of 20 candidate rows.
+- The sequence judge, opt-in (`--read-judge sequence`), with its follow-ups.
+- Platforms: the RHEL 8 wheel, one abi3 wheel, the macOS arm64 wheel, the multi-arch image and
+  Apptainer in CI (#233 to #237); macOS CI on `macos-latest` (#399, #407).
 
-## Next → 6.7.0
-The 6.7.0 milestone and tracker #196 hold the deferred work, among it per-locus gap
-parameters (#244), the sibling shapes measured for #246, and the panel's GIAB and
-TEMPO arms. A 6.7.0 plan is added to develop after the back-merge.
+**Release steps (in progress):**
+1. The speed floor (the operator's standing rule, before each release): **met in all 8 cases.**
+   pf72 on HPC, the release candidate rc670 (develop f7293618), C++ GetBaseCountsMultiSample 1.2.5
+   against the rules path on pf71's production tasks, 3 repeats each (7650328; 7650331, 7652235).
+   Rules wall time over C++'s: 0.39 to 0.57 for 1 BAM at 1,000 and 5,000 rows; IMPACT 1 × 20,000
+   0.51; ACCESS 1 × 20,000 0.94 (as in October); fill-outs IMPACT 10 × 5,000 0.55 and ACCESS
+   9 × 5,000 0.74. Against pf71 (develop fe34f443), five ratios are lower and three are slightly
+   higher: IMPACT 1 × 5,000 0.462 (0.452), ACCESS 9 × 5,000 0.740 (0.725), ACCESS 1 × 20,000
+   0.944 (0.942).
+2. This record, the plan-first result and the plan pages (PR from `chore/plan-first`).
+3. `release/6.7.0` from develop: the version, the CHANGELOG section, the gate; a PR to main. The
+   operator merges; the tag publishes. Then main into develop, develop to 6.8.0-dev, and #196 and
+   the milestone close.
+   - The gate (2026-11-09/10, the 6.6.0 tier on local slices; CHANGELOG "Release gate"): 411 of
+     411 runs in both builds, every changed cell attributed. 23 strata fell more than 5 points; read
+     by read, 94 of the 136 rows that left the margin are above the sign-out. Each of the 19
+     signed-out rows at AD 0 was checked on its own (operator, 2026-11-09: "check and understand
+     each"); the operator kept the two decided causes (one molecule, one allele; the reads carry a
+     larger allele) and, on 2026-11-10, chose not to fix the rules path for the three gap shapes:
+     the sequence judge counts them, and 6.7.0 ships with them as known issues (#417, #425, in 6.8.0
+     under #331).
+   - The sequence judge on the same panel (`--read-judge sequence`): 408 rows leave the sign-out
+     margin, 348 of them above it (138 DNP rows). Its read-by-read check is the first 6.8.0 task
+     (#331); the tool survey for #417 and #425 is in the harness (`judge680/`).
 
+**Plan-first:** the trial did not meet its bar (`docs/harness/plan-first.md`, "Result"). Operator
+2026-11-06: try it again on the 6.8.0 work, with a new bar fixed before the first count-changing
+build.
 
-### Previous: 6.5.0 release
-**6.5.0 is released** (2026-09-25): #118 merged to main, bare tag `6.5.0`, and
-main back-merged into develop. The release workflow publishes to PyPI, GHCR and
-the docs; the GitHub Release page is created by hand (release guide step 9).
-Cycle plans live on develop (PHI-free) and are removed on the release branch at
-each cut, so they never ship. `CYCLE_6.5.0_PLAN.md` was removed at this cut; a
-private copy is kept locally in `~/test/gbcms/plans/`.
+**Open:** the guard's masks depend on `--min-baseq` (#374); the SNV tie rule with a confident
+third base (#367); Nextflow resources wait for the sweep (branch `feature/nextflow-resources`, local).
 
-6.5.0 contents:
-- T1 cluster exclusive assignment (#99).
-- T2 ASJD-2 markers (#100).
-- T3–T5 observability (#102).
-- T7 MNP rescue (#101).
-- T8 contig naming + merge (#104).
-- T6 one BAQ rule across RNA views (#105).
-- T10 decomposed twin strand + per-sample flag (#113).
-- T12 VCF ↔ MAF representation per vcf2maf / maf2vcf, plus `gbcms convert`
-  (#116, closes #110). A breaking output change: see the CHANGELOG.
-  - #116 also fixed what verifying the plan against the code found: T1's
-    grouping let an SNV between two window-joined deletions join their cluster;
-    merge by VCF record dropped later-only rows' coordinates; a MAF deletion at
-    Start 1 wrapped u64 in debug builds.
+## Next — 6.8.0 (tracker #420)
 
-RC check (develop vs the 6.4.0 release, every changed cell attributed; harness
-`~/test/gbcms/harness/rc650/`, local only):
-- DNA, 28 runs (FLT3 IMPACT, ACCESS duplex+simplex incl. BRCA2, complex-cluster,
-  MSI-high): 1030/1060 rows byte-identical; 30 changed = 29 T1 cluster rows + 1
-  T3 flag; 0 unexplained. BRCA2 reproduces the T1 record.
-- RNA, FORTE truth cohort (33 samples / 94 rows): zero main-count changes; the six
-  T2 marker rows and one T6 exon-edge row; 0 unexplained.
-- Re-checked with #116's code, and finally on the exact 6.5.0 code (an isolated
-  build of develop 851119f3, `~/test/gbcms/harness/t110/real/final_rc.py`):
-  byte-identical, DNA 28/28 runs and RNA 33/33.
-
-**Then → 6.6.0.** The plan was `CYCLE_6.6.0_PLAN.md` (#117; removed at the 6.6.0
-cut, a private copy in `~/test/gbcms/plans/`). It had 35 tickets, each with a GitHub
-issue in the **6.6.0 milestone**, all under the tracking issue **#140**. Grouped
-work is filed as sub-issues: #92 → #141–#144, #112 → #145–#147, #133 → #148–#149,
-#134 → #150–#152, #135 → #153–#154. The other top-level issues are #106, #111, #114,
-#119–#139, #155 and #156. Start with the operator decisions (C2, R1, R2, I1, I3, I4,
-S1/S2), then the count-affecting tickets, each measured first.
-
-Release comparison: the HPC run was not done before the 6.5.0 tag. It became the
-6.6.0 release gate, on the coverage-driven regression panel (D5, #155) instead
-of the hand-picked 56 samples. The selection harness is local
-(`~/test/gbcms/harness/regression_panel/`, PHI) and the operator carries its
-output to HPC. If a comparison feeds VCF input and compares MAF output by
-`Start_Position`, key it on `vcf_pos`/`vcf_ref`/`vcf_alt` instead. Optional: a
-head-to-head against C++ GBCMS 1.2.4/1.2.5 (on HPC).
-
-### Previous: code-review remediation
-Working the code-review remediation plan (`CODE_REVIEW_IMPLEMENTATION_PLAN.md`)
-ticket by ticket, one PR each, with review-before/after discipline and real-data
-validation on MSK cfDNA-duplex (b37) and STAR/FORTE RNA (GRCh38) samples.
-
-**M1 (count correctness) — COMPLETE & merged:** CR-1, CR-3, CR-2, CR-4 (+#29 Docker
-CI). pysam-cross-checked (ALT 571/571 exact).
-
-**M2 (statistical integrity) — COMPLETE & merged:** CR-5 (closed-form LLR, exact
-small-N KS, no scipy), HI-10, HI-11 (BH-FDR `mfsd_qval_alt_ref`), ME-8 (ASJD BH
-padding), ME-9 (classify only on a valid KS test; `MIN_FOR_KS` stays 5), ME-10 (NaN
-enrichment disambiguation), ME-11 (isinf guard).
-
-**M3 (RNA correctness) — COMPLETE & merged (#34, #35, #36):** LO-12 (NH integer
-widths), HI-8 (intron-discounted fragment size), LO-9 (GTF diagnostics), ME-6
-(`normalize_contig` M/MT), HI-7 (populate `gene_strand` — the keystone), LO-10
-(unstranded→None), HI-9 (strand-aware splice motifs), ME-7 (dUTP-folded
-STRAND_DISCORDANT), LO-11 (base-aware editing). Validated end-to-end on a real
-reverse-stranded RNA sample; dUTP sense/antisense split matched samtools 2/2.
-
-**M4 (alignment robustness) — COMPLETE & merged:** LO-15 (shared `MIN_USABLE_BASES`),
-HI-3 (WFA off-target global edit distance + length-aware threshold), HI-4/HI-5/ME-5
-(PairHMM numerics), ME-4 (haplotype-parity collision: `warn!` + `NON_DISCRIMINATING_LOCUS`
-flag, #40). Defensive — byte-identical counts on real cfDNA.
-
-**M1–M4 audit + follow-ups — COMPLETE & merged:** cross-checked the plan against
-the code (4-agent sweep). Closed the real gaps — HI-2 + HI-6 (#41), MIN_FOR_KS coupling
-+ dead tooling (#42), DX-1 label sweep (#43), test/doc gaps + BH-family DRY (#44),
-prep-time empty-allele rejection (#45), large-deletion binned↔legacy parity gate (#46),
-as-built plan-deviation notes (#47).
-
-**ME-7 fully resolved (RNA strandedness) — merged:** dynamic `--strandedness`
-(reverse/forward/unstranded, #48) and per-fragment ASJD junction dedup (#50) — both
-data-driven from the real FORTE BAM. ME-7 is now *implemented*, not a deviation.
-
-**LO-2:** the legacy `count_bam` parity oracle is feature-gated (`legacy-parity`, default
-on) out of the shipped wheel.
-
-**M5 — mostly shipped, re-scoped on real-data measurement.** The tickets were measured on
-a real deep cfDNA panel + RNA sample (counting is already ~84% parallel-efficient; the
-cohort runs as N concurrent 4-core Nextflow processes, so the *node* — memory, GTF
-re-parse ×N — is the constraint, not the single run). The three items with real cohort ROI
-are merged: **LO-14** (hard `--threads` budget, #53), **PF-1** (output-aware mFSD gating
-for per-process memory, #54), and **M5a** (GTF index cache + `build-gtf-cache` pre-warm +
-automatic Nextflow wiring; ~9s → ~0.05s per sample, #55). The rest were **dropped as
-low-ROI/liabilities**: ME-13 (0% re-fetch measured), PF-3 (decode threads oversubscribe
-under fan-out), PF-4 (moot at 1 sample/process). See the plan's §"M5 — empirical scoping".
-
-### Previous: M6 (hygiene & contracts)
-**M6 (Hygiene & contracts) — COMPLETE.** All M6 tickets landed: HI-1 (exit non-zero on
-sample failure; empty variant set still exits 0), ME-1 (sub/mono-nuc reach VCF), ME-2
-(`|` transcript delimiter), ME-12 (fragment-consensus relabel; #64), LO-1 (single `_rs`
-stub + `count_bam` signature; #65), LO-2 + DX-1 (earlier), and the LO-4/5/6/7/8/13
-documentation sweep (#65). CI now runs `cargo test` + clippy (both feature configs).
-Out of band this session: contig-mismatch reconcile + warn (silent zero-count bug, #63)
-and a synthetic DNA→MAF end-to-end test (#62).
-
-**All six milestones (M1–M6) are now complete and merged**, except the explicitly
-optional/deferred M5 leftovers below.
-
-Remaining (all optional):
-1. **M5 leftovers:** **PF-2** (bin cost-sort — niche; cfDNA has no long-pole),
-   **LO-3** (document the bin-span soft floor, don't cap — doc only), and **M5b** (deep-bin
-   fetch reduction — the only remaining cfDNA lever, parity-sensitive; not started).
-2. **RNA LO polish not in M6 scope:** LO-9/10/11/12 landed in M3; no open RNA LO items.
-
-## Open follow-ups (tracked, not lost)
-- ✅ BAM-level binned↔legacy parity gate, incl. large deletions — **done (#46)**.
-- ✅ Prep-time empty-allele validation (loud, once-per-variant) — **done (#45)**.
-- ✅ DX-1 source label sweep — **done (#43)**; standing rule prevents reintroduction.
-- ✅ LO-2: feature-gate the legacy `count_bam` parity oracle out of the shipped wheel
-  — **done** (default `legacy-parity` feature; release builds `--no-default-features`).
-- Accepted plan deviations (CR-5 mean-LLR, ME-9 thresholds) are documented in
-  `CODE_REVIEW_IMPLEMENTATION_PLAN.md` § "Accepted deviations" with promotion targets —
-  pick up only if a consumer needs them. (ME-7 is now implemented, not a deviation.)
-
-## Key decisions
-- Stats stay in **Rust** (KS/LLR/Fisher in `mfsd.rs`/`shared/stats.rs`); **no scipy**
-  dependency — exact KS is a self-contained Rust DP, validated against baked
-  SciPy reference constants.
-- Binning invariance replaces the legacy `count_bam` parity oracle (T1 #170,
-  2026-10-01): a second engine sharing the classifier never caught a classification
-  bug; counts must not depend on bin geometry, and the read census checks
-  classification.
-- Tests kept minimal/high-signal (each is a maintenance contract); fixes that reduce
-  duplication are preferred over adding code.
-- Source comments/logs explain what/why/how — **never** ticket labels (`CR-`/`HI-`/
-  `ME-`/`P4c`/…); that context lives in the commit message. Rule in
-  `.agents/rules/code-quality.md`; existing labels swept under DX-1.
+- The judge becomes the default (#331), with #405, #406, #410, #414, #417 and #418; the judge
+  meets the speed floor first (#335).
+- Packages 4 to 7: evidence outside the aligned bases (#259 with #177, #179, #212); guard
+  statistics and artifacts (#306, #180); retiring the homopolymer twin (#261 with #111, #112,
+  #128); complex-event read-on (#274, #361). Also #290, #293, #178, #408 and #409.
+- Moved from 6.7.0 on 2026-11-06: speed (#412, #312, #150); clean-up (#313 with #195, #314, #315,
+  #316); the truth arms and the release gate (#260 with #266, #267, #268, #275); output and
+  hygiene (#273, #132, #127, #138); the pre-release review (#318).
+- The order is decided with the operator when 6.8.0 starts: count changes first, then speed and
+  structure once the counts settle.

@@ -8,8 +8,11 @@ Count alleles at variant positions across one or more DNA/cfDNA BAM/CRAM files.
 ## Synopsis
 
 ```bash
-gbcms dna [OPTIONS] --variants <FILE> --bam <NAME:PATH>... --fasta <FILE>
+gbcms dna [OPTIONS] --variants <FILE> --bam <NAME:PATH>... --fasta <FILE> --output-dir <DIR>
 ```
+
+`--variants`, `--fasta` and `--output-dir` are required, and so is one of `--bam` or
+`--bam-list`; a command without them exits with a usage error.
 
 ## Required Arguments
 
@@ -55,7 +58,7 @@ short-fragment enrichment associated with tumor-derived cfDNA
 |:-------|:--------|:------------|
 | `--mfsd` | `false` | Enable mFSD analysis. Adds 41 mFSD columns (KS test, LLR, mean sizes, pairwise comparisons, derived metrics) to MAF output and 13 `MFSD_*` INFO fields to VCF. |
 | `--mfsd-parquet` | `false` | Write a companion `<sample>.fsd.parquet` with per-variant raw fragment size arrays (`ref_sizes`, `alt_sizes`). Enables downstream visualizations. **Requires `--mfsd`**. |
-| `--mfsd-report` | `false` | Generate an interactive HTML report (`<sample>.mfsd_report.html`) with per-variant fragment size distributions, dual-axis histograms, and graded fragment-size evidence (leans somatic, no size evidence, insufficient). **Implies `--mfsd` and `--mfsd-parquet`** (both are auto-enabled). See [mFSD Report](../reference/mfsd-report.md). |
+| `--mfsd-report` | `false` | Generate an interactive HTML report (`<sample>.mfsd_report.html`) with per-variant fragment size distributions, dual-axis histograms, and graded fragment-size evidence (leans somatic, no size evidence, insufficient). **Implies `--mfsd` and `--mfsd-parquet`** (both are auto-enabled). **Requires `--format maf`**: the report reads its statistics from the MAF, so `--format vcf` is refused. See [mFSD Report](../reference/mfsd-report.md). |
 | `--mfsd-report-min-alt` | `3` | Minimum ALT fragment count to include a variant in the HTML report. |
 | `--mfsd-report-max-variants` | `20` | Maximum variants in the HTML report (selected by highest ALT count). Use `-1` for no limit. |
 
@@ -83,7 +86,7 @@ flag is passed.
 | Option | Default | Description |
 |:-------|:--------|:------------|
 | `--min-mapq` | `20` | Minimum MAPQ |
-| `--min-baseq` | `20` | Minimum BASEQ |
+| `--min-baseq` | `20` | Minimum base quality. A base below it is read as unknown, like `N`: it supports no allele and counts against none. Reads are not dropped: a read still counts toward depth and is judged on its other bases. `0` masks only `N` bases. See [Read Filters → Quality Thresholds](../reference/read-filters.md#quality-thresholds) |
 | `--filter-duplicates` | `true` | Filter duplicate reads |
 | `--filter-secondary` | `true` | Filter secondary alignments |
 | `--filter-supplementary` | `true` | Filter supplementary alignments |
@@ -94,17 +97,17 @@ flag is passed.
 
 ## BAQ Options
 
-Base Alignment Quality (BAQ) heuristically downgrades base qualities near indels and splice junctions to prevent systematic errors from realignment artifacts.
+Base Alignment Quality (BAQ) heuristically downgrades base qualities near a read's insertions and deletions to prevent systematic errors from realignment artifacts.
 
 | Option | Default | Description |
 |:-------|:--------|:------------|
-| `--apply-baq/--no-baq` | `off` | Enable BAQ quality downgrade near indels and splice junctions |
+| `--apply-baq/--no-baq` | `off` | Enable BAQ quality downgrade near indels |
 
 **Internal constants** (not configurable — derived from Li 2011):
 
 | Constant | Value | Description |
 |:---------|:------|:------------|
-| `BAQ_RADIUS` | 5 bp | Bases within 5 bp of an indel/splice boundary are penalized |
+| `BAQ_RADIUS` | 5 bp | Bases within 5 bp of an indel boundary are penalized |
 | `BAQ_PENALTY` | 20 | Subtracted from BQ (clamped to 0) |
 
 !!! info "When to Enable BAQ for DNA"
@@ -114,7 +117,7 @@ Base Alignment Quality (BAQ) heuristically downgrades base qualities near indels
     If your DNA pipeline includes BQSR or consensus calling (e.g., fgbio, Marianas), leave BAQ off (the default). Applying BAQ on already-recalibrated BAMs may over-penalize, causing undercounting of legitimate variant evidence.
 
 !!! tip "RNA Mode Default"
-    In `gbcms rna`, BAQ is **on by default** because RNA pipelines typically lack BQSR. BAQ also penalizes bases near splice junctions (CIGAR `N`). See [RNA Splice-Junction Handling](../reference/rna-splice-handling.md).
+    In `gbcms rna`, BAQ is **on by default** because RNA pipelines typically lack BQSR. A splice junction (CIGAR `N`) lowers no base's quality. See [RNA Splice-Junction Handling](../reference/rna-splice-handling.md).
 
 ## UMI Options
 
@@ -172,7 +175,7 @@ for the full design.
 
 | Option | Default | Description |
 |:-------|:--------|:------------|
-| `--rescue-homopolymer` | `false` | Dual-count the [homopolymer twin](../reference/variant-normalization.md#step-5-homopolymer-decomposition-detection). For a delins whose REF is a run of one base and whose ALT is the base after the run (`CCCCCC>T`), also count the run with its last base replaced (`CCCCCT`), and report whichever form has more ALT reads, flagged `WARN_HOMOPOLYMER_DECOMP`. |
+| `--rescue-homopolymer` | `false` | **Deprecated.** Deprecated in 6.7.0; removed in 6.8.0; it did nothing useful the diagnostics do not ([`OBSERVED_ALLELE` and `COEXISTING_ALLELE`](../reference/qc-flags.md)). Accepted and ignored, with a warning; the row counts the given allele. |
 
 !!! warning "Off by default: the row counts the given allele"
     Both forms accept near-matches, so the winner can report another allele's reads under
@@ -210,6 +213,51 @@ Phase 3 (haplotype-based) classification uses a **two-stage pipeline**:
 
     `sw` runs Smith-Waterman on every Phase 3 read (no WFA pre-filter). Use only if you need exact reproducibility with versions <3.0.0.
 
+## Read Judgment
+
+How each read is judged against a row. The default is the size-specific rules, unchanged.
+The sequence judge is opt-in while it is measured toward becoming the default
+([#304](https://github.com/msk-access/gbcms/issues/304); the default flip is
+[#331](https://github.com/msk-access/gbcms/issues/331)).
+
+| Option | Default | Description |
+|:-------|:--------|:------------|
+| `--read-judge` | `rules` | `rules`: the size-specific read rules of the [Read Judgment](../reference/read-judgment.md) register. `sequence`: the sequence judge. Each read is scored whole against the row's candidate sequences (REF, the ALT and the other alleles at its site, each with every context of the other listed rows nearby and the recurring background), and counts REF or ALT only where its own bases favour one by at least one confident base; another allele winning by as much is partial evidence, and anything closer is depth only. `haplotype`, its former name, is taken as `sequence` with a warning. Invalid values are rejected at parse time. |
+
+```bash
+gbcms dna \
+    --variants mutations.maf \
+    --bam tumor:tumor.bam \
+    --fasta reference.fa \
+    --format maf \
+    --read-judge sequence \
+    --output-dir results/
+```
+
+Under `--read-judge sequence`:
+
+- **Contexts explain, never credit.** The other listed rows and the recurring background
+  only explain a read's other differences: the judge does no linkage and no phasing, so a
+  variant linked to the row elsewhere on the molecule never credits a read.
+- **Four diagnostics** can appear in `gbcms_diagnostic`: `MNV_SHARED(chrom:pos:REF>ALT:n/m)`
+  at an SNV whose change a co-listed MNV holds (the MNV's carriers count at both rows,
+  RJ-28), its indel twin `INDEL_SHARED(chrom:pos:REF>ALT:n/m)` at a row a listed indel or
+  delins holds whole with listed neighbours (a delins that is two listed deletions together:
+  its carriers count at each), `UNEXPLAINED_READS(n/m)`, the row's depth reads that fit
+  none of its candidate sequences (RJ-29), and `NO_TELLING_BASE` at an insertion of 50 bp or
+  more whose equal windows no base within reach tells apart, every read depth only (RJ-23).
+  See [QC Flags](../reference/qc-flags.md). No column is added.
+- **The Phase 3 options do not apply** to the row's counts (`--alignment-backend` and the
+  PairHMM probabilities above): the judge has its own scorer.
+- **Spliced reads are not judged yet.** A read whose CIGAR splices (an `N` op) is depth
+  only, and `gbcms rna` refuses `--read-judge sequence`.
+- **It is slower** than the rules.
+- **`GBCMS_JUDGE_*` environment variables** are measurement switches for the judge's
+  development, not options: leave them unset.
+
+The design, the rule and every measurement round are in
+[the sequence judge proposal](../proposals/sequence-judge.md).
+
 ## Examples
 
 === "Single BAM"
@@ -232,7 +280,8 @@ Phase 3 (haplotype-based) classification uses a **two-stage pipeline**:
         --bam tumor:tumor.bam \
         --bam normal:normal.bam \
         --fasta reference.fa \
-        --format maf # (1)!
+        --format maf \ # (1)!
+        --output-dir results/
     ```
 
     1. MAF output preserves all input MAF columns and appends gbcms count columns.
@@ -245,7 +294,8 @@ Phase 3 (haplotype-based) classification uses a **two-stage pipeline**:
         --bam sample:sample.bam \
         --fasta reference.fa \
         --filter-duplicates \
-        --min-mapq 30
+        --min-mapq 30 \
+        --output-dir results/
     ```
 
 === "With Normalization"
@@ -256,10 +306,11 @@ Phase 3 (haplotype-based) classification uses a **two-stage pipeline**:
         --bam sample:sample.bam \
         --fasta reference.fa \
         --format maf \
-        --show-normalization # (1)!
+        --show-normalization \ # (1)!
+        --output-dir results/
     ```
 
-    1. Appends `norm_chrom`, `norm_pos`, `norm_ref`, `norm_alt` columns showing left-aligned coordinates.
+    1. MAF output appends `norm_Start_Position`, `norm_End_Position`, `norm_Reference_Allele` and `norm_Tumor_Seq_Allele2` (after any `--column-prefix`) showing the left-aligned variant; VCF output carries `NORM_POS`, `NORM_REF` and `NORM_ALT` INFO fields.
 
 === "With UMI Tags"
 
@@ -283,6 +334,11 @@ See [Output Formats](../reference/output-formats.md) for a complete column-level
 - **mFSD columns** (with `--mfsd`): all 41 mFSD fields
 - **Normalization columns** (with `--show-normalization`)
 - **Companion files**: `.fsd.parquet` (with `--mfsd-parquet`) and `.observations.parquet` (with `--observations-parquet`)
+
+The run log ends with a **QC summary**: which QC flags fired, on how many rows, which
+rows need a look and what to do about each, then a `WARNING` when any row needs a look or an
+`INFO` line when none does. It reads the output after writing it and changes nothing. See
+[QC Flags → End-of-run summary](../reference/qc-flags.md#end-of-run-summary).
 
 ## Related
 

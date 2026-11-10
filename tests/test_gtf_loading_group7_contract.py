@@ -14,9 +14,9 @@ Contracts:
 - malformed exon lines (start > end, a coordinate past i32, an empty
   ``transcript_id``) are rejected and warned about, never loaded: noodles kept
   them, so their bogus boundaries moved ``exon_boundary_dist``;
-- the cache is deprecated: ``--gtf-cache-dir`` and ``build-gtf-cache`` are
-  accepted, warn, and write nothing; noodles-gtf, bincode, the cache module, its
-  binding and the Nextflow step are gone.
+- the cache is gone: ``--gtf-cache-dir`` and ``build-gtf-cache`` (deprecated in
+  6.6.0) are usage errors; noodles-gtf, bincode, the cache module, its binding, the
+  Nextflow step and its ``--gtf_cache`` parameter are gone.
 """
 
 import gzip
@@ -184,18 +184,23 @@ def test_an_index_emptied_by_rejections_says_so(tmp_path):
     assert "wrong file" not in out and "lacks these contigs" not in out
 
 
-# ── The cache is deprecated ──────────────────────────────────────────────────
+# ── The cache is removed (deprecated in 6.6.0) ───────────────────────────────
 
 
-def test_gtf_cache_dir_is_accepted_ignored_and_warned(tmp_path):
-    cache = tmp_path / "cache"
-    clean = _run(tmp_path / "clean", _gtf_text())
-    d = tmp_path / "flagged"
-    flagged = _run(d, _gtf_text(), extra=("--gtf-cache-dir", str(cache)))
-    assert flagged == clean
-    assert not cache.exists() or not any(cache.iterdir())
-    output = _invoke(d, tmp_path / "again", "--gtf-cache-dir", str(cache))
-    assert "deprecated" in output.lower(), output
+def test_build_gtf_cache_and_gtf_cache_dir_are_gone():
+    """The command and the option were removed after a release of deprecation: each
+    is now a usage error that names it, not a silent no-op."""
+    from typer.testing import CliRunner
+
+    from gbcms.cli import app
+
+    runner = CliRunner()
+    command = runner.invoke(app, ["build-gtf-cache", "--help"])
+    assert command.exit_code == 2, command.output
+    assert "No such command" in command.output, command.output
+    option = runner.invoke(app, ["rna", "--gtf-cache-dir", "x"])
+    assert option.exit_code == 2, option.output
+    assert "No such option" in option.output, option.output
 
 
 def test_no_noodles_gtf_or_bincode_dependency():
@@ -214,15 +219,10 @@ def test_the_binding_has_no_cache():
     assert not hasattr(_rs, "build_gtf_cache")
 
 
-def test_nextflow_has_no_cache_step_and_warns_on_the_old_param():
+def test_nextflow_has_no_cache_step_or_param():
     nf = ROOT / "nextflow"
     assert not (nf / "modules/local/gbcms/build_gtf_cache").exists()
     main = (nf / "main.nf").read_text()
     assert "GBCMS_BUILD_GTF_CACHE" not in main
-    assert re.search(
-        r"log\.warn[^\n]*--gtf_cache", main
-    ), "main.nf warns that --gtf_cache is deprecated"
-    assert "gtf_cache" not in (nf / "modules/local/gbcms/rna/main.nf").read_text()
-    assert "gtf_cache" not in (nf / "workflows/rna.nf").read_text()
-    config = (nf / "nextflow.config").read_text()
-    assert re.search(r"^\s*gtf_cache\s*=\s*null\b", config, re.M), "the old param defaults to null"
+    for f in ("main.nf", "nextflow.config", "modules/local/gbcms/rna/main.nf", "workflows/rna.nf"):
+        assert "gtf_cache" not in (nf / f).read_text(), f

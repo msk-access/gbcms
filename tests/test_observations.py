@@ -598,12 +598,16 @@ def test_wrapper_threads_the_twin_like_the_pipeline(tmp_path):
     assert sum(alleles.values()) == 10
     assert result.variant_status == ["PASS"]
 
-    rescued = gbcms.observe_molecules(
-        bam, variants, reference_fasta=str(fasta), rescue_homopolymer=True
-    )
+    with pytest.warns(DeprecationWarning, match="rescue-homopolymer"):
+        rescued = gbcms.observe_molecules(
+            bam, variants, reference_fasta=str(fasta), rescue_homopolymer=True
+        )
     alleles = Counter(o.allele for o in rescued.observations)
-    assert alleles[ALLELE_ALT] == 6, f"the twin did not reach the counter: {dict(alleles)}"
-    assert alleles[ALLELE_REF] == 4
+    # Was: ALT 6, REF 4 (the twin reached the counter).
+    # Reason: deprecated 2026-11-05; hp1: the twin won at 1 of 20 candidate rows.
+    # Now the flag warns and changes nothing: the same molecules as the call without it.
+    assert alleles[ALLELE_ALT] == 0, f"the twin is counted: {dict(alleles)}"
+    assert [o.allele for o in rescued.observations] == [o.allele for o in result.observations]
 
 
 def test_vcf_and_maf_representations_converge(tmp_path):

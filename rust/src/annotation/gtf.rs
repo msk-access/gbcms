@@ -24,7 +24,7 @@ use std::io::{BufRead, BufReader, Read, Seek, SeekFrom};
 use log::{debug, info, warn};
 
 use super::gtf_line::{columns, LineError};
-use super::{build_exon_trees, AnnotationIndex, ExonRecord, TranscriptIntrons};
+use super::{build_exon_trees, AnnotationIndex, ExonRecord, TranscriptIntrons, TranscriptKey};
 
 /// Parse a GTF file and build an [`AnnotationIndex`].
 ///
@@ -62,10 +62,11 @@ pub fn parse_gtf(
     let mut chrom_map: HashMap<String, u32> = HashMap::new();
     let mut next_chrom_id: u32 = 0;
 
-    // Track exon coordinates per transcript for intron derivation
-    let mut transcript_exons: HashMap<String, Vec<(i32, i32)>> = HashMap::new();
-    // Track transcript → chrom_id for TranscriptIntrons construction
-    let mut transcript_chrom_ids: HashMap<String, u32> = HashMap::new();
+    // Exon coordinates per transcript, for intron derivation. A transcript is an ID on
+    // one chromosome and strand: an ID the GTF reuses elsewhere is another transcript,
+    // and its exons must not be sorted in with this one's (the consecutive pairs would
+    // make introns that exist nowhere and miss the real ones).
+    let mut transcript_exons: HashMap<TranscriptKey, Vec<(i32, i32)>> = HashMap::new();
 
     let mut total_lines = 0u64;
     let mut skipped_non_exon = 0u64;
@@ -176,11 +177,9 @@ pub fn parse_gtf(
 
         // Track for intron derivation
         transcript_exons
-            .entry(transcript_id.clone())
+            .entry(TranscriptKey { id: transcript_id, chrom_id, strand })
             .or_default()
             .push((start, end));
-        // Track chrom_id per transcript (all exons of a transcript share the same chromosome)
-        transcript_chrom_ids.entry(transcript_id).or_insert(chrom_id);
     }
 
     if let Some((line_no, why)) = first_rejected {
@@ -281,11 +280,13 @@ pub fn parse_gtf(
         splice_sites.values().map(|v| v.len()).sum::<usize>(),
     );
 
+    warn_reused_transcript_ids(transcript_exons.keys(), gtf_path);
+
     // ── Derive introns per transcript ────────────────────────────────────────
 
-    let mut transcript_introns: HashMap<String, TranscriptIntrons> = HashMap::new();
+    let mut transcript_introns: HashMap<TranscriptKey, TranscriptIntrons> = HashMap::new();
 
-    for (tx_id, mut exon_coords) in transcript_exons {
+    for (key, mut exon_coords) in transcript_exons {
         // Sort exons by start position
         exon_coords.sort_by_key(|&(start, _)| start);
         // Deduplicate (some GTFs have duplicate exon entries)
@@ -303,10 +304,11 @@ pub fn parse_gtf(
 
         if !introns.is_empty() {
             transcript_introns.insert(
-                tx_id.clone(),
+                key.clone(),
                 TranscriptIntrons {
-                    transcript_id: tx_id.clone(),
-                    chrom_id: *transcript_chrom_ids.get(&tx_id).unwrap_or(&0),
+                    transcript_id: key.id,
+                    chrom_id: key.chrom_id,
+                    strand: key.strand,
                     introns,
                 },
             );
@@ -346,6 +348,31 @@ fn open_gtf(gtf_path: &str) -> anyhow::Result<Box<dyn BufRead>> {
     } else {
         Box::new(BufReader::with_capacity(BUF, file))
     })
+}
+
+/// Warn once when the GTF uses a transcript ID at more than one chromosome or strand
+/// (among the loaded chromosomes). Each place is read as its own transcript; the
+/// warning names how many IDs are reused and the first of them, so a GTF that merges
+/// distinct transcripts under one ID (version-stripped RefSeq IDs, say) is noticed.
+fn warn_reused_transcript_ids<'a>(keys: impl Iterator<Item = &'a TranscriptKey>, gtf_path: &str) {
+    let mut places: HashMap<&str, u32> = HashMap::new();
+    for key in keys {
+        *places.entry(key.id.as_str()).or_default() += 1;
+    }
+    let mut reused: Vec<&str> = places.iter().filter(|(_, &n)| n > 1).map(|(&id, _)| id).collect();
+    if reused.is_empty() {
+        return;
+    }
+    reused.sort_unstable();
+    warn!(
+        "GTF parser: {} transcript ID{} used on more than one chromosome or strand in {} \
+         (first: {}); each chromosome and strand is read as its own transcript, with its own \
+         introns.",
+        reused.len(),
+        if reused.len() == 1 { "" } else { "s" },
+        gtf_path,
+        reused[0],
+    );
 }
 
 /// Warn once for every variant chromosome that has no loaded exons.
@@ -448,7 +475,7 @@ mod tests {
 
         // Should have 1 transcript with 1 intron [200, 300)
         assert_eq!(idx.n_transcripts(), 1);
-        let tx = idx.get_transcript_introns("ENST001").unwrap();
+        let tx = idx.spliced_transcripts_at("1", 150)[0];
         assert_eq!(tx.introns, vec![(200, 300)]);
 
         // Splice distance
@@ -509,6 +536,89 @@ mod tests {
         assert_eq!(idx.strand_at("1", 350), None, "unstranded '.' exon → no enforcement");
 
         std::fs::remove_file(&gtf_path).ok();
+    }
+
+    /// Parse GTF text for the given variant chromosomes, through a temp file.
+    fn parse_text(tag: &str, text: &str, chroms: &[&str]) -> AnnotationIndex {
+        use std::io::Write;
+        let path = std::env::temp_dir().join(format!("gbcms-gtf-{tag}-{}.gtf", std::process::id()));
+        std::fs::File::create(&path).unwrap().write_all(text.as_bytes()).unwrap();
+        let chroms: HashSet<String> = chroms.iter().map(|c| c.to_string()).collect();
+        let idx = parse_gtf(path.to_str().unwrap(), &chroms).unwrap();
+        std::fs::remove_file(&path).ok();
+        idx
+    }
+
+    /// One exon line of transcript `id` (1-based closed `start`..`end`).
+    fn exon_line(chrom: &str, start: i32, end: i32, strand: char, id: &str) -> String {
+        format!(
+            "{chrom}\ttest\texon\t{start}\t{end}\t.\t{strand}\t.\tgene_id \"G\"; transcript_id \"{id}\";\n"
+        )
+    }
+
+    #[test]
+    fn an_id_reused_on_another_chromosome_keeps_each_places_introns() {
+        // TD: exons [100,200) [300,400) on chrom 1 (intron [200,300)) and [1000,1100)
+        // [1200,1300) on chrom 2 (intron [1100,1200)). Joined by ID, the exons of both
+        // sort together: an intron [400,1000) that exists nowhere, chrom 2's real intron
+        // missing from chrom 2, and chrom 1's intron lost.
+        let gtf = [
+            exon_line("1", 101, 200, '+', "TD"),
+            exon_line("1", 301, 400, '+', "TD"),
+            exon_line("2", 1001, 1100, '+', "TD"),
+            exon_line("2", 1201, 1300, '+', "TD"),
+        ]
+        .concat();
+        let idx = parse_text("reuse-chrom", &gtf, &["1", "2"]);
+        assert_eq!(idx.n_transcripts(), 2, "one transcript per place");
+        assert!(idx.is_junction_known("1", 200, 300, 0));
+        assert!(idx.is_junction_known("2", 1100, 1200, 0));
+        assert!(!idx.is_junction_known("1", 1100, 1200, 0), "chrom 2's intron is not on chrom 1");
+        assert!(!idx.is_junction_known("2", 200, 300, 0), "chrom 1's intron is not on chrom 2");
+        for chrom in ["1", "2"] {
+            assert!(!idx.is_junction_known(chrom, 400, 1000, 0), "the joined exons' intron, chrom {chrom}");
+        }
+        assert!(idx.intron_boundary_in_range("1", 200, 300, None));
+        assert!(!idx.intron_boundary_in_range("1", 1100, 1200, None));
+        assert!(idx.intron_boundary_in_range("2", 1100, 1200, None));
+        assert!(!idx.intron_boundary_in_range("2", 200, 300, None));
+    }
+
+    #[test]
+    fn an_id_reused_on_the_other_strand_of_a_chromosome_is_another_transcript() {
+        let gtf = [
+            exon_line("1", 101, 200, '+', "TD"),
+            exon_line("1", 301, 400, '+', "TD"),
+            exon_line("1", 1001, 1100, '-', "TD"),
+            exon_line("1", 1201, 1300, '-', "TD"),
+        ]
+        .concat();
+        let idx = parse_text("reuse-strand", &gtf, &["1"]);
+        assert_eq!(idx.n_transcripts(), 2, "one transcript per strand");
+        assert!(idx.is_junction_known("1", 200, 300, 0));
+        assert!(idx.is_junction_known("1", 1100, 1200, 0));
+        assert!(!idx.is_junction_known("1", 400, 1000, 0), "the joined exons' intron");
+        // Each intron's boundaries belong to its own strand.
+        assert!(idx.intron_boundary_in_range("1", 200, 200, Some('+')));
+        assert!(!idx.intron_boundary_in_range("1", 200, 200, Some('-')));
+        assert!(idx.intron_boundary_in_range("1", 1100, 1100, Some('-')));
+        assert!(!idx.intron_boundary_in_range("1", 1100, 1100, Some('+')));
+    }
+
+    #[test]
+    fn copies_of_a_transcript_at_one_place_stay_one_transcript() {
+        // The same exons listed twice, and a version-stripped twin (T.1 and T.2 become T)
+        // on the same chromosome and strand, are one transcript: exact duplicates drop out.
+        let gtf = [
+            exon_line("1", 101, 200, '+', "T.1"),
+            exon_line("1", 301, 400, '+', "T.1"),
+            exon_line("1", 101, 200, '+', "T.2"),
+            exon_line("1", 301, 400, '+', "T.2"),
+        ]
+        .concat();
+        let idx = parse_text("same-place", &gtf, &["1"]);
+        assert_eq!(idx.n_transcripts(), 1);
+        assert!(idx.is_junction_known("1", 200, 300, 0));
     }
 
     #[test]

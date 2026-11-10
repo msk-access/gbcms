@@ -33,6 +33,7 @@ from typing import TYPE_CHECKING, Any, cast
 
 from gbcms._rs import Observation, count_bam_binned_observations, prepare_variants
 from gbcms._rs import Variant as _RsVariant
+from gbcms.deprecations import warn_rescue_homopolymer_deprecated
 from gbcms.models.core import AlignmentConfig, QualityThresholds, ReadFilters, Variant
 
 if TYPE_CHECKING:
@@ -117,6 +118,7 @@ def observe_molecules(
     library_type: str | None = None,
     observations_path: str | Path | None = None,
     rescue_homopolymer: bool | None = None,
+    read_judge: str | None = None,
 ) -> ObservationResult:
     """Observe the per-molecule allele at each variant.
 
@@ -161,8 +163,14 @@ def observe_molecules(
             ``observations`` list is then empty and ``path``/``n_rows`` describe the file,
             whose columns are ``variant_index, chrom, pos, ref, alt, molecule_hash, allele,
             best_qual, min_mapq`` (self-describing, so it stands alone once written).
-        rescue_homopolymer: Dual-count the homopolymer twin, as ``--rescue-homopolymer``
-            does (off by default: each variant counts the given allele).
+        rescue_homopolymer: Deprecated in 6.7.0, removed in 6.8.0. Warns and is ignored:
+            each variant counts the given allele (see ``OBSERVED_ALLELE`` and
+            ``COEXISTING_ALLELE`` in ``gbcms_diagnostic``).
+        read_judge: The read judgment, as ``--read-judge`` takes it: ``"rules"`` or
+            ``"sequence"`` (the sequence judge). Defaults to the ``alignment`` config's,
+            ``"rules"`` unless set there. Preparation and counting are both told it:
+            preparation records each row's rows within a read's reach for the sequence
+            judge alone, which refuses rows prepared without them.
 
     Returns:
         An :class:`ObservationResult`. Check ``variant_status`` before trusting rows for a
@@ -213,8 +221,12 @@ def observe_molecules(
     apply_baq = cast(bool, _pick(apply_baq, "apply_baq", False))
     umi_tag = cast("str | None", _pick(umi_tag, "umi_tag", None, unset=_UNSET))
     library_type = cast(str, _pick(library_type, "library_type", "capture"))
-    rescue_homopolymer = cast(bool, _pick(rescue_homopolymer, "rescue_homopolymer", False))
+    if cast(bool, _pick(rescue_homopolymer, "rescue_homopolymer", False)):
+        warn_rescue_homopolymer_deprecated()
     reference_fasta = cast("str | Path | None", _pick(reference_fasta, "reference_fasta", None))
+    # One read judgment for preparation and counting: the judge's rows in reach are prepared
+    # only when it counts, and it refuses rows prepared without them.
+    read_judge = read_judge if read_judge is not None else align.read_judge
     if not reference_fasta:
         raise ValueError(
             "observe_molecules needs reference_fasta (or a config that carries one): variants "
@@ -225,9 +237,8 @@ def observe_molecules(
 
     rs_variants = [_RsVariant(v.chrom, v.pos, v.ref, v.alt, v.variant_type.value) for v in variants]
 
-    # Normalize (left-alignment, the shift region, the reference context). The homopolymer
-    # twin is built exactly as Pipeline builds it: only with rescue_homopolymer, since by
-    # default a row counts the given allele.
+    # Normalize (left-alignment, the shift region, the reference context). No homopolymer
+    # twin is built, as in Pipeline: a row counts the given allele.
     # Variants are NOT filtered to PASS: `variant_index` is the caller's join key and must
     # stay positional. Failures are reported via `variant_status` instead.
     prepared = prepare_variants(
@@ -237,7 +248,8 @@ def observe_molecules(
         is_maf,
         threads,
         quality.adaptive_context,
-        rescue_homopolymer,
+        False,  # the homopolymer twin is never built; rescue_homopolymer is ignored
+        read_judge=read_judge,
     )
     rs_variants = [p.variant for p in prepared]
     decomposed: list[_RsVariant | None] = [p.decomposed_variant for p in prepared]
@@ -268,6 +280,7 @@ def observe_molecules(
         library_type=library_type,
         reference_fasta=str(reference_fasta) if reference_fasta is not None else None,
         observations_path=str(observations_path) if observations_path is not None else None,
+        read_judge=read_judge,
     )
     if observations_path is not None:
         # Rows were written from Rust and never crossed the FFI boundary, so `observations`

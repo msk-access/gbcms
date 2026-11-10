@@ -20,6 +20,12 @@ class Variant:
     # 0-based inclusive span the exon-boundary distance is measured over (None:
     # the variant's own REF span); MNP rescue sets it to the MNP's span.
     boundary_span: tuple[int, int] | None
+    # Prep's record, on a deletion of 50 bp or more, of the input's other substitution
+    # rows inside its prepared reference: (0-based POS, REF, ALT).
+    @property
+    def listed_neighbours(self) -> list[tuple[int, str, str]]: ...
+    @property
+    def reach_rows(self) -> list[tuple[int, str, str]]: ...
     def __init__(
         self,
         chrom: str,
@@ -140,6 +146,40 @@ class BaseCounts:
     observed_alt: str
     observed_reads: int
     observed_given_reads: int
+    # A change at the ALT's shifted base too few reads placed apart carry for a
+    # haplotype's, left unmasked, as POS:REF>ALT:c/n (1-based POS); empty when none.
+    # Diagnostic only (POSSIBLE_MINORITY_HAPLOTYPE flag).
+    possible_minority: str
+    # Under the sequence judge, at a substitution: per co-listed row holding its change
+    # (an MNV beside its component SNV), the ALT reads spelling it whole, as
+    # POS:REF>ALT:n/m (1-based POS; n of the m ALT reads), several joined by '+'; empty
+    # when none. Diagnostic only (MNV_SHARED flag).
+    mnv_shared: str
+    # Under the sequence judge: per listed row that is this row's ALT with listed
+    # neighbours (a delins that is two listed deletions together), the ALT reads spelling
+    # it whole, as POS:REF>ALT:n/m (1-based POS; n of the m ALT reads), several joined by
+    # '+'; empty when none. Diagnostic only (INDEL_SHARED flag).
+    indel_shared: str
+    # Under the sequence judge: DP reads whose bases fit none of the row's candidate
+    # sequences (REF, ALT, the other alleles at its site, with every context) within ten
+    # confident mismatches, whether or not the fit rule made them depth only; 0 under the
+    # rules. Diagnostic only (UNEXPLAINED_READS flag).
+    unexplained_reads: int
+    # At a deletion of 50 bp or more: another allele at its breakpoint reading like the ALT
+    # past what a read can spell, as CHANGE:BASES/LONGEST (length change, deleted bases
+    # negative; bases a read must hold from the junction windows' first base: the first
+    # difference and 24 more; the longest read); empty when none. Diagnostic only
+    # (UNIT_COUNT_UNSPANNED flag).
+    unit_count_unspanned: str
+    # At a deletion of 50 bp or more: each other unit count present at its breakpoint that
+    # takes ALT calls, as POS:REF>ALT:n/m (1-based POS of the deletion's anchor; n fragments
+    # whose ALT call it takes, m that tell the given count from it), several joined by '+';
+    # empty when none. Diagnostic only (OBSERVED_ALLELE where m is 0, else COEXISTING_ALLELE).
+    unit_count_allele: str
+    # Under the sequence judge, at a pure insertion of 50 bp or more: no base within the
+    # haplotypes the judge reads tells REF's equal window from the ALT's once the guard's
+    # masks are read, so every read is depth only. Diagnostic only (NO_TELLING_BASE flag).
+    untold_windows: bool
     # GTF-informed annotation (None when no GTF)
     exon_boundary_dist: int | None
     # Per-transcript counts (empty string when no GTF or no overlap)
@@ -196,7 +236,7 @@ class PreparedVariant:
     # Status reason tags, '|'-separated; empty when a clean PASS.
     # PASS: WARN_REF_CORRECTED, WARN_HOMOPOLYMER_DECOMP, MULTI_ALLELIC, TRACT_CLUSTER.
     # FAIL: REF_MISMATCH, FETCH_FAILED, EMPTY_ALLELE, NON_SEQUENCE_ALLELE, ALT_EQUALS_REF,
-    # ALT_CONTAINS_N.
+    # START_BEFORE_CONTIG, ALT_CONTAINS_N.
     gbcms_status_reason: str
     # Diagnostic flags: post-counting on a PASS row (pipeline._compute_diagnostics);
     # on a REF_MISMATCH row, prep's REF_AT_OFFSET(k) where the given REF matches
@@ -248,6 +288,8 @@ def count_bam_binned(
     bin_window: int | None = None,
     bin_max_variants: int | None = None,
     warn_per_bam: bool = True,
+    # 'rules' or 'sequence' (the sequence judge; 'haplotype', its former name, is taken as it)
+    read_judge: str = "rules",
 ) -> list[BaseCounts]: ...
 def count_bam_binned_observations(
     bam_path: str,
@@ -283,6 +325,8 @@ def count_bam_binned_observations(
     observations_path: str | None = None,
     bin_window: int | None = None,
     bin_max_variants: int | None = None,
+    # 'rules' or 'sequence', as count_bam_binned
+    read_judge: str = "rules",
 ) -> tuple[list[BaseCounts], list[Observation]]: ...
 def reset_log_caching() -> None: ...
 def build_commit() -> str: ...
@@ -294,6 +338,8 @@ def prepare_variants(
     threads: int = 1,
     adaptive_context: bool = True,
     rescue_homopolymer: bool = False,
+    # 'rules' or 'sequence', as count_bam_binned: the rows in reach are recorded for 'sequence'
+    read_judge: str = "rules",
 ) -> list[PreparedVariant]: ...
 def write_fsd_parquet(
     path: str,

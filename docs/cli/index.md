@@ -1,6 +1,6 @@
 # CLI Reference
 
-The `gbcms` command-line interface provides two primary commands for variant counting — one for DNA/cfDNA and one for RNA-seq — plus merge and normalization utilities.
+The `gbcms` command-line interface provides two primary commands for variant counting — one for DNA/cfDNA and one for RNA-seq — plus merge, normalization and QC-summary utilities.
 
 ## Commands
 
@@ -11,7 +11,7 @@ The `gbcms` command-line interface provides two primary commands for variant cou
 | [**merge**](merge.md) | Merge per-BAM-type MAFs into a single type-prefixed output |
 | [**normalize**](normalize.md) | Standalone variant normalization (no counting) |
 | [**convert**](convert.md) | VCF ↔ MAF conversion as vcf2maf / maf2vcf write it (no counting) |
-| **build-gtf-cache** | Deprecated in 6.6.0: does nothing and warns; removed in 6.7.0. The GTF loads in a few seconds, so there is no cache to build. |
+| [**summarize**](summarize.md) | QC flag summary of finished outputs: text, JSON, a cohort table or MultiQC content |
 
 ## Quick Example
 
@@ -40,6 +40,7 @@ gbcms dna --help
 gbcms rna --help
 gbcms normalize --help
 gbcms convert --help
+gbcms summarize --help
 ```
 
 ## Related

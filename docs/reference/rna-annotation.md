@@ -14,7 +14,7 @@ With `--gtf`, GTF mode appends **17 columns** total: `exon_boundary_dist` (1),
 !!! important "`gene_strand` is the keystone"
     Parsing the GTF also back-fills each variant's **`gene_strand`** (the transcript's
     `+`/`-` strand). This is what makes strand-aware features work: without it,
-    `--enforce_strandedness` and the ASJD strand-discordance test are silent no-ops
+    `--enforce-strandedness` and the ASJD strand-discordance test are silent no-ops
     (every read reads as sense, so `antisense_depth` stays 0). Strand-specific counting
     therefore requires `--gtf`, not just `--strandedness`.
 
@@ -32,8 +32,8 @@ With `--gtf`, GTF mode appends **17 columns** total: `exon_boundary_dist` (1),
     The GTF is loaded per run, plain or gzip/BGZF-compressed. Measured on a whole
     genome: 2.0 s for Ensembl 111 (2.4 s from `.gtf.gz`), 4.0 s for GENCODE v50
     basic and 6.5 s for GENCODE v50 comprehensive; fewer variant chromosomes load
-    less. There is no cache to build (`--gtf-cache-dir` and `build-gtf-cache` are
-    deprecated in 6.6.0 and do nothing).
+    less. There is no cache to build: `--gtf-cache-dir` and `build-gtf-cache` were
+    deprecated in 6.6.0 and removed in 6.7.0.
 
 ---
 
@@ -76,6 +76,14 @@ its `;`). Whitespace runs may separate a key from its value. A row with start af
 end, a coordinate past 2,147,483,647, a missing or empty `transcript_id` (after the
 version is stripped), or bytes that are not UTF-8 text is not loaded. Rejected rows
 are counted in one warning that names the first one's line number and reason.
+
+A **transcript is an ID on one chromosome and strand**. An ID that the GTF uses on
+another chromosome or strand (the same RefSeq `NM_` on chrX and chrY in the PARs,
+alternate loci) is another transcript: its exons, introns and per-transcript counts
+are its own, and are not sorted in with the first one's. The parser warns once, naming
+how many IDs are reused and the first, when it finds any among the loaded
+chromosomes. Exons of one ID at the same chromosome and strand are one transcript,
+including versions that differ only by suffix (`NM_x.1` and `NM_x.2`).
 
 !!! tip "Chromosome Normalization"
     Chromosomes are normalized by stripping the `chr` prefix for internal matching
@@ -163,9 +171,16 @@ overlaps multiple transcripts with different exon structures.
    - A read's CIGAR `N` operations (splice junctions) are compared
      against the transcript's annotated splice sites.
    - Reads with matching splice junctions are counted toward that transcript.
+   - A read with no junction fits every transcript it overlaps (no junction rules any out): it
+     counts in the DP and RD (or AD) of each overlapping spliced transcript, and once in the
+     variant's counts (register RJ-32 in [Read Judgment](read-judgment.md)).
+   - Only spliced transcripts are counted. A single-exon transcript has no splice structure to
+     check reads against, so it gets no per-transcript entry; a missing entry says nothing about
+     the reads.
 4. Alleles are classified under the same base-quality rules as the main
    counts, including the exon-boundary BAQ exception
-   ([RNA Splice-Junction Handling](rna-splice-handling.md)). For the
+   ([RNA Splice-Junction Handling](rna-splice-handling.md)); a splice lowers
+   no base's quality in either. For the
    transcript every read is compatible with, the per-transcript counts match
    the variant's counts. The exception is when the main counts took a
    decomposed form of the variant or were adjusted for sibling alleles, since
@@ -181,6 +196,18 @@ overlaps multiple transcripts with different exon structures.
 !!! note "Invariant"
     For each transcript: `fragment_count ≤ read_count` (fragments are
     R1/R2 consensus; reads are individual observations).
+
+!!! note "Entry order"
+    Entries are in ascending transcript-ID order (byte order), in both columns,
+    on every machine. The order does not depend on the GTF's line order or on the
+    CPU, so the same run on two machines writes the same bytes.
+
+!!! note "What a transcript's DP counts"
+    A transcript's DP (DPF) counts every compatible read (fragment) that observes the
+    locus, as the row's `total_count` does: reads carrying another allele (the row's
+    `partial_alt`) and reads that cannot tell the alleles apart are in DP but in neither AD
+    nor RD. The entry has no partial field; for a transcript holding every read of the row,
+    its partial evidence is the row's `partial_alt`.
 
 ---
 
@@ -206,7 +233,9 @@ For each variant:
 1. All reads with CIGAR `N` operations (splice junctions) are collected.
 2. Each observed junction `(chrom, start, end)` is looked up in the GTF splice mask.
 3. Junctions present in the annotation are **annotated**; absent ones are **novel**.
-4. Counts are stratified by allele (REF vs ALT) for differential analysis.
+4. Counts are stratified by allele (REF vs ALT) for differential analysis. Only reads
+   judged REF or ALT vote: a read carrying another allele is in neither partition, as its
+   junction is not the given ALT's, so `LOW_ALT_JUNC` can fire where `partial_alt` is high.
 5. Counts are deduped **per fragment** (by QNAME): a molecule whose R1 and R2 both
    span the same junction votes once, so the junction totals and the strand-discordance
    test reflect independent fragments, not mates.
@@ -221,7 +250,7 @@ For each variant:
    deterministic: the same input always gives the same junctions and p-value.
 7. Alleles are classified under the main counts' base-quality rules, including
    the exon-boundary BAQ exception, so the spliced reads at an exon-edge
-   variant are ASJD evidence rather than masked.
+   variant are ASJD evidence, as they are in the main counts.
 
 ### Output Columns (14 ASJD)
 
