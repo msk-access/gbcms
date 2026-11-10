@@ -20547,7 +20547,11 @@ count-affecting merge since the previous release, run on the changed rows only.<
 <li><strong>concordance by stratum</strong> is reported for both versions; any stratum whose fraction
   within max(2 reads, 10%) of the sign-out (matched level) falls by more than 5 points,
   and the top discordant rows, are adjudicated read by read (the read census, or the
-  reads themselves) before the tag;</li>
+  reads themselves) before the tag. A class-level count does not close it: every
+  signed-out row whose matched ALT falls to 0, or below a tenth of the previous
+  release's, is checked on its own (the listed rows around it, the changes its ALT
+  reads share, its count under each read judgment), and the decision is then taken by
+  class;</li>
 <li><strong>run time and peak memory</strong> per arm stay within 1.5× of the previous release, or
   the excess is explained (wall time summed over the runs paired across the builds that
   took 10 s or more, at least 3 per arm; peak memory over paired runs).</li>
@@ -20571,6 +20575,49 @@ count-affecting merge since the previous release, run on the changed rows only.<
 <p>The format is based on <a href="https://keepachangelog.com/en/1.0.0/">Keep a Changelog</a>,
 and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semantic Versioning</a>.</p>
 <h2 id="development-changelog-unreleased">[Unreleased]<a class="headerlink" href="#development-changelog-unreleased" title="Permanent link">¶</a></h2>
+<h2 id="development-changelog-670-2026-11-09-a-read-counts-what-it-reaches-the-sequence-judge-opt-in">[6.7.0] - 2026-11-09 — a read counts what it reaches; the sequence judge, opt-in<a class="headerlink" href="#development-changelog-670-2026-11-09-a-read-counts-what-it-reaches-the-sequence-judge-opt-in" title="Permanent link">¶</a></h2>
+<h3 id="development-changelog-release-gate-the-regression-panel-against-660-2026-11-09">Release gate — the regression panel against 6.6.0 (2026-11-09)<a class="headerlink" href="#development-changelog-release-gate-the-regression-panel-against-660-2026-11-09" title="Permanent link">¶</a></h3>
+<ul>
+<li>The 6.6.0 tier on local slices, 411 runs: no run failed in either build; 48,022 changed cells, every
+  one attributed to a merge (the reduction is exact).</li>
+<li>Concordance with the sign-out (matched level): 98.1% of the 13,323 DNA rows within the margin in
+  6.6.0, 97.3% in 6.7.0 (136 rows left the margin, 33 entered it). 94 of the 136 are now above the
+  sign-out: 6.7.0 counts carriers by their bases and finds carriers that a count by alignment missed
+  (read by read, 809 of the changed reads carry the ALT and 150 do not).</li>
+<li>19 signed-out rows read <abbr title="Alternate Depth - Reads supporting the alternate allele">AD</abbr> 0, each flagged <code>ZERO_ALT</code> and <code>PARTIAL_DOMINANT</code>, and each checked on
+  its own:</li>
+<li>9 rows: the row is a part of a complex event that the input also lists. One molecule gives one
+    allele (RJ-25), so the complex row keeps the reads; the part reads <abbr title="Alternate Depth - Reads supporting the alternate allele">AD</abbr> 0 with status
+    <code>MULTI_ALLELIC</code> (operator, 2026-11-09: kept).</li>
+<li>5 rows: every ALT read carries the listed deletion and an unlisted change beside it that no REF
+    read carries. The reads carry another allele, named in <code>OBSERVED_ALLELE</code>, so the given deletion
+    reads <abbr title="Alternate Depth - Reads supporting the alternate allele">AD</abbr> 0 (D4, RJ-25; operator, 2026-11-09: kept).</li>
+<li>1 row: a 279 bp deletion with a change past its junction (a named limit of the junction judge,
+    RJ-24). 1 row: the reads carry two or more extra changes (another allele).</li>
+<li>3 rows: see "Known issues".</li>
+</ul>
+<h3 id="development-changelog-known-issues-three-shapes-that-the-default-read-judgment-counts-as-0">Known issues — three shapes that the default read judgment counts as 0<a class="headerlink" href="#development-changelog-known-issues-three-shapes-that-the-default-read-judgment-counts-as-0" title="Permanent link">¶</a></h3>
+<ul>
+<li>A pure deletion with a listed change on the first base past its end, carried in cis (#417).</li>
+<li>The exact carriers of a 17 bp tandem duplication: partial on the rules path (#417).</li>
+<li>A delins with a listed SNV at its first base: neither row gets the reads (#425).</li>
+<li><code>--read-judge sequence</code> counts all three. The rules path is not changed for them (operator,
+  2026-11-10): the sequence judge is the path to keep, and it becomes the default in 6.8.0 (#331).</li>
+</ul>
+<h3 id="development-changelog-fixed-harness-the-cbioportal-guard-reads-each-output-stream-greptile-on-426">Fixed — harness: the cBioPortal guard reads each output stream (Greptile on #426)<a class="headerlink" href="#development-changelog-fixed-harness-the-cbioportal-guard-reads-each-output-stream-greptile-on-426" title="Permanent link">¶</a></h3>
+<ul>
+<li>The guard (<code>.claude/hooks/protect-cbioportal.py</code>) took the <code>&gt;</code> inside <code>2&gt;</code> for a stdout
+  redirect, so a command that sent only stderr into a protected folder passed while stdout printed
+  the rows. Now every stdout redirect (<code>&gt;</code>, <code>&gt;&gt;</code>, <code>1&gt;</code>, <code>&amp;&gt;</code>) and every stderr redirect must end
+  under a protected root (<code>2&gt;&amp;1</code> counts only after the last stdout redirect), and a root matches
+  only as a whole folder. <code>tests/test_protect_cbioportal_hook.py</code> pins 18 shapes (made-up names).</li>
+</ul>
+<h3 id="development-changelog-tests-typer-0290">Tests — Typer 0.29.0<a class="headerlink" href="#development-changelog-tests-typer-0290" title="Permanent link">¶</a></h3>
+<ul>
+<li>Two docs tests (every <code>gbcms</code> example parses; the <code>qc summarize</code> examples parse) switch off the
+  path-existence check where Typer 0.29 keeps it, on the parameter's declaration (0.29 removed a
+  parameter's <code>type</code>). What they assert is unchanged; gbcms itself runs on Typer 0.29.</li>
+</ul>
 <h3 id="development-changelog-fixed-rna-asjd-reads-the-same-sibling-verdict-as-the-main-counts-359-rj-5">Fixed — RNA: ASJD reads the same sibling verdict as the main counts (#359, RJ-5)<a class="headerlink" href="#development-changelog-fixed-rna-asjd-reads-the-same-sibling-verdict-as-the-main-counts-359-rj-5" title="Permanent link">¶</a></h3>
 <ul>
 <li>At an RNA row with a GTF and a co-annotated sibling, the allele-specific junction test counted reads the main counts give to the sibling (a REF read that is ALT for the sibling where this row's REF is read; an ALT match the sibling explains as well or better). It now makes the same two sibling checks, so those reads vote in neither the REF nor the ALT junction partition. Only the <code>asjd_*</code> columns can move; <abbr title="Reference Depth - Reads supporting the reference allele">RD</abbr>, <abbr title="Alternate Depth - Reads supporting the alternate allele">AD</abbr>, <abbr title="Total Depth - All mapped reads overlapping the variant position">DP</abbr> and the per-transcript counts are unchanged. Rules path only. Measured on the synthetic set: rows without a sibling are byte-identical (0 of 1,072); with a sibling added to every row, 12 of 2,144 rows move.</li>
