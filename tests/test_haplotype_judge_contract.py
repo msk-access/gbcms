@@ -598,6 +598,68 @@ def test_a_read_fitting_no_candidate_sequence_counts_only_where_its_aligner_is_s
     assert "UNEXPLAINED_READS(7/18)" in row["gbcms_diagnostic"].split(";")
 
 
+def _misfit_reads(ref, m0, h, prefix, n, first, tags):
+    """`n` carriers of the row's change at m0 with twelve confident mismatches away from it
+    (one every 8 read bases; starts one apart never share one), each with `tags` set."""
+    flip = {"A": "C", "C": "G", "G": "T", "T": "A"}
+    out = []
+    for i in range(n):
+        start = first + i
+        x = m0 - 1 - start
+        seq = list(h[start : start + READ_LEN])
+        for k in [k for k in range(0, READ_LEN, 8) if k != x][:12]:
+            seq[k] = flip[seq[k]]
+        a = make_read(f"{prefix}{i}", "".join(seq), start, ((0, READ_LEN),))
+        for t, v in tags.items():
+            a.set_tag(t, v)
+        out.append(a)
+    return out
+
+
+def test_a_read_a_realigner_placed_from_unmapped_is_judged_by_its_bases(tmp_path):
+    """The fit rule weighs the aligner's doubt about the read's present placement (RJ-29,
+    amended 2026-11-10). A read the aligner left unmapped and a realigner then placed
+    carries none in its tags: ABRA2 marks it with YO beginning N/A (alone or with the
+    start) and keeps BWA's unmapped AS:0 XS:0. So its 4 carriers that fit nothing count by
+    their bases, with the 2 the aligner places here alone; the 2 it places elsewhere as
+    well (XS = AS) stay depth only. 6 clean carriers, 5 REF reads. (Eight misfit reads on
+    eight consecutive starts: no two share a mismatch.)"""
+    m0 = 600
+    ref = _contig(53, length=1200)
+    snv = (m0, ref[m0 - 1], "A" if ref[m0 - 1] != "A" else "C")
+    h = _apply(ref, [snv])
+    reads = [_plain(f"c{i}", h, m0 - 70 + 3 * i) for i in range(6)]
+    reads += _misfit_reads(ref, m0, h, "sure", 2, m0 - 60, {"AS": 52, "XS": 20})
+    reads += _misfit_reads(ref, m0, h, "doubt", 2, m0 - 58, {"AS": 52, "XS": 52})
+    reads += _misfit_reads(ref, m0, h, "placed", 2, m0 - 56, {"AS": 0, "XS": 0, "YO": "N/A"})
+    reads += _misfit_reads(
+        ref, m0, h, "placedat", 2, m0 - 54, {"AS": 0, "XS": 0, "YO": f"N/A:{m0 - 53}"}
+    )
+    reads += [_plain(f"r{i}", ref, m0 - 40 + 3 * i) for i in range(5)]
+    (row,) = _run(tmp_path, ref, [snv], reads, maf_rows=True)
+    assert (int(row["ref_count"]), int(row["alt_count"]), int(row["total_count"])) == (5, 12, 19)
+    assert "UNEXPLAINED_READS(8/19)" in row["gbcms_diagnostic"].split(";")
+
+
+def test_bwas_unmapped_placeholder_tags_are_no_doubt_without_a_realigner_tag(tmp_path):
+    """BWA writes AS:0 XS:0 on a read it leaves unmapped. A mapped read that still carries
+    that pair was placed by another tool (a realigner that writes no tag of its own, or one
+    whose tag a later tool removed), so the pair says nothing about its present placement:
+    its 3 carriers that fit nothing count by their bases; the 3 with XS = AS stay depth
+    only. 6 clean carriers, 5 REF reads."""
+    m0 = 600
+    ref = _contig(53, length=1200)
+    snv = (m0, ref[m0 - 1], "A" if ref[m0 - 1] != "A" else "C")
+    h = _apply(ref, [snv])
+    reads = [_plain(f"c{i}", h, m0 - 70 + 3 * i) for i in range(6)]
+    reads += _misfit_reads(ref, m0, h, "doubt", 3, m0 - 56, {"AS": 52, "XS": 52})
+    reads += _misfit_reads(ref, m0, h, "pair", 3, m0 - 53, {"AS": 0, "XS": 0})
+    reads += [_plain(f"r{i}", ref, m0 - 40 + 3 * i) for i in range(5)]
+    (row,) = _run(tmp_path, ref, [snv], reads, maf_rows=True)
+    assert (int(row["ref_count"]), int(row["alt_count"]), int(row["total_count"])) == (5, 9, 17)
+    assert "UNEXPLAINED_READS(6/17)" in row["gbcms_diagnostic"].split(";")
+
+
 # ── A long deletion with a listed row inside its deleted bases ──
 
 

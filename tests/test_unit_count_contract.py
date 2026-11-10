@@ -530,6 +530,34 @@ def test_reads_the_aligner_places_elsewhere_spell_no_count(tmp_path, judge):
     assert got == [((6, 12, 0, 22), "")]
 
 
+PLACED_FROM_UNMAPPED = [
+    {"YO": "N/A", "AS": 0, "XS": 0},
+    {"YO": "N/A:1234", "AS": 0, "XS": 0},
+    {"AS": 0, "XS": 0},
+]
+
+
+@pytest.mark.parametrize("judge", JUDGES)
+@pytest.mark.parametrize("tags", PLACED_FROM_UNMAPPED, ids=["YO-N/A", "YO-N/A-start", "AS0-XS0"])
+def test_reads_placed_from_unmapped_are_no_doubt_about_their_placement(tmp_path, judge, tags):
+    """RJ-29: the tags of a read a realigner placed after BWA left it unmapped (YO N/A) or
+    BWA's unmapped placeholder pair (AS 0, XS 0) do not describe the present placement, so
+    they are no doubt: the 4 holding carriers count as reads the aligner places here (as with
+    XS below AS), and the counts equal those of the same reads with no such tags."""
+    ref, a, h, rows, reads = _ticket(clip=True)
+
+    def run(extra):
+        held = _reads(a, "two", h["two"], HOLDING, size=120, k=4, tag="h", clip=True)
+        for r in held:
+            for name, value in extra.items():
+                r.set_tag(name, value)
+        return _count(tmp_path, ref, [rows["one"]], reads + held, judge)
+
+    placed_here = run({"AS": 230, "XS": 100})
+    assert placed_here != [((6, 12, 0, 22), "")]  # the doubted result differs: the test can fail
+    assert run(tags) == placed_here
+
+
 @pytest.mark.parametrize("judge", JUDGES)
 @pytest.mark.parametrize("doubted", [False, True], ids=["placed-here", "aligner-doubts"])
 def test_a_read_placed_from_the_right_flank_that_spells_another_count_is_partial(

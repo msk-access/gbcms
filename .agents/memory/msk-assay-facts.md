@@ -34,6 +34,15 @@ rows treat collapsed-BAM ALT written only by the second pass as suspect, and whe
 available compare its counts with the collapsed ones before accepting a count-changing rule. Such a
 check belongs in validation tooling or `gbcms_diagnostic`, not a new column.
 
+**ABRA2's tags are not the alignment's** (checked 2026-11-10 in ABRA2's source and on every local
+arm; RJ-29's amendment). ABRA2 never writes AS or XS. A read it places from unmapped keeps BWA's
+unmapped placeholder `AS:i:0 XS:i:0`, gets `YO:Z:N/A` (or `N/A:<start>`), and gets the highest MAPQ
+ABRA2 has seen (usually 60). It takes such a read only through a mapped mate within 1 kb and never
+tests the mate's MAPQ. A moved read keeps the AS and XS of its old placement. ABRA2 updates NM.
+These reads are rare (0.01 to 0.07% of reads), but they are the reads that span dense somatic
+clusters. **IMPACT BAM headers name neither BWA nor ABRA2** (only MarkDuplicates, GATK PrintReads
+and samtools), so a rule must read the read's own tags, not the header.
+
 ## ACCESS XS1 and XS2 base qualities
 
 The operator confirmed (2026-10-26): "XS1 is Marianas and XS2 is fgbio". Measured on the plan670

@@ -5,7 +5,7 @@
 //!
 //! Used throughout `counting` (re-exported by `counting::utils`).
 
-use rust_htslib::bam::record::{Cigar, CigarString};
+use rust_htslib::bam::record::{Aux, Cigar, CigarString};
 use rust_htslib::bam::Record;
 
 /// Find the read index corresponding to a genomic position.
@@ -281,6 +281,44 @@ pub(crate) fn clip_to_fragment(mut record: Record) -> Option<Record> {
     Some(record)
 }
 
+/// An integer tag of any width, or None where it is absent or not an integer.
+pub(crate) fn int_tag(record: &Record, tag: &[u8]) -> Option<i64> {
+    match record.aux(tag) {
+        Ok(Aux::I8(v)) => Some(i64::from(v)),
+        Ok(Aux::U8(v)) => Some(i64::from(v)),
+        Ok(Aux::I16(v)) => Some(i64::from(v)),
+        Ok(Aux::U16(v)) => Some(i64::from(v)),
+        Ok(Aux::I32(v)) => Some(i64::from(v)),
+        Ok(Aux::U32(v)) => Some(i64::from(v)),
+        _ => None,
+    }
+}
+
+/// The aligner's own scores for the read's present placement: its alignment score (AS) and
+/// the best score it found elsewhere (XS), each None where the tag is absent or not an
+/// integer (a character XS, as STAR and HISAT2 write for the strand, is no score).
+///
+/// Both are None where the tags do not describe the present placement (RJ-29):
+/// - the read carries a `YO` string beginning `N/A`: ABRA2 writes `YO:Z:N/A` (or
+///   `YO:Z:N/A:<start>`) for a read it placed after BWA left it unmapped, and the tags stay
+///   BWA's; or
+/// - `AS` and `XS` are both present as integers and both 0: BWA's placeholder pair for an
+///   unmapped read, which a realigner that writes no tag of its own leaves on the read.
+///
+/// Callers then fall back on the mapping quality, as for a read with no XS.
+pub(crate) fn placement_scores(record: &Record) -> (Option<i64>, Option<i64>) {
+    if let Ok(Aux::String(yo)) = record.aux(b"YO") {
+        if yo.starts_with("N/A") {
+            return (None, None);
+        }
+    }
+    let (best, elsewhere) = (int_tag(record, b"AS"), int_tag(record, b"XS"));
+    if best == Some(0) && elsewhere == Some(0) {
+        return (None, None);
+    }
+    (best, elsewhere)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -411,5 +449,78 @@ mod tests {
             let once = clip_to_fragment(read(ops, pos, tlen, reverse)).unwrap();
             assert_eq!(fragment_query_span(&once), Some((0, once.seq_len())), "{}", cigar(&once));
         }
+    }
+
+    /// A read carrying the given tags, for the placement tests.
+    fn tagged(tags: Vec<(&[u8], Aux)>) -> Record {
+        let mut rec = read(vec![Cigar::Match(10)], 100, 0, false);
+        for (t, v) in tags {
+            rec.push_aux(t, v).unwrap();
+        }
+        rec
+    }
+
+    #[test]
+    fn placement_scores_none_for_a_realigner_placed_read() {
+        let r = tagged(vec![(b"AS", Aux::I32(0)), (b"XS", Aux::I32(0)), (b"YO", Aux::String("N/A"))]);
+        assert_eq!(placement_scores(&r), (None, None));
+        let r = tagged(vec![(b"AS", Aux::I32(52)), (b"XS", Aux::I32(20)), (b"YO", Aux::String("N/A"))]);
+        assert_eq!(placement_scores(&r), (None, None));
+    }
+
+    #[test]
+    fn placement_scores_none_for_a_realigner_placed_read_with_a_start() {
+        let r = tagged(vec![(b"AS", Aux::I32(0)), (b"XS", Aux::I32(0)), (b"YO", Aux::String("N/A:1234"))]);
+        assert_eq!(placement_scores(&r), (None, None));
+    }
+
+    #[test]
+    fn placement_scores_none_for_the_unmapped_placeholder_pair() {
+        let r = tagged(vec![(b"AS", Aux::U8(0)), (b"XS", Aux::I16(0))]);
+        assert_eq!(placement_scores(&r), (None, None));
+    }
+
+    #[test]
+    fn placement_scores_keep_a_zero_score_without_an_xs() {
+        let r = tagged(vec![(b"AS", Aux::I32(0))]);
+        assert_eq!(placement_scores(&r), (Some(0), None));
+    }
+
+    #[test]
+    fn placement_scores_keep_equal_nonzero_scores() {
+        let r = tagged(vec![(b"AS", Aux::I32(52)), (b"XS", Aux::I32(52))]);
+        assert_eq!(placement_scores(&r), (Some(52), Some(52)));
+    }
+
+    #[test]
+    fn placement_scores_take_a_character_xs_as_no_score() {
+        let r = tagged(vec![(b"AS", Aux::I32(43)), (b"XS", Aux::Char(b'+'))]);
+        assert_eq!(placement_scores(&r), (Some(43), None));
+    }
+
+    #[test]
+    fn placement_scores_keep_the_tags_for_a_yo_not_beginning_n_a() {
+        let r = tagged(vec![(b"AS", Aux::I32(52)), (b"XS", Aux::I32(52)), (b"YO", Aux::String("5M1D"))]);
+        assert_eq!(placement_scores(&r), (Some(52), Some(52)));
+    }
+
+    #[test]
+    fn placement_scores_keep_a_zero_score_with_a_score_elsewhere() {
+        // AS 0 with XS above 0 is not the placeholder pair: the aligner doubts the read
+        let r = tagged(vec![(b"AS", Aux::I32(0)), (b"XS", Aux::I32(30))]);
+        assert_eq!(placement_scores(&r), (Some(0), Some(30)));
+    }
+
+    #[test]
+    fn placement_scores_keep_a_score_with_none_elsewhere() {
+        // XS 0 with AS above 0 is not the placeholder pair: the aligner places the read here
+        let r = tagged(vec![(b"AS", Aux::I32(52)), (b"XS", Aux::I32(0))]);
+        assert_eq!(placement_scores(&r), (Some(52), Some(0)));
+    }
+
+    #[test]
+    fn placement_scores_ignore_a_yo_that_is_not_a_string() {
+        let r = tagged(vec![(b"AS", Aux::I32(52)), (b"XS", Aux::I32(52)), (b"YO", Aux::I32(0))]);
+        assert_eq!(placement_scores(&r), (Some(52), Some(52)));
     }
 }
