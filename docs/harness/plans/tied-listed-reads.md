@@ -1,12 +1,13 @@
 # Naming the reads the judge holds back
 
-Status: building 2026-11-12 · option B, widened, parts 1 and 2 with the own-deletion condition
-(operator, 2026-11-11: "Yes, widen it"; 2026-11-12: "Yes, with it") · ticket: none
-yet (a sub-issue of E #262, beside #273) · serves RJ-34 (`docs/reference/read-judgment.md`, decided
-2026-11-11) · count-neutral by construction (the plan-first page is used for its form; this item
-is not one of the trial's count-changing items, and it keeps a cost log)
-Rounds: 0 of 2 · New conditions: 0 of 3 · Builds: 2 measurement builds used (trace-only, never merged;
-operator, 2026-11-12: "Ok lets do it", then "Yes, one more trace"), the final build not yet · HPC
+Status: merged 2026-11-12 (#433, the build; #432, the register text) · option B, widened, parts 1
+and 2 with the own-deletion condition (operator, 2026-11-11: "Yes, widen it"; 2026-11-12: "Yes,
+with it") · ticket #431 (a sub-issue of E #262, beside #273) · serves RJ-34
+(`docs/reference/read-judgment.md`, decided 2026-11-11) · count-neutral by construction (the
+plan-first page is used for its form; this item is not one of the trial's count-changing items,
+and it keeps a cost log)
+Rounds: 1 of 2 · New conditions: 1 of 3 · Builds: 2 measurement builds used (trace-only, never merged;
+operator, 2026-11-12: "Ok lets do it", then "Yes, one more trace"), the final build merged · HPC
 batches: 0 of 1 · Part 3 and the open question moved to #306 (operator, 2026-11-12)
 
 ## 1. The class
@@ -390,9 +391,15 @@ batches: 0 of 1 · Part 3 and the open question moved to #306 (operator, 2026-11
   time is not a measurement (the machine's load average was over 50 while it ran); the clean
   comparison is the build before it against develop: median per-run time ratio 0.98, total
   +1.7%.
-- Open: the operator's word on a test accessor widened to count both graph caches (section 8);
-  the order of the two PRs (RJ-34's register text is on `docs/aligner-evidence`); the ticket and
-  the PR (drafts to be shown before they are posted).
+- 2026-11-12, operator: "Yes, commit it", after the two open items were put to them: the
+  exemption at the other row of the pair, and the test accessor widened to count both graph
+  caches (section 8). Then "Send it": ticket #431 (a sub-issue of #262), PR #432 (RJ-33 and
+  RJ-34's register text) and PR #433 (the build).
+- 2026-11-12, merged: the operator merged #432 (8eae788b) and then #433 (4ce79ba9) into develop.
+  CI passed on both. Greptile reviewed neither: on #432 it said the organization was out of
+  review credits, and on #433 it posted nothing.
+- Open: retire the measurement builds (harness notes, `judge680/rbr/STATE.md`); the migration
+  notes name `TIED_WITH` (#337, section 4b).
 
 ## 8. Cost log
 
