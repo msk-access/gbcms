@@ -7,6 +7,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Under the sequence judge, `gbcms_diagnostic` names what the reads the judge holds back fit
+  (RJ-34; the counts are unchanged). `TIED_WITH(chrom:pos:REF>ALT:n/m)` names a listed row
+  (another input row within reach) that `n` held-back reads in the row's depth fit as well as the
+  row's ALT, so they cannot tell the two apart: for every class within the judge's margin of ALT,
+  the listed row is that class's own allele, or a neighbour on its best path without which that
+  class falls behind ALT by the margin. `m` is the row's AD. A read whose own alignment writes a
+  deletion of 20 bases or more names a row only where that deletion is the named row or the row's
+  own allele, and an allele the input does not list is never named.
+  `OBSERVED_ALLELE` and `COEXISTING_ALLELE` now also name a listed allele at the row's own site
+  that 3 or more held-back reads fit better than the ALT and REF and that outnumber the row's ALT
+  reads, with no 5% share. Measured on the local regression sets (868 runs against develop):
+  every field but `gbcms_diagnostic` is unchanged on every row; 113 of 12,978 IMPACT tumour rows
+  gain a token, 713 of 4,986 HG002 rows (mostly adjacent insertion and SNV pairs), 19 of 632
+  ACCESS rows and no WES row; in a sample of 10 flagged rows per data type, read by edit distance,
+  IMPACT tumour 10 of 10 flags name an allele their reads fit, HG002 10 of 11, ACCESS 27 of 29;
+  the judge arm takes about 2% longer. Plan: `docs/harness/plans/tied-listed-reads.md`.
+
 ### Fixed
 
 - The sequence judge's fit rule (RJ-29) no longer reads a realigner's placeholder tags as the

@@ -1035,7 +1035,11 @@ class Pipeline:
                 more, each other unit count present at its breakpoint (listed, or
                 spelled on 3 or more fragments) that takes ALT calls is named the same
                 way, at the deletion's anchor: n fragments whose ALT call it takes, m
-                that tell the given count from it (OBSERVED_ALLELE where m is 0).
+                that tell the given count from it (OBSERVED_ALLELE where m is 0). Under
+                the sequence judge, a listed allele at the row's site (another input row
+                over its bases) is named the same way where 3 or more reads the judge
+                holds back fit it better than ALT and REF and they outnumber the row's
+                ALT reads (no 5% share): n such reads, m the row's AD.
             SW_FALLBACK(n): under the PairHMM backend, n depth reads could not
                 be evaluated by the pangenomic haplotype matrix (reference context
                 missing — e.g. an indel near a contig end — or not containing the
@@ -1068,6 +1072,16 @@ class Pipeline:
                 from the ALT's once the guard's masks are read (the run reaches past the
                 reads, or masks take every base that would tell), so every read is depth
                 only: RD and AD 0 explained, not missing reads.
+            TIED_WITH(chrom:pos:REF>ALT:n/m): under the sequence judge, n reads the
+                judge holds back (depth only, or another allele) fit the row's ALT and
+                this listed row alike, so they cannot tell the two apart: for every class
+                within the judge's margin of ALT, the listed row is that class's own
+                allele, or a neighbour on its best path without which that class falls
+                behind ALT by the margin while ALT stays within it of the read's best.
+                n counts reads in the row's depth; m is the row's AD. A read whose own
+                alignment writes a deletion of 20 bases or more names a row only where
+                that deletion is the named row or the row's own allele; an allele the
+                input does not list is never named. One flag per listed row. Counts stand.
             UNEXPLAINED_READS(n/m): under the sequence judge, n of the row's m DP
                 reads fit none of its candidate sequences (REF, ALT, the other alleles
                 at its site, with every context) within ten confident mismatches. The
@@ -1171,6 +1185,19 @@ class Pipeline:
             if not any(f.startswith(p) for p in named for f in flags):
                 flags.append(f"{name}({variant.chrom}:{entry})")
 
+        # A listed allele at the row's site that the reads the judge holds back fit better than
+        # ALT and REF, 3 or more of them and more than the row's ALT reads: named in the same
+        # form (n reads, m the row's AD), unless that allele is already named. Counts stand.
+        fits = getattr(counts, "fits_listed", "")
+        for entry in fits.split("+") if fits else ():
+            allele, tally = entry.rsplit(":", 1)
+            name = "OBSERVED_ALLELE" if tally.split("/")[1] == "0" else "COEXISTING_ALLELE"
+            named = [
+                f"{k}({variant.chrom}:{allele}:" for k in ("OBSERVED_ALLELE", "COEXISTING_ALLELE")
+            ]
+            if not any(f.startswith(p) for p in named for f in flags):
+                flags.append(f"{name}({variant.chrom}:{entry})")
+
         # A change at the ALT's shifted base the reads placed apart show on too few of
         # them (or in one pair orientation) for a haplotype's, left unmasked: a minority
         # haplotype carrying it would count ALT. The counts stand; the flag names it.
@@ -1192,6 +1219,13 @@ class Pipeline:
         shared = getattr(counts, "indel_shared", "")
         for entry in shared.split("+") if shared else ():
             flags.append(f"INDEL_SHARED({variant.chrom}:{entry})")
+
+        # Reads the sequence judge holds back that fit the ALT and a listed row alike: named per
+        # listed row, so a row whose reads cannot tell its allele from a neighbour is visible
+        # (RJ-34). The counts stand.
+        tied = getattr(counts, "tied_with", "")
+        for entry in tied.split("+") if tied else ():
+            flags.append(f"TIED_WITH({variant.chrom}:{entry})")
 
         # Reads the sequence judge found no candidate sequence explains: depth only where
         # the aligner doubts them too (the fit rule), else judged by their bases at the

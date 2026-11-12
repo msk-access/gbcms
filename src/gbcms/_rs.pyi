@@ -165,6 +165,19 @@ class BaseCounts:
     # confident mismatches, whether or not the fit rule made them depth only; 0 under the
     # rules. Diagnostic only (UNEXPLAINED_READS flag).
     unexplained_reads: int
+    # Under the sequence judge: per listed row (another input row within reach) that reads
+    # the judge holds back tie ALT with, as POS:REF>ALT:n/m (1-based POS; n such reads, m the
+    # row's AD), several joined by '+'; empty when none. A read whose own alignment writes a
+    # deletion of 20 bases or more names a row only where that deletion is the named row or
+    # the row's own allele.
+    # Diagnostic only (TIED_WITH flag).
+    tied_with: str
+    # Under the sequence judge: per listed allele at the row's site that reads the judge holds
+    # back fit better than ALT and REF, where 3 or more do and they outnumber the row's ALT
+    # reads, as POS:REF>ALT:n/m (1-based POS; n such reads, m the row's AD), several joined by
+    # '+'; empty when none. Diagnostic only (OBSERVED_ALLELE where m is 0, else
+    # COEXISTING_ALLELE).
+    fits_listed: str
     # At a deletion of 50 bp or more: another allele at its breakpoint reading like the ALT
     # past what a read can spell, as CHANGE:BASES/LONGEST (length change, deleted bases
     # negative; bases a read must hold from the junction windows' first base: the first

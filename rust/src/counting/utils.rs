@@ -202,6 +202,14 @@ pub struct ClassifyResult {
     /// confident mismatches, whether or not the fit rule made it depth only. Diagnostic
     /// only (UNEXPLAINED_READS).
     pub fits_none: bool,
+    /// A read the haplotype judge holds back (depth only, or another allele) that ties ALT
+    /// with listed rows (RJ-34): their indices into `Variant::reach_rows`, `u16::MAX` in the
+    /// slots left. Diagnostic only (TIED_WITH).
+    pub tied_listed: [u16; 4],
+    /// A read the haplotype judge holds back that fits a listed allele at the row's site
+    /// better than ALT and REF: its index into `Variant::reach_rows`, `u16::MAX` where none.
+    /// Diagnostic only (OBSERVED_ALLELE / COEXISTING_ALLELE).
+    pub fits_listed: u16,
 }
 
 impl ClassifyResult {
@@ -240,6 +248,8 @@ impl ClassifyResult {
             spells_listed: 0,
             spells_listed_indel: 0,
             fits_none: false,
+            tied_listed: [u16::MAX; 4],
+            fits_listed: u16::MAX,
         }
     }
 
