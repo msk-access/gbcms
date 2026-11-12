@@ -4,7 +4,7 @@
 > Update the **Now** and **Next** sections as work progresses. When a "Now" section is finished,
 > move it to `.agents/archive/CONTINUITY_ARCHIVE.md` (older sections live there).
 
-_Last updated: 2026-11-10_
+_Last updated: 2026-11-12_
 
 ## Now — 6.8.0 starts (tracker #420)
 
@@ -23,9 +23,15 @@ sign-out margin, 348 of them above the sign-out (138 DNP rows).
 - Done: the DNP rows above the sign-out are a sensitivity gain, not a fault. The judge credits 1,544
   reads that 6.6.0 did not; 1,543 of them carry the DNP only in the soft clip, and 97% carry both ALT
   bases at Q20 or above (RJ-13: soft-clipped bases are the read's own).
-- Left, in this order: the SNV rows above the sign-out (58 rows; by the oracle, reads right 19,
-  wrong 191, unclear 368), then the 60 rows below the sign-out, then the other strata. Attribute
-  each class read by read before any rule change (`.agents/rules/decision-protocol.md`).
+- Done (2026-11-10 to 2026-11-12; harness notes `judge680/rbr/STATE.md`): the 58 SNV rows above
+  the sign-out (57 agree with the judge, 1 ties); the 60 rows below it (37 SNV, 23 other). Merged:
+  #430 (RJ-29: a realigner's placeholder tags are no evidence of the aligner's doubt), #432 (RJ-33
+  and RJ-34 in the register), #433 (RJ-34: `TIED_WITH`, and the found alleles a listed row
+  explains; ticket #431; plan `docs/harness/plans/tied-listed-reads.md`).
+- Left, in this order: the judge faults at 2 places (equal REF and ALT scores where the bases
+  differ; RJ-34's measure); the 152 rows above the sign-out that are not SNV or DNP (DEL 64,
+  INS 53, MNP3-11 22, DELINS 13); the 48 rows the judge brings into the margin. Attribute each
+  class read by read before any rule change (`.agents/rules/decision-protocol.md`).
 - Acceptance rows for #331: the three shapes the rules count as 0 and the judge counts (6.7.0
   "Known issues": #417, the tandem duplication through #417, and #425).
 
@@ -38,6 +44,10 @@ sign-out margin, 348 of them above the sign-out (138 DNP rows).
 - `r2/plain_trace.py` for traces (`docs/harness/measurement-harness.md`, "Traces").
 - `gates/gate_wt.sh WORKTREE VENV LOGDIR`: the whole qa-check gate, one exit code per tool.
 - `judge680/`: the tool survey for #417 and #425.
+- `batch680/`: develop 44b02197's 18 arms over the tier, ACCESS, WES and HG002 (whole logs kept),
+  and each later ticket's arms beside them (`README.md`; first reads in `READS.tsv`).
+- `judge680/rbr/`: the read-by-read notes (`STATE.md`), labels and scripts; every patient-derived
+  print goes through `./san`.
 - Frozen builds: `src_<label>/.venv` holds an installed wheel (for example `src_v660` for 6.6.0 and
   `src_rc670d` for the candidate f7293618). `build_frozen.sh` makes them from checkouts in
   `frozen_src/`; the panel scripts at f7293618 are in `frozen_src/rc670d/`. `run_v660.sh` and
