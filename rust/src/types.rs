@@ -559,6 +559,23 @@ pub struct BaseCounts {
     /// changes.
     #[pyo3(get)]
     pub unexplained_reads: u32,
+    /// Under the haplotype judge: per listed row (another input row within reach) that reads
+    /// the judge holds back tie ALT with (RJ-34: each class within DELTA of ALT holds it, as its
+    /// own allele or as a neighbour on its best path without which it falls DELTA behind ALT
+    /// while ALT stays within DELTA of the read's best), as `POS:REF>ALT:n/m` (1-based POS; n
+    /// such reads in the row's depth, m the row's AD), several joined by `+`; empty when none.
+    /// A read whose own alignment writes a deletion of 20 bases or more names a row only where
+    /// that deletion is the named row or the row's own allele.
+    /// Diagnostic only (feeds TIED_WITH); no count changes.
+    #[pyo3(get)]
+    pub tied_with: String,
+    /// Under the haplotype judge: per listed allele at the row's site that reads the judge
+    /// holds back fit better than ALT and REF (by DELTA or more), where 3 or more do and they
+    /// outnumber the row's ALT reads, as `POS:REF>ALT:n/m` (1-based POS; n such reads, m the
+    /// row's AD), several joined by `+`; empty when none. Diagnostic only (feeds
+    /// OBSERVED_ALLELE where m is 0, else COEXISTING_ALLELE); no count changes.
+    #[pyo3(get)]
+    pub fits_listed: String,
     /// At a deletion of 50 bp or more: another allele at its breakpoint (another unit count
     /// of a run beside it, #297) that reads like the ALT past what a read can spell, as
     /// `CHANGE:BASES/LONGEST` (its length change, deleted bases negative; the bases a read

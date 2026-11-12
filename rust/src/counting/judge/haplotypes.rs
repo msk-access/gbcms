@@ -660,6 +660,15 @@ pub(crate) struct Site {
     /// The graphs laid per set of changes a read spans, by that set (a few kept, charged once
     /// to the thread's budget: [`KeptGraphs`]).
     over: KeptGraphs,
+    /// The first graphs laid again with one listed neighbour left out, by that row (a few
+    /// kept, charged once to the thread's budget): what a held-back read's scores are without
+    /// it ([`Site::graphs_without`]). Diagnostic only (TIED_WITH).
+    without: KeptGraphs,
+    /// Per row, the input row whose haplotype over the window it spells (an index into
+    /// `Variant::reach_rows`, the order the site was given them; an allele the reads show that
+    /// is a listed row written another way is that row), None for X and for any allele the
+    /// input does not list: the rows a diagnostic may name as listed (TIED_WITH, OBSERVED_ALLELE).
+    listed_from: Vec<Option<usize>>,
     /// At a long insertion, whether no base within the haplotypes tells the equal windows
     /// apart once the guard's masks are read (every read is depth only).
     untold: bool,
@@ -2428,9 +2437,10 @@ impl Site {
             };
             moved.unwrap_or_else(|| r.clone())
         };
-        for r in candidates.listed.iter().map(beside) {
-            let state = meets(&target, &r) && !in_deleted(&r);
-            take(&r, state);
+        let listed_rows: Vec<Row> = candidates.listed.iter().map(beside).collect();
+        for r in &listed_rows {
+            let state = meets(&target, r) && !in_deleted(r);
+            take(r, state);
         }
         if target.ref_al.len() == 1 && target.alt_al.len() == 1 {
             // An SNV's site holds every base (a third base is another allele).
@@ -2901,6 +2911,18 @@ impl Site {
         contexts.sort();
         let n_states = states.len();
         let rows: Vec<Row> = std::iter::once(target).chain(states).chain(contexts).collect();
+        // the input row each row spells, by its haplotype over the window (an allele the reads
+        // show that is a listed row written another way, such as anchored a base earlier, is
+        // that row); X and the rows the input does not list: None
+        let listed_haps: Vec<Option<Vec<u8>>> = listed_rows.iter().map(|l| holds(l).then(|| spelled(l))).collect();
+        let listed_from: Vec<Option<usize>> = rows
+            .iter()
+            .enumerate()
+            .map(|(k, r)| {
+                let hap = (k > 0).then(|| spelled(r))?;
+                listed_haps.iter().position(|l| l.as_ref() == Some(&hap))
+            })
+            .collect();
         // A state holding X's change at X's site: for a substitution X, an allele of the
         // same length over X's bases that reads X's bases where X changes them; and X with
         // a change both haplotypes carry at a base it keeps (above).
@@ -3034,6 +3056,8 @@ impl Site {
             rest: Vec::new(),
             plain: Vec::new(),
             over: KeptGraphs::default(),
+            without: KeptGraphs::default(),
+            listed_from,
             untold: false,
             window0: 0,
             long_ins,
@@ -3157,11 +3181,50 @@ impl Site {
         (g, kept)
     }
 
-    /// Tests only: the graph sets the site keeps for the reads' spans, and the bytes charged
-    /// to the budget for them.
+    /// The first graphs ([`Site::first_graphs`]) laid again with context row `left_out` out of
+    /// every state's bubbles, and every other context that spells the same listed row (a length
+    /// change placed at both ends of a run): a read scored on them shows how it fits each class
+    /// without that neighbour (TIED_WITH). Laid once per row where kept, as
+    /// [`Site::graphs_over`]'s sets.
+    pub(crate) fn graphs_without(&self, left_out: usize) -> std::rc::Rc<Vec<StateGraph>> {
+        if let Some(g) = self.without.get(&[left_out]) {
+            return g;
+        }
+        let same = self.listed_row(left_out);
+        let out = |c: usize| c == left_out || (same.is_some() && self.listed_row(c) == same);
+        let mut graphs: Vec<StateGraph> = self
+            .graphs
+            .iter()
+            .map(|st| {
+                let optional: Vec<usize> = self.rest.iter().copied().filter(|&c| !out(c) && st.row.is_none_or(|s| !self.conflict(s, c))).collect();
+                let graph = if self.by_copy { self.graph_over(st.row, &optional, &[]) } else { self.graph_of(st.row, &optional) };
+                StateGraph { class: st.class, row: st.row, graph, share: None }
+            })
+            .collect();
+        link_all(&mut graphs);
+        let g = std::rc::Rc::new(graphs);
+        self.without.keep(&[left_out], &g);
+        g
+    }
+
+    /// The input row whose haplotype site row `r` spells (an index into `Variant::reach_rows`);
+    /// None for X and for an allele the input does not list.
+    pub(crate) fn listed_row(&self, r: usize) -> Option<usize> {
+        self.listed_from.get(r).copied().flatten()
+    }
+
+    /// Whether site row `r` is a context row (not X, not a state of X's site).
+    pub(crate) fn is_context(&self, r: usize) -> bool {
+        r > self.n_states && r < self.rows.len()
+    }
+
+    /// Tests only: the graph sets the site keeps for the reads' spans, and the bytes charged to
+    /// the budget for every graph set it keeps (those, and the first graphs laid again without
+    /// one listed neighbour, [`Site::graphs_without`]): what the thread's budget holds for it.
     #[cfg(test)]
     pub(crate) fn kept_graphs(&self) -> (usize, usize) {
-        self.over.state()
+        let ((sets, bytes), (_, without)) = (self.over.state(), self.without.state());
+        (sets, bytes + without)
     }
 
     /// The graphs a read is scored on first: with no copy of the masks' zone where the site

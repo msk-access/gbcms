@@ -1692,6 +1692,11 @@ fn count_variant_from_cache(
     // Per allele at the row's site that is this row's ALT with listed neighbours (RJ-28's
     // indel twin), the ALT reads that spell it whole (INDEL_SHARED), in the site's order.
     let mut spelled_indel: [u32; 64] = [0; 64];
+    // Per row of `reach_rows`, the reads the haplotype judge holds back that tie ALT with it
+    // (TIED_WITH), and those that fit it better as an allele at the row's site
+    // (OBSERVED_ALLELE / COEXISTING_ALLELE), counted with DP.
+    let mut tied_with: Vec<u32> = vec![0; variant.reach_rows.len()];
+    let mut fits_listed: Vec<u32> = vec![0; variant.reach_rows.len()];
 
     // Create SW aligners ONCE per variant (indelpost pattern), scored by `sw_score`.
     let mut alt_aligner = Aligner::new(SW_GAP_OPEN, SW_GAP_EXTEND, &sw_score);
@@ -1943,6 +1948,15 @@ fn count_variant_from_cache(
             if result.fits_none {
                 counts.unexplained_reads += 1;
             }
+            // A held-back read's listed rows (RJ-34), counted with DP.
+            for &j in result.tied_listed.iter().filter(|&&j| j != u16::MAX) {
+                if let Some(n) = tied_with.get_mut(usize::from(j)) {
+                    *n += 1;
+                }
+            }
+            if let Some(n) = fits_listed.get_mut(usize::from(result.fits_listed)) {
+                *n += 1;
+            }
             // Which rule decided the read (logs only).
             let d = &mut counts.decisions;
             d.ref_withdrawn += u64::from(result.ref_withdrawn);
@@ -2116,6 +2130,22 @@ fn count_variant_from_cache(
             .collect::<Vec<_>>()
             .join("+");
     }
+    // The listed rows the reads the judge holds back tie ALT with (TIED_WITH), n reads of the
+    // row's AD, and the listed allele at the row's site they fit better where 3 or more do and
+    // they outnumber the row's ALT reads (OBSERVED_ALLELE where AD is 0, else COEXISTING_ALLELE).
+    // Diagnostic only: the counts stand.
+    let listed = |n: &[u32], keep: &dyn Fn(u32) -> bool| -> String {
+        variant
+            .reach_rows
+            .iter()
+            .zip(n)
+            .filter(|&(_, &k)| k > 0 && keep(k))
+            .map(|((p, r, a), k)| format!("{}:{r}>{a}:{k}/{}", p + 1, counts.ad))
+            .collect::<Vec<_>>()
+            .join("+")
+    };
+    counts.tied_with = listed(&tied_with, &|_| true);
+    counts.fits_listed = listed(&fits_listed, &|k| k >= 3 && (counts.ad == 0 || k > counts.ad));
     counts.ref_dist_end_median = compute_median_u32(&mut ref_dists);
     // a long insertion whose equal windows no base tells apart (every read depth only)
     counts.untold_windows = rules.haplotypes.and_then(|h| h.get(variant, rules)).is_some_and(|site| site.windows_untold());
