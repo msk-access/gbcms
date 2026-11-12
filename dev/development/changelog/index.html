@@ -31,7 +31,7 @@
             body[data-md-color-scheme="slate"] .gslide-title { color: var(--md-default-fg-color); }
             body[data-md-color-scheme="slate"] .gslide-desc { color: var(--md-default-fg-color); }
         </style><meta name="panzoom-theme" content="material">
-<meta name="panzoom-data" content='{"selectors": [".mermaid", ".d2"], "initial_zoom_level": 1.0}'> </head>
+<meta name="panzoom-data" content='{"selectors": [".d2", ".mermaid"], "initial_zoom_level": 1.0}'> </head>
 <body data-md-color-accent="custom" data-md-color-primary="custom" data-md-color-scheme="default" dir="ltr">
 <input autocomplete="off" class="md-toggle" data-md-toggle="drawer" id="__drawer" type="checkbox">
 <input autocomplete="off" class="md-toggle" data-md-toggle="search" id="__search" type="checkbox">
@@ -804,6 +804,18 @@ and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semant
   more signed-out rows fall inside the sign-out margin; the rules path, ACCESS, the matched normals,
   RNA, WES and HG002 do not change. RNA's own doubt signal (<code>NH</code>) is unchanged. Plan:
   <code>docs/harness/plans/331-fits-realigned.md</code>.</li>
+</ul>
+<h3 id="docs-read-judgment-what-gbcms-takes-from-the-aligner-and-naming-the-reads-it-holds-back-rj-33-rj-34">Docs — read judgment: what gbcms takes from the aligner, and naming the reads it holds back (RJ-33, RJ-34)<a class="headerlink" href="#docs-read-judgment-what-gbcms-takes-from-the-aligner-and-naming-the-reads-it-holds-back-rj-33-rj-34" title="Permanent link">¶</a></h3>
+<ul>
+<li>Decided, no count change (operator 2026-11-11). RJ-33: the allele comes from the read's own
+  bases against every candidate sequence; the <abbr title="Compact Idiosyncratic Gapped Alignment Report - BAM alignment operation string">CIGAR</abbr> only says where to look and never decides a
+  call or breaks a tie; the aligner's own doubt (<abbr title="Mapping Quality - Confidence score for read alignment">MAPQ</abbr>, XS at or above AS, where it computed them)
+  can only take a read out of REF and ALT. The read-judgment page now says where gbcms's own
+  realignment fits (the sequence judge's scorer), its three limits, and that heuristic <abbr title="Base Alignment Quality - Heuristic quality downgrade near a read's insertions and deletions">BAQ</abbr> lets the
+  <abbr title="Compact Idiosyncratic Gapped Alignment Report - BAM alignment operation string">CIGAR</abbr> back in (#360). RJ-34: a row names every read the judge holds back (the allele the reads
+  carry, the listed row they tie with, or that they fit nothing given), and the bar for the judge
+  as the default (#331): every signed-out row it moves below the sign-out is named or on the fix
+  list. <code>docs/reference/read-judgment.md</code>.</li>
 </ul>
 <h2 id="670-2026-11-09-a-read-counts-what-it-reaches-the-sequence-judge-opt-in">[6.7.0] - 2026-11-09 — a read counts what it reaches; the sequence judge, opt-in<a class="headerlink" href="#670-2026-11-09-a-read-counts-what-it-reaches-the-sequence-judge-opt-in" title="Permanent link">¶</a></h2>
 <h3 id="release-gate-the-regression-panel-against-660-2026-11-09">Release gate — the regression panel against 6.6.0 (2026-11-09)<a class="headerlink" href="#release-gate-the-regression-panel-against-660-2026-11-09" title="Permanent link">¶</a></h3>
