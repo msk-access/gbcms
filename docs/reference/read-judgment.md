@@ -50,10 +50,38 @@ it shows in review instead of slipping in with an unrelated fix.
 
 ## Principles
 
-- **Count the given allele; judge bases, not placement.** A read is ALT only when
-  its own bases carry the ALT, and REF only when its bases show REF where the
-  alleles differ. Alignments can be wrong, so the CIGAR's placement of an indel
-  never decides a call on its own (AGENTS.md invariant 7).
+- **Count the given allele from the read's bases; take only doubt from the aligner**
+  (judge bases, not placement; RJ-33). An aligner gives two different things, and
+  gbcms uses them in two different ways.
+  1. **The allele comes from the read's own bases.** A read is judged against every
+     candidate sequence at the row: REF, the row's ALT, and the other alleles there.
+     A read is ALT only when its bases carry the ALT, and REF only when its bases
+     show REF where the alleles differ. The alignment (the CIGAR: where it puts the
+     mismatches, the indels and the soft clips) only says where to look. It is the
+     aligner's best explanation against the reference alone, made without the listed
+     alleles, so it is never a vote: the placement of an indel, a soft clip, or a
+     mismatch in the CIGAR never decides a call (AGENTS.md invariant 7; clipped bases
+     are the read's own, RJ-13). Where the bases cannot tell two alleles apart, the
+     alignment does not break the tie (RJ-25).
+  2. **Doubt about where the read comes from comes from the aligner.** Only the
+     aligner compared the read with the whole genome, so only it can show that the
+     molecule may come from another locus (a paralog). Its own doubt about the
+     placement (today: MAPQ, and a second-best hit XS at or above the best AS, RJ-29)
+     can take a read out of REF and ALT. It never makes a read REF or ALT. Only tags
+     that the aligner computed for this placement count: a realigner's placeholder
+     is no evidence (RJ-29). MAPQ is also the user's filter (`--min-mapq`, RJ-12).
+  - The alignment still decides what is not about the allele: which reads are
+    fetched (by their aligned position), where the judge starts its band, the
+    physical facts of the fragment (strand, the mate, the fragment's ends and
+    length), and, in RNA, where the splices are. The rules path (RNA, and DNA until
+    the judge is the default, #331 and #333) still reads the CIGAR.
+- **Account for every read held back** (RJ-34). Where the judge holds back reads
+  that carry a change at the row, the row says what they carry and how many: the
+  allele they carry (`OBSERVED_ALLELE`, `COEXISTING_ALLELE`), the listed row they
+  tie with (`TIED_WITH`, planned, not yet built), or
+  that they fit nothing that was given (`UNEXPLAINED_READS`). A reviewer checks a
+  low row in IGV, and IGV shows the aligner's alignment, so a held-back read with
+  no name looks like a count gbcms lost.
 - **Informative reads only.** A read that cannot tell the alleles apart (one that
   starts or ends inside an indel's repeat tract, or holds no window of a complex
   variant) counts toward depth only.
@@ -66,6 +94,42 @@ it shows in review instead of slipping in with an unrelated fix.
   reads spell away from the site) only explain the read's other differences, so they
   never pass for the row's allele. No linkage, no phasing: a variant linked to the row
   elsewhere never credits a read.
+
+### Where gbcms's own realignment fits
+
+- **The sequence judge's scorer is the mechanism of the first principle**
+  (`rust/src/counting/judge/score.rs`, `graph.rs`). It aligns each read, whole,
+  against every candidate sequence at the row (REF, the ALT and the other alleles
+  there, each with the listed neighbours as contexts). The alignment is semi-global
+  and affine at BWA-MEM's scale (a confident mismatch −4, a gap of k bases
+  −(6 + k)), with the one quality gate (a base under `--min-baseq` costs nothing).
+  The read's own alignment only starts the band; the full programme runs where the
+  band may cut a better alignment off (RJ-30).
+- **Its limits, and what covers each:**
+  1. It starts from the aligner's placement. The full band changes 99 of 24,821 rows
+     of the 6.6.0 tier (#369, a band floor that knows repeats; #395).
+  2. It chooses only among the sequences it is given: the listed rows, the found
+     alleles that pass the presence test, and the contexts. A molecule nobody
+     listed, under the test, is fitted to the nearest of them. RJ-34's naming
+     covers it.
+  3. It sees only the row's window, so a paralog's read can fit ALT exactly there.
+     The aligner's doubt (RJ-33, part 2) covers it.
+- **Not part of it: the rules path's backends.** PairHMM (with the WFA2 fast path in
+  front) and Smith-Waterman (`--alignment-backend`) are the rules path's last
+  fallback, behind the exact-carrier and junction rules; they decided 0 of about 4
+  million read calls measured. A judged row never calls them
+  (`rust/src/counting/engine.rs`, `classify_read`). They leave with the rules judge
+  (#328); RNA keeps them until #333.
+- **BAQ lets the CIGAR back in.** Heuristic BAQ (`--apply-baq`; off in DNA by
+  default, on in RNA) lowers by 20 the quality of the five bases each side of the
+  read's own CIGAR indel (it spares the counted variant's own indel, RJ-31). The
+  judge reads those qualities, and a base under `--min-baseq` costs nothing, so the
+  aligner's placement of an indel can move a call. With BAQ flipped, 1,258 of
+  24,821 judge rows of the tier change. #360 decides whether the judge reads the
+  stored qualities.
+- **ABRA2** (upstream, in the MSK pipelines) is the aligner from gbcms's view: its
+  CIGAR is one more explanation (part 1); its placement and its own tags are part
+  2's evidence, except its placeholders (RJ-29).
 
 ## Decision register
 
@@ -105,6 +169,8 @@ it shows in review instead of slipping in with an unrelated fix.
 | RJ-30 | A read's body can be a copy of a stretch inside a long listed insertion (an expanded repeat, a duplication) while its aligner placed it beside the insertion; all of an insertion's bases stand at its anchor's coordinate, so a band around the read's own placement that is not widened for the insertion cannot reach that path and stands on the placement's worse score. | Under the sequence judge, a listed insertion longer than the band's slack (16 bases) inside a read's reach (its span and its length each side) but past the window its band widens for (the slack and two bases each side) sends every state of the read to the full programme over its reach, and the linear aligner drops its band for the read. A deletion does not (a path to a far one pays the gap to it); insertions of 16 bases or fewer are left to the band. The site build uses the same scores. | #369, operator 2026-10-30 (the whole read); `docs/proposals/sequence-judge.md` §10 item 8 |
 | RJ-31 | A splice moves no base, so it says nothing about the quality of the bases beside it; only a mechanism that misplaces a base (a piece too short for its own bases to place it, RJ-3) justifies masking one. | **A splice never lowers a base's quality**, with a GTF or without, in the main counts, the per-transcript counts, ASJD and the rescue re-count alike. Heuristic BAQ (`--apply-baq`, on by default in RNA) lowers by 20 only the five read bases each side of a read's own insertion or deletion, as before, and still spares the counted variant's own indel; a base is judged by its own quality against the run's `--min-baseq`, wherever it lies in the read. **This reverses the junction penalty decided on 2026-05-04 (in effect for RNA since 4.1.0)**, which lowered the five read bases each side of every CIGAR `N` by 20: a base passed the bar only where its quality was 20 above it, so Q40 data passed at `--min-baseq 20` and nothing passed at 30. The exon-edge exception (#106, R1) stays: at a variant within 5 bp of an annotated exon edge BAQ is skipped, and what it now lifts is the penalty of a read's own indels (on the synthetic set 89 of 1,072 rows differ without it, GTF, bar 30; no test sees it). *Why:* the penalty's strength was the instrument's quality bin and the run's bar, not a mechanism. Measured on 58 FORTE STAR slices (163,882 SNV rows in the first five bases of exons, 168,243 as the control band): clean rows (87,441) hold 0 ALT under every rule; at 219 germline hets the penalty hid 984 ALT reads (1.9%) at bar 20 and 38,541 (76%) at bar 30; at 100,278 DNA-absent low rows no junction penalty adds 16,243 ALT reads, 3.9%, the background rate. Indel and delins rows (41,112 in reach): clean rows 80 ALT reads under the penalty, 76 without; low rows 0.124% ALT under both. *Delins ALT falls* at bar 30 (280 to 173 reads in reach, 39 low rows 262 to 169), and that is right by bases: a base under the bar fits any allele, so with a junction's ten read bases masked a read could fit the ALT on the few bases left, whatever the masked bases showed. Measured on the FORTE slices with the builds before and after the change (p292d), the delins counts reproduce exactly (280 to 173), and the 117 reads that lose ALT at bar 30 are all spliced with the event 0 to 4 bases from the junction; 92 lie on a long piece (20 or more aligned bases), not a short anchor, and under B 91 of the 117 are REF and 18 partial evidence. So the fall is mostly REF reads the penalty had let count ALT, and only partly short pieces: a made-up read of a molecule spliced at a novel acceptor, written at the annotated one, whose 8 bases past it fit neither allele, counts ALT under A and partial evidence under B (3,616 made-up shapes at Q40: at bar 20 both rules agree, at bar 30 14 lose ALT, all short pieces, none gain). *Community:* GATK's SplitNCigarReads cuts reads at each `N` and changes no quality, HaplotypeCaller reads the pieces at full quality; htslib's BAQ (`sam_prob_realn`) returns before it changes any read with a reference skip; the ASE counters apply quality floors with no junction rule. No surveyed tool lowers a base's quality for lying near a junction. *Options measured and not adopted (#292):* keep the penalty (strength by instrument); spare it in the exact-carrier rule only (two quality gates for one base); skip BAQ on a spliced read whole, as samtools does (7 ALT and 1,476 REF reads differ from this rule); GATK's overhang clip (loses 8,515 ALT reads at hets for 899 gained, misses 128 of the 133 novel-acceptor reads); a short-anchor mask with a fixed cutoff (masks 1.98 million REF reads). REJ-20260925-002 (no N-penalty at annotated junctions only) is another rule. **Limit (B's):** RJ-3's short pieces, at a read's end or between two junctions (#409). Amends RJ-17 (the penalty no longer hid the partial deletion piece, which its own rule keeps depth only) and RJ-27 (the "BAQ masking the bases at its junction" clause). DNA reads have no junction: unchanged (a DNA identity batch is owed before merge). | #292, operator 2026-11-03 (option B); #409 |
 | RJ-32 | A read with no junction fits every transcript it overlaps, because no junction rules any out; a read with junctions fits only a transcript that has them (within 5 bases). | Per-transcript counts (RNA with a GTF): a read with no junction counts in the DP and RD (or AD) of each overlapping spliced transcript, and in the row's counts once; a single-exon transcript gets no per-transcript entry. A spliced read counts only in the transcripts whose introns hold all its junctions. Decided 2026-11-05 (operator): pins today's behaviour, no count changes. Measured: a row with two transcripts and 5 junction-free REF reads moves T1 from `4,20,36` to `4,25,41` and T2 from `3,6,11` to `3,11,16`; the main counts count each of the 5 once. | #344, operator 2026-11-05 |
+| RJ-33 | An aligner places a read against the reference alone and never sees the listed alleles, so its local alignment is one explanation of the bases, not evidence of which allele they carry. Only the aligner compared the read with the whole genome, so only its own doubt can show that the read may come from another locus. | The allele is judged from the read's bases against every candidate sequence; the CIGAR only says where to look and never decides a call or breaks a tie. The aligner's own doubt about the placement (MAPQ, XS at or above AS, where the aligner computed them) can only take a read out of REF and ALT. The alignment still decides which reads are fetched, where the band starts, the fragment's physical facts and RNA splices. Writes down the sequence judge's practice under invariant 7, RJ-2, RJ-12, RJ-13, RJ-25 and RJ-29; changes no count. The rules path meets it when the judge is the default (#331; RNA #333). Where gbcms's own realignment fits, its limits, the rules path's backends and BAQ (#360): "Principles" above. | operator 2026-11-11 |
+| RJ-34 | A reviewer checks a row in IGV, which shows the aligner's alignment. Where the judge holds back reads that carry a change at the row (they carry another allele, tie with a listed neighbour, or fit nothing given) and the row names none of it, the count looks lost, not judged. | Where the judge holds back reads that carry a change at the row, `gbcms_diagnostic` names what they carry and how many: `OBSERVED_ALLELE` or `COEXISTING_ALLELE` for an allele the reads carry, `TIED_WITH` for a listed row they tie with (planned, not yet built), `UNEXPLAINED_READS` for reads that fit nothing given ([QC Flags](qc-flags.md)). No count changes. **The bar before the judge is the default (#331):** every signed-out row that 6.6.0 counts within the sign-out's margin and the judge counts below it is either (A) a row whose reads carry another allele, named with its read count, or (B) a cause in how gbcms reads the reads that is on the fix list or has a decision behind it. An edit-distance check that shares no code with the judge reads every held-back read at those rows; where it and the judge disagree, the row stays in (B) until it is explained. Measured 2026-11-11 (develop 44b02197; the 6.6.0 tier, 13,323 signed-out DNA rows): below the margin, 6.6.0 162, the 6.7.0 default 174, the judge 144; the judge moves 37 rows below it and 47 within it. Of the 37: (A) 17, 13 named; ties with a listed neighbour 3; judge faults 4 (equal REF and ALT scores where the bases differ, 2 places); 5 reads or fewer 2; not yet read 11 (3 new with the judge). Worked example: a 3-base deletion with a listed MNV 6 bases on. 18 reads tell the deletion apart, 60 fit both exactly, 4 fit the MNV better; 6.6.0 and the sign-out count 59, the 6.7.0 rules path 82, the judge 18. For a read that fits both, the aligner's choice comes from its own penalties, so no count settles it; the row names it: `TIED_WITH(<the MNV>:60/18)`. | operator 2026-11-11 |
 
 ### Open
 

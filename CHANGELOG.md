@@ -20,6 +20,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   RNA, WES and HG002 do not change. RNA's own doubt signal (`NH`) is unchanged. Plan:
   `docs/harness/plans/331-fits-realigned.md`.
 
+### Docs — read judgment: what gbcms takes from the aligner, and naming the reads it holds back (RJ-33, RJ-34)
+
+- Decided, no count change (operator 2026-11-11). RJ-33: the allele comes from the read's own
+  bases against every candidate sequence; the CIGAR only says where to look and never decides a
+  call or breaks a tie; the aligner's own doubt (MAPQ, XS at or above AS, where it computed them)
+  can only take a read out of REF and ALT. The read-judgment page now says where gbcms's own
+  realignment fits (the sequence judge's scorer), its three limits, and that heuristic BAQ lets the
+  CIGAR back in (#360). RJ-34: a row names every read the judge holds back (the allele the reads
+  carry, the listed row they tie with, or that they fit nothing given), and the bar for the judge
+  as the default (#331): every signed-out row it moves below the sign-out is named or on the fix
+  list. `docs/reference/read-judgment.md`.
+
 ## [6.7.0] - 2026-11-09 — a read counts what it reaches; the sequence judge, opt-in
 
 ### Release gate — the regression panel against 6.6.0 (2026-11-09)
