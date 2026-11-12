@@ -1273,6 +1273,12 @@ their base name in the run log. Examples: <code>ZERO_ALT</code>,
 <td style="text-align: left;">The row's <code>alt_count</code> includes that row's carriers: one molecule can sit in several rows' counts and <abbr title="Mutant Fragment Size Distribution - Insert-size analysis for REF vs ALT fragments">mFSD</abbr> size distributions. The counts are unchanged</td>
 </tr>
 <tr>
+<td style="text-align: left;"><code>TIED_WITH(chrom:pos:REF&gt;ALT:n/m)</code></td>
+<td style="text-align: left;"><code>--read-judge sequence</code>, and an SNV row routed to the judge under the rules</td>
+<td style="text-align: left;"><code>n</code> reads the judge holds back (depth only, or another allele) fit the row's ALT and this listed row (another input row; its 1-based POS) alike, so they cannot tell the two apart: for every class within the judge's margin of ALT, the listed row is that class's own allele, or a neighbour on its best path without which that class falls behind ALT by the margin while ALT stays within it of the read's best score (RJ-34). <code>m</code> is the row's <code>alt_count</code>; <code>n</code> counts the reads in its depth. A read whose own alignment writes a deletion of 20 bases or more names a row only where that deletion is the named row or the row's own allele; an allele the input does not list is never named. One flag per listed row</td>
+<td style="text-align: left;">At this row the reads are held back (depth only or <code>partial_alt</code>); the listed row judges them on its own. Read the two rows together, for example in IGV. The counts are unchanged</td>
+</tr>
+<tr>
 <td style="text-align: left;"><code>UNEXPLAINED_READS(n/m)</code></td>
 <td style="text-align: left;"><code>--read-judge sequence</code>, and an SNV row routed to the judge under the rules</td>
 <td style="text-align: left;"><code>n</code> of the row's <code>m</code> depth reads fit none of its candidate sequences (REF, the ALT, the other alleles at its site, each with every context the judge weighs) within ten confident mismatches. The fit rule makes such a read depth only where its aligner places it elsewhere at least as well (XS ≥ AS, or <abbr title="Mapping Quality - Confidence score for read alignment">MAPQ</abbr> 0 with no XS; a read a realigner placed from unmapped, ABRA2's <code>YO</code> beginning <code>N/A</code>, or one carrying <abbr title="Burrows-Wheeler Aligner - Standard short-read DNA aligner (mem/aln)">BWA</abbr>'s unmapped placeholder <code>AS:i:0 XS:i:0</code>, counts as having no XS); a read the aligner places here alone is judged by its bases at the row, as any other</td>
@@ -1330,7 +1336,13 @@ fragments the aligner places here) holds the row's ALT calls (RJ-24, rule X); wh
 takes one, it is named in the same form at the
 deletion's anchor, listed or not, with <code>n</code> the fragments fitting the ALT's windows whose ALT
 call it takes and <code>m</code> those that tell the given count from it (<code>OBSERVED_ALLELE</code> where <code>m</code>
-is 0). <code>n</code> and <code>m</code>
+is 0). A second exception, under <code>--read-judge sequence</code>: a listed allele at the row's own
+site (another input row over its bases, or the same molecule written another way) is named
+in the same form where 3 or more reads the judge holds back fit it better than the ALT and REF
+and they outnumber the row's ALT reads, with no 5% share (<code>n</code> those reads, <code>m</code> the row's
+<code>alt_count</code>; RJ-34). On this path <code>OBSERVED_ALLELE</code> does not mean the input is mis-described:
+the row's allele can be correct and absent in this sample, while the reads carry the listed
+allele beside it (in cohort genotyping, every sample carrying the other allele). <code>n</code> and <code>m</code>
 are taken over the reads the counts read (first-class reads the mapping rule
 admits: in RNA a unique mapper, <code>NH:i:1</code>, below <code>--min-mapq</code>; under strandedness
 enforcement, sense reads only), so they compare with <code>alt_count</code> and <code>ref_count</code>.</p>
@@ -1785,6 +1797,10 @@ an informational flag). The definitions are above; the tests keep the two in ste
 <td style="text-align: left;">Under the sequence judge the ALT reads include a listed indel's carriers holding this change, so one molecule counts at several rows: read them together (counts unchanged)</td>
 </tr>
 <tr>
+<td style="text-align: left;"><code>TIED_WITH</code></td>
+<td style="text-align: left;">Under the sequence judge some reads fit the ALT and a listed row alike, so this row holds them back (depth only or partial): read the two rows together (counts unchanged)</td>
+</tr>
+<tr>
 <td style="text-align: left;"><code>UNIT_COUNT_UNSPANNED</code></td>
 <td style="text-align: left;">Another unit count of a run beside this long deletion reads like it past every read here: an unlisted one's carriers may count as ALT (the counts are unchanged)</td>
 </tr>
@@ -1937,7 +1953,7 @@ an informational flag). The definitions are above; the tests keep the two in ste
 <span class="md-icon" title="Last update">
 <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M21 13.1c-.1 0-.3.1-.4.2l-1 1 2.1 2.1 1-1c.2-.2.2-.6 0-.8l-1.3-1.3c-.1-.1-.2-.2-.4-.2m-1.9 1.8-6.1 6V23h2.1l6.1-6.1zM12.5 7v5.2l4 2.4-1 1L11 13V7zM11 21.9c-5.1-.5-9-4.8-9-9.9C2 6.5 6.5 2 12 2c5.3 0 9.6 4.1 10 9.3-.3-.1-.6-.2-1-.2s-.7.1-1 .2C19.6 7.2 16.2 4 12 4c-4.4 0-8 3.6-8 8 0 4.1 3.1 7.5 7.1 7.9l-.1.2z"></path></svg>
 </span>
-<span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-timeago" title="November 10, 2026 21:36:12 UTC"><span class="timeago" datetime="2026-11-10T21:36:12+00:00" locale="en"></span></span><span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-iso_date" title="November 10, 2026 21:36:12 UTC">2026-11-10</span>
+<span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-timeago" title="November 12, 2026 18:17:14 UTC"><span class="timeago" datetime="2026-11-12T18:17:14+00:00" locale="en"></span></span><span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-iso_date" title="November 12, 2026 18:17:14 UTC">2026-11-12</span>
 </span>
 <span class="md-source-file__fact">
 <span class="md-icon" title="Created">

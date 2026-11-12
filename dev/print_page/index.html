@@ -3859,13 +3859,16 @@ The sequence judge is opt-in while it is measured toward becoming the default
 <li><strong>Contexts explain, never credit.</strong> The other listed rows and the recurring background
   only explain a read's other differences: the judge does no linkage and no phasing, so a
   variant linked to the row elsewhere on the molecule never credits a read.</li>
-<li><strong>Four diagnostics</strong> can appear in <code>gbcms_diagnostic</code>: <code>MNV_SHARED(chrom:pos:REF&gt;ALT:n/m)</code>
+<li><strong>Five diagnostics</strong> can appear in <code>gbcms_diagnostic</code>: <code>MNV_SHARED(chrom:pos:REF&gt;ALT:n/m)</code>
   at an SNV whose change a co-listed MNV holds (the MNV's carriers count at both rows,
   RJ-28), its indel twin <code>INDEL_SHARED(chrom:pos:REF&gt;ALT:n/m)</code> at a row a listed indel or
   delins holds whole with listed neighbours (a delins that is two listed deletions together:
   its carriers count at each), <code>UNEXPLAINED_READS(n/m)</code>, the row's depth reads that fit
-  none of its candidate sequences (RJ-29), and <code>NO_TELLING_BASE</code> at an insertion of 50 bp or
-  more whose equal windows no base within reach tells apart, every read depth only (RJ-23).
+  none of its candidate sequences (RJ-29), <code>NO_TELLING_BASE</code> at an insertion of 50 bp or
+  more whose equal windows no base within reach tells apart, every read depth only (RJ-23),
+  and <code>TIED_WITH(chrom:pos:REF&gt;ALT:n/m)</code>, the reads the judge holds back because they fit the
+  row's ALT and a listed row alike (RJ-34). The judge also names a listed allele at the row's
+  site that its held-back reads fit better, in <code>OBSERVED_ALLELE</code> or <code>COEXISTING_ALLELE</code>.
   See <a href="#reference-qc-flags">QC Flags</a>. No column is added.</li>
 <li><strong>The Phase 3 options do not apply</strong> to the row's counts (<code>--alignment-backend</code> and the
   <abbr title="Pair Hidden Markov Model - Probabilistic alignment using base quality scores">PairHMM</abbr> probabilities above): the judge has its own scorer.</li>
@@ -9885,6 +9888,12 @@ their base name in the run log. Examples: <code>ZERO_ALT</code>,
 <td style="text-align: left;">The row's <code>alt_count</code> includes that row's carriers: one molecule can sit in several rows' counts and <abbr title="Mutant Fragment Size Distribution - Insert-size analysis for REF vs ALT fragments">mFSD</abbr> size distributions. The counts are unchanged</td>
 </tr>
 <tr>
+<td style="text-align: left;"><code>TIED_WITH(chrom:pos:REF&gt;ALT:n/m)</code></td>
+<td style="text-align: left;"><code>--read-judge sequence</code>, and an SNV row routed to the judge under the rules</td>
+<td style="text-align: left;"><code>n</code> reads the judge holds back (depth only, or another allele) fit the row's ALT and this listed row (another input row; its 1-based POS) alike, so they cannot tell the two apart: for every class within the judge's margin of ALT, the listed row is that class's own allele, or a neighbour on its best path without which that class falls behind ALT by the margin while ALT stays within it of the read's best score (RJ-34). <code>m</code> is the row's <code>alt_count</code>; <code>n</code> counts the reads in its depth. A read whose own alignment writes a deletion of 20 bases or more names a row only where that deletion is the named row or the row's own allele; an allele the input does not list is never named. One flag per listed row</td>
+<td style="text-align: left;">At this row the reads are held back (depth only or <code>partial_alt</code>); the listed row judges them on its own. Read the two rows together, for example in IGV. The counts are unchanged</td>
+</tr>
+<tr>
 <td style="text-align: left;"><code>UNEXPLAINED_READS(n/m)</code></td>
 <td style="text-align: left;"><code>--read-judge sequence</code>, and an SNV row routed to the judge under the rules</td>
 <td style="text-align: left;"><code>n</code> of the row's <code>m</code> depth reads fit none of its candidate sequences (REF, the ALT, the other alleles at its site, each with every context the judge weighs) within ten confident mismatches. The fit rule makes such a read depth only where its aligner places it elsewhere at least as well (XS ≥ AS, or <abbr title="Mapping Quality - Confidence score for read alignment">MAPQ</abbr> 0 with no XS; a read a realigner placed from unmapped, ABRA2's <code>YO</code> beginning <code>N/A</code>, or one carrying <abbr title="Burrows-Wheeler Aligner - Standard short-read DNA aligner (mem/aln)">BWA</abbr>'s unmapped placeholder <code>AS:i:0 XS:i:0</code>, counts as having no XS); a read the aligner places here alone is judged by its bases at the row, as any other</td>
@@ -9942,7 +9951,13 @@ fragments the aligner places here) holds the row's ALT calls (RJ-24, rule X); wh
 takes one, it is named in the same form at the
 deletion's anchor, listed or not, with <code>n</code> the fragments fitting the ALT's windows whose ALT
 call it takes and <code>m</code> those that tell the given count from it (<code>OBSERVED_ALLELE</code> where <code>m</code>
-is 0). <code>n</code> and <code>m</code>
+is 0). A second exception, under <code>--read-judge sequence</code>: a listed allele at the row's own
+site (another input row over its bases, or the same molecule written another way) is named
+in the same form where 3 or more reads the judge holds back fit it better than the ALT and REF
+and they outnumber the row's ALT reads, with no 5% share (<code>n</code> those reads, <code>m</code> the row's
+<code>alt_count</code>; RJ-34). On this path <code>OBSERVED_ALLELE</code> does not mean the input is mis-described:
+the row's allele can be correct and absent in this sample, while the reads carry the listed
+allele beside it (in cohort genotyping, every sample carrying the other allele). <code>n</code> and <code>m</code>
 are taken over the reads the counts read (first-class reads the mapping rule
 admits: in RNA a unique mapper, <code>NH:i:1</code>, below <code>--min-mapq</code>; under strandedness
 enforcement, sense reads only), so they compare with <code>alt_count</code> and <code>ref_count</code>.</p>
@@ -10396,6 +10411,10 @@ an informational flag). The definitions are above; the tests keep the two in ste
 <tr>
 <td style="text-align: left;"><code>INDEL_SHARED</code></td>
 <td style="text-align: left;">Under the sequence judge the ALT reads include a listed indel's carriers holding this change, so one molecule counts at several rows: read them together (counts unchanged)</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>TIED_WITH</code></td>
+<td style="text-align: left;">Under the sequence judge some reads fit the ALT and a listed row alike, so this row holds them back (depth only or partial): read the two rows together (counts unchanged)</td>
 </tr>
 <tr>
 <td style="text-align: left;"><code>UNIT_COUNT_UNSPANNED</code></td>
@@ -20651,6 +20670,25 @@ count-affecting merge since the previous release, run on the changed rows only.<
 <p>The format is based on <a href="https://keepachangelog.com/en/1.0.0/">Keep a Changelog</a>,
 and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semantic Versioning</a>.</p>
 <h2 id="development-changelog-unreleased">[Unreleased]<a class="headerlink" href="#development-changelog-unreleased" title="Permanent link">¶</a></h2>
+<h3 id="development-changelog-added">Added<a class="headerlink" href="#development-changelog-added" title="Permanent link">¶</a></h3>
+<ul>
+<li>Under the sequence judge, <code>gbcms_diagnostic</code> names what the reads the judge holds back fit
+  (RJ-34; the counts are unchanged). <code>TIED_WITH(chrom:pos:REF&gt;ALT:n/m)</code> names a listed row
+  (another input row within reach) that <code>n</code> held-back reads in the row's depth fit as well as the
+  row's ALT, so they cannot tell the two apart: for every class within the judge's margin of ALT,
+  the listed row is that class's own allele, or a neighbour on its best path without which that
+  class falls behind ALT by the margin. <code>m</code> is the row's <abbr title="Alternate Depth - Reads supporting the alternate allele">AD</abbr>. A read whose own alignment writes a
+  deletion of 20 bases or more names a row only where that deletion is the named row or the row's
+  own allele, and an allele the input does not list is never named.
+  <code>OBSERVED_ALLELE</code> and <code>COEXISTING_ALLELE</code> now also name a listed allele at the row's own site
+  that 3 or more held-back reads fit better than the ALT and REF and that outnumber the row's ALT
+  reads, with no 5% share. Measured on the local regression sets (868 runs against develop):
+  every field but <code>gbcms_diagnostic</code> is unchanged on every row; 113 of 12,978 IMPACT tumour rows
+  gain a token, 713 of 4,986 HG002 rows (mostly adjacent insertion and SNV pairs), 19 of 632
+  ACCESS rows and no WES row; in a sample of 10 flagged rows per data type, read by edit distance,
+  IMPACT tumour 10 of 10 flags name an allele their reads fit, HG002 10 of 11, ACCESS 27 of 29;
+  the judge arm takes about 2% longer. Plan: <code>docs/harness/plans/tied-listed-reads.md</code>.</li>
+</ul>
 <h3 id="development-changelog-fixed">Fixed<a class="headerlink" href="#development-changelog-fixed" title="Permanent link">¶</a></h3>
 <ul>
 <li>The sequence judge's fit rule (RJ-29) no longer reads a realigner's placeholder tags as the
@@ -23200,7 +23238,7 @@ FORTE RNA, WES) are byte-identical to the previous build, every <abbr title="Mut
 <li><code>--alignment-backend pairhmm</code> and <code>sw</code> now give identical counts for these
   variants: the rule uses no alignment scoring.</li>
 </ul>
-<h3 id="development-changelog-added">Added<a class="headerlink" href="#development-changelog-added" title="Permanent link">¶</a></h3>
+<h3 id="development-changelog-added_1">Added<a class="headerlink" href="#development-changelog-added_1" title="Permanent link">¶</a></h3>
 <ul>
 <li>Two <code>gbcms_diagnostic</code> flags name the allele the reads carry when it is not the
   given one (canonical <abbr title="Variant Call Format - Standard variant call file format">VCF</abbr> form; n reads carry it exactly, m the given allele):</li>
@@ -23745,7 +23783,7 @@ spliced RNA positions — the minor version bump this release delivers.</p>
   silenced the warning after the first sample).</li>
 <li>Per-read <code>debug!</code> diagnostics demoted to <code>trace!</code> (<abbr title="Wavefront Alignment - Edit-distance alignment algorithm used as Phase 3 fast-path triage (wfa2lib-rs); resolves ~70-80% of reads before PairHMM escalation">WFA</abbr> router, marginalized <abbr title="Pair Hidden Markov Model - Probabilistic alignment using base quality scores">PairHMM</abbr>).</li>
 </ul>
-<h3 id="development-changelog-added_1">✨ Added<a class="headerlink" href="#development-changelog-added_1" title="Permanent link">¶</a></h3>
+<h3 id="development-changelog-added_2">✨ Added<a class="headerlink" href="#development-changelog-added_2" title="Permanent link">¶</a></h3>
 <ul>
 <li>Wrong-length contract battery (<code>tests/test_wrong_length_contract.py</code>, 20 tests through
   the binned↔legacy parity oracle) and an end-to-end <code>PARTIAL_DOMINANT</code> reporting-chain
@@ -23772,7 +23810,7 @@ spliced RNA positions — the minor version bump this release delivers.</p>
   <code>process.resourceLimits</code> casts <code>max_cpus</code>/<code>max_memory</code>/<code>max_time</code>. Verified end-to-end
   on 25.10 and 26.04: identical generated commands both ways for all six filters.</li>
 </ul>
-<h3 id="development-changelog-added_2">✨ Added<a class="headerlink" href="#development-changelog-added_2" title="Permanent link">¶</a></h3>
+<h3 id="development-changelog-added_3">✨ Added<a class="headerlink" href="#development-changelog-added_3" title="Permanent link">¶</a></h3>
 <ul>
 <li><strong>Contract tests pinning filter and phasing behavior</strong> (no production code changes):</li>
 <li><code>test_qc_failed_filter_contract</code> — three-way qc-failed filter proof at read and
@@ -23785,7 +23823,7 @@ spliced RNA positions — the minor version bump this release delivers.</p>
     no read support reports all three as 0.</li>
 </ul>
 <h2 id="development-changelog-630-2026-08-07">[6.3.0] - 2026-08-07<a class="headerlink" href="#development-changelog-630-2026-08-07" title="Permanent link">¶</a></h2>
-<h3 id="development-changelog-added_3">✨ Added<a class="headerlink" href="#development-changelog-added_3" title="Permanent link">¶</a></h3>
+<h3 id="development-changelog-added_4">✨ Added<a class="headerlink" href="#development-changelog-added_4" title="Permanent link">¶</a></h3>
 <ul>
 <li><strong><code>observe_molecules()</code> takes the settings it actually uses.</strong> New keyword arguments
   <code>filters</code>, <code>quality</code>, <code>alignment</code>, <code>umi_tag</code>, <code>threads</code>, <code>apply_baq</code> and <code>library_type</code>
@@ -23829,7 +23867,7 @@ spliced RNA positions — the minor version bump this release delivers.</p>
   <code>dpf</code> while leaving <code>dp</code> unchanged, so the two stop moving together. The observation
   export reconciles with <code>dpf</code>, and that invariant is verified under both settings.</p>
 <h2 id="development-changelog-620-2026-08-06">[6.2.0] - 2026-08-06<a class="headerlink" href="#development-changelog-620-2026-08-06" title="Permanent link">¶</a></h2>
-<h3 id="development-changelog-added_4">✨ Added<a class="headerlink" href="#development-changelog-added_4" title="Permanent link">¶</a></h3>
+<h3 id="development-changelog-added_5">✨ Added<a class="headerlink" href="#development-changelog-added_5" title="Permanent link">¶</a></h3>
 <ul>
 <li><strong><code>min_mapq</code> on <code>Observation</code></strong> and in the observations Parquet schema — the worst <abbr title="Mapping Quality - Confidence score for read alignment">MAPQ</abbr>
   among the reads backing each molecule. Minimum rather than best, deliberately: a molecule
@@ -23878,7 +23916,7 @@ spliced RNA positions — the minor version bump this release delivers.</p>
   to mislead.</li>
 </ul>
 <h2 id="development-changelog-610-2026-08-06">[6.1.0] - 2026-08-06<a class="headerlink" href="#development-changelog-610-2026-08-06" title="Permanent link">¶</a></h2>
-<h3 id="development-changelog-added_5">✨ Added<a class="headerlink" href="#development-changelog-added_5" title="Permanent link">¶</a></h3>
+<h3 id="development-changelog-added_6">✨ Added<a class="headerlink" href="#development-changelog-added_6" title="Permanent link">¶</a></h3>
 <ul>
 <li><strong><code>--observations-parquet</code> <abbr title="Command Line Interface - Terminal-based program interface">CLI</abbr> flag</strong> on <code>gbcms dna</code> and <code>gbcms rna</code>, writing
   <code>&lt;sample&gt;.observations.parquet</code> alongside the normal counts output. Follows the
@@ -24088,7 +24126,7 @@ This major release changes several output behaviours:
   normal parse, never affecting correctness.</p>
 </li>
 </ul>
-<h3 id="development-changelog-added_6">✨ Added<a class="headerlink" href="#development-changelog-added_6" title="Permanent link">¶</a></h3>
+<h3 id="development-changelog-added_7">✨ Added<a class="headerlink" href="#development-changelog-added_7" title="Permanent link">¶</a></h3>
 <ul>
 <li>
 <p><strong><abbr title="Variant Call Format - Standard variant call file format">VCF</abbr> now emits the <abbr title="Mutant Fragment Size Distribution - Insert-size analysis for REF vs ALT fragments">mFSD</abbr> sub-/mono-nucleosomal fields (ME-1).</strong> <code>MFSD_SUB_NUC_REF_FRAC</code>,
@@ -24160,7 +24198,7 @@ This major release changes several output behaviours:
   into a misclassification.</li>
 </ul>
 <h2 id="development-changelog-530-2026-05-16">[5.3.0] - 2026-05-16<a class="headerlink" href="#development-changelog-530-2026-05-16" title="Permanent link">¶</a></h2>
-<h3 id="development-changelog-added_7">✨ Added<a class="headerlink" href="#development-changelog-added_7" title="Permanent link">¶</a></h3>
+<h3 id="development-changelog-added_8">✨ Added<a class="headerlink" href="#development-changelog-added_8" title="Permanent link">¶</a></h3>
 <ul>
 <li><strong>CRAM Support</strong>: Full CRAM file support across all commands (<code>dna</code> and <code>rna</code>). The <code>--bam</code> argument now transparently accepts CRAM files.</li>
 <li><strong>CRAM Index Auto-Discovery</strong>: The Nextflow pipeline automatically discovers <code>.crai</code> or <code>.cram.crai</code> indexes in the same directory as the CRAM files.</li>
@@ -24187,7 +24225,7 @@ This major release changes several output behaviours:
 <li>Added test validation for merge engine skipping <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> provenance comment lines safely.</li>
 </ul>
 <h2 id="development-changelog-520-2026-05-15">[5.2.0] - 2026-05-15<a class="headerlink" href="#development-changelog-520-2026-05-15" title="Permanent link">¶</a></h2>
-<h3 id="development-changelog-added_8">✨ Added<a class="headerlink" href="#development-changelog-added_8" title="Permanent link">¶</a></h3>
+<h3 id="development-changelog-added_9">✨ Added<a class="headerlink" href="#development-changelog-added_9" title="Permanent link">¶</a></h3>
 <ul>
 <li><strong><code>gbcms merge</code> command</strong>: New <abbr title="Command Line Interface - Terminal-based program interface">CLI</abbr> command for merging per-<abbr title="Binary Alignment Map - Compressed sequence alignment file format">BAM</abbr>-type genotyped
   MAFs (e.g., duplex + simplex) into a single output with type-prefixed count
@@ -24315,7 +24353,7 @@ This major release changes several output behaviours:
   <code>ad</code>) because R1/R2 fragment consensus is bypassed. This is expected behavior,
   not a bug.</li>
 </ul>
-<h3 id="development-changelog-added_9">✨ Added<a class="headerlink" href="#development-changelog-added_9" title="Permanent link">¶</a></h3>
+<h3 id="development-changelog-added_10">✨ Added<a class="headerlink" href="#development-changelog-added_10" title="Permanent link">¶</a></h3>
 <ul>
 <li><strong>GTF-based transcript annotation</strong> (<code>--gtf</code>): RNA mode can now load an
   Ensembl/GENCODE GTF file to enable:<ul>
@@ -24412,7 +24450,7 @@ This major release changes several output behaviours:
   (<code>PASS_WARN_HOMOPOLYMER_DECOMP</code>, <code>PASS_MULTI_ALLELIC</code>) replaced with
   semicolon-separated (<code>PASS;WARN_HOMOPOLYMER_DECOMP</code>, <code>PASS;MULTI_ALLELIC</code>).</li>
 </ul>
-<h3 id="development-changelog-added_10">✨ Added<a class="headerlink" href="#development-changelog-added_10" title="Permanent link">¶</a></h3>
+<h3 id="development-changelog-added_11">✨ Added<a class="headerlink" href="#development-changelog-added_11" title="Permanent link">¶</a></h3>
 <ul>
 <li><strong><code>gbcms_diagnostic</code> column (<abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr>) + <code>GD</code> INFO key (<abbr title="Variant Call Format - Standard variant call file format">VCF</abbr>)</strong>: Post-counting
   diagnostic flags computed automatically. Flags include:<ul>
@@ -24500,7 +24538,7 @@ This major release changes several output behaviours:
   <code>alignment_backend</code> changed from <code>'hmm'</code> to <code>'pairhmm'</code>. Pipelines relying
   on the old Nextflow defaults may see behavior changes.</li>
 </ul>
-<h3 id="development-changelog-added_11">✨ Added<a class="headerlink" href="#development-changelog-added_11" title="Permanent link">¶</a></h3>
+<h3 id="development-changelog-added_12">✨ Added<a class="headerlink" href="#development-changelog-added_12" title="Permanent link">¶</a></h3>
 <ul>
 <li><strong>Physical fragment sizing</strong>: Rust-native fragment size calculation using
   aligned read positions instead of TLEN, improving accuracy for supplementary
@@ -24601,7 +24639,7 @@ This major release changes several output behaviours:
 <li>Ruff UP015 fix: removed unnecessary <code>"r"</code> mode argument from <code>open()</code>.</li>
 </ul>
 <h3 id="development-changelog-n-base-diagnostic-integration-phases-03">🧬 N-Base Diagnostic Integration (Phases 0–3)<a class="headerlink" href="#development-changelog-n-base-diagnostic-integration-phases-03" title="Permanent link">¶</a></h3>
-<h4 id="development-changelog-added_12">✨ Added<a class="headerlink" href="#development-changelog-added_12" title="Permanent link">¶</a></h4>
+<h4 id="development-changelog-added_13">✨ Added<a class="headerlink" href="#development-changelog-added_13" title="Permanent link">¶</a></h4>
 <ul>
 <li><strong>Diagnostic output columns</strong>: <code>any_alt</code>, <code>partial_alt</code>, <code>n_count</code> appended to
   all <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> output (24 gbcms DNA columns total, up from 21).</li>
@@ -24694,7 +24732,7 @@ This major release changes several output behaviours:
   logic, and statistics extracted from <code>counting/</code> into <code>shared/</code>. Any Rust
   consumer crate linking against gbcms internals must update import paths.</li>
 </ul>
-<h3 id="development-changelog-added_13">✨ Added<a class="headerlink" href="#development-changelog-added_13" title="Permanent link">¶</a></h3>
+<h3 id="development-changelog-added_14">✨ Added<a class="headerlink" href="#development-changelog-added_14" title="Permanent link">¶</a></h3>
 <ul>
 <li><strong>Phase 3 <abbr title="Wavefront Alignment - Edit-distance alignment algorithm used as Phase 3 fast-path triage (wfa2lib-rs); resolves ~70-80% of reads before PairHMM escalation">WFA</abbr>+<abbr title="Pair Hidden Markov Model - Probabilistic alignment using base quality scores">PairHMM</abbr> unification</strong> (<code>feat: unify check_complex Phase 3</code>):
   Complex indel classification now routes through a unified pangenomic pipeline
@@ -24786,7 +24824,7 @@ This major release changes several output behaviours:
   A final <code>py-gbcms==3.0.0</code> deprecation stub on PyPI re-exports <code>gbcms</code> and
   issues a <code>DeprecationWarning</code> for smooth migration.</li>
 </ul>
-<h3 id="development-changelog-added_14">✨ Added<a class="headerlink" href="#development-changelog-added_14" title="Permanent link">¶</a></h3>
+<h3 id="development-changelog-added_15">✨ Added<a class="headerlink" href="#development-changelog-added_15" title="Permanent link">¶</a></h3>
 <ul>
 <li><strong><abbr title="Mutant Fragment Size Distribution - Insert-size analysis for REF vs ALT fragments">mFSD</abbr> native integration</strong>: <code>--mfsd</code> and <code>--mfsd-parquet</code> flags output a
   Parquet file with 31 <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> columns + 7 <abbr title="Variant Call Format - Standard variant call file format">VCF</abbr> INFO fields via the Rust native
@@ -24814,7 +24852,7 @@ This major release changes several output behaviours:
 <li>Added <code>mkdocs-print-site-plugin</code> to <abbr title="Continuous Integration - Automated build and test system">CI</abbr> docs install step and <code>pyproject.toml</code>.</li>
 </ul>
 <h2 id="development-changelog-280-2026-02-23">[2.8.0] - 2026-02-23<a class="headerlink" href="#development-changelog-280-2026-02-23" title="Permanent link">¶</a></h2>
-<h3 id="development-changelog-added_15">✨ Added<a class="headerlink" href="#development-changelog-added_15" title="Permanent link">¶</a></h3>
+<h3 id="development-changelog-added_16">✨ Added<a class="headerlink" href="#development-changelog-added_16" title="Permanent link">¶</a></h3>
 <ul>
 <li><strong><abbr title="Pair Hidden Markov Model - Probabilistic alignment using base quality scores">PairHMM</abbr> alignment backend</strong>: Alternative Phase 3 alignment via <code>--alignment-backend hmm</code> with probabilistic scoring using base quality probabilities. Configurable <abbr title="Log-Likelihood Ratio - Confidence metric for PairHMM alignment">LLR</abbr> threshold (default 2.3 ≈ ln(10)) and gap probabilities for repeat/non-repeat regions. 6 new <abbr title="Command Line Interface - Terminal-based program interface">CLI</abbr> options. Exposed as first-class Nextflow params in <code>nextflow.config</code></li>
 <li><strong><abbr title="Multi-Nucleotide Polymorphism - Multiple adjacent base substitutions">MNP</abbr> min-BQ-across-block quality strategy</strong>: <abbr title="Multi-Nucleotide Polymorphism - Multiple adjacent base substitutions">MNP</abbr> quality now assessed using min(BQ) across the entire block, matching C++ <abbr title="Get Base Count Multi Sample - Multi-BAM variant counting tool">GBCMS</abbr> <code>baseCountDNP</code>. Low-quality <abbr title="Multi-Nucleotide Polymorphism - Multiple adjacent base substitutions">MNP</abbr> reads now fall through to <code>check_complex</code> for masked comparison instead of being silently skipped</li>
@@ -24854,7 +24892,7 @@ This major release changes several output behaviours:
 <li>Multi-allelic isolation, <abbr title="Total Depth - All mapped reads overlapping the variant position">DP</abbr>/neither, fragment consensus, normalization tests</li>
 </ul>
 <h2 id="development-changelog-270-2026-02-19">[2.7.0] - 2026-02-19<a class="headerlink" href="#development-changelog-270-2026-02-19" title="Permanent link">¶</a></h2>
-<h3 id="development-changelog-added_16">✨ Added<a class="headerlink" href="#development-changelog-added_16" title="Permanent link">¶</a></h3>
+<h3 id="development-changelog-added_17">✨ Added<a class="headerlink" href="#development-changelog-added_17" title="Permanent link">¶</a></h3>
 <ul>
 <li><strong>Phase 2.5 edit distance fallback</strong>: When read reconstruction length matches neither REF nor ALT (e.g., incomplete <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> definition), Levenshtein distance discriminates the closest allele with &gt;1 edit margin safety guard</li>
 <li><strong>Phase 3 local <abbr title="Smith-Waterman - Edit-distance based local sequence alignment algorithm">SW</abbr> fallback</strong>: Complex variants where semiglobal alignment produces confident-but-wrong calls (e.g., EPHA7 <code>TCC→CT</code>) are now rescued via local Smith-Waterman that soft-clips mismatched flanks. Dual-trigger requires both score reversal and ≥2-point margin</li>
@@ -24881,7 +24919,7 @@ This major release changes several output behaviours:
 <ul>
 <li><strong>Per-haplotype trimming</strong>: Fixed <code>slice index starts at 7 but ends at 6</code> panic in <code>counting.rs</code> on asymmetric indels. Replaced shared symmetric trim with independent per-haplotype <code>trim_haplotype()</code> function that calculates bounds safely for each allele</li>
 </ul>
-<h3 id="development-changelog-added_17">✨ Added<a class="headerlink" href="#development-changelog-added_17" title="Permanent link">¶</a></h3>
+<h3 id="development-changelog-added_18">✨ Added<a class="headerlink" href="#development-changelog-added_18" title="Permanent link">¶</a></h3>
 <ul>
 <li><strong>Tolerant REF validation</strong>: Variants with ≥90% REF match against the <abbr title="FASTA format - Reference genome sequence file">FASTA</abbr> are now counted (status <code>PASS_WARN_REF_CORRECTED</code>) instead of being silently rejected. The <abbr title="FASTA format - Reference genome sequence file">FASTA</abbr> REF is used for haplotype construction. Variants with &lt;90% match are still rejected as <code>REF_MISMATCH</code></li>
 </ul>
@@ -24896,7 +24934,7 @@ This major release changes several output behaviours:
 <li><strong><code>deploy-docs.yml</code></strong>: Added <code>mkdocs-pdf</code> to docs <abbr title="Continuous Integration - Automated build and test system">CI</abbr> pip install dependencies</li>
 </ul>
 <h2 id="development-changelog-260-2026-02-18">[2.6.0] - 2026-02-18<a class="headerlink" href="#development-changelog-260-2026-02-18" title="Permanent link">¶</a></h2>
-<h3 id="development-changelog-added_18">✨ Added<a class="headerlink" href="#development-changelog-added_18" title="Permanent link">¶</a></h3>
+<h3 id="development-changelog-added_19">✨ Added<a class="headerlink" href="#development-changelog-added_19" title="Permanent link">¶</a></h3>
 <ul>
 <li><strong>Adaptive context padding</strong>: Dynamically increases <code>ref_context</code> flanking in tandem repeat regions (homopolymer through hexanucleotide). Formula: <code>max(default, repeat_span/2 + 3)</code>, capped at 50bp. Enabled by default (<code>--adaptive-context/--no-adaptive-context</code>)</li>
 <li><strong><code>gbcms normalize</code> command</strong>: Standalone variant normalization (left-align + REF validate) without counting, outputs <abbr title="Tab-Separated Values - Plain text tabular data format">TSV</abbr> with original and normalized coordinates</li>
@@ -24920,7 +24958,7 @@ This major release changes several output behaviours:
 <li><strong>Nextflow pipeline diagram</strong> added to docs index</li>
 </ul>
 <h2 id="development-changelog-250-2026-02-12">[2.5.0] - 2026-02-12<a class="headerlink" href="#development-changelog-250-2026-02-12" title="Permanent link">¶</a></h2>
-<h3 id="development-changelog-added_19">✨ Added<a class="headerlink" href="#development-changelog-added_19" title="Permanent link">¶</a></h3>
+<h3 id="development-changelog-added_20">✨ Added<a class="headerlink" href="#development-changelog-added_20" title="Permanent link">¶</a></h3>
 <ul>
 <li><strong><code>--preserve-barcode</code> flag</strong>: Keeps original <code>Tumor_Sample_Barcode</code> from input <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> instead of overriding with <abbr title="Binary Alignment Map - Compressed sequence alignment file format">BAM</abbr> sample name (<abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr>→<abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> workflows)</li>
 <li><strong><code>--column-prefix</code> parameter</strong>: Controls prefix for gbcms count columns in <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> output (default: none; use <code>--column-prefix t_</code> for legacy compatibility) ⚠️</li>
@@ -24947,7 +24985,7 @@ This major release changes several output behaviours:
 <li><strong>Nextflow config</strong>: Added <code>column_prefix</code>, <code>preserve_barcode</code>, <code>filter_by_sample</code> parameters</li>
 </ul>
 <h2 id="development-changelog-240-2026-02-10">[2.4.0] - 2026-02-10<a class="headerlink" href="#development-changelog-240-2026-02-10" title="Permanent link">¶</a></h2>
-<h3 id="development-changelog-added_20">✨ Added<a class="headerlink" href="#development-changelog-added_20" title="Permanent link">¶</a></h3>
+<h3 id="development-changelog-added_21">✨ Added<a class="headerlink" href="#development-changelog-added_21" title="Permanent link">¶</a></h3>
 <ul>
 <li><strong>Fragment Consensus Engine</strong>: <code>FragmentEvidence</code> struct with u64 QNAME hashing and quality-weighted R1/R2 consensus; ambiguous fragments are discarded (not assigned to REF)</li>
 <li><strong><code>--fragment-qual-threshold</code></strong>: New <abbr title="Command Line Interface - Terminal-based program interface">CLI</abbr> option (default 10) controlling consensus quality difference for fragment conflict resolution</li>
@@ -24981,7 +25019,7 @@ This major release changes several output behaviours:
 <li><code>.antigravity</code> project files updated with current Rust LOC (~1270) and test counts (47)</li>
 </ul>
 <h2 id="development-changelog-230-2026-02-06">[2.3.0] - 2026-02-06<a class="headerlink" href="#development-changelog-230-2026-02-06" title="Permanent link">¶</a></h2>
-<h3 id="development-changelog-added_21">✨ Added<a class="headerlink" href="#development-changelog-added_21" title="Permanent link">¶</a></h3>
+<h3 id="development-changelog-added_22">✨ Added<a class="headerlink" href="#development-changelog-added_22" title="Permanent link">¶</a></h3>
 <ul>
 <li><strong>Nextflow <abbr title="BAM Index - Index file for rapid BAM access">BAI</abbr> Auto-Discovery</strong>: Checks <code>.bam.bai</code> and <code>.bai</code> extensions automatically</li>
 <li><strong>Documentation Modernization</strong>: Hierarchical navigation, glightbox, panzoom, abbreviations</li>
@@ -25003,7 +25041,7 @@ This major release changes several output behaviours:
 <li><strong><abbr title="Continuous Integration - Automated build and test system">CI</abbr> Build</strong>: Resolved <code>curl-sys</code> OpenSSL version conflict by switching to manylinux_2_34</li>
 </ul>
 <h2 id="development-changelog-220-2026-02-04">[2.2.0] - 2026-02-04<a class="headerlink" href="#development-changelog-220-2026-02-04" title="Permanent link">¶</a></h2>
-<h3 id="development-changelog-added_22">✨ Added<a class="headerlink" href="#development-changelog-added_22" title="Permanent link">¶</a></h3>
+<h3 id="development-changelog-added_23">✨ Added<a class="headerlink" href="#development-changelog-added_23" title="Permanent link">¶</a></h3>
 <ul>
 <li><strong>Multi-platform Wheel Publishing</strong>: Maturin-based <abbr title="Continuous Integration - Automated build and test system">CI</abbr> builds for Linux (x86_64, aarch64), macOS (Intel, Apple Silicon), and Windows</li>
 <li><strong>Structured Logging</strong>: New <code>utils/logging.py</code> module with Rich console output, timing utilities, and log file support</li>
@@ -25042,7 +25080,7 @@ This major release changes several output behaviours:
 <li><strong>Documentation</strong>: Added Changelog to documentation navigation</li>
 </ul>
 <h2 id="development-changelog-210-2025-11-25">[2.1.0] - 2025-11-25<a class="headerlink" href="#development-changelog-210-2025-11-25" title="Permanent link">¶</a></h2>
-<h3 id="development-changelog-added_23">✨ Added<a class="headerlink" href="#development-changelog-added_23" title="Permanent link">¶</a></h3>
+<h3 id="development-changelog-added_24">✨ Added<a class="headerlink" href="#development-changelog-added_24" title="Permanent link">¶</a></h3>
 <h4 id="development-changelog-nextflow-workflow">Nextflow Workflow<a class="headerlink" href="#development-changelog-nextflow-workflow" title="Permanent link">¶</a></h4>
 <ul>
 <li><strong>Production-ready Nextflow workflow</strong> for processing multiple samples in parallel</li>
@@ -25081,7 +25119,7 @@ This major release changes several output behaviours:
 <h2 id="development-changelog-200-2025-11-21">[2.0.0] - 2025-11-21<a class="headerlink" href="#development-changelog-200-2025-11-21" title="Permanent link">¶</a></h2>
 <h3 id="development-changelog-major-rewrite">🚀 Major Rewrite<a class="headerlink" href="#development-changelog-major-rewrite" title="Permanent link">¶</a></h3>
 <p>Version 2.0.0 represents a complete rewrite of py-gbcms with a focus on performance, correctness, and modern architecture.</p>
-<h3 id="development-changelog-added_24">✨ Added<a class="headerlink" href="#development-changelog-added_24" title="Permanent link">¶</a></h3>
+<h3 id="development-changelog-added_25">✨ Added<a class="headerlink" href="#development-changelog-added_25" title="Permanent link">¶</a></h3>
 <h4 id="development-changelog-core-features">Core Features<a class="headerlink" href="#development-changelog-core-features" title="Permanent link">¶</a></h4>
 <ul>
 <li><strong>Rust-based Counting Engine</strong>: Hybrid Python/Rust architecture for 20x+ performance improvement</li>
