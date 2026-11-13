@@ -139,6 +139,13 @@ are not visible.
   7. the option table holds only measured or exactly emulated numbers.
 - **Pass:** every bar on at least two of the three items, and bar 2 on all three. Then the page
   goes into the decision protocol as written in "How the trial is judged".
+- **Item 1 (#429, PR #430, `plans/331-fits-realigned.md`; merged 2026-11-10): every bar met.**
+  1 review round; 2 conditions declared, none added or removed, no decision reversed; 1 build
+  (the final one; the options were emulated, and the final build equals the emulation on 13,711
+  of 13,711 tier rows); no HPC batch; 0.39 M agent tokens; a yes at the approval; the option
+  table held measured and emulated numbers only.
+- **Items 2 and 3 (`plans/420-cycle-order.md`, decided 2026-11-12):** the judge fault (#435; equal
+  REF and ALT scores where the bases differ), then #405 (which off-anchor reads count in DP).
 
 ## The code graph: a trial of its own (operator, 2026-10-31)
 

@@ -4,7 +4,7 @@
 > Update the **Now** and **Next** sections as work progresses. When a "Now" section is finished,
 > move it to `.agents/archive/CONTINUITY_ARCHIVE.md` (older sections live there).
 
-_Last updated: 2026-11-12_
+_Last updated: 2026-11-13_
 
 ## Now — 6.8.0 starts (tracker #420)
 
@@ -74,15 +74,21 @@ base (#367); Nextflow resources wait for the sweep (branch `feature/nextflow-res
 (never `rm -rf`), then `git worktree prune`. The `release/6.7.0` branch on GitHub (deletion is
 optional, release guide step 11).
 
-## Next — 6.8.0 (tracker #420)
+## Next — 6.8.0 (tracker #420; the order decided 2026-11-12)
 
-- The judge becomes the default (#331), with #405, #406, #410, #414, #417, #418 and #425; the judge
-  meets the speed floor first (#335).
-- Packages 4 to 7: evidence outside the aligned bases (#259 with #177, #179, #212); guard
-  statistics and artifacts (#306, #180); retiring the homopolymer twin (#261 with #111, #112,
-  #128); complex-event read-on (#274, #361). Also #290, #293, #178, #408 and #409.
-- Moved from 6.7.0 on 2026-11-06: speed (#412, #312, #150); clean-up (#313 with #195, #314, #315,
-  #316); the truth arms and the release gate (#260 with #266, #267, #268, #275); output and
-  hygiene (#273, #132, #127, #138); the pre-release review (#318).
-- The order is decided with the operator when 6.8.0 starts: count changes first, then speed and
-  structure once the counts settle.
+The plan page: `docs/harness/plans/420-cycle-order.md` (the measurements, the options, the stages).
+- **Decided (operator, 2026-11-12: "Ok lets do meticulously"):** D1-A, the judge fault first;
+  D2-B, measure and design speed now and build it after the counts settle; D3-B, DNA flips in
+  6.8.0 and RNA stays on the rules path until #333 (6.9.0); D4-A, 6.8.0 keeps the path to the
+  default (34 tickets, plus #364, #397, #401 and the fault ticket #435) and 24 tickets move to 6.9.0.
+- **Stage 0, housekeeping (posted 2026-11-13):** #429 closed; #425 added to #420; the milestone
+  moves; #331's "done when" item 3 (RNA) moved with #333 under #328; the fault ticket #435. Open:
+  Greptile's review credits (the operator) and the old-worktree script.
+- **Stage 1, measurement only (started 2026-11-12):** the fault's mechanism (1.1); the 13 open
+  rows of RJ-34's bar, then the 152 and the 48 (1.2); J1's 98 DNA failures sorted (1.3); speed
+  sizing: a local HG002 profile, a survey, one HPC batch (pf73 on build dv680, develop
+  3be1765b; the operator agreed 2026-11-13) (1.4).
+- **Stage 2, the count decisions:** the fault fix (the trial's item 2); #405 (item 3); #401 with
+  #306; the MNV and delins family (#410, #364, #414, #397); #418; the new classes; a baseline batch.
+- **Stage 3, speed** (#335 with #150, #312, #412, #406). **Stage 4, the default** (J1 and J3 to
+  J6: #332, #334 to #337; J2, RNA, is #333 in 6.9.0). **Stage 5, the release** (#318, the floor, the gate, the tag).
