@@ -86,8 +86,11 @@ The plan page: `docs/harness/plans/420-cycle-order.md` (the measurements, the op
   Greptile's review credits (the operator) and the old-worktree script.
 - **Stage 1, measurement only (started 2026-11-12):** the fault's mechanism (1.1); the 13 open
   rows of RJ-34's bar, then the 152 and the 48 (1.2); J1's 98 DNA failures sorted (1.3); speed
-  sizing: a local HG002 profile, a survey, one HPC batch (pf73 on build dv680, develop
-  3be1765b; the operator agreed 2026-11-13) (1.4).
+  sizing: a local HG002 profile, a survey, one HPC batch (1.4). Done: the survey (2026-11-12); the
+  batch pf73 (2026-11-13; build dv680, develop 3be1765b): the judge at 0.76 to 5.27 of the C++
+  time, the floor met only at 1,000 rows; at ACCESS 20,000 × 1 its extra time over the rules path
+  must fall from 200 s to 3 s (plan page, 1.4). Open: the local HG002 profile; the scoring call's
+  share of the judge on the 20,000-row cell (a profile of that cell).
 - **Stage 2, the count decisions:** the fault fix (the trial's item 2); #405 (item 3); #401 with
   #306; the MNV and delins family (#410, #364, #414, #397); #418; the new classes; a baseline batch.
 - **Stage 3, speed** (#335 with #150, #312, #412, #406). **Stage 4, the default** (J1 and J3 to
