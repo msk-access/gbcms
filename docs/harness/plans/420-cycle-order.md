@@ -4,7 +4,8 @@ Status: decided 2026-11-12 (operator: "Ok lets do meticulously"): D1-A, D2-B, D3
 D3-B applied to D4's lists (section 2, "Decided"). Stage 1 started the same day. Sources: the tracker (#420)
 and the 45 open tickets on its path, read with every comment on 2026-11-12; `CONTINUITY.md`; the
 harness notes. Measured on 2026-11-12: the test suite under the judge (section 1.3) and the RJ-34
-bar's rows after #433 (section 1.2). Patient rows appear as counts and shapes only.
+bar's rows after #433 (section 1.2). Measured on 2026-11-13: the judge's speed at production
+sizes (the HPC batch pf73, section 1.4). Patient rows appear as counts and shapes only.
 
 ## 1. Where 6.8.0 stands
 
@@ -64,7 +65,7 @@ piece of the read and ties ALT. It is a separate scorer question.
 | J1, tests under the judge (#332) | not started | 201 failures on develop 3be1765b (147 in the 6.7.0 round; that list is not kept, so the rise is not attributed). 103 are the judge refusing RNA. 98 are DNA tests in 22 files: the read-judgment spec cases 29, the masked-repeat contract 15, the long-deletion contract 10, the locus-alleles and complex-exact contracts 8 each. Neither binning-invariance failure breaks the invariant: one compares the rules path's routing, which a judge-only suite cannot do; the other is an RNA refusal. |
 | J2, RNA under the judge (#333) | not started; the judge refuses RNA | the tier has 33 RNA runs of 411 |
 | J3, acceptance (#334) | not started | the batch arms for `--min-baseq` 0, 10, 30 exist (batch680) |
-| J4, speed (#335) | measured 2026-10-30, not met | table in 1.4 |
+| J4, speed (#335) | measured 2026-10-30 and 2026-11-13 (pf73), not met | met in 2 of 8 cells; table in 1.4 |
 | J5, HPC gate (#336) | not started | |
 | J6, switch-over (#337) | not started | 14 TEMPORARY judge switches to remove; `--rescue-homopolymer` to remove (#261) |
 | Before #331 | #401 (a found allele's share), #405 (DP for off-anchor reads) | not started; batch680 holds their arms |
@@ -89,23 +90,39 @@ case. It is read again when J1 is worked (Stage 4.1).
 
 ### 1.4 Speed (the floor: faster than the C++ GetBaseCountsMultiSample 1.2.5)
 
-Measured 2026-10-30 on HPC (develop fe34f443, the pf71 kit, production sizes). The rules path met
-the floor in all 8 cases (0.39 to 0.94 of the C++ time on 2026-11-06). The judge, as a ratio of
-the C++ time:
+Measured on HPC with the pf71 kit's production tasks (whole nodes, untraced, 3 repeats, the
+median wall time): on 2026-10-30 (pf71, develop fe34f443) and on 2026-11-13 (pf73, develop
+3be1765b, build dv680). The rules path met the floor in all 8 cells both times (0.39 to 0.94 of
+the C++ time). The judge met it only at 1,000 rows:
 
-| Data | 5,000 rows | 20,000 rows |
-|:--|--:|--:|
-| IMPACT, 1 BAM | 1.31 | 2.84 |
-| ACCESS, 1 BAM | 2.06 | 5.15 |
-| ACCESS, 9-BAM fillout | | 2.85 |
+| Data | Rows × BAMs | Judge / C++, pf71 | Judge / C++, pf73 | Rules / C++, pf73 | C++ s | Rules s | Judge s | Judge less rules, s | C++ less rules, s | Cut needed in judge less rules |
+|:--|:--|--:|--:|--:|--:|--:|--:|--:|--:|--:|
+| IMPACT | 1,000 × 1 | 0.75 | 0.76 | 0.42 | 14.6 | 6.1 | 11.1 | 5.0 | 8.5 | met |
+| IMPACT | 5,000 × 1 | 1.31 | 1.36 | 0.46 | 29.9 | 13.8 | 40.7 | 26.9 | 16.0 | 40% |
+| IMPACT | 20,000 × 1 | 2.84 | 2.98 | 0.55 | 46.1 | 25.3 | 137.5 | 112.2 | 20.8 | 81% |
+| IMPACT | 5,000 × 10 | 1.63 | 1.64 | 0.58 | 235.7 | 135.8 | 386.3 | 250.4 | 99.8 | 60% |
+| ACCESS | 1,000 × 1 | 0.82 | 0.80 | 0.39 | 21.2 | 8.3 | 17.0 | 8.7 | 12.9 | met |
+| ACCESS | 5,000 × 1 | 2.06 | 2.33 | 0.62 | 30.3 | 18.9 | 70.6 | 51.6 | 11.4 | 78% |
+| ACCESS | 20,000 × 1 | 5.15 | 5.27 | 0.94 | 46.2 | 43.2 | 243.2 | 200.0 | 3.0 | 98% |
+| ACCESS | 5,000 × 9 | 2.85 | 2.96 | 0.75 | 117.2 | 88.2 | 346.9 | 258.6 | 29.0 | 89% |
 
-Worked example, ACCESS 1 BAM × 20,000 rows: the judge 238 s, the rules path 48.5 s, C++ 45.9 s.
-The judge must become about 5.2 times faster to meet the floor there. The levers measured so far
-give tens of percent, not 5 times: one cache slice per row (#150) saves about 10% of the judge's
-CPU; per-variant read slicing (#312) saves 14% on an HG002 arm; the SNV rows routed to the judge
-(#412) cost 2.25 and 2.81 times the rules path on two HG002 arms. The judge changed after
-2026-10-30 (the fit rule, the background, `TIED_WITH` at about +2% on the judge arm), so today's
-ratio is not known.
+"Judge less rules" is the time the judge takes beyond the rules path on the same task. "C++ less
+rules" is the most it may take and still meet the floor, if the work both paths share (the
+fetch, the pile-up, the output) stays at the rules path's time. The judge's peak memory is 0.12
+to 0.32 of C++'s.
+
+Worked example, ACCESS 1 BAM × 20,000 rows (pf73): C++ 46.2 s, the rules path 43.2 s, the judge
+243.2 s. The judge must become 5.3 times faster to meet the floor there: its extra 200.0 s must
+fall to 3.0 s, a cut of 98%. The extra grows faster than the rows. From 1,000 to 20,000 rows it
+goes from 8.7 s to 200.0 s on ACCESS (about 10 ms for each added row) and from 5.0 s to 112.2 s
+on IMPACT (about 5.6 ms), while C++ grows by 25.0 s and 31.5 s.
+
+The levers measured so far give tens of percent, not 5 times: one cache slice per row (#150)
+saves about 10% of the judge's CPU; per-variant read slicing (#312) saves 14% on an HG002 arm; the
+SNV rows routed to the judge (#412) cost 2.25 and 2.81 times the rules path on two HG002 arms.
+The judge changed after 2026-10-30 (the fit rule, the background, `TIED_WITH`); from pf71 to pf73
+its ratio moved by -0.02 to +0.27. C++, the same program in both batches, moved by -4% to +18%
+between pf72 and pf73 on the same tasks (node to node), so moves of this size are not attributed.
 
 **Speed sizing, first results (Stage 1.4, 2026-11-12):**
 - The survey (Fable; `speed_survey.md`, local): the options that cannot change a count by
@@ -128,7 +145,10 @@ ratio is not known.
   state for a read whose best score is 0. On ACCESS the reads that are not exact hold 10.6% of
   the scoring time, under the survey's 15% line, so an exact-read fast path could carry the gap
   there if its results are proved identical. Not yet measured: the scoring call's share of the
-  whole judge on the 20,000-row production cell (the pf73 batch and a profile).
+  whole judge on the 20,000-row production cell. pf73 ran untraced, so it gives the whole time
+  (the table above) and not that share; a profile of that cell gives it.
+- The HPC batch pf73 (2026-11-13): the table above. 24 tasks, each with C++, the rules path and
+  the judge; every run exited 0.
 - The local HG002 timing did not run: the load average stayed between 6 and 16 for 2 h 40 min,
   above the agent's limit of 3.
 
@@ -267,7 +287,8 @@ gate; the tag (the operator pushes it).
 
 ## 4. Risks
 
-1. **Speed.** 5.2 times at the worst case, against levers of tens of percent. D2-B finds out early.
+1. **Speed.** 5.3 times at the worst case (pf73: ACCESS, 20,000 rows × 1 BAM), against levers of
+   tens of percent. D2-B finds out early.
 2. **The judge fault.** Its mechanism is not known; it may be a class, not two places.
 3. **J1's size.** 98 DNA failures; each expectation change needs an operator notice. One notice
    per group keeps the operator's time bounded.
