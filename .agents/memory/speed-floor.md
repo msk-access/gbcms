@@ -1,6 +1,6 @@
 ---
 name: speed-floor
-description: "Speed floor: gbcms runs faster than the original C++ GetBaseCountsMultiSample, as a minimum; production-size benchmark before each release, for the default path."
+description: "Speed floor: gbcms runs faster than the original C++ GetBaseCountsMultiSample, as a minimum; production-size benchmark before each release, for the default path. Speed is never bought with accuracy: only exact (count-neutral) speed-ups."
 metadata:
   type: project
 ---
@@ -11,6 +11,15 @@ implementation in general as a minimum").
 
 **Why:** gbcms replaces the C++ tool in MSK pipelines. A replacement that is slower costs every
 pipeline run, whatever it gains in counts.
+
+**Speed is never bought with accuracy** (operator, 2026-11-14: "we dont prioritze speed over
+accuracy, we need to find solutions where speed is gained without loosing any accuracy"). A speed
+gain must give the same output, every field, on every set. A cap, a sample, a skipped read or a
+looser test that can change one read's call is not a speed option, not even as a fallback behind a
+time bar. Where a decided rule costs time, the rule stays, and the work looks for exact speed-ups:
+stop a count once its answer cannot change, compute a shared value once, skip work whose result
+cannot reach the output. Show each one count-neutral (identical outputs on every set) before it
+merges.
 
 **How to apply:**
 - Measure against the production C++ binary 1.2.5 on HPC (run in place; the operator allowed it)

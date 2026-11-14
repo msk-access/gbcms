@@ -1553,17 +1553,15 @@ fn named(r: &Row) -> String {
     format!("{}:{}>{}", r.pos + 1, String::from_utf8_lossy(&r.ref_al), String::from_utf8_lossy(&r.alt_al))
 }
 
-/// Reads weighed when asking whether the reads need an item ([`needed_by`]), the first
-/// reaching it.
-const ATTEST_MAX_READS: usize = 400;
-
-/// Whether the reads reaching `item` need it: on [`FOUND_MIN_READS`] of them and
-/// [`GUARD_REF_SHARE`], a read the site's candidate sequences call REF or ALT with it
+/// Whether the reads reaching `item` need it, every read reaching it weighed, in no order
+/// (a cap on the reads, or an order among them, would make the answer depend on the site's
+/// depth and on which reads come first): on [`FOUND_MIN_READS`] of them and
+/// [`GUARD_REF_SHARE`] of all of them, a read the site's candidate sequences call REF or ALT with it
 /// (`kept`) gets another call without it (`without`). An item no read needs for its call
 /// (a germline deletion beside the row does: its reads keep their call only with it)
 /// explains none of their differences.
 fn needed_by(kept: &Site, without: &Site, reads: &[ReadView], item: &Row) -> bool {
-    let near: Vec<&ReadView> = reads.iter().filter(|r| reaches(r, item)).take(ATTEST_MAX_READS).collect();
+    let near: Vec<&ReadView> = reads.iter().filter(|r| reaches(r, item)).collect();
     let mut ws = Workspace::default();
     let mut call = |site: &Site, read: &ReadView| {
         let gr = site.graph_read(read);
@@ -4301,6 +4299,40 @@ pub(crate) mod tests {
         let candidates = Candidates { found: vec![(del.clone(), (0..6).collect())], ..Candidates::default() };
         let s = Site::build(x.clone(), &candidates, (0, c.clone()), &reads).unwrap();
         assert!(!s.rows.contains(&del), "no read needs the deletion: no context");
+    }
+
+    /// The reads that need a found deletion are weighed however deep the site is, and however
+    /// many reads that do not need it reach it first: in coordinate order, as a BAM gives
+    /// them, 380 REF reads and 20 of X (starting 210 to 249) reach a 100-base deletion before
+    /// the 80 carriers of X and the deletion do (starting 250 to 289), so a weighing of only
+    /// the first 400 reaching it saw none that needed it and left it out. The 80 are over a
+    /// twentieth of the 480: the deletion is a context.
+    #[test]
+    fn a_found_deletion_the_last_reads_need_is_a_context_at_any_depth() {
+        let mut c = random_seq(1200, 77);
+        // no slide: the anchor base differs from the last deleted base, the first deleted
+        // base from the base after it
+        let other = |b: u8| if b == b'A' { b'C' } else { b'A' };
+        c[408] = other(c[308]);
+        c[409] = other(c[309]);
+        let x = Row::new(299, &[c[299]], &[other(c[299])]);
+        let del = Row::new(308, &c[308..409], &c[308..309]);
+        let alt: Vec<u8> = [&c[..299], &x.alt_al[..], &c[300..]].concat();
+        let carrier_hap: Vec<u8> = [&alt[..309], &alt[409..]].concat();
+        let whole = |h: &[u8], s: usize| ReadView::new(&h[s..s + 100], &[30; 100], s as i64, &[Cigar::Match(100)], (0, 100), 20).unwrap();
+        let carrier = |k: usize| {
+            let s = 309 - k;
+            let cigar = [Cigar::Match(k as u32), Cigar::Del(100), Cigar::Match((100 - k) as u32)];
+            ReadView::new(&carrier_hap[s..s + 100], &[30; 100], s as i64, &cigar, (0, 100), 20).unwrap()
+        };
+        let mut reads: Vec<ReadView> = (0..380).map(|i| whole(&c, 210 + i % 40)).collect();
+        reads.extend((0..20).map(|i| whole(&alt, 210 + i % 40)));
+        reads.extend((0..80).map(|i| carrier(20 + i % 40)));
+        reads.sort_by_key(|r| r.ref_start);
+        assert!(reads[400..].iter().all(|r| r.ref_start >= 250), "the carriers come last");
+        let candidates = Candidates { found: vec![(del.clone(), (400..480).collect())], ..Candidates::default() };
+        let s = Site::build(x.clone(), &candidates, (0, c.clone()), &reads).unwrap();
+        assert!(s.rows.contains(&del), "the 80 carriers need the deletion: it is a context");
     }
 
     /// The contig, X (a 4-base insertion after base 300) and the found alleles of the

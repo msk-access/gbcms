@@ -38,6 +38,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   more signed-out rows fall inside the sign-out margin; the rules path, ACCESS, the matched normals,
   RNA, WES and HG002 do not change. RNA's own doubt signal (`NH`) is unchanged. Plan:
   `docs/harness/plans/331-fits-realigned.md`.
+- The sequence judge's read-need test (RJ-35) weighs every read that reaches a context item, not
+  the first 400 in start order. A found indel beside X's site, or a respelling over a read, stays
+  as a context where 2 reads and 5% of the reads that reach it need it. At a deep site the reads
+  that need an item after X start last, so the first 400 never held them, and the item was left
+  out. On the local regression sets 4 items on IMPACT tumours decide otherwise; 194 reads move to
+  ALT, and all 194 carry the ALT by their own bases; no read is lost, and ACCESS, WES and HG002
+  (truth v2dbq20 included) do not change. Example: two signed-out SNVs beside a found 1,086-base
+  deletion go from ALT 148 and 206 to 201 and 250, as 6.6.0 counts them. The test scores 1.34
+  times as many reads on the IMPACT tumours and 2.05 times on the HG002 truth sets, on average,
+  with no bound at one item (the worst measured: 22,520 reaching reads, each scored twice). On
+  the production speed cells (IMPACT and ACCESS, 1 BAM and a fill-out, whole nodes), the judge
+  takes 0.97 to 1.08 times its earlier wall time (CPU 0.97 to 1.05). Plan:
+  `docs/harness/plans/435-context-read-test.md`.
 
 ### Docs — read judgment: what gbcms takes from the aligner, and naming the reads it holds back (RJ-33, RJ-34)
 

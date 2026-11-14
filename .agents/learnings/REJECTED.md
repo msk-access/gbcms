@@ -10,6 +10,40 @@ Newest at the top.
 
 ---
 
+## [REJ-20261114-002] A capped or sampled read-need test for speed (B-even, the first 400) as a fallback behind a time bar
+- **Target:** the sequence judge's read-need test (`needed_by`, RJ-35) and any count rule with a cost.
+- **Proposed:** weigh an even sample of 400 reaching reads (B-even), or keep the first 400, if
+  weighing every reaching read (B) runs more than 10% slower than the first build in a speed cell.
+- **Reason not chosen:** operator, 2026-11-14: "we dont prioritze speed over accuracy, we need to
+  find solutions where speed is gained without loosing any accuracy". A sample can miss the reads
+  that need an item at a deep site, the defect the cap had, even where it matched B on the measured
+  items. pf74 (HPC, both paths, 8 cells, 3 repeats) put B at 0.97 to 1.08 of the first build on the
+  judge path; the one cell over 10% (ACCESS 1,000 x 1, rules path, 1.145) had equal CPU.
+- **Re-propose only if:** never as a speed option; speed work is exact and count-neutral
+  (decision protocol §6, LRN-20261114-001).
+
+## [REJ-20261114-001] Other read-need rules for the judge's context items: E, C′, a 1% share, a rule per kind of item
+- **Target:** the sequence judge's read-need test (`needed_by`, RJ-35): which context items stay.
+- **Proposed:** in place of 2 reads and 5% of every reaching read (B, decided):
+  - E: keep where 2 reads need the item and more need it than it harms;
+  - C′: need over every reaching read, 5% of the indel's writers' number;
+  - a 1% share over every reaching read;
+  - a different rule per kind or size of item.
+- **Reason not chosen:** operator, 2026-11-14 (`docs/harness/plans/435-context-read-test.md`,
+  sections 4d and 4e): each one lost real reads by their own bases or truth.
+  - E lost 43 HG002 ALT carriers, 22 tier REF carriers and 2 truth-ALT reads, while it gained
+    23 truth-ALT reads at 22 items.
+  - Of the 31 truth-set items the 1% share keeps beyond B, E keeps all 31 and C′ 21; both lost
+    11 reads on the truth sets (1%: also 16 tier REF carriers).
+  - By kind, only found indels of 50 bp or more are all wins, and B keeps them already. Found
+    10-49 bp indels lose none but bring 14 reads to ALT whose bases tie; every other kind holds
+    both wins and losses.
+  - The need and harm counts are taken with every other tested item in place, while the final
+    site keeps only the items that pass. A harm-based rule needs that count fixed first (the share
+    family, #306 and #401).
+- **Re-propose only if:** the counts are taken in the final site and a new measurement shows no
+  read lost.
+
 ## [REJ-20261102-001] The judge's own-gap rule for every state (`GBCMS_JUDGE_OWNGAP=all`)
 - **Target:** the sequence judge's own-gap tie-break: a read that reaches a state only through an
   indel of its own at that state's change does not carry it.

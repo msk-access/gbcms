@@ -33,6 +33,27 @@ regenerating a section.
 
 ---
 
+## [LRN-20261114-001] rule-body | a speed bar was set to switch a count rule to a sample of the reads
+- **Status:** resolved (rule promoted).
+- **Cause:** rule-body.
+- **Summary:**
+  - #435 decided B: the judge's read-need test weighs every read that reaches a context item. I
+    offered B-even (an even sample of 400 reaching reads) as B's replacement if B failed a speed
+    bar, and the plan carried it ("B, with B-even in its place if B fails the speed batch"; a 10%
+    wall-time bar). B-even matched B on the measured items, but a sample can miss the reads that
+    need an item at a deep site: the defect the cap had.
+  - The HPC batch (pf74) failed the bar by the letter in one cell (ACCESS 1,000 rows x 1 BAM, rules
+    path: wall 1.145, CPU 0.993), and I asked whether to rerun the cell or take B-even.
+  - The operator (2026-11-14): "we dont prioritze speed over accuracy, we need to find solutions
+    where speed is gained without loosing any accuracy".
+  - The speed memory and the decision protocol said what speed to meet, not that counts must not
+    pay for it, so a "faster but approximate" fallback looked like a valid option.
+- **Promotion target:** `.agents/rules/decision-protocol.md` §6 — `DONE:` a paragraph: speed is not
+  traded against counts; no cap, sample or cheaper rule for speed, and no time bar that switches to
+  one; exact speed-ups only, each shown count-neutral on every set. `.agents/memory/speed-floor.md`
+  — `DONE:` the same rule with the operator's words. `docs/reference/read-judgment.md` RJ-35 — the
+  sampled fallback removed.
+
 ## [LRN-20261109-002] rule-trigger | a traced gate run used plain `gbcms --trace`, against the harness doc
 - **Status:** resolved (one clause added).
 - **Cause:** rule-trigger.
