@@ -31,7 +31,7 @@
             body[data-md-color-scheme="slate"] .gslide-title { color: var(--md-default-fg-color); }
             body[data-md-color-scheme="slate"] .gslide-desc { color: var(--md-default-fg-color); }
         </style><meta name="panzoom-theme" content="material">
-<meta name="panzoom-data" content='{"selectors": [".d2", ".mermaid"], "initial_zoom_level": 1.0}'> </head>
+<meta name="panzoom-data" content='{"selectors": [".mermaid", ".d2"], "initial_zoom_level": 1.0}'> </head>
 <body data-md-color-accent="custom" data-md-color-primary="custom" data-md-color-scheme="default" dir="ltr">
 <input autocomplete="off" class="md-toggle" data-md-toggle="drawer" id="__drawer" type="checkbox">
 <input autocomplete="off" class="md-toggle" data-md-toggle="search" id="__search" type="checkbox">
@@ -823,6 +823,19 @@ and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semant
   more signed-out rows fall inside the sign-out margin; the rules path, ACCESS, the matched normals,
   RNA, WES and HG002 do not change. RNA's own doubt signal (<code>NH</code>) is unchanged. Plan:
   <code>docs/harness/plans/331-fits-realigned.md</code>.</li>
+<li>The sequence judge's read-need test (RJ-35) weighs every read that reaches a context item, not
+  the first 400 in start order. A found indel beside X's site, or a respelling over a read, stays
+  as a context where 2 reads and 5% of the reads that reach it need it. At a deep site the reads
+  that need an item after X start last, so the first 400 never held them, and the item was left
+  out. On the local regression sets 4 items on IMPACT tumours decide otherwise; 194 reads move to
+  ALT, and all 194 carry the ALT by their own bases; no read is lost, and ACCESS, WES and HG002
+  (truth v2dbq20 included) do not change. Example: two signed-out SNVs beside a found 1,086-base
+  deletion go from ALT 148 and 206 to 201 and 250, as 6.6.0 counts them. The test scores 1.34
+  times as many reads on the IMPACT tumours and 2.05 times on the HG002 truth sets, on average,
+  with no bound at one item (the worst measured: 22,520 reaching reads, each scored twice). On
+  the production speed cells (IMPACT and ACCESS, 1 <abbr title="Binary Alignment Map - Compressed sequence alignment file format">BAM</abbr> and a fill-out, whole nodes), the judge
+  takes 0.97 to 1.08 times its earlier wall time (CPU 0.97 to 1.05). Plan:
+  <code>docs/harness/plans/435-context-read-test.md</code>.</li>
 </ul>
 <h3 id="docs-read-judgment-what-gbcms-takes-from-the-aligner-and-naming-the-reads-it-holds-back-rj-33-rj-34">Docs — read judgment: what gbcms takes from the aligner, and naming the reads it holds back (RJ-33, RJ-34)<a class="headerlink" href="#docs-read-judgment-what-gbcms-takes-from-the-aligner-and-naming-the-reads-it-holds-back-rj-33-rj-34" title="Permanent link">¶</a></h3>
 <ul>
