@@ -116,6 +116,13 @@ Then make every shape a red-first test, land the rule in every path that judges 
 give each new component its own unit test, carry each exclusion and threshold of a rule extended to
 the other allele with a mirrored test, and rerun the measurements on the final build.
 
+Speed is not traded against counts (operator, 2026-11-14: "we dont prioritze speed over accuracy").
+A decision never takes a cheaper rule, a cap or a sample of the reads for speed, and a time bar never
+switches to one, not even as a fallback. When the chosen rule costs time, it stays; the speed work
+looks for exact speed-ups (an early stop once the answer cannot change, a shared value computed once),
+each shown count-neutral on every set before it merges. An option list for a count rule has no
+"faster but approximate" row.
+
 ## 7. Every data type, more than one truth source
 
 A count-changing rule is accepted on every data type and input type it reaches, against more than

@@ -192,7 +192,10 @@ For a row X and each admitted read:
     the site, the repeat X changes included) is a context, a separate event (RJ-8), however
     a read's aligner wrote it, where the reads need it for their calls (as a respelling
     over a read is, 2026-10-27: with it, two reads and 5% of those reaching it are REF or
-    ALT that are not so without it). Taken without that test (the first measurement of this
+    ALT that are not so without it). Every read that reaches the item is weighed, in no
+    order (2026-11-14, RJ-35): the first build weighed the first 400 in start order, so at
+    a deep site the reads that need an item after X, which start last, were never weighed.
+    Taken without that test (the first measurement of this
     round), it cost HG002 14 true ALT reads at insertions of 1 kb or more and 6 at 50-299
     bp: the event's own reads write such indels (a 1,795-bp insertion at chr16:34590143,
     whose reads write a 1-bp insertion four bases before it on 639 of 2,393 reads, absent

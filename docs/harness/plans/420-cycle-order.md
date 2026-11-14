@@ -49,7 +49,7 @@ The ACCESS INS3 row is the plan's open question: a tie with a found allele is no
 a trace build on the real run):** at the first place (two SNVs, a found 1,086-base deletion 10
 bases on), `needed_by` (`judge/haplotypes.rs:1565`) asks whether the reads need the found
 deletion as context of only the first 400 reads that reach it, in coordinate order
-(`ATTEST_MAX_READS`), and keeps it only where 2 reads and 5% of them need it. The reads that
+(`ATTEST_MAX_READS`; every reaching read since RJ-35, 2026-11-14), and keeps it only where 2 reads and 5% of them need it. The reads that
 need it are its carriers with a short piece before the junction; they start last, so none is
 weighed, the deletion is dropped, and every state ties for them. On the real run, with no cap
 the judge gives 6.6.0's counts (201 and 250 ALT, against 148 and 206 with the cap); no other of
