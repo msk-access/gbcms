@@ -11,6 +11,33 @@ Newest at the top.
 
 ---
 
+## [ERR-20261115-001] a sign-in prompt ended the session and stopped its tracked background runs
+- **What happened:** on 2026-11-15 the desktop app stopped the session for a sign-in (not for credits).
+  Every tracked background task ended with it: the local #335 gate chain stopped after one arm of the
+  s1c gate (905 default-path runs, all ok; no run left half-written, as each finished run has its DONE
+  mark). The HPC jobs ran on, as they do not depend on the session. The operator: "this is not
+  acceptable to abrutly stop for sign in, if i am out of credits it makes sense".
+- **Rule/hook involved:** none at fault; the long-run rule (`docs/harness/measurement-harness.md`,
+  "Make a long run visible") already says to start a run that must outlive the session with `nohup`,
+  paired with a tracked waiter on its process.
+- **Environment fix:** start a local run longer than about an hour detached (`nohup`, a new session)
+  with a tracked waiter on its pid, so a stop of the app does not stop the run; the gate skips the
+  runs with a DONE mark, so a restart loses nothing. The sign-in stop itself is the app's, outside the
+  harness.
+- **Date:** 2026-11-15
+
+## [ERR-20261114-001] CI's Rocky 8 test job could not pull its container image
+- **What happened:** on PR #438, `Rocky 8, Python 3.10, manylinux_2_28` (`wheels.yml`, step "Install and
+  test the wheel") failed after 10 s: `docker run` pulled `quay.io/rockylinux/rockylinux:8`, and the
+  pull broke ("short read: expected 76611732 bytes but got 35651585: unexpected EOF", exit 125). No
+  test ran. The same image passed in the Python 3.12 and 3.13 jobs of the same run; the PR's code was
+  not at fault.
+- **Rule/hook involved:** none at fault.
+- **Environment fix:** rerun the failed job once the run has ended (`gh run rerun <run> --failed`; a
+  job of a run in progress "cannot be rerun"). If it repeats, check quay.io's status before changing
+  any workflow.
+- **Date:** 2026-11-14
+
 ## [ERR-20261103-001] CI's macOS build got no hosted arm64 runner
 - **What happened:** on PR #407, `Build (macOS arm64)` (`wheels.yml`, `runs-on: macos-latest`) ended as
   cancelled after 15 minutes with no runner and no steps: "The job was not acquired by Runner of type

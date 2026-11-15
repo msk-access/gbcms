@@ -52,6 +52,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   takes 0.97 to 1.08 times its earlier wall time (CPU 0.97 to 1.05). Plan:
   `docs/harness/plans/435-context-read-test.md`.
 
+### Changed — speed: whole-program optimisation, libdeflate and the log cap (#335)
+
+- The release build is optimised as one program (`lto = "fat"`, `codegen-units = 1`), and htslib
+  reads BGZF blocks with libdeflate in place of zlib (the same bytes). For the length of a counting
+  call, a Rust `trace!` or `debug!` that no Python logger would pass is not built; outside a
+  counting call the logging is as before. No count changes: every output field of every row is
+  identical to develop's on the local regression sets (HG002, the IMPACT tier, ACCESS, WES, FORTE
+  RNA with the GTF on and off, a fill-out, mFSD with Parquet, the MNP rescue, `gbcms merge`, one row
+  per bin), and the `--verbose` logs of HG002, a fill-out and the FORTE RNA runs are the same line
+  for line (times and paths aside). On the production speed cells (IMPACT and ACCESS, 1 BAM x 1,000 to 20,000 rows and a 9-
+  or 10-BAM fill-out, whole nodes, 3 repeats), the default path takes 0.52 to 0.78 of its earlier CPU
+  time and the sequence judge 0.76 to 0.96; peak memory 0.95 to 1.09. On FORTE RNA with the GTF (1 BAM
+  x 1,000 to 20,000 rows and a 10-BAM fill-out) the default path takes 0.67 to 0.73. Example: IMPACT,
+  5,000 rows x 10 BAMs, the default path, 518 CPU seconds before and 270 after. Building a wheel from source takes
+  longer (about 4 minutes on an M-series Mac). Plan: `docs/harness/plans/335-exact-speedups.md`.
+
 ### Docs — read judgment: what gbcms takes from the aligner, and naming the reads it holds back (RJ-33, RJ-34)
 
 - Decided, no count change (operator 2026-11-11). RJ-33: the allele comes from the read's own
