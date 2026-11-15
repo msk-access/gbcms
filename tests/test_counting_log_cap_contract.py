@@ -10,6 +10,8 @@ call or outside one.
 - After a counting call the maximum is open again, so a level lowered later is followed by
   code outside counting with no reset of the cap.
 - Inside a counting call a child logger set more verbose than the root is followed.
+- A level lowered during a counting call is followed from the next `reset_log_caching()` on,
+  as without the cap (counting releases the GIL, so another thread can do it).
 """
 
 import logging
@@ -26,6 +28,7 @@ from gbcms import _rs
 DATA = Path(__file__).parent / "testdata"
 ENGINE_LOGGER = "_rs.counting.engine"
 NORMALIZE_LOGGER = "_rs.normalize.engine"
+TRACE = 5  # pyo3-log gives Rust's trace!() the Python level 5
 ARGS = (20, 20, True, True, True, False, False, False, 1)
 A = 200
 
@@ -94,8 +97,7 @@ def test_the_cap_ends_with_the_counting_call(tmp_path, caplog):
 
 def test_a_child_logger_more_verbose_than_the_root_is_followed(tmp_path, caplog):
     _, bam, ref_base, alt = _contig_and_snv(tmp_path)
-    logging.getLogger().setLevel(logging.WARNING)
-    with caplog.at_level(logging.DEBUG, logger=ENGINE_LOGGER):
+    with caplog.at_level(logging.WARNING), caplog.at_level(logging.DEBUG, logger=ENGINE_LOGGER):
         _rs.reset_log_caching()
         (c,) = count_bam_checked(bam, [_rs.Variant("1", A, ref_base, alt, "SNP")], [None], *ARGS)
     _invariants(c)
@@ -105,3 +107,39 @@ def test_a_child_logger_more_verbose_than_the_root_is_followed(tmp_path, caplog)
         and r.getMessage().startswith("Bin tid=")
         for r in caplog.records
     )
+
+
+def test_a_level_lowered_during_a_counting_call_is_followed_after_a_reset(tmp_path, caplog):
+    # Counting releases the GIL, so another thread can lower a level and call
+    # reset_log_caching() while a count runs. Here the engine's first INFO line of the call
+    # does it, from inside the call: the reads classified after it, in the same call, must log
+    # at TRACE. (count_bam_checked counts twice; each call starts with that INFO line.)
+    _, bam, ref_base, alt = _contig_and_snv(tmp_path)
+    engine = logging.getLogger(ENGINE_LOGGER)
+    seen = []
+    calls = [0]
+
+    class LowerToTraceOnStart(logging.Handler):
+        def emit(self, record):
+            if record.getMessage().startswith("count_bam_binned:"):
+                calls[0] += 1
+                if calls[0] == 1:
+                    engine.setLevel(TRACE)
+                    _rs.reset_log_caching()
+            seen.append((calls[0], record.levelno, record.getMessage()))
+
+    handler = LowerToTraceOnStart()
+    with caplog.at_level(logging.WARNING), caplog.at_level(logging.INFO, logger=ENGINE_LOGGER):
+        engine.addHandler(handler)
+        try:
+            _rs.reset_log_caching()
+            (c,) = count_bam_checked(
+                bam, [_rs.Variant("1", A, ref_base, alt, "SNP")], [None], *ARGS
+            )
+        finally:
+            engine.removeHandler(handler)
+    _rs.reset_log_caching()
+    _invariants(c)
+    assert c.ad == 3
+    assert calls[0] == 2
+    assert any(n == 1 and lv == TRACE and m.startswith("read call ") for n, lv, m in seen)

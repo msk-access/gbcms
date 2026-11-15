@@ -23,6 +23,9 @@ static LOG_RESET_HANDLE: std::sync::OnceLock<pyo3_log::ResetHandle> = std::sync:
 fn reset_log_caching() {
     if let Some(handle) = LOG_RESET_HANDLE.get() {
         handle.reset();
+        // A counting call in progress (it releases the GIL) may hold the maximum at the old
+        // levels (`CountingLogCap`); open it, so the new levels decide from now on.
+        log::set_max_level(log::LevelFilter::Trace);
     }
 }
 
@@ -64,7 +67,8 @@ fn level_filter_for(level: i64) -> log::LevelFilter {
 /// dropped: the cap is the most verbose level any logger asks for when the call starts, and a
 /// failure to read the levels leaves it open. On drop the maximum goes back to `Trace`, the
 /// filter installed with the module, so code outside a counting call logs as before; two
-/// calls at once can only open the cap early, never close it.
+/// calls at once can only open the cap early, never close it. `reset_log_caching` opens it at
+/// once, so a level lowered during a call (from another thread) is followed after the reset.
 pub(crate) struct CountingLogCap {
     active: bool,
 }
