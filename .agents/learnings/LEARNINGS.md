@@ -33,6 +33,20 @@ regenerating a section.
 
 ---
 
+## [LRN-20261115-002] rule-body | Greptile's state was reported from the app's PR status, unread
+- **Status:** resolved (rule promoted).
+- **Cause:** rule-body.
+- **Summary:**
+  - After opening PR #439 I told the operator "Greptile has not reviewed it yet". I had read only the
+    app's PR status (check counts, pending), which does not show the bot's summary or inline comments;
+    I did not read them with `gh`. Greptile's review (4 of 5, two valid findings) came minutes later.
+  - The operator (2026-11-15): "Did you read the greptile 4/5 root leak".
+  - The rule said when to read the review (before a PR is called ready or merged), not that its state
+    is never reported unread.
+- **Promotion target:** `.agents/rules/git-conventions.md` "Read the bot review as well as the checks" —
+  `DONE:` never report Greptile's state from memory or the app's PR status; read the summary and the
+  inline comments with `gh` first, and if none is posted yet, say so with the time you looked.
+
 ## [LRN-20261115-001] rule-body | a speed option was put up for dropping before the data type it targets was timed
 - **Status:** resolved (rule promoted).
 - **Cause:** rule-body.

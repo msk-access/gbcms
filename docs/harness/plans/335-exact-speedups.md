@@ -2,7 +2,7 @@
 
 Status: approved 2026-11-14 (operator: "Approve the page") · plan-first (`plan-first.md`); Stage 3 of the
 6.8.0 order (`420-cycle-order.md`) · base develop 1b11ffea (#438 merged)
-Rounds: 0 of 2 · New count conditions: 0 (speed changes add none) · Builds: 5 of 8 (`src_m1prof`, `src_s1`, `src_s1b`, `src_s4`, `src_s1c`) · HPC batches: 3 of 3 (M2, pf75 and pf76 done; pf76, RNA, added by the operator) · Reruns: 0 of 1
+Rounds: 0 of 2 · New count conditions: 0 (speed changes add none) · Builds: 6 of 8 (`src_m1prof`, `src_s1`, `src_s1b`, `src_s4`, `src_s1c`, `src_s1d`) · HPC batches: 3 of 3 (M2, pf75 and pf76 done; pf76, RNA, added by the operator) · Reruns: 0 of 1
 
 ## 1. The class
 
@@ -222,6 +222,13 @@ order of measured gain over effort (S1 and S4 first, then S2, S3, S5), each with
   the finished runs. One judge run (a truth set) finished just before the stop but has no time line in the
   arm's manifest (the line is written in job order, and the stop came first); its output has its DONE mark
   and was compared.
+- 2026-11-15, Greptile on the S1 PR (#439, 4 of 5): two valid findings, both fixed (build `s1d`). (1) Counting
+  releases the GIL, so another thread can lower a level and call `reset_log_caching()` during a count; the cap
+  held the old level until the call ended. The reset now opens the cap. A new test lowers the engine logger
+  to TRACE from inside the call and expects TRACE lines in the same call; it failed before the fix. (2) A test
+  set the root logger outside `caplog` and left it at WARNING for later tests; it now sits in its own
+  `caplog.at_level`. The log arms on `s1d`: 0 differences (the reset runs once, before any count, on the CLI
+  path). My slip: I reported the review as not posted without reading it (LRN-20261115-002).
 - 2026-11-15, S4's log arms: 0 differences too. They do not yet test S4's change: each RNA log run reads one
   BAM, so the GTF is read once in both builds. Before the S4 PR the gate gets an RNA fill-out log run (several
   BAMs, the GTF on), where S4 should show one GTF load, not one per BAM.
@@ -235,4 +242,4 @@ order of measured gain over effort (S1 and S4 first, then S2, S3, S5), each with
 - Research agents: inventory (Sonnet) 0.20 M tokens; code survey (Opus) 0.44 M; outside survey
   (Fable) 0.18 M; profiles (Sonnet) 0.16 M.
 - Build agents (Sonnet): M1 0.34 M; S1 and S1b 0.25 M; S4 0.26 M; the gate 0.23 M; pf76 staging 0.19 M. Review rounds 0;
-  builds 5 (with `s1c`); HPC batches 3 (M2, pf75, pf76); reruns 0.
+  builds 6 (with `s1c` and `s1d`); HPC batches 3 (M2, pf75, pf76); reruns 0.

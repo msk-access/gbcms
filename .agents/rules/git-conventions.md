@@ -88,7 +88,10 @@ review"). Before you call a PR ready or merge it, read Greptile's summary and ev
 (`gh api --paginate repos/msk-access/gbcms/pulls/<n>/comments`; the summary is an issue comment). Report each
 finding to the operator with your verdict: valid and fixed, valid and ticketed, or not valid and why.
 A finding left unread blocks the merge as a failing check does. (Two PRs, #392 and #396, were merged
-on green checks with a valid finding unread; #402 was called ready with a 0 of 5 review.)
+on green checks with a valid finding unread; #402 was called ready with a 0 of 5 review.) Never report
+Greptile's state from memory or from the app's PR status, which counts checks and does not show the
+bot's comments: read them with `gh` first, and if none is posted yet, say so with the time you looked
+(#439 was reported "not reviewed yet" unread; its 4 of 5 review had two valid findings).
 
 ## Shared checkout hazards
 
