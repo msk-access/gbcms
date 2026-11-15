@@ -422,6 +422,8 @@ fn count_bam_binned_core(
     warn_per_bam: bool,
     read_judge: &str,
 ) -> PyResult<(Vec<BaseCounts>, Vec<Observation>)> {
+    // For this call, a trace!() or debug!() the Python loggers would drop builds nothing.
+    let _log_cap = crate::CountingLogCap::new(py);
     let (window, max_variants) = bin_geometry(bin_window, bin_max_variants)?;
     // The decomposed and sibling lists run parallel to the variants: a shorter
     // one is padded (no twin, no siblings), a longer one is a caller error, never
