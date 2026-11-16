@@ -60,6 +60,7 @@ use super::alignment::{SW_GAP_EXTEND, SW_GAP_OPEN};
 use super::variant_checks::{check_snp, check_mnp, check_complex, check_insertion, check_deletion, splice_skip_triage, reconstruct_span, MnpResult};
 use bio::alignment::distance::levenshtein;
 use super::utils::{find_read_pos, ref_end, soft_clips, ClassifyResult, ClassifyPhase};
+use crate::shared::bam_utils::{lies_outside, outside, ReadCache, Reads};
 use super::mfsd;
 use super::rna;
 use super::window::{self, AlleleKind};
@@ -1109,9 +1110,11 @@ pub fn count_bam_binned_observations(
 //
 // Architecture:
 //   Phase 0: Single bam.fetch(bin.start..bin.end) → apply universal filters
-//            → store passing reads in Vec<Record> (the read cache)
-//   Phase 1: For each variant, iterate the cached reads and classify
-//            (allele check, fragment tracking, QC metrics)
+//            → store passing reads in the read cache (`ReadCache`: each read's
+//            CIGAR decoded once, and running bounds on the reads' starts and ends)
+//   Phase 1: For each variant, iterate the run of cached reads its window can
+//            meet and classify (allele check, fragment tracking, QC metrics);
+//            each rule walks the run for its own interval and keeps its own test
 //
 // The original C++ GBCMS used:
 //   my_bam_reader.SetRegion(block_start, block_end);
@@ -1258,6 +1261,10 @@ fn count_bin_shared(
         filter_counts.qc_failed, filter_counts.improper_pair, filter_counts.indel,
         filter_counts.no_bases, filter_counts.unmapped, filter_counts.no_quals, mapq_filtered,
     );
+    // Each record's CIGAR decoded once, and the bounds that give each rule the run of
+    // the cache its interval can meet: a rule walks that run, in cache order, and keeps
+    // its own test on every record of it.
+    let read_cache = ReadCache::new(read_cache);
 
     // ══════════════════════════════════════════════════════════════════════
     // PHASE 1: Per-variant classification from cached reads
@@ -1315,18 +1322,10 @@ fn count_bin_shared(
         // reads the counts read, at the qualities they read them, on first use.
         let tolerance_of = |v| {
             carrier::Tolerance::new(v, move |each: &mut dyn FnMut(&Record, &[u8])| {
-                let (v_start, v_end) = window::read_window(v);
                 let use_baq = baq_applies(apply_baq, boundary_distance(v, annotation));
                 let spare = if use_baq { baq_own_span(v) } else { None };
-                for record in cache.iter() {
-                    if record.pos() >= v_end
-                        || ref_end(record) <= v_start
-                        || !counted_read(record, v, mode, enforce_strandedness, strandedness, min_mapq)
-                    {
-                        continue;
-                    }
-                    each(record, &effective_quals(record, use_baq, spare));
-                }
+                let counted = |r: &Record| counted_read(r, v, mode, enforce_strandedness, strandedness, min_mapq);
+                tolerance_reads(cache, v, use_baq, spare, &counted, each);
             })
         };
         // Under the haplotype judge, the variant's haplotypes: from its window of the
@@ -1334,21 +1333,8 @@ fn count_bin_shared(
         // the guard finds them), on first use, for the main and per-transcript counts and
         // ASJD alike. The decomposed form has its own.
         let haplotypes_of = |v| {
-            judge::Haplotypes::new(v, move |rules: &carrier::ReadRules| {
-                let reference = far_reference?;
-                let (v_start, v_end) = window::read_window(v);
-                let use_baq = baq_applies(apply_baq, boundary_distance(v, annotation));
-                let spare = if use_baq { baq_own_span(v) } else { None };
-                let reads = cache
-                    .iter()
-                    .filter(|r| {
-                        r.pos() < v_end
-                            && ref_end(r) > v_start
-                            && counted_read(r, v, mode, enforce_strandedness, strandedness, min_mapq)
-                    })
-                    .map(|r| (r, effective_quals(r, use_baq, spare)));
-                let reads = judge::read_views(reads, min_baseq, rules);
-                judge::site_for(v, rules.guard.and_then(|g| g.get(v)), reference, &reads)
+            row_haplotypes(cache, v, far_reference, apply_baq, annotation, min_baseq, move |r: &Record| {
+                counted_read(r, v, mode, enforce_strandedness, strandedness, min_mapq)
             })
         };
         let judged = judge_of(variant) == judge::ReadJudge::Haplotype;
@@ -1499,6 +1485,63 @@ fn count_bin_shared(
     Ok((results, bin_observations, (no_bases_seen, no_quals_seen)))
 }
 
+/// The reads a row's tolerance is found from (`carrier::Tolerance`): of the run of `cache`
+/// meeting the row's read window, those inside the window that `counted` admits, each handed
+/// to `each` with the qualities the counts read it at (heuristic BAQ where `use_baq`, sparing
+/// `spare`), in cache order.
+fn tolerance_reads<R: Reads + ?Sized>(
+    cache: &R,
+    v: &Variant,
+    use_baq: bool,
+    spare: Option<(i64, i64)>,
+    counted: &dyn Fn(&Record) -> bool,
+    each: &mut dyn FnMut(&Record, &[u8]),
+) {
+    let (v_start, v_end) = window::read_window(v);
+    for record in cache.meeting(v_start, v_end) {
+        if lies_outside(record, (v_start, v_end)) || !counted(record) {
+            continue;
+        }
+        each(record, &effective_quals(record, use_baq, spare));
+    }
+}
+
+/// A row's haplotypes under the sequence judge (`judge::Haplotypes`), built on first use from
+/// the run of `cache` meeting the row's read window: the reads inside the window that
+/// `counted` admits, at the qualities the counts read them (heuristic BAQ where `apply_baq`
+/// applies at the row), read as the judge reads them, with the row's window of
+/// `far_reference` (no site without one). The calls on those reads take the views the site
+/// was built from.
+#[allow(clippy::too_many_arguments)]
+fn row_haplotypes<'a, R: Reads + ?Sized>(
+    cache: &'a R,
+    v: &'a Variant,
+    far_reference: Option<&'a crate::normalize::fasta::CachedFasta>,
+    apply_baq: bool,
+    annotation: &'a Option<std::sync::Arc<AnnotationIndex>>,
+    min_baseq: u8,
+    counted: impl Fn(&Record) -> bool + 'a,
+) -> judge::Haplotypes<'a> {
+    let (v_start, v_end) = window::read_window(v);
+    let run = cache.meeting(v_start, v_end);
+    judge::Haplotypes::with_views(v, run, move |rules: &carrier::ReadRules| {
+        let Some(reference) = far_reference else {
+            return (None, Vec::new());
+        };
+        let use_baq = baq_applies(apply_baq, boundary_distance(v, annotation));
+        let spare = if use_baq { baq_own_span(v) } else { None };
+        let reads = run
+            .iter()
+            .enumerate()
+            .filter(|(_, r)| !lies_outside(r, (v_start, v_end)) && counted(r))
+            .map(|(at, r)| (at, r, effective_quals(r, use_baq, spare)));
+        let (reads, from) = judge::site_views(reads, min_baseq, rules);
+        let site = judge::site_for(v, rules.guard.and_then(|g| g.get(v)), reference, &reads);
+        // the calls on these records take these views rather than read them again
+        (site, judge::kept_views(reads, from, min_baseq, rules))
+    })
+}
+
 
 /// Compute the mFSD fragment-size statistics for one variant and store them on
 /// `counts`: the four class counts, means, alt/ref LLR, the six pairwise KS triads
@@ -1598,8 +1641,8 @@ fn compute_mfsd_stats(
 /// Each call creates its own per-variant state (SW aligners, fragment map,
 /// dist vectors). The read cache is borrowed immutably — no cloning.
 #[allow(clippy::too_many_arguments)]
-fn count_variant_from_cache(
-    read_cache: &[Record],
+fn count_variant_from_cache<R: Reads + ?Sized>(
+    read_cache: &R,
     variant: &Variant,
     sibling_variants: &[Variant],
     min_mapq: u8,        // Used in Phase 1 for MAPQ skip after MQ0 tracking
@@ -1740,12 +1783,12 @@ fn count_variant_from_cache(
     // junction-compatible extraction and translated variant/sibling offsets.
     let mut reads_considered = 0u32;
 
-    for record in read_cache {
+    for record in read_cache.meeting(v_start, v_end) {
         // ── Read window filter: the bin's cache holds the reads of every member's
         // read window; each variant sees only the cached reads that overlap its own.
         let r_start = record.pos();
         let r_end = ref_end(record);
-        if r_start >= v_end || r_end <= v_start {
+        if outside(r_start, r_end, (v_start, v_end)) {
             continue; // Read doesn't overlap the variant's read window
         }
 
@@ -2734,7 +2777,7 @@ fn warn_sw_fallback(variant: &Variant, n: u32) {
 /// The exon edges near a variant: the annotated intron boundaries and the junctions
 /// the reads over its window splice at (an unannotated junction the data show is an
 /// edge too), as exon starts (intron ends) and exon ends (intron first bases).
-fn clip_edges(variant: &Variant, read_cache: &[Record], annotation: &Option<std::sync::Arc<AnnotationIndex>>) -> (Vec<i64>, Vec<i64>) {
+fn clip_edges<R: Reads + ?Sized>(variant: &Variant, read_cache: &R, annotation: &Option<std::sync::Arc<AnnotationIndex>>) -> (Vec<i64>, Vec<i64>) {
     // Annotated boundaries this far from the read window cannot meet a clip.
     const REACH: i64 = 1000;
     let (v_start, v_end) = window::read_window(variant);
@@ -2742,8 +2785,8 @@ fn clip_edges(variant: &Variant, read_cache: &[Record], annotation: &Option<std:
     let (mut starts, mut ends) = annotation.as_ref().map_or_else(Default::default, |a| {
         (a.exon_starts_in(&chrom, v_start - REACH, v_end + REACH), a.exon_ends_in(&chrom, v_start - REACH, v_end + REACH))
     });
-    for record in read_cache {
-        if record.pos() >= v_end || ref_end(record) <= v_start {
+    for record in read_cache.meeting(v_start, v_end) {
+        if lies_outside(record, (v_start, v_end)) {
             continue;
         }
         for (n0, n1) in rna::extract_splice_junctions(record) {
@@ -3257,8 +3300,8 @@ fn read_name(record: &Record) -> std::borrow::Cow<'_, str> {
 /// `use_baq`: whether heuristic BAQ applies at this variant, as resolved by
 /// `baq_applies` (the main counts' rule).
 #[allow(clippy::too_many_arguments)]
-fn count_per_transcript(
-    read_cache: &[Record],
+fn count_per_transcript<R: Reads + ?Sized>(
+    read_cache: &R,
     variant: &Variant,
     sibling_variants: &[Variant],
     annotation: &AnnotationIndex,
@@ -3316,11 +3359,11 @@ fn count_per_transcript(
         let mut alt_aligner = Aligner::new(SW_GAP_OPEN, SW_GAP_EXTEND, &sw_score);
         let mut ref_aligner = Aligner::new(SW_GAP_OPEN, SW_GAP_EXTEND, &sw_score);
 
-        for record in read_cache {
+        for record in read_cache.meeting(v_start, v_end) {
             // ── Overlap check: does this read overlap the variant window?
             let r_start = record.pos();
             let r_end = ref_end(record);
-            if r_start >= v_end || r_end <= v_start {
+            if outside(r_start, r_end, (v_start, v_end)) {
                 continue;
             }
 
@@ -3891,8 +3934,8 @@ fn motif_label(donor: [u8; 2], acceptor: [u8; 2]) -> String {
 /// - `use_baq`: whether heuristic BAQ applies at this variant, as resolved by
 ///   `baq_applies` (the main counts' rule)
 #[allow(clippy::too_many_arguments)]
-fn detect_asjd(
-    read_cache: &[Record],
+fn detect_asjd<R: Reads + ?Sized>(
+    read_cache: &R,
     variant: &Variant,
     sibling_variants: &[Variant],
     annotation: &AnnotationIndex,
@@ -3939,10 +3982,10 @@ fn detect_asjd(
     let mut alt_frags: std::collections::HashSet<u64> = std::collections::HashSet::new();
     let var_span = (variant.pos, variant.pos + variant.ref_allele.len() as i64);
 
-    for record in read_cache {
+    for record in read_cache.meeting(v_start, v_end) {
         let r_start = record.pos();
         let r_end = ref_end(record);
-        if r_start >= v_end || r_end <= v_start {
+        if outside(r_start, r_end, (v_start, v_end)) {
             continue;
         }
 
@@ -5728,5 +5771,447 @@ mod tests {
              Got is_ref={}, is_alt={}, has_nearby_evidence={}",
             result.is_ref, result.is_alt, result.has_nearby_evidence
         );
+    }
+
+    use crate::shared::bam_utils::oracle::{admitted, allele_reads, cluster, reference, Lcg};
+
+    #[test]
+    fn each_read_window_walk_admits_in_its_run_what_it_admits_in_the_whole_cache() {
+        // The row loop, the tolerance scan, the judge's site, the RNA clip edges, the
+        // per-transcript counts and ASJD each admit a read whose span meets the row's read
+        // window: the row loop, the per-transcript counts and ASJD by `outside` on the read's
+        // start and end, the others by `lies_outside` (the predicates they call). On random
+        // clusters of clipped reads in both orders and random rows of every length and repeat
+        // span: what they admit from the run is what they admit from the whole cache, index
+        // for index, and nothing outside it.
+        let mut rng = Lcg::new(0x5eed_0401);
+        let mut admitted_total = 0;
+        for trial in 0..300 {
+            let n = rng.below(150) as usize;
+            let cache = ReadCache::new(cluster(&mut rng, n, 4_000, trial % 2 == 1));
+            for _ in 0..10 {
+                let ref_len = if rng.chance(1, 3) { 1 + rng.below(300) as usize } else { 1 };
+                let mut v = build_variant(rng.below(4_200) as i64, &"A".repeat(ref_len), "A");
+                v.repeat_span = rng.below(40) as usize;
+                let w = window::read_window(&v);
+                let by_ends = |record: &Record| !outside(record.pos(), ref_end(record), w);
+                let by_record = |record: &Record| !lies_outside(record, w);
+                for overlaps in [&by_ends as &dyn Fn(&Record) -> bool, &by_record] {
+                    let (in_run, whole, out) = admitted(&cache, w, overlaps);
+                    assert_eq!((in_run, out.len()), (whole.clone(), 0), "window {w:?}");
+                    admitted_total += whole.len();
+                }
+            }
+        }
+        assert!(admitted_total > 1_000, "{admitted_total}");
+    }
+
+    #[test]
+    fn a_rows_counts_from_its_run_are_its_counts_from_the_whole_cache() {
+        // SNVs, MNPs, insertions, deletions and delins with reads of both alleles written as
+        // an aligner writes them, mates, errors, MAPQ 0 and reads of random shape, in file
+        // order and shuffled; with and without BAQ and mFSD: every count and observation from
+        // the row's run is the one from the whole cache.
+        let mut rng = Lcg::new(0x5eed_0402);
+        let mut alt_rows = 0;
+        for trial in 0..300 {
+            let ctx = reference(&mut rng, 600);
+            let r_len = 1 + rng.below(6) as usize;
+            let r = ctx[300..300 + r_len].to_vec();
+            let a: Vec<u8> = match rng.below(4) {
+                0 => r.iter().map(|&b| if b == b'A' { b'C' } else { b'A' }).collect(),
+                1 => [&r[..1], &(0..1 + rng.below(8)).map(|_| b"ACGT"[rng.below(4) as usize]).collect::<Vec<u8>>()[..]].concat(),
+                2 if r_len > 1 => r[..1].to_vec(),
+                _ => (0..1 + rng.below(5)).map(|_| b"ACGT"[rng.below(4) as usize]).collect(),
+            };
+            let a = if a == r { [&r[..], b"T"].concat() } else { a };
+            let mut v = build_variant(300, std::str::from_utf8(&r).unwrap(), std::str::from_utf8(&a).unwrap());
+            v.event_ref = Some((0, String::from_utf8(ctx.clone()).unwrap()));
+            v.repeat_span = rng.below(10) as usize;
+            let n = 30 + rng.below(170) as usize;
+            let mut reads = allele_reads(&mut rng, &ctx, 300, &r, &a, n);
+            if trial % 2 == 1 {
+                for i in (1..reads.len()).rev() {
+                    reads.swap(i, rng.below(i as u64 + 1) as usize);
+                }
+            }
+            let cache = ReadCache::new(reads.clone());
+            let (apply_baq, mfsd) = (rng.chance(1, 2), rng.chance(1, 2));
+            // (observations come out in the order of a per-call hash map: compared sorted)
+            let count = |cache: &dyn Fn() -> Result<(BaseCounts, Vec<Observation>)>| {
+                let (counts, mut obs) = cache().expect("counts");
+                obs.sort_by_key(|o| (o.molecule_hash, o.allele, o.best_qual, o.min_mapq));
+                (format!("{counts:?}"), format!("{obs:?}"), counts.ad)
+            };
+            let whole = count(&|| {
+                count_variant_from_cache(
+                    &reads, &v, &[], 1, 20, false, false, 10, &AlignmentBackend::SmithWaterman, apply_baq, None,
+                    "dna", false, rna::Strandedness::Unstranded, mfsd, &None, &None, false, true, 0, &carrier::ReadRules::DNA,
+                )
+            });
+            let from_run = count(&|| {
+                count_variant_from_cache(
+                    &cache, &v, &[], 1, 20, false, false, 10, &AlignmentBackend::SmithWaterman, apply_baq, None,
+                    "dna", false, rna::Strandedness::Unstranded, mfsd, &None, &None, false, true, 0, &carrier::ReadRules::DNA,
+                )
+            });
+            assert_eq!(from_run, whole, "{v:?}");
+            alt_rows += usize::from(whole.2 > 0);
+        }
+        assert!(alt_rows > 100, "{alt_rows} rows with ALT reads");
+    }
+
+    #[test]
+    fn a_record_the_cache_cannot_decode_stops_a_rows_counts_where_the_whole_walk_stops() {
+        // The rows above with some CIGARs holding an op code past 8: over the cache a row's
+        // counts and observations are the same where the whole walk gives them, and stop with
+        // the same message where it stops.
+        use crate::shared::bam_utils::oracle::{agree, both_walks, unknown_op};
+        let mut rng = Lcg::new(0x5eed_0403);
+        let (mut stopped, mut finished) = (0, 0);
+        for trial in 0..300 {
+            let ctx = reference(&mut rng, 600);
+            let r = ctx[300..301 + rng.below(5) as usize].to_vec();
+            let mut a: Vec<u8> = vec![r[0]];
+            a.extend((0..rng.below(6)).map(|_| b"ACGT"[rng.below(4) as usize]));
+            if a == r {
+                a.push(b'T');
+            }
+            let mut v = build_variant(300, std::str::from_utf8(&r).unwrap(), std::str::from_utf8(&a).unwrap());
+            v.event_ref = Some((0, String::from_utf8(ctx.clone()).unwrap()));
+            let n = 30 + rng.below(170) as usize;
+            let mut reads = allele_reads(&mut rng, &ctx, 300, &r, &a, n);
+            for rec in reads.iter_mut() {
+                if rng.chance(1, 80) {
+                    unknown_op(&mut rng, rec);
+                }
+            }
+            if trial % 2 == 1 {
+                for i in (1..reads.len()).rev() {
+                    reads.swap(i, rng.below(i as u64 + 1) as usize);
+                }
+            }
+            let cache = ReadCache::new(reads.clone());
+            let walks = both_walks(&reads, &cache, |reads, _| {
+                let (counts, mut obs) = count_variant_from_cache(
+                    reads, &v, &[], 1, 20, false, false, 10, &AlignmentBackend::SmithWaterman, false, None,
+                    "dna", false, rna::Strandedness::Unstranded, true, &None, &None, false, true, 0, &carrier::ReadRules::DNA,
+                )
+                .expect("counts");
+                obs.sort_by_key(|o| (o.molecule_hash, o.allele, o.best_qual, o.min_mapq));
+                (format!("{counts:?}"), format!("{obs:?}"))
+            });
+            if agree(walks) {
+                stopped += 1;
+            } else {
+                finished += 1;
+            }
+        }
+        assert!(stopped > 50 && finished > 50, "{stopped} stopped, {finished} finished");
+    }
+
+    use crate::shared::bam_utils::oracle::tiled_reads;
+
+    /// A row of every kind at `at` on `ctx` (an SNV, an MNP, an insertion, a deletion or a
+    /// delins), with `event_ref` the whole of `ctx`.
+    fn random_row_at(rng: &mut Lcg, ctx: &[u8], at: usize) -> (Variant, Vec<u8>, Vec<u8>) {
+        let r_len = 1 + rng.below(6) as usize;
+        let r = ctx[at..at + r_len].to_vec();
+        let a: Vec<u8> = match rng.below(4) {
+            0 => r.iter().map(|&b| if b == b'A' { b'C' } else { b'A' }).collect(),
+            1 => [&r[..1], &(0..1 + rng.below(8)).map(|_| b"ACGT"[rng.below(4) as usize]).collect::<Vec<u8>>()[..]].concat(),
+            2 if r_len > 1 => r[..1].to_vec(),
+            _ => (0..1 + rng.below(5)).map(|_| b"ACGT"[rng.below(4) as usize]).collect(),
+        };
+        let a = if a == r { [&r[..], b"T"].concat() } else { a };
+        let mut v = build_variant(at as i64, std::str::from_utf8(&r).unwrap(), std::str::from_utf8(&a).unwrap());
+        v.event_ref = Some((0, String::from_utf8(ctx.to_vec()).unwrap()));
+        v.repeat_span = rng.below(10) as usize;
+        (v, r, a)
+    }
+
+    /// Reads of one length tiled across `ctx` in order (see `tiled_reads`), for the change of
+    /// `r` to `a` at `at`: a run of such a cache holds about only the reads meeting its
+    /// interval, so an interval one base too narrow loses reads a rule reads.
+    fn tight(rng: &mut Lcg, ctx: &[u8], at: usize, r: &[u8], a: &[u8]) -> Vec<Record> {
+        let (len, step) = (30 + rng.below(90) as usize, 1 + rng.below(3) as usize);
+        tiled_reads(rng, ctx, at, r, a, len, step)
+    }
+
+    /// A row's counts and observations (sorted: they come out in a per-call hash map's order).
+    fn counted_row<R: Reads + ?Sized>(reads: &R, v: &Variant, apply_baq: bool, mfsd: bool, rules: &carrier::ReadRules) -> (String, String) {
+        let (counts, mut obs) = count_variant_from_cache(
+            reads, v, &[], 1, 20, false, false, 10, &AlignmentBackend::SmithWaterman, apply_baq, None,
+            "dna", false, rna::Strandedness::Unstranded, mfsd, &None, &None, false, true, 0, rules,
+        )
+        .expect("counts");
+        obs.sort_by_key(|o| (o.molecule_hash, o.allele, o.best_qual, o.min_mapq));
+        (format!("{counts:?}"), format!("{obs:?}"))
+    }
+
+    #[test]
+    fn a_rows_counts_from_a_tight_run_are_its_counts_from_the_whole_cache() {
+        // Rows of every kind over reads of one length tiled in order across the reference
+        // (reads ending one base into the read window and starting one base before its end, a
+        // MAPQ 0 read among them now and then): every count and observation from the row's run,
+        // which is shorter than the cache, is the one from the whole cache.
+        let mut rng = Lcg::new(0x5eed_0404);
+        for _ in 0..150 {
+            let ctx = reference(&mut rng, 800);
+            let (v, r, a) = random_row_at(&mut rng, &ctx, 400);
+            let reads = tight(&mut rng, &ctx, 400, &r, &a);
+            let cache = ReadCache::new(reads.clone());
+            let w = window::read_window(&v);
+            assert!(cache.meeting(w.0, w.1).len() < reads.len(), "a run shorter than the cache");
+            let (apply_baq, mfsd) = (rng.chance(1, 2), rng.chance(1, 2));
+            let rules = carrier::ReadRules::DNA;
+            assert_eq!(counted_row(&cache, &v, apply_baq, mfsd, &rules), counted_row(&reads, &v, apply_baq, mfsd, &rules), "{v:?}");
+        }
+    }
+
+    #[test]
+    fn the_tolerance_scan_reads_from_its_run_what_it_reads_from_the_whole_cache() {
+        // Random clusters of both alleles' reads (file order and shuffled) and tight tiled
+        // ones, BAQ on and off: the reads handed on, in order, with their qualities, are the
+        // same from the row's run as from the whole cache.
+        let mut rng = Lcg::new(0x5eed_0405);
+        let mut handed = 0;
+        for trial in 0..300 {
+            let ctx = reference(&mut rng, 800);
+            let (v, r, a) = random_row_at(&mut rng, &ctx, 400);
+            let mut reads = if trial % 2 == 0 {
+                tight(&mut rng, &ctx, 400, &r, &a)
+            } else {
+                let n = 30 + rng.below(170) as usize;
+                allele_reads(&mut rng, &ctx, 400, &r, &a, n)
+            };
+            if trial % 4 == 3 {
+                for i in (1..reads.len()).rev() {
+                    reads.swap(i, rng.below(i as u64 + 1) as usize);
+                }
+            }
+            let cache = ReadCache::new(reads.clone());
+            let use_baq = rng.chance(1, 2);
+            let spare = if use_baq { baq_own_span(&v) } else { None };
+            let counted = |r: &Record| r.mapq() > 0;
+            let walk = |reads: &dyn Reads| {
+                let mut seen = Vec::new();
+                tolerance_reads(reads, &v, use_baq, spare, &counted, &mut |r: &Record, q: &[u8]| {
+                    seen.push((r.pos(), r.qname().to_vec(), r.cigar().to_string(), q.to_vec()));
+                });
+                seen
+            };
+            let whole = walk(&reads);
+            assert_eq!(walk(&cache), whole, "{v:?}");
+            handed += whole.len();
+        }
+        assert!(handed > 5_000, "{handed}");
+    }
+
+    /// `text` (a value's debug form) with the entries of each flat map in it sorted: a hash map
+    /// prints its entries in an order of its own (the site's `tally`), so two equal maps print
+    /// alike only with their entries sorted.
+    fn maps_sorted(text: &str) -> String {
+        let mut out = String::new();
+        let mut rest = text;
+        while let Some(i) = rest.find(": {") {
+            out.push_str(&rest[..i + 3]);
+            rest = &rest[i + 3..];
+            let Some(end) = rest.find('}') else { break };
+            let body = &rest[..end];
+            if body.contains('{') {
+                continue;
+            }
+            let (mut entries, mut depth, mut from) = (Vec::new(), 0i32, 0usize);
+            for (k, c) in body.char_indices() {
+                match c {
+                    '(' | '[' => depth += 1,
+                    ')' | ']' => depth -= 1,
+                    ',' if depth == 0 => {
+                        entries.push(body[from..k].trim());
+                        from = k + 1;
+                    }
+                    _ => {}
+                }
+            }
+            entries.push(body[from..].trim());
+            entries.sort_unstable();
+            out.push_str(&entries.join(", "));
+            rest = &rest[end..];
+        }
+        out.push_str(rest);
+        out
+    }
+
+    /// A FASTA of `seq` as contig `1`, with its index, in the temporary folder.
+    fn temp_fasta(tag: &str, seq: &[u8]) -> std::path::PathBuf {
+        let path = std::env::temp_dir().join(format!("gbcms-oracle-{tag}-{}.fa", std::process::id()));
+        std::fs::write(&path, [&b">1\n"[..], seq, b"\n"].concat()).unwrap();
+        std::fs::write(path.with_extension("fa.fai"), format!("1\t{}\t3\t{}\t{}\n", seq.len(), seq.len(), seq.len() + 1)).unwrap();
+        path
+    }
+
+    #[test]
+    fn a_judged_rows_site_views_and_counts_from_its_run_are_those_from_the_whole_cache() {
+        // Under the sequence judge, rows of every kind over random and tight tiled reads: the
+        // site built from the run (its haplotypes, kept views and the calls that take them)
+        // is the site built from the whole cache, and so are every count and observation.
+        let mut rng = Lcg::new(0x5eed_0406);
+        let mut sites = 0;
+        for trial in 0..40 {
+            let ctx = reference(&mut rng, 900);
+            let (v, r, a) = random_row_at(&mut rng, &ctx, 450);
+            let path = temp_fasta(&format!("judge{trial}"), &ctx);
+            let fasta = crate::normalize::fasta::CachedFasta::open(path.to_str().unwrap()).expect("the FASTA");
+            let reads = if trial % 2 == 0 {
+                let (len, step) = (40 + rng.below(80) as usize, 2 + rng.below(3) as usize);
+                tiled_reads(&mut rng, &ctx, 450, &r, &a, len, step)
+            } else {
+                let n = 30 + rng.below(90) as usize;
+                allele_reads(&mut rng, &ctx, 450, &r, &a, n)
+            };
+            let cache = ReadCache::new(reads.clone());
+            let apply_baq = rng.chance(1, 2);
+            let judged = |reads: &dyn Reads| {
+                let counted = |r: &Record| !(r.is_secondary() || r.is_supplementary()) && r.mapq() >= 1;
+                let haps = row_haplotypes(reads, &v, Some(&fasta), apply_baq, &None, 20, counted);
+                let rules = carrier::ReadRules { judge: judge::ReadJudge::Haplotype, haplotypes: Some(&haps), ..carrier::ReadRules::DNA };
+                let site = haps.get(&v, &rules).map(|s| maps_sorted(&format!("{s:?}")));
+                (site, counted_row(reads, &v, apply_baq, false, &rules))
+            };
+            let whole = judged(&reads);
+            assert_eq!(judged(&cache), whole, "{v:?}");
+            sites += usize::from(whole.0.is_some());
+            std::fs::remove_file(&path).ok();
+            std::fs::remove_file(path.with_extension("fa.fai")).ok();
+        }
+        assert!(sites > 30, "{sites} sites");
+    }
+
+    /// Reads of a transcript's spliced bases (`exons`, 0-based `[start, end)` on `ctx`, in
+    /// order), each written back on the genome with an N at each junction it crosses: `alt` at
+    /// genome position `at` on about half, and on some of those the first exon ending 5 bases
+    /// early (another junction); one every `step` bases of the transcript, of `len` bases, in
+    /// order of their start, or `n` at random starts where `step` is 0; a few intron reads.
+    fn spliced_reads(rng: &mut Lcg, ctx: &[u8], exons: &[(usize, usize)], (at, alt): (usize, u8), len: usize, step: usize, n: usize) -> Vec<Record> {
+        let mut out = Vec::new();
+        let starts: Vec<usize> = if step > 0 { (0..2_000).step_by(step).collect() } else { (0..n).map(|_| rng.below(2_000) as usize).collect() };
+        for (i, m0) in starts.into_iter().enumerate() {
+            let carries = rng.chance(1, 2);
+            let mut ex = exons.to_vec();
+            if carries && rng.chance(1, 3) {
+                ex[0].1 -= 5;
+            }
+            // the transcript's bases, each with its genome position
+            let bases: Vec<(usize, u8)> =
+                ex.iter().flat_map(|&(s, e)| (s..e).map(|g| (g, if carries && g == at { alt } else { ctx[g] }))).collect();
+            if m0 + len > bases.len() {
+                continue;
+            }
+            let piece = &bases[m0..m0 + len];
+            let mut ops: Vec<Cigar> = Vec::new();
+            for w in piece.windows(2) {
+                match ops.last_mut() {
+                    Some(Cigar::Match(k)) => *k += 1,
+                    _ => ops.push(Cigar::Match(1)),
+                }
+                if w[1].0 != w[0].0 + 1 {
+                    ops.push(Cigar::RefSkip((w[1].0 - w[0].0 - 1) as u32));
+                }
+            }
+            match ops.last_mut() {
+                Some(Cigar::Match(k)) => *k += 1,
+                _ => ops.push(Cigar::Match(1)),
+            }
+            let seq: Vec<u8> = piece.iter().map(|&(_, b)| if rng.chance(1, 100) { b"ACGT"[rng.below(4) as usize] } else { b }).collect();
+            let mut rec = Record::new();
+            let quals: Vec<u8> = (0..len).map(|_| 25 + rng.below(15) as u8).collect();
+            rec.set(format!("s{i}").as_bytes(), Some(&CigarString(ops)), &seq, &quals);
+            rec.set_pos(piece[0].0 as i64);
+            rec.set_tid(0);
+            rec.set_mapq(if rng.chance(1, 20) { 0 } else { 60 });
+            rec.set_flags(if rng.chance(1, 2) { 0x10 } else { 0 });
+            out.push(rec);
+        }
+        // a few reads of the intron after the first exon, and reads of random shape
+        for i in 0..3 + rng.below(6) as usize {
+            let s = exons[0].1 - 10 + rng.below(30) as usize;
+            let mut rec = Record::new();
+            rec.set(format!("i{i}").as_bytes(), Some(&CigarString(vec![Cigar::Match(len as u32)])), &ctx[s..s + len], &vec![30; len]);
+            rec.set_pos(s as i64);
+            rec.set_mapq(60);
+            out.push(rec);
+        }
+        out.sort_by_key(Record::pos);
+        out
+    }
+
+    #[test]
+    fn rna_clip_edges_per_transcript_counts_and_asjd_from_the_run_are_those_from_the_whole_cache() {
+        // A three-exon transcript, an SNV in its middle exon, spliced reads of both alleles
+        // (the ALT also on another junction), tiled in order or at random starts: the clip
+        // edges (with and without the annotation), the per-transcript counts and ASJD from the
+        // row's run are those from the whole cache, and the tiled runs are shorter than it.
+        let mut rng = Lcg::new(0x5eed_0407);
+        let exons = [(100usize, 250usize), (400, 550), (700, 850)];
+        let path = std::env::temp_dir().join(format!("gbcms-oracle-rna-{}.gtf", std::process::id()));
+        let text: String = exons
+            .iter()
+            .map(|(s, e)| format!("1\tTEST\texon\t{}\t{}\t.\t+\t.\tgene_id \"G1\"; transcript_id \"T1\";\n", s + 1, e))
+            .collect();
+        std::fs::write(&path, text).unwrap();
+        let chroms: HashSet<String> = ["1".to_string()].into_iter().collect();
+        let (annot, _) = crate::annotation::parse_gtf_shared(path.to_str().unwrap(), &chroms).expect("the GTF");
+        std::fs::remove_file(&path).ok();
+        let annotation = Some(annot.clone());
+        let (mut counted_tx, mut edges_seen) = (0, 0);
+        for trial in 0..120 {
+            let ctx = reference(&mut rng, 1_000);
+            let at = 405 + rng.below(140) as usize;
+            let alt = if ctx[at] == b'A' { b'G' } else { b'A' };
+            let mut v = build_variant(at as i64, std::str::from_utf8(&ctx[at..at + 1]).unwrap(), std::str::from_utf8(&[alt]).unwrap());
+            v.event_ref = Some((0, String::from_utf8(ctx.clone()).unwrap()));
+            let len = 40 + rng.below(80) as usize;
+            let tiled = trial % 2 == 0;
+            let reads = if tiled {
+                let step = 1 + rng.below(3) as usize;
+                spliced_reads(&mut rng, &ctx, &exons, (at, alt), len, step, 0)
+            } else {
+                let n = 50 + rng.below(200) as usize;
+                spliced_reads(&mut rng, &ctx, &exons, (at, alt), len, 0, n)
+            };
+            let cache = ReadCache::new(reads.clone());
+            if tiled {
+                let w = window::read_window(&v);
+                assert!(cache.meeting(w.0, w.1).len() < reads.len(), "a run shorter than the cache");
+            }
+            for annotation in [&None, &annotation] {
+                let whole = clip_edges(&v, &reads, annotation);
+                assert_eq!(clip_edges(&v, &cache, annotation), whole);
+                edges_seen += usize::from(!whole.0.is_empty());
+            }
+            let rules = carrier::ReadRules::DNA;
+            let use_baq = rng.chance(1, 2);
+            let per_transcript = |reads: &dyn Reads| {
+                count_per_transcript(
+                    reads, &v, &[], &annot, 1, 20, 10, &AlignmentBackend::SmithWaterman, use_baq, None, false,
+                    rna::Strandedness::Unstranded, false, &rules,
+                )
+            };
+            let whole = per_transcript(&reads);
+            assert_eq!(per_transcript(&cache), whole, "{v:?}");
+            counted_tx += usize::from(!whole.0.is_empty());
+            let asjd = |reads: &dyn Reads| {
+                format!(
+                    "{:?}",
+                    detect_asjd(
+                        reads, &v, &[], &annot, 1, 20, &AlignmentBackend::SmithWaterman, use_baq, false,
+                        rna::Strandedness::Unstranded, &mut None, &rules,
+                    )
+                )
+            };
+            assert_eq!(asjd(&cache), asjd(&reads), "{v:?}");
+        }
+        assert!(counted_tx > 100 && edges_seen > 100, "{counted_tx} rows counted per transcript, {edges_seen} with edges");
     }
 }

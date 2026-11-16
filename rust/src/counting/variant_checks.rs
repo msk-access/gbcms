@@ -30,6 +30,7 @@ use bio::alignment::pairwise::Aligner;
 use log::trace;
 
 use crate::normalize::repeat::find_tandem_repeat;
+use crate::shared::bam_utils::cigar_of;
 use crate::types::Variant;
 use super::alignment::{classify_by_alignment, extract_raw_read_window, is_worth_realignment};
 use super::pairhmm::{classify_by_marginalized_pairhmm, ConfigurableGapParams};
@@ -225,7 +226,7 @@ struct SpanObservation {
 fn observe_read_span(record: &Record, start: i64, end: i64) -> SpanObservation {
     let mut obs = SpanObservation { aligned: false, deleted: false, skipped: false };
     let mut ref_pos = record.pos();
-    for op in record.cigar().iter() {
+    for op in cigar_of(record).iter() {
         // Zero-length ops (BAM-representable) have an empty reference
         // interval [x, x), which would still pass the half-open overlap test
         // at interior points — they observe nothing and must not set flags.
@@ -347,7 +348,7 @@ pub fn splice_skip_triage(record: &Record, variant: &Variant) -> Option<Classify
 /// in classification.
 fn has_indel_in_window(record: &Record, wstart: i64, wend: i64) -> bool {
     let mut ref_pos = record.pos();
-    for op in record.cigar().iter() {
+    for op in cigar_of(record).iter() {
         match op {
             Cigar::Match(len) | Cigar::Equal(len) | Cigar::Diff(len) | Cigar::RefSkip(len) => {
                 ref_pos += *len as i64;
@@ -656,7 +657,7 @@ pub(crate) fn reconstruct_span(
     start_pos: i64,
     end_pos: i64,
 ) -> SpanRecon {
-    let cigar = record.cigar();
+    let cigar = cigar_of(record);
     let mut ref_pos = record.pos();
     let mut read_pos: usize = 0;
     let seq = record.seq();
@@ -1171,7 +1172,7 @@ pub fn check_complex<F: Fn(u8, u8) -> i32>(
                 let anchor_pos = variant.pos;
                 let mut rpos = record.pos();
                 let mut anchor_qual: Option<u8> = None;
-                'cigar_walk: for op in record.cigar().iter() {
+                'cigar_walk: for op in cigar_of(record).iter() {
                     match op {
                         rust_htslib::bam::record::Cigar::Match(len)
                         | rust_htslib::bam::record::Cigar::Equal(len)
@@ -1827,7 +1828,7 @@ pub fn check_insertion<F: Fn(u8, u8) -> i32>(
     if let Some(alt) = alt_across_ops(record, variant, quals, min_baseq, "insertion") {
         return alt;
     }
-    let cigar_view = record.cigar();
+    let cigar_view = cigar_of(record);
     // NOTE: quals is passed from the caller — either raw record.qual() or BAQ-adjusted.
     let mut ref_pos = record.pos();
     let mut read_pos: usize = 0;
@@ -2221,7 +2222,7 @@ fn resolve_walk<F: Fn(u8, u8) -> i32>(
 fn only_n_in(record: &Record, (lo, hi): (i64, i64)) -> bool {
     let seq = record.seq();
     let (mut rp, mut qp, mut aligned) = (record.pos(), 0usize, false);
-    for op in record.cigar().iter() {
+    for op in cigar_of(record).iter() {
         match op {
             Cigar::Match(n) | Cigar::Equal(n) | Cigar::Diff(n) => {
                 for g in rp.max(lo)..(rp + *n as i64).min(hi) {
@@ -2252,7 +2253,7 @@ fn only_n_in(record: &Record, (lo, hi): (i64, i64)) -> bool {
 fn alt_across_ops(record: &Record, variant: &Variant, quals: &[u8], min_baseq: u8, kind: &str) -> Option<ClassifyResult> {
     let (lo, hi) = window::discrimination_window(variant);
     let (mut rp, mut qp, mut ops, mut first_q) = (record.pos(), 0usize, 0usize, None);
-    for op in record.cigar().iter() {
+    for op in cigar_of(record).iter() {
         match op {
             Cigar::Match(n) | Cigar::Equal(n) | Cigar::Diff(n) => {
                 rp += *n as i64;
@@ -2293,7 +2294,7 @@ fn alt_across_ops(record: &Record, variant: &Variant, quals: &[u8], min_baseq: u
 /// read covers it.
 pub(crate) fn deleted_anchor_query(record: &Record, anchor: i64) -> Option<usize> {
     let (mut rp, mut qp) = (record.pos(), 0usize);
-    for op in record.cigar().iter() {
+    for op in cigar_of(record).iter() {
         match op {
             Cigar::Match(n) | Cigar::Equal(n) | Cigar::Diff(n) => {
                 rp += *n as i64;
@@ -2322,7 +2323,7 @@ pub(crate) fn deleted_anchor_query(record: &Record, anchor: i64) -> Option<usize
 fn other_indel_in_window(record: &Record, (lo, hi): (i64, i64), at: i64, own_is_ins: bool) -> bool {
     let is_own = |is_ins: bool, pos: i64| is_ins == own_is_ins && pos == at;
     let mut rp = record.pos();
-    for op in record.cigar().iter() {
+    for op in cigar_of(record).iter() {
         match op {
             Cigar::Match(n) | Cigar::Equal(n) | Cigar::Diff(n) | Cigar::RefSkip(n) => rp += *n as i64,
             Cigar::Ins(_) => {
@@ -2348,7 +2349,7 @@ fn other_indel_in_window(record: &Record, (lo, hi): (i64, i64), at: i64, own_is_
 /// outside it).
 fn other_indel_in_window_except(record: &Record, (lo, hi): (i64, i64), separate_insertions: &[i64]) -> bool {
     let mut rp = record.pos();
-    for op in record.cigar().iter() {
+    for op in cigar_of(record).iter() {
         match op {
             Cigar::Match(n) | Cigar::Equal(n) | Cigar::Diff(n) | Cigar::RefSkip(n) => rp += *n as i64,
             Cigar::Ins(_) => {
@@ -2707,7 +2708,7 @@ pub fn check_deletion<F: Fn(u8, u8) -> i32>(
     if let Some(alt) = alt_across_ops(record, variant, quals, min_baseq, "deletion") {
         return alt;
     }
-    let cigar_view = record.cigar();
+    let cigar_view = cigar_of(record);
     // NOTE: quals is passed from the caller — either raw record.qual() or BAQ-adjusted.
     let mut ref_pos = record.pos();
     let mut read_pos: usize = 0;

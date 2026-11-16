@@ -92,7 +92,7 @@ use super::variant_checks::deleted_anchor_query;
 use super::window::AlleleKind;
 use super::utils::{find_read_pos, median_qual, soft_clips, ClassifyPhase, ClassifyResult};
 use crate::normalize::fasta::CachedFasta;
-use crate::shared::bam_utils::fragment_query_span;
+use crate::shared::bam_utils::{cigar_of, fragment_query_span, lies_outside, Reads};
 use crate::types::Variant;
 
 /// How the rule reads a read past its aligned blocks, by library.
@@ -1089,7 +1089,7 @@ fn judge(record: &Record, variant: &Variant, quals: &[u8], min_baseq: u8, rules:
     // its indel outside the windows (a separate event, RJ-8), or the ALT's change inside
     // them, keeps its judgment; so does a read whose bases read whole decide nothing, and
     // a spliced read (its bases are not one stretch of the genome).
-    let spliced = record.cigar().iter().any(|op| matches!(op, Cigar::RefSkip(_)));
+    let spliced = cigar_of(record).iter().any(|op| matches!(op, Cigar::RefSkip(_)));
     let built = if spliced || !matches!(own, OwnEvent::Inside | OwnEvent::None) {
         None
     } else if let Some(cg) = rules.guard {
@@ -1457,7 +1457,7 @@ fn own_alignment_weight(
 ) -> Option<f64> {
     let in_span = |q: usize| spans.iter().any(|&(a, b)| q >= a && q < b);
     let (mut qp, mut rp, mut weight) = (0usize, record.pos(), 0.0f64);
-    for op in record.cigar().iter() {
+    for op in cigar_of(record).iter() {
         match op {
             Cigar::Match(n) | Cigar::Equal(n) | Cigar::Diff(n) => {
                 let n = *n as usize;
@@ -1683,7 +1683,7 @@ pub(crate) fn aligned_query_range(record: &Record) -> Option<(usize, usize)> {
 pub(crate) fn indel_at_block(record: &Record, variant: &Variant) -> bool {
     let (start, end) = (variant.pos, variant.pos + variant.ref_allele.len() as i64);
     let mut pos = record.pos();
-    for op in record.cigar().iter() {
+    for op in cigar_of(record).iter() {
         match op {
             // An insertion sits between reference bases pos-1 and pos.
             Cigar::Ins(_) if pos >= start && pos <= end => return true,
@@ -2271,7 +2271,7 @@ impl Guard {
 /// (insertion +, deletion -).
 fn own_indels(record: &Record, (lo, hi): (i64, i64)) -> Vec<(i64, i64)> {
     let (mut rp, mut out) = (record.pos(), Vec::new());
-    for op in record.cigar().iter() {
+    for op in cigar_of(record).iter() {
         match op {
             Cigar::Match(n) | Cigar::Equal(n) | Cigar::Diff(n) | Cigar::RefSkip(n) => rp += *n as i64,
             Cigar::Ins(n) => {
@@ -2289,6 +2289,38 @@ fn own_indels(record: &Record, (lo, hi): (i64, i64)) -> Vec<(i64, i64)> {
         }
     }
     out
+}
+
+/// An interval every read the guard's main tally reads meets: one aligned at `left` and
+/// at `right` (`left <= right`; `find_read_pos` finds a position only inside an aligned
+/// op, so inside the read's span `[pos, ref_end)`).
+fn tally_interval(left: i64, right: i64) -> (i64, i64) {
+    (left, right + 1)
+}
+
+/// The query positions of a read aligned at `left` and at `right` in that order (the guard's
+/// main tally reads such a read), None otherwise. Both positions are looked up.
+fn aligned_at_both(record: &Record, left: i64, right: i64) -> Option<(usize, usize)> {
+    match (find_read_pos(record, left), find_read_pos(record, right)) {
+        (Some(ql), Some(qr)) if qr > ql => Some((ql, qr)),
+        _ => None,
+    }
+}
+
+/// Whether a read spans the windows' span `[s0, s1)` (`pos <= s0`, `ref_end >= s1`), as the
+/// guard's indel tally counts the fragments its indels recur on.
+fn spans(record: &Record, (s0, s1): (i64, i64)) -> bool {
+    record.pos() <= s0 && crate::shared::bam_utils::ref_end(record) >= s1
+}
+
+/// An interval every read the guard's indel tally changes meets, for the windows' span
+/// `[s0, s1)`: a read spanning it (`pos <= s0`, `ref_end >= s1`), or one whose own
+/// alignment writes an indel inside it ([`own_indels`]: an insertion at `rp` with
+/// `s0 < rp < s1`, or a deletion `[rp, rp + n)` with `rp < s1` and `rp + n > s0`, each
+/// inside the read's span). Each has `pos < max(s1, s0 + 1)` and
+/// `ref_end > min(s0, s1 - 1)`, an empty or reversed span included.
+fn indel_tally_interval((s0, s1): (i64, i64)) -> (i64, i64) {
+    (s0.min(s1.saturating_sub(1)), s1.max(s0.saturating_add(1)))
 }
 
 /// A variant's [`Guard`], found from its reads on first use: only the exact-carrier
@@ -2369,8 +2401,8 @@ struct Placed<'a> {
 /// Inside such an event a change fits (a germline SNP in the repeat it grew through),
 /// and is tallied. For an event that keeps the length the alleles differ only inside
 /// it, so each molecule must show its own allele's bases where the other has others.
-fn placed_reads<'a>(
-    read_cache: &'a [Record],
+fn placed_reads<'a, R: Reads + ?Sized>(
+    read_cache: &'a R,
     counted: &dyn Fn(&Record) -> bool,
     min_baseq: u8,
     (start, reference): (i64, &[u8]),
@@ -2391,12 +2423,13 @@ fn placed_reads<'a>(
         full: [HashMap::new(), HashMap::new()],
     };
     let (mut ref_frags, mut alt_frags) = (std::collections::HashSet::new(), std::collections::HashSet::new());
-    for record in read_cache {
-        if !counted(record) || record.pos() >= w_end || crate::shared::bam_utils::ref_end(record) <= w_start {
+    for record in read_cache.meeting(w_start, w_end) {
+        if !counted(record) || lies_outside(record, (w_start, w_end)) {
             continue;
         }
-        let (seq, quals) = (record.seq().as_bytes(), record.qual());
+        // placed first, its bases decoded only then
         let Some(q0) = find_read_pos(record, start + lo as i64) else { continue };
+        let (seq, quals) = (record.seq().as_bytes(), record.qual());
         if seq.len() > quals.len() {
             continue;
         }
@@ -2494,8 +2527,8 @@ fn placed_reads<'a>(
 /// every bin's fetch holds, so the tally is the same in any bin geometry. With them,
 /// those of the F1R2 pair orientation (read 1 forward, read 2 reverse): of the
 /// carriers, and of all.
-fn read_apart(
-    read_cache: &[Record],
+fn read_apart<R: Reads + ?Sized>(
+    read_cache: &R,
     counted: &dyn Fn(&Record) -> bool,
     min_baseq: u8,
     (start, reference): (i64, &[u8]),
@@ -2504,8 +2537,8 @@ fn read_apart(
 ) -> (u32, u32, u32, u32) {
     let mut fragments = std::collections::HashSet::new();
     let (mut n, mut c, mut f1r2, mut n_f1r2) = (0, 0, 0, 0);
-    let own = |r: &&Record| counted(r) && r.pos() < w_end && crate::shared::bam_utils::ref_end(r) > w_start;
-    for record in read_cache.iter().filter(own) {
+    let own = |r: &&Record| counted(r) && !lies_outside(r, (w_start, w_end));
+    for record in read_cache.meeting(w_start, w_end).iter().filter(own) {
         let Some((lo, hi, q_lo)) = ungapped_block(record, start + off as i64) else { continue };
         let (seq, quals) = (record.seq().as_bytes(), record.qual());
         let q = |o: usize| q_lo + (start + o as i64 - lo) as usize;
@@ -2536,7 +2569,7 @@ fn read_apart(
 fn ungapped_block(record: &Record, at: i64) -> Option<(i64, i64, usize)> {
     let (mut g, mut q, mut block) = (record.pos(), 0usize, None::<(i64, usize)>);
     let holds = |block: Option<(i64, usize)>, g: i64| block.filter(|&(s, _)| at >= s && at < g).map(|(s, sq)| (s, g, sq));
-    for op in record.cigar().iter() {
+    for op in cigar_of(record).iter() {
         match *op {
             Cigar::Match(l) | Cigar::Equal(l) | Cigar::Diff(l) => {
                 block = block.or(Some((g, q)));
@@ -2984,8 +3017,8 @@ fn tally(bases: &mut [[u32; 4]], cover: &mut [u32], n: usize, read: &dyn Fn(usiz
 /// None when nothing is masked, named or found, or the variant is not judged by this
 /// rule. The rules' guard: the alleles the sequence judge takes ([`Guard::judge_others`])
 /// are not written (the rules never read them); [`guard_for_judge`] writes them.
-pub(crate) fn guard_for(
-    read_cache: &[Record],
+pub(crate) fn guard_for<R: Reads + ?Sized>(
+    read_cache: &R,
     v: &Variant,
     counted: &dyn Fn(&Record) -> bool,
     min_baseq: u8,
@@ -2996,8 +3029,8 @@ pub(crate) fn guard_for(
 
 /// [`guard_for`] for the sequence judge: the other alleles also written as the judge
 /// takes them, past the masks ([`Guard::judge_others`]).
-pub(crate) fn guard_for_judge(
-    read_cache: &[Record],
+pub(crate) fn guard_for_judge<R: Reads + ?Sized>(
+    read_cache: &R,
     v: &Variant,
     counted: &dyn Fn(&Record) -> bool,
     min_baseq: u8,
@@ -3007,8 +3040,8 @@ pub(crate) fn guard_for_judge(
 }
 
 /// [`guard_for`], writing the judge's alleles where `for_judge`.
-fn guard_built(
-    read_cache: &[Record],
+fn guard_built<R: Reads + ?Sized>(
+    read_cache: &R,
     v: &Variant,
     counted: &dyn Fn(&Record) -> bool,
     min_baseq: u8,
@@ -3056,21 +3089,21 @@ fn guard_built(
     let mut ref_bases = alt_bases.clone();
     // one tally per fragment: overlapping mates are one molecule's evidence
     let mut fragments: std::collections::HashSet<&[u8]> = std::collections::HashSet::new();
-    for record in read_cache {
+    // the run of the cache that can hold a read aligned at g(ev.lo - 1) and at g(ev.hi)
+    let (tally_lo, tally_hi) = tally_interval(g(ev.lo - 1), g(ev.hi));
+    for record in read_cache.meeting(tally_lo, tally_hi) {
         if !counted(record) {
             continue;
         }
-        let seq = record.seq().as_bytes();
-        let quals = record.qual();
-        if seq.is_empty() || quals.len() < seq.len() {
-            continue;
-        }
-        let (Some(ql), Some(qr)) = (find_read_pos(record, g(ev.lo - 1)), find_read_pos(record, g(ev.hi))) else {
+        // placed first, its bases decoded only then
+        let Some((ql, qr)) = aligned_at_both(record, g(ev.lo - 1), g(ev.hi)) else {
             continue;
         };
-        if qr <= ql {
+        let quals = record.qual();
+        if record.seq_len() == 0 || quals.len() < record.seq_len() {
             continue;
         }
+        let seq = record.seq().as_bytes();
         // a read writing an indel beside the event shifts its bases there: no molecule
         // whose changes the tally can place
         let (e_lo, e_hi) = (g(ev.lo), g(ev.hi));
@@ -3297,8 +3330,11 @@ fn guard_built(
     if let Some(span) = windows(v, &Layout::default()).map(|w| w.span()) {
         let mut carrying: HashMap<(i64, i64), std::collections::HashSet<&[u8]>> = HashMap::new();
         let mut spanning: std::collections::HashSet<&[u8]> = std::collections::HashSet::new();
-        for record in read_cache.iter().filter(|r| counted(r)) {
-            if record.pos() <= span.0 && crate::shared::bam_utils::ref_end(record) >= span.1 {
+        // A read counts here only where it spans the windows or writes an indel inside
+        // them ([`indel_tally_interval`]): the run of the cache read here.
+        let (lo, hi) = indel_tally_interval(span);
+        for record in read_cache.meeting(lo, hi).iter().filter(|r| counted(r)) {
+            if spans(record, span) {
                 spanning.insert(record.qname());
             }
             // a read whose indels there change the length by the event's own change
@@ -3382,7 +3418,7 @@ fn partial_span_piece(record: &Record, (lo, hi): (i64, i64)) -> bool {
     // begins (ends) it
     let mut pieces: Vec<(i64, i64, bool, bool)> = Vec::new();
     let (mut rp, mut open, mut after_n) = (record.pos(), None::<i64>, false);
-    for op in record.cigar().iter() {
+    for op in cigar_of(record).iter() {
         match op {
             Cigar::Match(n) | Cigar::Equal(n) | Cigar::Diff(n) | Cigar::Del(n) => {
                 open.get_or_insert(rp);
@@ -3415,7 +3451,7 @@ fn partial_span_piece(record: &Record, (lo, hi): (i64, i64)) -> bool {
 /// (an `N` op next to a `D` op) inside `span` (genome).
 fn splice_beside_deletion(record: &Record, (lo, hi): (i64, i64)) -> bool {
     let (mut rp, mut prev): (i64, Option<char>) = (record.pos(), None);
-    for op in record.cigar().iter() {
+    for op in cigar_of(record).iter() {
         let (kind, len) = match op {
             Cigar::RefSkip(n) => ('N', *n as i64),
             Cigar::Del(n) => ('D', *n as i64),
@@ -3437,7 +3473,7 @@ fn splice_beside_deletion(record: &Record, (lo, hi): (i64, i64)) -> bool {
 /// `from` starts (the first base its alignment shifts there), if any.
 fn next_indel_query(record: &Record, from: i64) -> Option<usize> {
     let (mut rp, mut qp) = (record.pos(), 0usize);
-    for op in record.cigar().iter() {
+    for op in cigar_of(record).iter() {
         match op {
             Cigar::Ins(n) => {
                 if rp >= from {
@@ -3530,7 +3566,7 @@ fn own_event(record: &Record, seq: &[u8], quals: &[u8], min_baseq: u8, v: &Varia
     // next indel past the ones placed (a separate event shifts the bases beyond it, as
     // reading on past the windows stops there)
     let (mut qp, mut stop) = (0usize, seq.len());
-    for op in record.cigar().iter() {
+    for op in cigar_of(record).iter() {
         match op {
             Cigar::RefSkip(_) if qp > q0 => {
                 stop = qp;
@@ -3614,7 +3650,7 @@ fn own_event(record: &Record, seq: &[u8], quals: &[u8], min_baseq: u8, v: &Varia
     // An insert with no readable base does not slide (RJ-20): it sits where written.
     let mut inserted = Vec::new();
     let mut qp = 0usize;
-    for op in record.cigar().iter() {
+    for op in cigar_of(record).iter() {
         match op {
             Cigar::Ins(k) => {
                 inserted.extend(qp..qp + *k as usize);
@@ -3994,7 +4030,7 @@ fn aligned_changes(record: &Record, seq: &[u8], quals: &[u8], min_baseq: u8, w: 
     let (start, reference) = (w.start, &w.plain);
     let end = start + reference.len() as i64;
     let (mut changes, mut g, mut q) = (0usize, record.pos(), 0usize);
-    for op in record.cigar().iter() {
+    for op in cigar_of(record).iter() {
         match *op {
             Cigar::Match(l) | Cigar::Equal(l) | Cigar::Diff(l) => {
                 for i in 0..l as usize {
@@ -5532,5 +5568,354 @@ mod tests {
         let guard = guard.expect("a guard");
         assert_eq!(guard.ref_others.len(), 2, "two window spellings");
         assert_eq!(guard.judge_ref_others, vec![OtherAllele { pos: p as i64, ref_allele: b"G".to_vec(), alt_allele: b"T".to_vec() }]);
+    }
+
+    use crate::shared::bam_utils::oracle::{admitted, allele_reads, cluster, reference, Lcg};
+    use crate::shared::bam_utils::ReadCache;
+
+    /// A random row the exact-carrier rule may judge, on a 600-base reference, at 300.
+    fn random_row(rng: &mut Lcg, ctx: &[u8]) -> (Vec<u8>, Vec<u8>) {
+        let base = |rng: &mut Lcg| b"ACGT"[rng.below(4) as usize];
+        let at = 300;
+        let r_len = 1 + rng.below(8) as usize;
+        let r = ctx[at..at + r_len].to_vec();
+        let a: Vec<u8> = match rng.below(5) {
+            // an insertion after the anchor
+            0 => [&r[..1], &(0..1 + rng.below(12)).map(|_| base(rng)).collect::<Vec<u8>>()[..]].concat(),
+            // a deletion after the anchor
+            1 if r_len > 1 => r[..1].to_vec(),
+            // a substitution of the same length (an MNP where it changes two or more)
+            2 => r.iter().map(|&b| if rng.chance(1, 2) { b } else { b"ACGT"[(b"ACGT".iter().position(|&x| x == b).unwrap_or(0) + 1) % 4] }).collect(),
+            // a delins
+            _ => (0..1 + rng.below(6)).map(|_| base(rng)).collect(),
+        };
+        if a == r {
+            return (r.clone(), [&r[..], b"T"].concat());
+        }
+        (r, a)
+    }
+
+    #[test]
+    fn each_guard_walk_admits_in_its_run_what_it_admits_in_the_whole_cache() {
+        // Each walk's own test (the predicate the walk calls), on random clusters of clipped
+        // reads in both orders: the records it admits from its run are those it admits from
+        // the whole cache, index for index, and it admits none outside the run.
+        let mut rng = Lcg::new(0x5eed_0101);
+        let mut admitted_total = [0usize; 4];
+        for trial in 0..300 {
+            let n = rng.below(150) as usize;
+            let cache = ReadCache::new(cluster(&mut rng, n, 4_000, trial % 2 == 1));
+            for _ in 0..10 {
+                // the placed reads (read window) and the reads placed apart (guard window)
+                let ctx = reference(&mut rng, 700);
+                let (r, a) = random_row(&mut rng, &ctx);
+                let mut v = var(std::str::from_utf8(&ctx).unwrap(), 300 + rng.below(3_500) as i64, std::str::from_utf8(&r).unwrap(), std::str::from_utf8(&a).unwrap());
+                v.repeat_span = rng.below(40) as usize;
+                for (k, w) in [super::super::window::read_window(&v), super::super::window::guard_window(&v)].into_iter().enumerate() {
+                    let admits = |record: &Record| !lies_outside(record, w);
+                    let (in_run, whole, outside) = admitted(&cache, w, &admits);
+                    assert_eq!((in_run, outside.len()), (whole.clone(), 0));
+                    admitted_total[k] += whole.len();
+                }
+                // the main tally: aligned at g(ev.lo - 1) and at g(ev.hi), in that order
+                let t0 = rng.below(4_200) as i64 - 100;
+                let t1 = t0 + 1 + rng.below(30) as i64;
+                let tallied = |record: &Record| aligned_at_both(record, t0, t1).is_some();
+                let (in_run, whole, outside) = admitted(&cache, tally_interval(t0, t1), &tallied);
+                assert_eq!((in_run, outside.len()), (whole.clone(), 0), "tally at {t0}, {t1}");
+                admitted_total[2] += whole.len();
+                // each read the tally admits spans [t0, t1] whole: any part of the interval
+                // holding a base of it admits the same reads
+                let all = cache.meeting(i64::MIN, i64::MAX);
+                assert!(all.iter().filter(|r| tallied(r)).all(|r| r.pos() <= t0 && crate::shared::bam_utils::ref_end(r) > t1));
+                // the indel tally: spanning the windows, or an indel of its own inside them
+                let s0 = rng.below(4_200) as i64 - 100;
+                let span = match rng.below(6) {
+                    0 => (s0, s0),
+                    1 => (s0, s0 - 1 - rng.below(20) as i64),
+                    2 => (i64::MAX, i64::MIN),
+                    _ => (s0, s0 + 1 + rng.below(60) as i64),
+                };
+                let changes = |record: &Record| spans(record, span) || !own_indels(record, span).is_empty();
+                let (in_run, whole, outside) = admitted(&cache, indel_tally_interval(span), &changes);
+                assert_eq!((in_run, outside.len()), (whole.clone(), 0), "indel tally over {span:?}");
+                admitted_total[3] += whole.len();
+            }
+        }
+        assert!(admitted_total.iter().all(|&n| n > 1_000), "{admitted_total:?}");
+    }
+
+    #[test]
+    fn the_guard_found_from_its_runs_is_the_guard_found_from_the_whole_cache() {
+        // Insertions, deletions, MNPs and delins with reads of both alleles written as an
+        // aligner writes them (the change as its own ops, clipped across it), a change
+        // recurring beside the event, mates, errors and reads of random shape; in file
+        // order and shuffled: the guard (rules' and judge's) from the runs is the guard
+        // from the whole cache, field for field.
+        let mut rng = Lcg::new(0x5eed_0102);
+        let mut found = 0;
+        for trial in 0..400 {
+            let ctx = reference(&mut rng, 600);
+            let (r, a) = random_row(&mut rng, &ctx);
+            let text = std::str::from_utf8(&ctx).unwrap();
+            let mut v = var(text, 300, std::str::from_utf8(&r).unwrap(), std::str::from_utf8(&a).unwrap());
+            v.whole_ref = Some((0, text.into()));
+            let n = 40 + rng.below(160) as usize;
+            let mut reads = allele_reads(&mut rng, &ctx, 300, &r, &a, n);
+            if trial % 2 == 1 {
+                for i in (1..reads.len()).rev() {
+                    reads.swap(i, rng.below(i as u64 + 1) as usize);
+                }
+            }
+            let cache = ReadCache::new(reads.clone());
+            let counted = |r: &Record| r.mapq() > 0;
+            let whole = format!("{:?}", guard_for(&reads, &v, &counted, 20, &[]));
+            assert_eq!(format!("{:?}", guard_for(&cache, &v, &counted, 20, &[])), whole, "{v:?}");
+            let whole_judge = format!("{:?}", guard_for_judge(&reads, &v, &counted, 20, &[]));
+            assert_eq!(format!("{:?}", guard_for_judge(&cache, &v, &counted, 20, &[])), whole_judge);
+            found += usize::from(whole != "None");
+        }
+        assert!(found > 40, "{found} guards found");
+    }
+
+    #[test]
+    fn a_record_the_cache_cannot_decode_stops_each_guard_where_the_whole_walk_stops() {
+        // Reads as above with some CIGARs holding an op code past 8 (which rust-htslib stops
+        // on): the guard over the cache gives the same guard where the whole walk gives one,
+        // and stops with the same message at the same record where it stops.
+        use crate::shared::bam_utils::oracle::{agree, both_walks, unknown_op};
+        let mut rng = Lcg::new(0x5eed_0103);
+        let (mut stopped, mut finished) = (0, 0);
+        for trial in 0..300 {
+            let ctx = reference(&mut rng, 600);
+            let (r, a) = random_row(&mut rng, &ctx);
+            let text = std::str::from_utf8(&ctx).unwrap();
+            let mut v = var(text, 300, std::str::from_utf8(&r).unwrap(), std::str::from_utf8(&a).unwrap());
+            v.whole_ref = Some((0, text.into()));
+            let n = 40 + rng.below(160) as usize;
+            let mut reads = allele_reads(&mut rng, &ctx, 300, &r, &a, n);
+            for rec in reads.iter_mut() {
+                if rng.chance(1, 60) {
+                    unknown_op(&mut rng, rec);
+                }
+            }
+            if trial % 2 == 1 {
+                for i in (1..reads.len()).rev() {
+                    reads.swap(i, rng.below(i as u64 + 1) as usize);
+                }
+            }
+            let cache = ReadCache::new(reads.clone());
+            for judge in [false, true] {
+                let walks = both_walks(&reads, &cache, |reads, counted| {
+                    format!("{:?}", if judge { guard_for_judge(reads, &v, counted, 20, &[]) } else { guard_for(reads, &v, counted, 20, &[]) })
+                });
+                if agree(walks) {
+                    stopped += 1;
+                } else {
+                    finished += 1;
+                }
+            }
+        }
+        assert!(stopped > 50 && finished > 50, "{stopped} stopped, {finished} finished");
+    }
+
+    #[test]
+    fn the_guard_from_tight_runs_is_the_guard_from_the_whole_cache() {
+        // Reads of one length tiled in order across an 800-base reference (reads ending one
+        // base into each walk's interval and starting one base before its end, out to the
+        // guard window's ends), with a short deletion beside the event on a few reads (the
+        // indel tally's own indels): a run holds about only the reads meeting its interval,
+        // and the guard (rules' and judge's) from the runs is the guard from the whole cache.
+        use crate::shared::bam_utils::oracle::tiled_reads;
+        let mut rng = Lcg::new(0x5eed_0104);
+        let mut found = [0usize; 3];
+        for _ in 0..200 {
+            let ctx = reference(&mut rng, 800);
+            let (r, a) = random_row(&mut rng, &ctx);
+            let text = std::str::from_utf8(&ctx).unwrap();
+            let mut v = var(text, 300, std::str::from_utf8(&r).unwrap(), std::str::from_utf8(&a).unwrap());
+            v.whole_ref = Some((0, text.into()));
+            let (len, step) = (30 + rng.below(90) as usize, 1 + rng.below(3) as usize);
+            let mut reads = tiled_reads(&mut rng, &ctx, 300, &r, &a, len, step);
+            // a short deletion beside the event, tiled more sparsely: on about a tenth to a
+            // quarter of the reads spanning the windows, near the share that makes it recur
+            // its first deleted base the windows' last (inside their span, past the event)
+            let Some(span) = windows(&v, &Layout::default()).map(|w| w.span()) else { continue };
+            let q = (span.1 - 2).clamp(300, 700) as usize;
+            let k = 1 + rng.below(3) as usize;
+            let sparse = step * (2 + rng.below(4) as usize);
+            reads.extend(tiled_reads(&mut rng, &ctx, q, &ctx[q..q + 1 + k], &ctx[q..q + 1], len, sparse));
+            // and on a few reads that start with it (a leading deletion, as after trimming), at
+            // the span's last base
+            for i in 0..rng.below(5) as usize {
+                let x = 20 + rng.below(40) as usize;
+                let seq = &ctx[q + 1 + k..q + 1 + k + x];
+                let mut rec = Record::new();
+                rec.set(format!("lead{i}").as_bytes(), Some(&CigarString(vec![Cigar::Del(k as u32), Cigar::Match(x as u32)])), seq, &vec![35; x]);
+                rec.set_pos(q as i64 + 1);
+                rec.set_mapq(60);
+                reads.push(rec);
+            }
+            reads.sort_by_key(Record::pos);
+            let cache = ReadCache::new(reads.clone());
+            let w = super::super::window::guard_window(&v);
+            assert!(cache.meeting(w.0, w.1).len() < reads.len(), "a run shorter than the cache");
+            let counted = |r: &Record| r.mapq() > 0;
+            let guard = guard_for(&reads, &v, &counted, 20, &[]);
+            assert_eq!(format!("{:?}", guard_for(&cache, &v, &counted, 20, &[])), format!("{guard:?}"), "{v:?}");
+            let judge = format!("{:?}", guard_for_judge(&reads, &v, &counted, 20, &[]));
+            assert_eq!(format!("{:?}", guard_for_judge(&cache, &v, &counted, 20, &[])), judge);
+            found[0] += usize::from(guard.is_some());
+            found[1] += usize::from(guard.as_ref().is_some_and(|g| !g.indels.is_empty()));
+            found[2] += usize::from(guard.as_ref().is_some_and(|g| !g.masked.is_empty()));
+        }
+        assert!(found[0] > 50 && found[1] >= 3 && found[2] > 20, "{found:?} guards, with indels, with masks");
+    }
+
+    #[test]
+    fn the_guard_of_an_indel_in_a_long_repeat_from_tight_runs_is_the_guard_from_the_whole_cache() {
+        // One unit inserted or deleted in a run of 15 to 40 units of 2 or 3 bases (half the
+        // time 70 to 140 units, read by reads of 350 to 520 bases that span it): the event grows
+        // through the run, so the guard reads offsets, and the reads placed apart, far past the
+        // row's own bases, out to its guard window's ends; ALT reads written without their gap
+        // show the ALT's bases shifted onto the run's end, which the reads placed apart tell.
+        // Reads of one length tiled in order, and a few aligned up to the read window's first
+        // base and clipped on past it: the guard from the runs is the guard from the whole cache.
+        use crate::shared::bam_utils::oracle::tiled_reads;
+        let mut rng = Lcg::new(0x5eed_0105);
+        let (mut found, mut masked) = (0, 0);
+        for trial in 0..400 {
+            let very_long = trial % 2 == 1;
+            let mut ctx = reference(&mut rng, if very_long { 1_600 } else { 900 });
+            let unit: Vec<u8> = (0..2 + rng.below(2)).map(|_| b"ACGT"[rng.below(4) as usize]).collect();
+            if unit.iter().all(|&b| b == unit[0]) {
+                continue;
+            }
+            let copies = if very_long { 70 + rng.below(71) as usize } else { 15 + rng.below(26) as usize };
+            let run_end = 301 + copies * unit.len();
+            for i in 0..copies * unit.len() {
+                ctx[301 + i] = unit[i % unit.len()];
+            }
+            // the row at the run's start (the event grows right through it), or an insertion
+            // written after its last base (the event grows left through it)
+            let (at, r, a) = match rng.below(3) {
+                0 => (300, ctx[300..301].to_vec(), [&ctx[300..301], &unit[..]].concat()),
+                1 => (300, ctx[300..301 + unit.len()].to_vec(), ctx[300..301].to_vec()),
+                _ => (run_end - 1, ctx[run_end - 1..run_end].to_vec(), [&ctx[run_end - 1..run_end], &unit[..]].concat()),
+            };
+            let text = std::str::from_utf8(&ctx).unwrap();
+            let mut v = var(text, at as i64, std::str::from_utf8(&r).unwrap(), std::str::from_utf8(&a).unwrap());
+            v.whole_ref = Some((0, text.into()));
+            v.repeat_span = if rng.chance(1, 2) { copies * unit.len() } else { 0 };
+            let (len, step) = if very_long {
+                (350 + rng.below(171) as usize, 2 + rng.below(2) as usize)
+            } else {
+                (60 + rng.below(90) as usize, 1 + rng.below(2) as usize)
+            };
+            let mut reads = tiled_reads(&mut rng, &ctx, at, &r, &a, len, step);
+            // REF reads aligned up to the read window's first base, over more bases than a
+            // tiled read, their bases clipped on past it, a change among them
+            let w_start = super::super::window::read_window(&v).0 as usize;
+            if w_start > len + 5 {
+                for e in 0..3 + rng.below(5) as usize {
+                    let a = len + 5;
+                    let clip = 40 + rng.below(40) as usize;
+                    let mut seq = ctx[w_start - a..w_start + 1 + clip].to_vec();
+                    let k = a + 1 + rng.below(8) as usize;
+                    seq[k] = if seq[k] == b'A' { b'C' } else { b'A' };
+                    let mut rec = Record::new();
+                    let ops = vec![Cigar::Match(a as u32 + 1), Cigar::SoftClip(clip as u32)];
+                    rec.set(format!("edge{e}").as_bytes(), Some(&CigarString(ops)), &seq, &vec![35; seq.len()]);
+                    rec.set_pos((w_start - a) as i64);
+                    rec.set_mapq(60);
+                    reads.push(rec);
+                }
+                reads.sort_by_key(Record::pos);
+            }
+            let cache = ReadCache::new(reads.clone());
+            let counted = |r: &Record| r.mapq() > 0;
+            let guard = guard_for(&reads, &v, &counted, 20, &[]);
+            assert_eq!(format!("{:?}", guard_for(&cache, &v, &counted, 20, &[])), format!("{guard:?}"), "{v:?}");
+            let judge = format!("{:?}", guard_for_judge(&reads, &v, &counted, 20, &[]));
+            assert_eq!(format!("{:?}", guard_for_judge(&cache, &v, &counted, 20, &[])), judge);
+            found += usize::from(guard.is_some());
+            masked += usize::from(guard.as_ref().is_some_and(|g| !g.masked.is_empty()));
+        }
+        assert!(found > 30 && masked > 10, "{found} guards, {masked} with masks");
+    }
+
+    #[test]
+    fn reads_placed_apart_at_the_guard_windows_start_are_read_from_its_run() {
+        // CA inserted after the last base of a 260-base (CA)n run: the event grows left over the
+        // whole run, so the guard's left offsets lie more than 240 bases left of the row, inside
+        // the first 60 bases of its guard window. ALT reads written without their gap and placed
+        // from their right end are REF fragments to the guard that show the ALT's shifted bases
+        // at those offsets (a change recurring there). At one offset the reads placed apart tell
+        // the change: 50 REF reads read the reference's base there (the ALT's own base, shifted:
+        // left unmasked), and 5 more, which end within 60 bases of the window's start and start
+        // before every other read, carry the change (a haplotype's: masked). The guard over the
+        // cache's runs is the guard over the whole list, so it masks the change.
+        let (s, l) = (400usize, 260usize);
+        let mut rng = Lcg::new(0x5eed_0106);
+        let mut ctx = reference(&mut rng, 1_200);
+        for i in 0..l {
+            ctx[s + i] = b"CA"[i % 2];
+        }
+        // the run neither starts earlier nor goes on past its end
+        ctx[s - 2..s].copy_from_slice(b"GT");
+        ctx[s + l] = b'G';
+        let e = s + l;
+        let text = std::str::from_utf8(&ctx).unwrap().to_string();
+        let mut v = var(&text, e as i64 - 1, "A", "ACA");
+        v.whole_ref = Some((0, text.clone()));
+        let ev = event(0, &ctx, &v).expect("the event");
+        assert!(ev.lo <= s && ev.hi >= e - 1 && ev.d == 2, "grown over the run: ({}, {}) {}", ev.lo, ev.hi, ev.d);
+        // a left offset where the ALT's base, shifted, is not the reference's
+        let g = (2..=10).map(|i| ev.lo - 1 - i).find(|&g| ev.hap[g + 2] != ctx[g]).expect("a telling offset");
+        let base = ev.hap[g + 2];
+        let w_start = super::super::window::guard_window(&v).0 as usize;
+        assert!(g + 12 <= w_start + 60, "the offset within the window's first 60 bases");
+        let read = |name: String, start: usize, seq: Vec<u8>| {
+            let mut rec = Record::new();
+            rec.set(name.as_bytes(), Some(&CigarString(vec![Cigar::Match(seq.len() as u32)])), &seq, &vec![35; seq.len()]);
+            rec.set_pos(start as i64);
+            rec.set_mapq(60);
+            rec
+        };
+        let mut reads = Vec::new();
+        // the carriers: from 30 bases before the offset to 10 after it, the change at it
+        for k in 0..5 {
+            let mut seq = ctx[g - 30..g + 11].to_vec();
+            seq[30] = base;
+            reads.push(read(format!("carrier{k}"), g - 30, seq));
+        }
+        // REF reads placed apart (100 bases, each holding the offset and bases before it)
+        for k in 0..30 {
+            let start = g - 29 + k % 20;
+            reads.push(read(format!("apart{k}"), start, ctx[start..start + 100].to_vec()));
+        }
+        // REF fragments over the whole event, and ALT ones written without their gap from
+        // their right end (the bases before the run shifted by the inserted unit)
+        let hap = &ev.hap;
+        for k in 0..20 {
+            let start = g - 25 + k % 20;
+            reads.push(read(format!("span{k}"), start, ctx[start..start + 300].to_vec()));
+        }
+        for k in 0..8 {
+            let start = g - 25 + 2 * k;
+            reads.push(read(format!("gapless{k}"), start, hap[start + 2..start + 302].to_vec()));
+        }
+        reads.sort_by_key(Record::pos);
+        let counted = |r: &Record| r.mapq() > 0;
+        let masks = |reads: &dyn Reads| guard_for(reads, &v, &counted, 20, &[]).map_or_else(Vec::new, |g| g.masked);
+        // the carriers move the verdict: without them the change is the ALT's own base
+        let without: Vec<Record> = reads.iter().filter(|r| !r.qname().starts_with(b"carrier")).cloned().collect();
+        assert!(!masks(&without).contains(&(g as i64)), "without the carriers: the ALT's own base, unmasked");
+        let whole = guard_for(&reads, &v, &counted, 20, &[]);
+        assert!(whole.as_ref().is_some_and(|w| w.masked.contains(&(g as i64))), "with them: a haplotype's change, masked");
+        // the carriers come first, ending within the window's first 60 bases
+        let cache = ReadCache::new(reads.clone());
+        assert_eq!(cache.run(w_start as i64 + 60, i64::MAX).start, 5, "only the carriers end in the window's first 60 bases");
+        assert_eq!(format!("{:?}", guard_for(&cache, &v, &counted, 20, &[])), format!("{whole:?}"));
     }
 }

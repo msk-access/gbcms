@@ -12,6 +12,8 @@
 
 use rust_htslib::bam::record::Cigar;
 use rust_htslib::bam::Record;
+
+use super::bam_utils::cigar_of;
 use log::trace;
 
 /// Configurable BAM read filter for universal flag checks.
@@ -102,7 +104,7 @@ impl ReadFilter {
             return false;
         }
         if self.filter_indel {
-            let has_indel = record.cigar().iter()
+            let has_indel = cigar_of(record).iter()
                 .any(|op| matches!(op, Cigar::Ins(_) | Cigar::Del(_)));
             if has_indel {
                 counts.indel += 1;
