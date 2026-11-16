@@ -249,6 +249,9 @@ def run_implications(cfg: Any) -> list[str]:
 
 #: The first records of a BAM read for its run-start facts.
 BAM_SAMPLE_RECORDS = 20_000
+# Sampled base qualities are tallied this many bytes at a time, so memory stays bounded for
+# long reads (20,000 records of 20 kb would otherwise hold 400 MB of qualities).
+BAM_QUAL_CHUNK = 1 << 20
 #: --min-baseq removing more than this share of sampled bases warns. At the
 #: default (Q20) 10 real BAMs lost 0.8-2.1%; a threshold between quality bins
 #: lost 4-12% (RNA at Q25, IMPACT at Q30), and nearly all at Q40 on IMPACT.
@@ -271,6 +274,13 @@ def log_bam_properties(
         logger.info("BAM %s: run-start properties not read (%s); counting proceeds", label, exc)
 
 
+def _tally_qualities(buf: bytearray, quals: dict[int, int]) -> None:
+    """Add the count of each base-quality value in `buf` to `quals`: one count per value
+    present, at C speed (a Counter over every byte was the slow part). The same tallies."""
+    for v in set(buf):
+        quals[v] = quals.get(v, 0) + buf.count(v)
+
+
 def _log_bam_properties(label: str, bam_path: Path, *, min_baseq: int, reference: Any) -> None:
     import pysam
 
@@ -282,6 +292,7 @@ def _log_bam_properties(label: str, bam_path: Path, *, min_baseq: int, reference
         alts = [n for n in names if n.endswith("_alt") or n.startswith("HLA-")]
         records = dups = primaries = hard = 0
         quals: dict[int, int] = {}
+        qbuf = bytearray()  # the sampled base qualities not yet tallied, one byte each
         for i, r in enumerate(fh):
             if i >= BAM_SAMPLE_RECORDS:
                 break
@@ -294,8 +305,12 @@ def _log_bam_properties(label: str, bam_path: Path, *, min_baseq: int, reference
                 hard += 1
             q = r.query_qualities
             if q is not None:
-                for value, n in Counter(q).items():
-                    quals[value] = quals.get(value, 0) + n
+                qbuf += q
+                if len(qbuf) >= BAM_QUAL_CHUNK:
+                    _tally_qualities(qbuf, quals)
+                    qbuf.clear()
+        _tally_qualities(qbuf, quals)
+    quals = dict(sorted(quals.items()))
     bases = sum(quals.values())
     below = sum(n for v, n in quals.items() if v < min_baseq) / bases if bases else 0.0
     alphabet = sorted(quals)

@@ -38,7 +38,7 @@ use std::collections::HashMap;
 use coitrees::{COITree, IntervalNode, IntervalTree};
 use log::{debug, trace};
 
-pub(crate) use gtf::parse_gtf;
+pub(crate) use gtf::parse_gtf_shared;
 
 // ─── Data Structures ─────────────────────────────────────────────────────────
 

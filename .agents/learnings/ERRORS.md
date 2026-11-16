@@ -11,6 +11,18 @@ Newest at the top.
 
 ---
 
+## [ERR-20261115-002] CI's Rocky 8 test job could not pull its container image, a second time
+- **What happened:** on PR #440, `Rocky 8, Python 3.12, manylinux_2_28` (`wheels.yml`, step "Install and
+  test the wheel") failed after 7 s: `docker run` pulled `quay.io/rockylinux/rockylinux:8`, and the
+  download from quay's file server broke (`httpReadSeeker: failed open ... EOF`, exit 125). No test ran;
+  the other Rocky 8 jobs of the run passed. The same failure as ERR-20261114-001, one day later.
+- **Rule/hook involved:** none at fault. Red Hat's status page showed Quay operational, with no incident
+  from 2026-11-14 to 2026-11-16: brief download errors, not an outage.
+- **Environment fix:** the failed job was rerun (`gh run rerun <run> --failed`). Proposed, not done: since
+  it repeats, pull the image in its own step with up to 3 tries before `docker run` (a workflow change,
+  for the operator to approve).
+- **Date:** 2026-11-15
+
 ## [ERR-20261115-001] a sign-in prompt ended the session and stopped its tracked background runs
 - **What happened:** on 2026-11-15 the desktop app stopped the session for a sign-in (not for credits).
   Every tracked background task ended with it: the local #335 gate chain stopped after one arm of the

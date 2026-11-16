@@ -13,9 +13,13 @@ Batch I/O (batch):
     Uses Polars for efficient joins and aggregation.
 """
 
-from .batch import read_maf, read_parquet, scan_maf, write_maf
+from typing import TYPE_CHECKING, Any
+
 from .input import MafReader, VariantReader, VcfReader
 from .output import MafWriter, OutputWriter, VcfWriter
+
+if TYPE_CHECKING:
+    from .batch import read_maf, read_parquet, scan_maf, write_maf
 
 __all__ = [
     # Streaming I/O (core pipeline)
@@ -31,3 +35,13 @@ __all__ = [
     "scan_maf",
     "write_maf",
 ]
+
+
+def __getattr__(name: str) -> Any:
+    """The batch helpers are read on first use: importing them loads polars (about 0.14 s),
+    which a counting run never needs."""
+    if name in ("read_maf", "read_parquet", "scan_maf", "write_maf"):
+        from . import batch
+
+        return getattr(batch, name)
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")

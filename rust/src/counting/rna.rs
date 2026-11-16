@@ -9,8 +9,11 @@
 
 use std::collections::HashSet;
 use std::io::BufRead;
+use std::sync::Arc;
 
 use log::{debug, trace};
+
+use crate::shared::run_cache::{Memo, MemoKey};
 use rust_htslib::bam::record::Cigar;
 use rust_htslib::bam::Record;
 
@@ -224,6 +227,18 @@ pub(crate) fn splice_junctions_in(record: &Record, (lo, hi): (i64, i64)) -> Vec<
         .filter(|&(s, e)| e > s && s < hi && e > lo)
         .collect()
 }
+/// The catalogued editing sites: (normalized contig, 0-based position, ref base, edited base).
+pub type EditingSites = HashSet<(String, i64, u8, u8)>;
+
+/// The sites [`build_rna_editing_set`] loads from this file, loaded once per run: every
+/// counting call of a run (each BAM, and the MNP rescue's second pass) reads the same
+/// database, and a load is a pure function of the file. The second element is true when the
+/// sites were already loaded. A changed file is read again ([`crate::shared::run_cache`]).
+pub fn build_rna_editing_set_shared(db_path: &str) -> anyhow::Result<(Arc<EditingSites>, bool)> {
+    static MEMO: Memo<EditingSites> = Memo::new();
+    MEMO.get_or_try_build(MemoKey::for_file(db_path, std::iter::empty()), || build_rna_editing_set(db_path))
+}
+
 /// Build an O(1) lookup set of known RNA editing sites from REDIportal TABLE1.
 ///
 /// Parses the REDIportal TABLE1 format (tab-delimited, with header row):
@@ -251,7 +266,7 @@ pub(crate) fn splice_junctions_in(record: &Record, (lo, hi): (i64, i64)) -> Vec<
 ///
 /// Loads ~15.7M sites in ~3-5 seconds (plain) or ~5-8 seconds (gzipped).
 /// Memory: ~80 bytes per site ≈ 1.2 GB.
-pub fn build_rna_editing_set(db_path: &str) -> anyhow::Result<HashSet<(String, i64, u8, u8)>> {
+pub fn build_rna_editing_set(db_path: &str) -> anyhow::Result<EditingSites> {
     let file = std::fs::File::open(db_path)
         .map_err(|e| anyhow::anyhow!("Failed to open RNA editing DB '{}': {}", db_path, e))?;
 
@@ -327,6 +342,30 @@ pub fn build_rna_editing_set(db_path: &str) -> anyhow::Result<HashSet<(String, i
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn the_shared_editing_sites_are_the_sites_a_fresh_load_reads() {
+        use std::io::Write;
+        let path = std::env::temp_dir().join(format!("test_shared_edit_{}.txt", std::process::id()));
+        let mut f = std::fs::File::create(&path).unwrap();
+        writeln!(f, "Accession\tRegion\tPosition\tRef\tEd\tStrand").unwrap();
+        writeln!(f, "E1\tchr1\t101\tA\tG\t+").unwrap();
+        writeln!(f, "E2\t2\t55\tt\tc\t-").unwrap();
+        writeln!(f, "E3\tchrM\t7\tA\tG\t+").unwrap();
+        writeln!(f, "E4\tchr1\tx\tA\tG\t+").unwrap();
+        drop(f);
+        let p = path.to_str().unwrap();
+        let fresh = build_rna_editing_set(p).unwrap();
+        let (first, reused_first) = build_rna_editing_set_shared(p).unwrap();
+        let (second, reused_second) = build_rna_editing_set_shared(p).unwrap();
+        assert!(!reused_first && reused_second);
+        assert!(Arc::ptr_eq(&first, &second));
+        assert_eq!(*first, fresh);
+        assert_eq!(fresh.len(), 3);
+        assert!(first.contains(&("1".to_string(), 100, b'A', b'G')));
+        assert!(build_rna_editing_set_shared("/nonexistent/none.txt").is_err());
+        std::fs::remove_file(&path).ok();
+    }
+
     use super::*;
     use rust_htslib::bam::record::CigarString;
     use std::ffi::CString;

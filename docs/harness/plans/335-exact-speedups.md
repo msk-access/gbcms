@@ -2,7 +2,7 @@
 
 Status: approved 2026-11-14 (operator: "Approve the page") · plan-first (`plan-first.md`); Stage 3 of the
 6.8.0 order (`420-cycle-order.md`) · base develop 1b11ffea (#438 merged)
-Rounds: 0 of 2 · New count conditions: 0 (speed changes add none) · Builds: 6 of 8 (`src_m1prof`, `src_s1`, `src_s1b`, `src_s4`, `src_s1c`, `src_s1d`) · HPC batches: 3 of 3 (M2, pf75 and pf76 done; pf76, RNA, added by the operator) · Reruns: 0 of 1
+Rounds: 0 of 2 · New count conditions: 0 (speed changes add none) · Builds: 8 of 8 (`src_m1prof`, `src_s1`, `src_s1b`, `src_s4`, `src_s1c`, `src_s1d`, `src_s4b`, `src_s4c`) · HPC batches: 3 of 3 (M2, pf75 and pf76 done; pf76, RNA, added by the operator) · Reruns: 0 of 1
 
 ## 1. The class
 
@@ -232,6 +232,42 @@ order of measured gain over effort (S1 and S4 first, then S2, S3, S5), each with
 - 2026-11-15, S4's log arms: 0 differences too. They do not yet test S4's change: each RNA log run reads one
   BAM, so the GTF is read once in both builds. Before the S4 PR the gate gets an RNA fill-out log run (several
   BAMs, the GTF on), where S4 should show one GTF load, not one per BAM.
+- 2026-11-15, S1 merged (#439, develop 1992fcb4); Greptile's second review 5 of 5, no new findings.
+- 2026-11-15, the RNA fill-out log arm (`logs_rnafill`, now in the gate): every FORTE run of the tier in one
+  `gbcms rna` run, 3 of them again under another tag (36 BAMs), on the union of their rows (57), with the GTF
+  and a made-up editing database (39 sites at the union's SNVs). Develop and a repeat: equal, line for line.
+  `s1d`: 0 differences. `s4`: 0 of 2,052 rows differ; the log differs only where BAMs 2 to 36 reuse the parse
+  (6 line kinds only in develop, the parse's timing and DEBUG lines and the loader's own line; 2 only in S4,
+  the reuse said at DEBUG; 35 times each). One local run, not a speed measure: 56 CPU s on develop, 4 on S4.
+- 2026-11-15, the operator, on S4's log (option B: on each BAM after the first, the reuse said at INFO and the
+  parse's warnings said again; a one-BAM log unchanged): "I am ok with B if there is no issue in accuracy".
+  The check, on the 35 BAMs that read the index from memory (1,995 rows): every field equals develop's, and
+  the GTF columns hold values (the exon distance in 1,995 rows, 44 values; the transcript counts in 1,855;
+  the known-junction flags True in 19; `asjd_flag` is False in every row, so these rows do not test it). The
+  same BAM read again from memory equals its fresh parse (3 BAMs, 57 rows each). Built as `s4b` (develop
+  1992fcb4 plus S4 with option B).
+- 2026-11-15, the gate on `s4b` (local, against develop 1b11ffea; 6,585 s): **every row identical on all 18
+  arms** (0 rows differ, no run failed), and 0 log differences on `logs`, `logs_rna` and `logs_judge`. On
+  `logs_rnafill` the log differs only as option B says: on each of the 35 BAMs after the first, develop's 10
+  lines of the parse and the load (the two "Loaded N RNA editing sites" lines, "Loading GTF annotation from",
+  the parser's summary, its timing, its DEBUG lines and "built index from") are replaced by the 2 reuse lines
+  (7,180 lines compared; 350 only in develop, 70 only in `s4b`). The gate script reports that arm as not zero,
+  as it must for a log that changes by design.
+- 2026-11-15, the S4 PR (#440): CI's Rocky 8 job could not pull its image a second time (quay's file
+  server; ERR-20261115-002); the rerun passed, 24 of 24 checks. Greptile (4 of 5): two valid findings, both
+  fixed (build `s4c`). (1) The cache key held the path as given: a Python caller that moves to another
+  working folder and passes the same relative name, a file of the same size and modification time, got the
+  first folder's index. The key is now the resolved path and, on Unix, the device and inode (a file renamed
+  over the path is read again too). A test reproduces the case; it failed on `s4b`'s key. (2) The quality
+  tally kept every sampled quality (about 800 MB for 20,000 records of 20 kb, with its copy); it now tallies
+  1 MiB at a time. The arms these reach, on `s4c` against develop 1b11ffea: every row identical (`rules`,
+  905 runs, and the four log arms); logs as on `s4b` (0 differences on `logs`, `logs_rna`, `logs_judge`; the
+  fill-out's planned reuse lines only). Builds are now 8 of 8: S2, S3, S5 and a combined build need more,
+  the operator's call.
+- 2026-11-15, a slip: reading the fill-out log, I cut lines to 200 characters before the sanitizer. A cut ended
+  inside a FORTE slice's path, before `.bam`, and one folder name of the path was printed (no BAM name, read
+  name or sample ID). The sanitizer now masks every path under a folder of patient slices, whole or cut
+  short, and the PHI rule says to cut only after it (LRN-20261115-003).
 - Slips: the agents' worktrees started on `main` (0f5c1f0b), not develop; each moved to 1b11ffea. On
   2026-11-15 I listed M2's copy-back lanes with `find` (they hold only cell folders and timing files, and no
   identifier was printed, but the rule counts every lane as a patient folder); later scripts build lane paths
@@ -242,4 +278,4 @@ order of measured gain over effort (S1 and S4 first, then S2, S3, S5), each with
 - Research agents: inventory (Sonnet) 0.20 M tokens; code survey (Opus) 0.44 M; outside survey
   (Fable) 0.18 M; profiles (Sonnet) 0.16 M.
 - Build agents (Sonnet): M1 0.34 M; S1 and S1b 0.25 M; S4 0.26 M; the gate 0.23 M; pf76 staging 0.19 M. Review rounds 0;
-  builds 6 (with `s1c` and `s1d`); HPC batches 3 (M2, pf75, pf76); reruns 0.
+  builds 8 (with `s1c`, `s1d`, `s4b` and `s4c`); HPC batches 3 (M2, pf75, pf76); reruns 0.

@@ -10,6 +10,7 @@ Example usage:
 
 from importlib.metadata import PackageNotFoundError
 from importlib.metadata import version as _package_version
+from typing import TYPE_CHECKING, Any
 
 # The installed package's version, which maturin takes from rust/Cargo.toml: one
 # source for the package, the extension and every output's provenance line.
@@ -18,7 +19,6 @@ try:
 except PackageNotFoundError:  # a source tree that was never installed
     __version__ = "unknown"
 
-from .merge import merge_mafs
 from .models.core import (
     GbcmsBaseConfig,
     GbcmsConfig,
@@ -31,6 +31,9 @@ from .models.core import (
 )
 from .observations import ObservationResult, observe_molecules
 from .pipeline import Pipeline
+
+if TYPE_CHECKING:
+    from .merge import merge_mafs
 
 __all__ = [
     "__version__",
@@ -47,3 +50,13 @@ __all__ = [
     "merge_mafs",
     "observe_molecules",
 ]
+
+
+def __getattr__(name: str) -> Any:
+    """``merge_mafs`` is read on first use: importing it loads polars (about 0.14 s), which
+    a counting run never needs."""
+    if name == "merge_mafs":
+        from .merge import merge_mafs
+
+        return merge_mafs
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")

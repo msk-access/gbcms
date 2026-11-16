@@ -61,6 +61,10 @@ of the conversation. The operator decided (2026-10-26, after asking what reaches
     send it to a file that never prints. (2026-10-30: an agent's tool output showed WES BAM names.)
   - Test the sanitizer on a made-up line holding each kind of identifier before it sees patient
     data. (2026-10-30: a masking command that did not mask printed five DMP BAM stems.)
+  - Cut, trim or wrap a line only after the sanitizer, never before: a cut can end a path before the
+    part the sanitizer matches. (2026-11-15: a log line cut to 200 characters ended inside a FORTE
+    slice's path and printed one of its folder names; the sanitizer now masks every path under a
+    folder of patient slices.)
   - Never list a patient folder (`ls`, `find`, `tree`, a glob echoed to the screen): its file and
     folder names are sample IDs. Take patient paths from the batch's manifest or the scorer's own
     index, inside a script whose output goes through the sanitizer. Every brief that touches
