@@ -853,6 +853,28 @@ and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semant
   5,000 rows x 10 BAMs, the default path, 518 CPU seconds before and 270 after. Building a wheel from source takes
   longer (about 4 minutes on an M-series Mac). Plan: <code>docs/harness/plans/335-exact-speedups.md</code>.</li>
 </ul>
+<h3 id="changed-speed-an-rna-run-reads-its-gtf-and-editing-database-once-335">Changed — speed: an RNA run reads its GTF and editing database once (#335)<a class="headerlink" href="#changed-speed-an-rna-run-reads-its-gtf-and-editing-database-once-335" title="Permanent link">¶</a></h3>
+<ul>
+<li>A run counts its BAMs one after another, and each counting call parsed the GTF and loaded the RNA
+  editing database again. Each later call now reuses the first call's index and sites. The reuse is
+  keyed by the file's resolved path (on Unix also its device and inode), size and modification time
+  and, for the GTF, the chromosomes asked for, so a changed or replaced file, or the same relative
+  name read from another working folder, is read again. On each <abbr title="Binary Alignment Map - Compressed sequence alignment file format">BAM</abbr> after the first the log says so at INFO ("GTF
+  annotation: reusing the index parsed earlier in this run from ...", "Reusing N RNA editing sites
+  loaded earlier in this run from ...") and says the parse's warnings again; the parse's timing and
+  DEBUG lines come with the first <abbr title="Binary Alignment Map - Compressed sequence alignment file format">BAM</abbr> only. A one-<abbr title="Binary Alignment Map - Compressed sequence alignment file format">BAM</abbr> run's log is unchanged.</li>
+<li>Also: the insert size is not computed when <code>--mfsd</code> is off (only the <abbr title="Mutant Fragment Size Distribution - Insert-size analysis for REF vs ALT fragments">mFSD</abbr> columns read it); the <abbr title="Binary Alignment Map - Compressed sequence alignment file format">BAM</abbr>
+  properties line tallies the sampled base qualities 1 MiB at a time, not one record at a time (the
+  same line, bounded memory); <code>import gbcms</code> no
+  longer loads polars (<code>merge_mafs</code> and the <code>gbcms.io</code> batch helpers load it on first use).</li>
+<li>No count changes: every output field of every row is identical to develop's on the same local
+  regression sets, and on a 36-<abbr title="Binary Alignment Map - Compressed sequence alignment file format">BAM</abbr> FORTE RNA fill-out with the GTF and an editing database, where 35
+  BAMs read the index from memory (the GTF columns hold values in 1,855 to 1,995 of their 1,995 rows).
+  On FORTE RNA with the GTF (1 <abbr title="Binary Alignment Map - Compressed sequence alignment file format">BAM</abbr> x 1,000 to 20,000 rows and a 10-<abbr title="Binary Alignment Map - Compressed sequence alignment file format">BAM</abbr> fill-out, 3 repeats) this change
+  alone, timed against develop before the build change above, takes 0.87 to 0.91 of its CPU time; on DNA
+  it is within noise (0.96 to 1.02). Example: RNA, 5,000 rows x 10 BAMs, 368 CPU seconds before and 318
+  after.</li>
+</ul>
 <h3 id="docs-read-judgment-what-gbcms-takes-from-the-aligner-and-naming-the-reads-it-holds-back-rj-33-rj-34">Docs — read judgment: what gbcms takes from the aligner, and naming the reads it holds back (RJ-33, RJ-34)<a class="headerlink" href="#docs-read-judgment-what-gbcms-takes-from-the-aligner-and-naming-the-reads-it-holds-back-rj-33-rj-34" title="Permanent link">¶</a></h3>
 <ul>
 <li>Decided, no count change (operator 2026-11-11). RJ-33: the allele comes from the read's own
