@@ -498,41 +498,53 @@ fn count_bam_binned_core(
     )?;
 
     // ── Load RNA editing site database (if provided) ──
-    // Loaded ONCE at init, then shared across all bins/threads via Arc.
+    // Loaded ONCE per run (a process cache keyed by the file), then shared across all
+    // bins/threads and across the run's later counting calls via Arc.
     // DB-only strategy: flag = True only when the variant matches a REDIportal edit.
     // No DB = no editing flags (no pattern-matching guessing). Each entry carries the
     // catalogued (chrom, 0-based pos, ref base, edited base) so the flag can require
     // the variant's substitution to match, not merely its position.
-    let editing_sites: Option<HashSet<(String, i64, u8, u8)>> = match rna_editing_db {
+    let editing_sites: Option<std::sync::Arc<rna::EditingSites>> = match rna_editing_db {
         Some(path) => {
-            let sites = rna::build_rna_editing_set(path)
+            let (sites, reused) = rna::build_rna_editing_set_shared(path)
                 .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(
                     format!("Failed to load RNA editing DB: {}", e)
                 ))?;
-            info!("Loaded {} RNA editing sites from {}", sites.len(), path);
+            if reused {
+                info!("Reusing {} RNA editing sites loaded earlier in this run from {}", sites.len(), path);
+            } else {
+                info!("Loaded {} RNA editing sites from {}", sites.len(), path);
+            }
             Some(sites)
         }
         None => None,
     };
-    // Wrap in Arc for thread-safe sharing across rayon workers
-    let editing_sites = std::sync::Arc::new(editing_sites);
 
     // ── Build GTF annotation index (if GTF provided, RNA mode only) ──
-    // Loaded ONCE at init, then shared across all bins/threads via Arc.
+    // Parsed ONCE per run for each chromosome set (a process cache keyed by the file and the
+    // chromosomes), then shared across all bins/threads and the run's later calls via Arc.
     // Only builds for chromosomes that have variants (variant-guided streaming).
     let annotation: Option<std::sync::Arc<AnnotationIndex>> = match (mode, gtf_path) {
         ("rna", Some(path)) => {
             let variant_chroms: HashSet<String> = variants.iter()
                 .map(|v| crate::shared::contig::normalize_contig(&v.chrom))
                 .collect();
-            let annot = crate::annotation::parse_gtf(path, &variant_chroms).map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(
+            let (annot, reused) = crate::annotation::parse_gtf_shared(path, &variant_chroms).map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(
                 format!("Failed to load GTF annotation: {}", e)
             ))?;
-            info!(
-                "GTF annotation: built index from {} — {} exons, {} transcripts, {} chromosomes",
-                path, annot.n_exons(), annot.n_transcripts(), annot.n_chromosomes(),
-            );
-            Some(std::sync::Arc::new(annot))
+            if reused {
+                info!(
+                    "GTF annotation: reusing the index parsed earlier in this run from {} — {} exons, \
+                     {} transcripts, {} chromosomes",
+                    path, annot.n_exons(), annot.n_transcripts(), annot.n_chromosomes(),
+                );
+            } else {
+                info!(
+                    "GTF annotation: built index from {} — {} exons, {} transcripts, {} chromosomes",
+                    path, annot.n_exons(), annot.n_transcripts(), annot.n_chromosomes(),
+                );
+            }
+            Some(annot)
         }
         ("rna", None) => {
             debug!("GTF annotation: no GTF provided, annotation features disabled");
@@ -1154,7 +1166,7 @@ fn count_bin_shared(
     enforce_strandedness: bool,
     strandedness: rna::Strandedness,
     mfsd: bool,
-    editing_sites: &Option<HashSet<(String, i64, u8, u8)>>,
+    editing_sites: &Option<std::sync::Arc<rna::EditingSites>>,
     annotation: &Option<std::sync::Arc<AnnotationIndex>>,
     fasta_reader: &mut Option<bio::io::fasta::IndexedReader<std::fs::File>>,
     far_reference: Option<&crate::normalize::fasta::CachedFasta>,
@@ -1602,7 +1614,7 @@ fn count_variant_from_cache(
     enforce_strandedness: bool,
     strandedness: rna::Strandedness,
     mfsd: bool,
-    editing_sites: &Option<HashSet<(String, i64, u8, u8)>>,
+    editing_sites: &Option<std::sync::Arc<rna::EditingSites>>,
     annotation: &Option<std::sync::Arc<AnnotationIndex>>,
     amplicon_mode: bool,
     // ── Observation export (additive; counting is untouched) ──
@@ -1998,7 +2010,9 @@ fn count_variant_from_cache(
         // discriminating position) rather than the previous heuristic
         // (base_qual==0 && !is_ref && !is_alt) which could mis-classify
         // true third-allele reads with qual=0 as N-class fragments.
-        let tlen = mfsd::allele_insert_size(record, variant, is_alt);
+        // The size is read only by the mFSD size classes below (`evidence.insert_size`, gated
+        // by `mfsd`), so with mFSD off it is not computed: a 0 is ignored by `observe`.
+        let tlen = mfsd::fragment_size_for_evidence(mfsd, record, variant, is_alt);
         let informative = !result.uninformative || ref_claimed_by_sibling;
         evidence.observe(is_ref, is_alt, base_qual, is_read1, is_forward, tlen, result.has_n_base, result.is_structural, record.mapq(), informative);
 
@@ -3387,7 +3401,9 @@ fn count_per_transcript(
 
             // Only the resolved call reads this evidence (`resolve`), so whether the
             // read was informative is not needed here.
-            let tlen = mfsd::allele_insert_size(record, variant, is_alt);
+            // Nothing here reads the fragment size (only `resolve` reads this evidence), so
+            // none is computed: a 0 is ignored by `observe`.
+            let tlen = 0;
             let evidence = tx_fragments.entry(mol_hash).or_insert_with(FragmentEvidence::new);
             evidence.observe(is_ref, is_alt, result.qual, is_read1, is_forward, tlen, result.has_n_base, result.is_structural, record.mapq(), !result.uninformative);
 

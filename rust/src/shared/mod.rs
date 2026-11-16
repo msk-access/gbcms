@@ -12,6 +12,7 @@
 //! - [`filters`] — Configurable BAM read filters (duplicate, secondary, MAPQ)
 //! - [`baq`] — Base Alignment Quality heuristic (Li 2011)
 //! - [`contig`] — Cross-source chromosome-name normalization
+//! - [`run_cache`] — Once-per-run cache for the GTF index and the RNA editing database
 
 pub mod fragment;
 pub mod stats;
@@ -19,6 +20,7 @@ pub mod bam_utils;
 pub mod filters;
 pub mod baq;
 pub mod contig;
+pub mod run_cache;
 
 /// Resolve the worker-thread budget for one gbcms invocation.
 ///

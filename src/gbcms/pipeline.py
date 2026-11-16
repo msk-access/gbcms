@@ -281,7 +281,7 @@ def _log_bam_properties(label: str, bam_path: Path, *, min_baseq: int, reference
         names = [sq.get("SN", "") for sq in fh.header.to_dict().get("SQ", [])]
         alts = [n for n in names if n.endswith("_alt") or n.startswith("HLA-")]
         records = dups = primaries = hard = 0
-        quals: dict[int, int] = {}
+        qbuf = bytearray()  # every sampled base quality, one byte each
         for i, r in enumerate(fh):
             if i >= BAM_SAMPLE_RECORDS:
                 break
@@ -294,8 +294,11 @@ def _log_bam_properties(label: str, bam_path: Path, *, min_baseq: int, reference
                 hard += 1
             q = r.query_qualities
             if q is not None:
-                for value, n in Counter(q).items():
-                    quals[value] = quals.get(value, 0) + n
+                qbuf += q
+    # One tally over all sampled bytes: count only the values present (a Counter over
+    # three million bytes is the slow part). The integer tallies are the same.
+    qbytes = bytes(qbuf)
+    quals = {v: qbytes.count(bytes((v,))) for v in sorted(set(qbytes))}
     bases = sum(quals.values())
     below = sum(n for v, n in quals.items() if v < min_baseq) / bases if bases else 0.0
     alphabet = sorted(quals)

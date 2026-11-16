@@ -285,6 +285,17 @@ pub fn allele_insert_size(record: &Record, variant: &Variant, is_alt: bool) -> i
     if size > 0 { size as i32 } else { base }
 }
 
+/// The size a read hands to `FragmentEvidence::observe`: [`allele_insert_size`] when mFSD is
+/// on, 0 when it is off.
+///
+/// `observe` keeps a nonzero size as the fragment's `insert_size`, and that field is read in
+/// one place: the mFSD size classes, behind the `mfsd` flag. With mFSD off nothing reads it, so
+/// the CIGAR decode is skipped; 0 is the value `observe` ignores, so the evidence (and every
+/// count resolved from it) is the same.
+pub fn fragment_size_for_evidence(mfsd: bool, record: &Record, variant: &Variant, is_alt: bool) -> i32 {
+    if mfsd { allele_insert_size(record, variant, is_alt) } else { 0 }
+}
+
 // ── Two-Sample Kolmogorov-Smirnov Test ───────────────────────────────────────
 
 /// Two-sample Kolmogorov-Smirnov test.
@@ -795,6 +806,34 @@ mod tests {
 
     fn variant(pos: i64, r: &str, a: &str) -> Variant {
         Variant::new("1".into(), pos, r.into(), a.into(), "INDEL".into(), None, 0, 0, None, None, None, None)
+    }
+
+    #[test]
+    fn the_size_handed_to_the_evidence_is_computed_only_when_mfsd_is_on() {
+        use crate::shared::fragment::FragmentEvidence;
+        let del = variant(100, &"A".repeat(61), "A");
+        let recs = [
+            placed(&CigarString(vec![Cigar::Match(61), Cigar::Del(60), Cigar::Match(39)]), 40, 200, 227),
+            placed(&CigarString(vec![Cigar::Match(61), Cigar::SoftClip(39)]), 40, 200, -227),
+            placed(&CigarString(vec![Cigar::Match(100)]), 40, 40, 0),
+        ];
+        for rec in &recs {
+            for is_alt in [false, true] {
+                assert_eq!(fragment_size_for_evidence(true, rec, &del, is_alt), allele_insert_size(rec, &del, is_alt));
+                assert_eq!(fragment_size_for_evidence(false, rec, &del, is_alt), 0, "mFSD off: no size");
+                // With mFSD off the evidence records no size and resolves as it would with one:
+                // the size feeds nothing but `insert_size`, which only the mFSD classes read.
+                let mut on = FragmentEvidence::new();
+                let mut off = FragmentEvidence::new();
+                let sz_on = fragment_size_for_evidence(true, rec, &del, is_alt);
+                on.observe(!is_alt, is_alt, 30, true, true, sz_on, false, true, 60, true);
+                off.observe(!is_alt, is_alt, 30, true, true, fragment_size_for_evidence(false, rec, &del, is_alt), false, true, 60, true);
+                assert_eq!(off.insert_size, None);
+                assert_eq!(on.resolve(10), off.resolve(10));
+                assert_eq!(on.class(on.resolve(10).0, on.resolve(10).1), off.class(off.resolve(10).0, off.resolve(10).1));
+                assert_eq!((on.min_mapq, on.has_n_base, on.has_structural_alt), (off.min_mapq, off.has_n_base, off.has_structural_alt));
+            }
+        }
     }
 
     #[test]

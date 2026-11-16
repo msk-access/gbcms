@@ -71,6 +71,7 @@ gbcms/
 │       │   ├── bam_utils.rs     # median_qual, find_read_pos
 │       │   ├── contig.rs        # Contig-name normalization across BAM/GTF/VCF (chrM vs MT)
 │       │   ├── filters.rs       # ReadFilter, FilterCounts
+│       │   ├── run_cache.rs     # Once-per-run cache: the GTF index and the RNA editing database
 │       │   └── baq.rs           # Heuristic BAQ (Li 2011)
 │       └── normalize/           # Variant preparation (PreparedVariant)
 │           ├── mod.rs, engine.rs, types.rs  # entry, preparation engine, PreparedVariant

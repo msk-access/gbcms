@@ -20,11 +20,53 @@
 
 use std::collections::{HashMap, HashSet};
 use std::io::{BufRead, BufReader, Read, Seek, SeekFrom};
+use std::sync::Arc;
 
 use log::{debug, info, warn};
 
 use super::gtf_line::{columns, LineError};
+use crate::shared::run_cache::{Memo, MemoKey};
 use super::{build_exon_trees, AnnotationIndex, ExonRecord, TranscriptIntrons, TranscriptKey};
+
+/// The index [`parse_gtf`] builds for this file and chromosome set, parsed once per run.
+///
+/// A run counts several BAMs, and the MNP rescue counts each again, each with the same
+/// GTF; a parse is a pure function of the file and the chromosome set, so the later calls
+/// share the first call's index. The second element is true when the index was already
+/// parsed. A changed file, or another chromosome set, is parsed again
+/// ([`crate::shared::run_cache`]).
+pub fn parse_gtf_shared(
+    gtf_path: &str,
+    variant_chroms: &HashSet<String>,
+) -> anyhow::Result<(Arc<AnnotationIndex>, bool)> {
+    // The index with the warnings its parse said: a call that reuses it says them again, so
+    // each BAM's log still carries them (rejected lines, missing contigs). The parse's INFO and
+    // DEBUG lines are not said again: no parse ran, and the caller says that the index is reused.
+    static MEMO: Memo<(Arc<AnnotationIndex>, Warnings)> = Memo::new();
+    let (parsed, reused) = MEMO.get_or_try_build(MemoKey::for_file(gtf_path, variant_chroms), || {
+        let mut warnings = Warnings::new();
+        let index = parse_gtf_warned(gtf_path, variant_chroms, &mut warnings)?;
+        Ok::<_, anyhow::Error>((Arc::new(index), warnings))
+    })?;
+    if reused {
+        for line in &parsed.1 {
+            warn!("{line}");
+        }
+    }
+    Ok((Arc::clone(&parsed.0), reused))
+}
+
+/// The WARN lines a parse says, in order.
+type Warnings = Vec<String>;
+
+/// Say a warning now and keep it in `warnings`.
+macro_rules! warn_kept {
+    ($warnings:expr, $($arg:tt)*) => {{
+        let line = format!($($arg)*);
+        warn!("{line}");
+        $warnings.push(line);
+    }};
+}
 
 /// Parse a GTF file and build an [`AnnotationIndex`].
 ///
@@ -43,9 +85,20 @@ use super::{build_exon_trees, AnnotationIndex, ExonRecord, TranscriptIntrons, Tr
 ///
 /// Returns `Err` if the file cannot be opened or read (including a corrupt gzip
 /// stream).
+#[cfg(test)]
 pub fn parse_gtf(
     gtf_path: &str,
     variant_chroms: &HashSet<String>,
+) -> anyhow::Result<AnnotationIndex> {
+    parse_gtf_warned(gtf_path, variant_chroms, &mut Warnings::new())
+}
+
+/// [`parse_gtf`], also keeping every warning the parse says in `warnings`, so a call that
+/// reuses the parse can say them again.
+fn parse_gtf_warned(
+    gtf_path: &str,
+    variant_chroms: &HashSet<String>,
+    warnings: &mut Warnings,
 ) -> anyhow::Result<AnnotationIndex> {
     let started = std::time::Instant::now();
     info!("Loading GTF annotation from: {}", gtf_path);
@@ -183,7 +236,7 @@ pub fn parse_gtf(
     }
 
     if let Some((line_no, why)) = first_rejected {
-        warn!(
+        warn_kept!(warnings,
             "GTF parser: {} exon line{} on the variant chromosomes rejected as malformed and \
              not loaded (first at line {}: {}) in {}",
             rejected,
@@ -206,14 +259,14 @@ pub fn parse_gtf(
         // those contigs or uses spellings the normalizer does not cover (e.g.
         // accession-style names).
         if rejected > 0 {
-            warn!(
+            warn_kept!(warnings,
                 "GTF parser: every exon line on the variant chromosomes {:?} in {} was rejected \
                  as malformed ({} lines; names shown are normalized). RNA annotation will be \
                  inert.",
                 variant_chroms, gtf_path, rejected,
             );
         } else if skipped_chrom > 0 {
-            warn!(
+            warn_kept!(warnings,
                 "GTF parser: exon records exist but none on the variant chromosomes {:?} in {} \
                  ({} exon rows skipped by the chromosome filter; names shown are normalized). \
                  The GTF lacks these contigs, or uses spellings the normalizer does not cover \
@@ -221,7 +274,7 @@ pub fn parse_gtf(
                 variant_chroms, gtf_path, skipped_chrom,
             );
         } else {
-            warn!(
+            warn_kept!(warnings,
                 "GTF parser: no 'exon' feature records found in {} ({} lines read, {} non-exon, \
                  {} unreadable) — wrong file or feature column? RNA annotation will be inert.",
                 gtf_path, total_lines, skipped_non_exon, unreadable,
@@ -234,7 +287,7 @@ pub fn parse_gtf(
     // splice distance, per-transcript counts, ASJD and strand resolution are all
     // inert for its variants while working normally elsewhere. Name the gaps.
     if !exons.is_empty() {
-        warn_uncovered_variant_chroms(&chrom_map, variant_chroms);
+        warn_uncovered_variant_chroms(&chrom_map, variant_chroms, warnings);
     }
 
     info!(
@@ -280,7 +333,7 @@ pub fn parse_gtf(
         splice_sites.values().map(|v| v.len()).sum::<usize>(),
     );
 
-    warn_reused_transcript_ids(transcript_exons.keys(), gtf_path);
+    warn_reused_transcript_ids(transcript_exons.keys(), gtf_path, warnings);
 
     // ── Derive introns per transcript ────────────────────────────────────────
 
@@ -354,7 +407,7 @@ fn open_gtf(gtf_path: &str) -> anyhow::Result<Box<dyn BufRead>> {
 /// (among the loaded chromosomes). Each place is read as its own transcript; the
 /// warning names how many IDs are reused and the first of them, so a GTF that merges
 /// distinct transcripts under one ID (version-stripped RefSeq IDs, say) is noticed.
-fn warn_reused_transcript_ids<'a>(keys: impl Iterator<Item = &'a TranscriptKey>, gtf_path: &str) {
+fn warn_reused_transcript_ids<'a>(keys: impl Iterator<Item = &'a TranscriptKey>, gtf_path: &str, warnings: &mut Warnings) {
     let mut places: HashMap<&str, u32> = HashMap::new();
     for key in keys {
         *places.entry(key.id.as_str()).or_default() += 1;
@@ -364,7 +417,7 @@ fn warn_reused_transcript_ids<'a>(keys: impl Iterator<Item = &'a TranscriptKey>,
         return;
     }
     reused.sort_unstable();
-    warn!(
+    warn_kept!(warnings,
         "GTF parser: {} transcript ID{} used on more than one chromosome or strand in {} \
          (first: {}); each chromosome and strand is read as its own transcript, with its own \
          introns.",
@@ -383,14 +436,14 @@ fn warn_reused_transcript_ids<'a>(keys: impl Iterator<Item = &'a TranscriptKey>,
 /// comparison are already contig-normalized (chr prefix stripped, M/MT folded),
 /// so a gap means the GTF genuinely lacks the contig or spells it in a form the
 /// normalizer does not cover (e.g. accession-style names).
-fn warn_uncovered_variant_chroms(chrom_map: &HashMap<String, u32>, variant_chroms: &HashSet<String>) {
+fn warn_uncovered_variant_chroms(chrom_map: &HashMap<String, u32>, variant_chroms: &HashSet<String>, warnings: &mut Warnings) {
     let mut uncovered: Vec<&String> = variant_chroms
         .iter()
         .filter(|c| !chrom_map.contains_key(*c))
         .collect();
     if !uncovered.is_empty() {
         uncovered.sort();
-        warn!(
+        warn_kept!(warnings,
             "GTF annotation: no exons loaded for variant chromosome(s) {:?} \
              (names shown are normalized) — splice distance, per-transcript \
              counts, ASJD and gene strand are inert for variants there. The \
@@ -485,6 +538,64 @@ mod tests {
 
         // Cleanup
         std::fs::remove_file(&gtf_path).ok();
+    }
+
+    /// Everything an index answers, for a spread of positions on the given chromosomes.
+    fn answers(idx: &AnnotationIndex, chroms: &[&str]) -> Vec<String> {
+        let mut out = vec![format!("{} {} {}", idx.n_exons(), idx.n_transcripts(), idx.n_chromosomes())];
+        for c in chroms {
+            for pos in (0..700).step_by(7) {
+                out.push(format!(
+                    "{c}:{pos} {:?} {:?} {:?} {:?} {:?} {:?}",
+                    idx.strand_at(c, pos),
+                    idx.nearest_splice_distance(c, pos, pos + 3),
+                    idx.overlapping_transcripts(c, pos),
+                    idx.exon_starts_in(c, pos, pos + 50),
+                    idx.exon_ends_in(c, pos, pos + 50),
+                    idx.spliced_transcripts_at(c, pos).iter().map(|t| (t.transcript_id.clone(), t.introns.clone())).collect::<Vec<_>>(),
+                ));
+            }
+        }
+        out
+    }
+
+    #[test]
+    fn the_shared_index_is_the_index_a_fresh_parse_builds() {
+        use std::io::Write;
+        let path = std::env::temp_dir().join(format!("test_shared_{}.gtf", std::process::id()));
+        let mut f = std::fs::File::create(&path).unwrap();
+        for (chrom, strand, tx, spans) in [
+            ("chr1", "+", "ENST1.2", vec![(101, 200), (301, 400), (501, 600)]),
+            ("chr1", "-", "ENST2.1", vec![(121, 220), (321, 420)]),
+            ("chr2", "+", "ENST3.1", vec![(51, 150), (251, 350)]),
+            ("chr3", "-", "ENST4.1", vec![(11, 90)]),
+        ] {
+            for (a, b) in spans {
+                writeln!(f, "{chrom}\tGENCODE\texon\t{a}\t{b}\t.\t{strand}\t.\tgene_id \"G_{tx}\"; transcript_id \"{tx}\";").unwrap();
+            }
+        }
+        drop(f);
+        let p = path.to_str().unwrap();
+        let both: HashSet<String> = ["1", "2"].iter().map(|s| s.to_string()).collect();
+        let only1: HashSet<String> = ["1"].iter().map(|s| s.to_string()).collect();
+
+        let fresh = parse_gtf(p, &both).unwrap();
+        let (first, reused_first) = parse_gtf_shared(p, &both).unwrap();
+        let (second, reused_second) = parse_gtf_shared(p, &both).unwrap();
+        assert!(!reused_first && reused_second, "the second call reuses the first call's index");
+        assert!(Arc::ptr_eq(&first, &second));
+        assert_eq!(answers(&first, &["1", "2", "3"]), answers(&fresh, &["1", "2", "3"]));
+        assert_eq!(first.n_exons(), 7, "chromosome 3 is filtered out as before");
+
+        // Another chromosome set is its own parse, equal to a fresh parse of that set.
+        let (other, reused_other) = parse_gtf_shared(p, &only1).unwrap();
+        assert!(!reused_other);
+        assert_eq!(answers(&other, &["1", "2", "3"]), answers(&parse_gtf(p, &only1).unwrap(), &["1", "2", "3"]));
+        assert_eq!(other.n_exons(), 5);
+
+        // An error is the loader's own and is not kept.
+        assert!(parse_gtf_shared("/nonexistent/none.gtf", &both).is_err());
+        std::fs::remove_file(&path).ok();
     }
 
     #[test]
