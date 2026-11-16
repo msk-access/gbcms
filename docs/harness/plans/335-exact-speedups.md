@@ -2,7 +2,7 @@
 
 Status: approved 2026-11-14 (operator: "Approve the page") · plan-first (`plan-first.md`); Stage 3 of the
 6.8.0 order (`420-cycle-order.md`) · base develop 1b11ffea (#438 merged)
-Rounds: 0 of 2 · New count conditions: 0 (speed changes add none) · Builds: 7 of 8 (`src_m1prof`, `src_s1`, `src_s1b`, `src_s4`, `src_s1c`, `src_s1d`, `src_s4b`) · HPC batches: 3 of 3 (M2, pf75 and pf76 done; pf76, RNA, added by the operator) · Reruns: 0 of 1
+Rounds: 0 of 2 · New count conditions: 0 (speed changes add none) · Builds: 8 of 8 (`src_m1prof`, `src_s1`, `src_s1b`, `src_s4`, `src_s1c`, `src_s1d`, `src_s4b`, `src_s4c`) · HPC batches: 3 of 3 (M2, pf75 and pf76 done; pf76, RNA, added by the operator) · Reruns: 0 of 1
 
 ## 1. The class
 
@@ -253,6 +253,17 @@ order of measured gain over effort (S1 and S4 first, then S2, S3, S5), each with
   the parser's summary, its timing, its DEBUG lines and "built index from") are replaced by the 2 reuse lines
   (7,180 lines compared; 350 only in develop, 70 only in `s4b`). The gate script reports that arm as not zero,
   as it must for a log that changes by design.
+- 2026-11-15, the S4 PR (#440): CI's Rocky 8 job could not pull its image a second time (quay's file
+  server; ERR-20261115-002); the rerun passed, 24 of 24 checks. Greptile (4 of 5): two valid findings, both
+  fixed (build `s4c`). (1) The cache key held the path as given: a Python caller that moves to another
+  working folder and passes the same relative name, a file of the same size and modification time, got the
+  first folder's index. The key is now the resolved path and, on Unix, the device and inode (a file renamed
+  over the path is read again too). A test reproduces the case; it failed on `s4b`'s key. (2) The quality
+  tally kept every sampled quality (about 800 MB for 20,000 records of 20 kb, with its copy); it now tallies
+  1 MiB at a time. The arms these reach, on `s4c` against develop 1b11ffea: every row identical (`rules`,
+  905 runs, and the four log arms); logs as on `s4b` (0 differences on `logs`, `logs_rna`, `logs_judge`; the
+  fill-out's planned reuse lines only). Builds are now 8 of 8: S2, S3, S5 and a combined build need more,
+  the operator's call.
 - 2026-11-15, a slip: reading the fill-out log, I cut lines to 200 characters before the sanitizer. A cut ended
   inside a FORTE slice's path, before `.bam`, and one folder name of the path was printed (no BAM name, read
   name or sample ID). The sanitizer now masks every path under a folder of patient slices, whole or cut
@@ -267,4 +278,4 @@ order of measured gain over effort (S1 and S4 first, then S2, S3, S5), each with
 - Research agents: inventory (Sonnet) 0.20 M tokens; code survey (Opus) 0.44 M; outside survey
   (Fable) 0.18 M; profiles (Sonnet) 0.16 M.
 - Build agents (Sonnet): M1 0.34 M; S1 and S1b 0.25 M; S4 0.26 M; the gate 0.23 M; pf76 staging 0.19 M. Review rounds 0;
-  builds 7 (with `s1c`, `s1d` and `s4b`); HPC batches 3 (M2, pf75, pf76); reruns 0.
+  builds 8 (with `s1c`, `s1d`, `s4b` and `s4c`); HPC batches 3 (M2, pf75, pf76); reruns 0.

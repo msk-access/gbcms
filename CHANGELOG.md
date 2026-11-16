@@ -72,13 +72,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - A run counts its BAMs one after another, and each counting call parsed the GTF and loaded the RNA
   editing database again. Each later call now reuses the first call's index and sites. The reuse is
-  keyed by the file's path, size and modification time and, for the GTF, the chromosomes asked for,
-  so a changed file is read again. On each BAM after the first the log says so at INFO ("GTF
+  keyed by the file's resolved path (on Unix also its device and inode), size and modification time
+  and, for the GTF, the chromosomes asked for, so a changed or replaced file, or the same relative
+  name read from another working folder, is read again. On each BAM after the first the log says so at INFO ("GTF
   annotation: reusing the index parsed earlier in this run from ...", "Reusing N RNA editing sites
   loaded earlier in this run from ...") and says the parse's warnings again; the parse's timing and
   DEBUG lines come with the first BAM only. A one-BAM run's log is unchanged.
 - Also: the insert size is not computed when `--mfsd` is off (only the mFSD columns read it); the BAM
-  properties line tallies the sampled base qualities in one pass (the same line); `import gbcms` no
+  properties line tallies the sampled base qualities 1 MiB at a time, not one record at a time (the
+  same line, bounded memory); `import gbcms` no
   longer loads polars (`merge_mafs` and the `gbcms.io` batch helpers load it on first use).
 - No count changes: every output field of every row is identical to develop's on the same local
   regression sets, and on a 36-BAM FORTE RNA fill-out with the GTF and an editing database, where 35
