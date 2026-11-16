@@ -498,7 +498,7 @@ fn count_bam_binned_core(
     )?;
 
     // ── Load RNA editing site database (if provided) ──
-    // Loaded ONCE per run (a process cache keyed by the file), then shared across all
+    // Loaded ONCE per run (a process cache keyed by the name and the file), then shared across all
     // bins/threads and across the run's later counting calls via Arc.
     // DB-only strategy: flag = True only when the variant matches a REDIportal edit.
     // No DB = no editing flags (no pattern-matching guessing). Each entry carries the
@@ -521,8 +521,8 @@ fn count_bam_binned_core(
     };
 
     // ── Build GTF annotation index (if GTF provided, RNA mode only) ──
-    // Parsed ONCE per run for each chromosome set (a process cache keyed by the file and the
-    // chromosomes), then shared across all bins/threads and the run's later calls via Arc.
+    // Parsed ONCE per run for each chromosome set (a process cache keyed by the name, the file and
+    // the chromosomes), then shared across all bins/threads and the run's later calls via Arc.
     // Only builds for chromosomes that have variants (variant-guided streaming).
     let annotation: Option<std::sync::Arc<AnnotationIndex>> = match (mode, gtf_path) {
         ("rna", Some(path)) => {

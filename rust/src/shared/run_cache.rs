@@ -3,13 +3,15 @@
 //!
 //! One run counts several BAMs one after another, and the MNP rescue counts each BAM a second
 //! time; each of those calls used to parse the same GTF and the same editing database from
-//! disk. A parse is a pure function of the file's bytes (and, for the GTF, the set of
-//! chromosomes asked for), so a result kept under that key is the same result. The key holds
-//! the file's resolved path (links followed, a relative name made absolute), on Unix its device
-//! and inode, its length and its modification time. So the same name read from another working
-//! folder, a file replaced at the same path, and a file changed between two calls are each read
-//! again; a file that cannot be inspected is never cached (the loader then reports its own error
-//! as before).
+//! disk. A parse is a pure function of the name it is given, the file's bytes and, for the GTF,
+//! the set of chromosomes asked for, so a result kept under a key that holds all of them is the
+//! same result. The name counts as given, because the loaders read it: the editing database
+//! picks gzip from a `.gz` ending, and the GTF's warnings print the name. So the key holds the
+//! name as given, the file it resolves to (links followed, a relative name made absolute), on
+//! Unix its device and inode, its length and its modification time. Two names for one file are
+//! two entries; the same name read from another working folder, a file replaced at the same
+//! path, and a file changed between two calls are each read again; a file that cannot be
+//! inspected is never cached (the loader then reports its own error as before).
 //!
 //! The cache holds a few entries and drops the oldest when it is full, so a long Python
 //! session that reads many different files does not keep them all.
@@ -18,11 +20,15 @@ use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 use std::time::SystemTime;
 
-/// What a cached parse depends on: the file and, for the GTF, the chromosomes asked for.
+/// What a cached parse depends on: the name, the file and, for the GTF, the chromosomes asked
+/// for.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct MemoKey {
+    /// The name as the loader is given it: the loader reads it (the gzip choice, the text of its
+    /// warnings), so another name for the same file is another parse.
+    name: String,
     /// The file's resolved path: the same relative name in another working folder is another
-    /// file, and a link and its target are one.
+    /// file.
     path: PathBuf,
     /// The file's device and inode: a file replaced at the same path (a rename over it) is
     /// another file, even with the same length and modification time.
@@ -35,9 +41,10 @@ pub struct MemoKey {
 }
 
 impl MemoKey {
-    /// The key for `path` filtered to `scope`, or None when the file cannot be inspected.
-    pub fn for_file<'a>(path: &str, scope: impl IntoIterator<Item = &'a String>) -> Option<Self> {
-        let path = std::fs::canonicalize(path).ok()?;
+    /// The key for the file named `name` filtered to `scope`, or None when the file cannot be
+    /// inspected.
+    pub fn for_file<'a>(name: &str, scope: impl IntoIterator<Item = &'a String>) -> Option<Self> {
+        let path = std::fs::canonicalize(name).ok()?;
         let meta = std::fs::metadata(&path).ok()?;
         #[cfg(unix)]
         let file_id = {
@@ -47,6 +54,7 @@ impl MemoKey {
         let mut scope: Vec<String> = scope.into_iter().cloned().collect();
         scope.sort_unstable();
         Some(Self {
+            name: name.to_string(),
             path,
             #[cfg(unix)]
             file_id,
@@ -154,7 +162,7 @@ mod tests {
     }
 
     #[test]
-    fn a_name_is_keyed_by_the_file_it_resolves_to() {
+    fn a_name_is_keyed_as_given_and_by_the_file_it_resolves_to() {
         // Two folders, a file of the same name, length and modification time in each.
         let base = std::env::temp_dir().join(format!("gbcms_run_cache_{}_names", std::process::id()));
         let (a, b) = (base.join("a"), base.join("b"));
@@ -168,12 +176,15 @@ mod tests {
         }
         let key = |p: &std::path::Path| MemoKey::for_file(p.to_str().unwrap(), std::iter::empty()).unwrap();
         assert_ne!(key(&a.join("x.gtf")), key(&b.join("x.gtf")), "the same name in another folder is another file");
-        assert_eq!(key(&a.join("x.gtf")), key(&b.join("..").join("a").join("x.gtf")), "one file, two spellings");
+        // The loaders read the name (the gzip choice, the warnings), so two names for one file are
+        // two entries: a reuse gives what a fresh load under that name gives.
+        assert_ne!(key(&a.join("x.gtf")), key(&b.join("..").join("a").join("x.gtf")), "one file, two spellings");
+        assert_eq!(key(&a.join("x.gtf")), key(&a.join("x.gtf")), "one file, one spelling");
         #[cfg(unix)]
         {
             let link = base.join("link.gtf");
             std::os::unix::fs::symlink(a.join("x.gtf"), &link).unwrap();
-            assert_eq!(key(&link), key(&a.join("x.gtf")), "a link and its target are one file");
+            assert_ne!(key(&link), key(&a.join("x.gtf")), "a link and its target are two names");
             // A file renamed over the path, with the same length and modification time, is another file.
             let before = key(&a.join("x.gtf"));
             let f = std::fs::File::create(base.join("new.gtf")).unwrap();

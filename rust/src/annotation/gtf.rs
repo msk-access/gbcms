@@ -31,10 +31,10 @@ use super::{build_exon_trees, AnnotationIndex, ExonRecord, TranscriptIntrons, Tr
 /// The index [`parse_gtf`] builds for this file and chromosome set, parsed once per run.
 ///
 /// A run counts several BAMs, and the MNP rescue counts each again, each with the same
-/// GTF; a parse is a pure function of the file and the chromosome set, so the later calls
-/// share the first call's index. The second element is true when the index was already
-/// parsed. A changed file, or another chromosome set, is parsed again
-/// ([`crate::shared::run_cache`]).
+/// GTF; a parse is a pure function of the name it is given (its warnings print it), the file
+/// and the chromosome set, so the later calls share the first call's index. The second element
+/// is true when the index was already parsed. Another name, a changed file, or another
+/// chromosome set is parsed again ([`crate::shared::run_cache`]).
 pub fn parse_gtf_shared(
     gtf_path: &str,
     variant_chroms: &HashSet<String>,

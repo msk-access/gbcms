@@ -232,8 +232,9 @@ pub type EditingSites = HashSet<(String, i64, u8, u8)>;
 
 /// The sites [`build_rna_editing_set`] loads from this file, loaded once per run: every
 /// counting call of a run (each BAM, and the MNP rescue's second pass) reads the same
-/// database, and a load is a pure function of the file. The second element is true when the
-/// sites were already loaded. A changed file is read again ([`crate::shared::run_cache`]).
+/// database, and a load is a pure function of the name it is given (a `.gz` ending picks gzip)
+/// and the file. The second element is true when the sites were already loaded. Another name
+/// or a changed file is read again ([`crate::shared::run_cache`]).
 pub fn build_rna_editing_set_shared(db_path: &str) -> anyhow::Result<(Arc<EditingSites>, bool)> {
     static MEMO: Memo<EditingSites> = Memo::new();
     MEMO.get_or_try_build(MemoKey::for_file(db_path, std::iter::empty()), || build_rna_editing_set(db_path))
