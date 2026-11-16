@@ -68,6 +68,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   5,000 rows x 10 BAMs, the default path, 518 CPU seconds before and 270 after. Building a wheel from source takes
   longer (about 4 minutes on an M-series Mac). Plan: `docs/harness/plans/335-exact-speedups.md`.
 
+### Changed — speed: an RNA run reads its GTF and editing database once (#335)
+
+- A run counts its BAMs one after another, and each counting call parsed the GTF and loaded the RNA
+  editing database again. Each later call now reuses the first call's index and sites. The reuse is
+  keyed by the file's path, size and modification time and, for the GTF, the chromosomes asked for,
+  so a changed file is read again. On each BAM after the first the log says so at INFO ("GTF
+  annotation: reusing the index parsed earlier in this run from ...", "Reusing N RNA editing sites
+  loaded earlier in this run from ...") and says the parse's warnings again; the parse's timing and
+  DEBUG lines come with the first BAM only. A one-BAM run's log is unchanged.
+- Also: the insert size is not computed when `--mfsd` is off (only the mFSD columns read it); the BAM
+  properties line tallies the sampled base qualities in one pass (the same line); `import gbcms` no
+  longer loads polars (`merge_mafs` and the `gbcms.io` batch helpers load it on first use).
+- No count changes: every output field of every row is identical to develop's on the same local
+  regression sets, and on a 36-BAM FORTE RNA fill-out with the GTF and an editing database, where 35
+  BAMs read the index from memory (the GTF columns hold values in 1,855 to 1,995 of their 1,995 rows).
+  On FORTE RNA with the GTF (1 BAM x 1,000 to 20,000 rows and a 10-BAM fill-out, 3 repeats) this change
+  alone, timed against develop before the build change above, takes 0.87 to 0.91 of its CPU time; on DNA
+  it is within noise (0.96 to 1.02). Example: RNA, 5,000 rows x 10 BAMs, 368 CPU seconds before and 318
+  after.
+
 ### Docs — read judgment: what gbcms takes from the aligner, and naming the reads it holds back (RJ-33, RJ-34)
 
 - Decided, no count change (operator 2026-11-11). RJ-33: the allele comes from the read's own

@@ -33,6 +33,21 @@ regenerating a section.
 
 ---
 
+## [LRN-20261115-003] rule-body | a line cut before the sanitizer printed a folder name of a FORTE slice
+- **Status:** resolved (rule promoted).
+- **Cause:** rule-body.
+- **Summary:**
+  - Reading the S4 RNA fill-out log, I piped `cut -c1-200` before the sanitizer. The command line in
+    the log names each BAM's path; the cut ended inside the first FORTE slice's path, before `.bam`.
+    The sanitizer finds a BAM path only by that end, so it let the path through, and one folder name
+    of it was printed (no BAM name, read name or sample ID).
+  - The PHI rule said what goes through the sanitizer, not that nothing may change a line first, and
+    the sanitizer had no pattern for a path without its file end.
+- **Promotion target:** `.agents/rules/security.md` (the sanitizer bullets) — `DONE:` cut or trim a
+  line only after the sanitizer. The harness sanitizer (`plan670/judge680/rbr/sanitize.py`) — `DONE:`
+  it masks every path under a folder of patient slices, whole or cut short (tested on made-up lines;
+  the same log, cut first, now prints no such folder name).
+
 ## [LRN-20261115-002] rule-body | Greptile's state was reported from the app's PR status, unread
 - **Status:** resolved (rule promoted).
 - **Cause:** rule-body.
