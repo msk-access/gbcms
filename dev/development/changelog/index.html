@@ -877,6 +877,26 @@ and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semant
   it is within noise (0.96 to 1.02). Example: RNA, 5,000 rows x 10 BAMs, 368 CPU seconds before and 318
   after.</li>
 </ul>
+<h3 id="changed-speed-each-row-reads-only-the-cached-reads-that-can-meet-it-335">Changed — speed: each row reads only the cached reads that can meet it (#335)<a class="headerlink" href="#changed-speed-each-row-reads-only-the-cached-reads-that-can-meet-it-335" title="Permanent link">¶</a></h3>
+<ul>
+<li>A bin's read cache keeps, for its reads in fetch order, the largest read end so far and the smallest
+  read start still to come. Each part of a row that walked the whole cache (the row's counts, the
+  tolerance and observed-allele scans, the sequence judge's site, the neighbouring-change guard, the
+  long-deletion junction judge, and in RNA the clip edges, the per-transcript counts and ASJD) now
+  walks only the run of the cache that can meet its own interval, in the same order, and keeps its own
+  test on each read. A read before the run ends at or before the interval, and one after it starts at
+  or after it, so no part reads another read or misses one, whatever the order of the reads.</li>
+<li>Each read's <abbr title="Compact Idiosyncratic Gapped Alignment Report - BAM alignment operation string">CIGAR</abbr> is decoded once, when the cache is built (where a read has a fragment, when it is
+  clipped to it), and every part reads that one list; the guard and the junction judge test a read's
+  place before they decode its bases. A read whose <abbr title="Compact Idiosyncratic Gapped Alignment Report - BAM alignment operation string">CIGAR</abbr> holds an op code the <abbr title="Binary Alignment Map - Compressed sequence alignment file format">BAM</abbr> reader cannot decode
+  lies in every run and is decoded where it was before, so such a file stops at the same read with the
+  same message.</li>
+<li>The sequence judge reads each read's view once per row: the call on a read takes the view the row's
+  site was built from, where the read, its qualities, <code>--min-baseq</code> and the exon edges are the same.</li>
+<li>No output field and no <code>--verbose</code> line changes. In RNA, <code>--trace</code> prints fewer
+  "uniquely-mapped read (<abbr title="Number of Hits - BAM tag indicating number of reported alignments">NH</abbr>=1) rescued below <abbr title="Mapping Quality - Confidence score for read alignment">MAPQ</abbr> floor" lines: a rule no longer asks whether a read
+  outside its run is counted. Plan: <code>docs/harness/plans/335-phase2.md</code>.</li>
+</ul>
 <h3 id="docs-read-judgment-what-gbcms-takes-from-the-aligner-and-naming-the-reads-it-holds-back-rj-33-rj-34">Docs — read judgment: what gbcms takes from the aligner, and naming the reads it holds back (RJ-33, RJ-34)<a class="headerlink" href="#docs-read-judgment-what-gbcms-takes-from-the-aligner-and-naming-the-reads-it-holds-back-rj-33-rj-34" title="Permanent link">¶</a></h3>
 <ul>
 <li>Decided, no count change (operator 2026-11-11). RJ-33: the allele comes from the read's own
