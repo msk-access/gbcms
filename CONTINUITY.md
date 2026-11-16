@@ -33,11 +33,12 @@ of every row is identical on every set, and the whole `--verbose` log too (from 
   After #335 closes, the retirement checklist (`docs/harness/measurement-harness.md`).
 - **Next (operator, 2026-11-16):** plan S2, S3 and S5 "meticulously including research and solutions for
   the source and class". The draft: `docs/harness/plans/335-phase2.md` (research in the session's
-  `scratchpad/speed2/plan2/`). Approved 2026-11-16 11:14 as drafted; D2 (S5's log) and D3 (F1, F2
-  tickets) open. Work order: S2 with V (started), S3a, M4, S3b, S3c, S5. M0 cleared at 10:14:
-  the two reference genomes read again (ERR-20261116-001); the local profiles (M5: hg002_pri x6, panel
-  x20, hg002_sv x1, rules then judge, 4 threads; the shared venv's build, DNA code = 473e8920) restarted
-  at 10:15 (`plan2/measure/run_all.sh`, log `run.log`).
+  `scratchpad/speed2/plan2/`). Approved 2026-11-16 11:14 as drafted (PR #442); D2 decided 11:50, (a):
+  accept S5's log change; D3 (F1, F2 tickets) open. Work order: S2 with V (gate 0 differences on all
+  18 arms; its PR), S3a, M4, S3b, S3c, S5. M0 cleared at 10:14 (ERR-20261116-001). M5 done (local shares, `plan2/measure/MEASURE.md`): the
+  site build is 45-58% of the judge here (14% at ACCESS on HPC). M6 (pf75): one sample keeps its 4 CPUs
+  86-98% busy on the judge path, 53-94% on the rules path. When S2 is done: move the scratchpad's
+  `dev473/` (an unused develop build, 1.3 GB) to the Trash (operator 12:22: "Clean up when its done").
 - **Two findings outside #335** (from the code, not reproduced; own tickets): F1, the junction judge's
   scan reads past the one-row geometry's fetch (invariant 1, test geometry only); F2, the verdict cache's
   key leaves out qualities, so a rare duplicated record can get another call between runs.
