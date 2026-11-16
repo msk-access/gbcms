@@ -268,6 +268,20 @@ order of measured gain over effort (S1 and S4 first, then S2, S3, S5), each with
   inside a FORTE slice's path, before `.bam`, and one folder name of the path was printed (no BAM name, read
   name or sample ID). The sanitizer now masks every path under a folder of patient slices, whole or cut
   short, and the PHI rule says to cut only after it (LRN-20261115-003).
+- 2026-11-16, #440 merged (8a3966d8; CI on d442c720 all passed). Greptile's third review (5 of 5) came 89
+  seconds before the merge, unread by me then; its one finding is valid and my fix caused it. The key held
+  only the resolved file, but the loaders read the name: the editing database picks gzip from a `.gz`
+  ending, and the GTF's warnings print the name. In one process, a second name for a database loaded
+  under the first reused its sites, so a name that fails in a fresh process passed (plain bytes named
+  `.gz`: "invalid gzip header"; gzip bytes without `.gz`: "stream did not contain valid UTF-8"), and a GTF
+  warning said again printed the first name. A CLI run uses one name, so its reuse was right. The fix
+  (option B, the operator's "Ok"): the key holds the name as given and the resolved file, so every reuse
+  gives what a fresh call under that name gives, its log included. The operator approved the change of two
+  lines of an existing Rust test (one file under two spellings, and a link and its target, each gave one key;
+  now two). Three new tests (both database cases, and the GTF warning under a second name) failed on the
+  merged build and pass now. No gate build: within one CLI run every call passes the same name, so the
+  reuse is the one `s4c` measured (the two-BAM test still reuses each parse once). Builds stay 8 of 8.
+  Learning: LRN-20261116-001.
 - Slips: the agents' worktrees started on `main` (0f5c1f0b), not develop; each moved to 1b11ffea. On
   2026-11-15 I listed M2's copy-back lanes with `find` (they hold only cell folders and timing files, and no
   identifier was printed, but the rule counts every lane as a patient folder); later scripts build lane paths

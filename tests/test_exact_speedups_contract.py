@@ -10,10 +10,14 @@ Contracts:
 - a GTF that changes between two counting calls of one process is read again, never served
   from the once-per-run index (the same path, another length), and the same relative GTF name read
   from another working folder is that folder's file (the same length and modification time);
+- the loaders read the name they are given (the editing database picks gzip from a `.gz` ending,
+  the GTF's warnings print the name), so another name for a file loaded earlier in the process is
+  loaded under that name: it gives what a fresh process gives, an error included;
 - importing ``gbcms`` (and its CLI) does not load polars, and the lazily read names still work.
 """
 
 import glob
+import gzip
 import logging
 import os
 import subprocess
@@ -237,6 +241,91 @@ def test_the_same_relative_gtf_name_in_another_folder_is_that_folders_file(tmp_p
 
     assert relative_run(a, "rel") == want_a
     assert relative_run(b, "rel") == want_b, "the first folder's index was reused"
+
+
+def _editing_db(row):
+    """An editing database text with one site: the row's own substitution."""
+    return (
+        "Accession\tRegion\tPosition\tRef\tEd\tStrand\n"
+        f"E1\tchr1\t{POS + 1}\t{row['Reference_Allele']}\t{row['Tumor_Seq_Allele2']}\t+\n"
+    )
+
+
+def _rna_args(d, out, gtf, db=None):
+    args = ["rna", "-v", str(d / "variants.vcf"), "-b", f"S:{d / 'rna.s.bam'}", "-f"]
+    args += [str(d / "ref.fasta"), "-o", str(out), "--format", "maf", "--gtf", str(gtf)]
+    return args + (["--rna-editing-db", str(db)] if db else [])
+
+
+def _db_error(text):
+    return [
+        " ".join(ln.split()) for ln in text.splitlines() if "Failed to load RNA editing DB" in ln
+    ]
+
+
+@pytest.mark.parametrize(
+    "real, other, packed, error",
+    [
+        ("edits.txt", "plain_bytes.txt.gz", False, "invalid gzip header"),
+        ("edits.txt.gz", "gzip_bytes.txt", True, "valid UTF-8"),
+    ],
+    ids=["plain-file-gz-name", "gzip-file-plain-name"],
+)
+def test_another_name_for_the_editing_database_is_loaded_under_that_name(
+    tmp_path, real, other, packed, error
+):
+    """The reader picks gzip from the name, so a second name for a database loaded earlier in
+    the process is loaded again under that name. Here that name fails in a fresh process, and it
+    fails the same way after the first name's sites are kept (it passed on a key of the file
+    alone)."""
+    d = tmp_path / "files"
+    text = _editing_db(_run(d, _gtf_text()))
+    (d / real).write_bytes(gzip.compress(text.encode()) if packed else text.encode())
+    os.symlink(d / real, d / other)
+
+    first = CliRunner().invoke(app, _rna_args(d, tmp_path / "first", d / "plain.gtf", d / real))
+    assert first.exit_code == 0, first.output
+    (row,) = read_maf_output(glob.glob(str(tmp_path / "first" / "*.maf"))[0])
+    assert row["rna_editing_site"] in ("True", "true", "1"), row["rna_editing_site"]
+
+    cmd = [sys.executable, "-c", "from gbcms.cli import app; app()"]
+    cmd += _rna_args(d, tmp_path / "fresh", d / "plain.gtf", d / other)
+    fresh = subprocess.run(
+        cmd, capture_output=True, text=True, env={**os.environ, "COLUMNS": "3000"}
+    )
+    log = fresh.stdout + fresh.stderr
+    want = _db_error(log)
+    assert fresh.returncode != 0 and want and error in want[-1], log[-2000:]
+
+    again = CliRunner().invoke(
+        app, _rna_args(d, tmp_path / "again", d / "plain.gtf", d / other), env={"COLUMNS": "3000"}
+    )
+    assert again.exit_code == fresh.returncode, again.output
+    assert _db_error(again.output)[-1:] == want[-1:], again.output
+
+
+def test_another_name_for_the_gtf_is_parsed_under_that_name(tmp_path):
+    """The GTF's warnings print the name the parse was given, so a second name for a GTF parsed
+    earlier in the process is parsed again: its warning names it (a key of the file alone said
+    the first name's warning again), and its row is the first name's row."""
+    d = tmp_path / "files"
+    _run(d, _gtf_text(extra=_JUNK["start-after-end"]))
+    os.symlink(d / "plain.gtf", d / "other_name.gtf")
+
+    def call(gtf, out):
+        result = CliRunner().invoke(app, _rna_args(d, out, gtf), env={"COLUMNS": "3000"})
+        assert result.exit_code == 0, result.output
+        (row,) = read_maf_output(glob.glob(str(out / "*.maf"))[0])
+        warned = [ln for ln in result.output.splitlines() if "rejected as malformed" in ln]
+        return result.output, warned, row
+
+    _, warned1, row1 = call(d / "plain.gtf", tmp_path / "first")
+    log2, warned2, row2 = call(d / "other_name.gtf", tmp_path / "second")
+    assert len(warned1) == 1 and "plain.gtf" in warned1[0], warned1
+    assert len(warned2) == 1 and "other_name.gtf" in warned2[0], warned2
+    assert "plain.gtf" not in warned2[0], "the first name's warning was said again"
+    assert "reusing the index" not in log2
+    assert row2 == row1
 
 
 def test_importing_gbcms_does_not_load_polars():

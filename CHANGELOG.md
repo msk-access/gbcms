@@ -72,9 +72,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - A run counts its BAMs one after another, and each counting call parsed the GTF and loaded the RNA
   editing database again. Each later call now reuses the first call's index and sites. The reuse is
-  keyed by the file's resolved path (on Unix also its device and inode), size and modification time
-  and, for the GTF, the chromosomes asked for, so a changed or replaced file, or the same relative
-  name read from another working folder, is read again. On each BAM after the first the log says so at INFO ("GTF
+  keyed by the name as given, the file it resolves to (on Unix also its device and inode), its size
+  and modification time and, for the GTF, the chromosomes asked for, so another name for the file
+  (the loaders read the name: a `.gz` ending picks gzip for the editing database, and the GTF's
+  warnings print it), a changed or replaced file, or the same relative name read from another
+  working folder, is read again. On each BAM after the first the log says so at INFO ("GTF
   annotation: reusing the index parsed earlier in this run from ...", "Reusing N RNA editing sites
   loaded earlier in this run from ...") and says the parse's warnings again; the parse's timing and
   DEBUG lines come with the first BAM only. A one-BAM run's log is unchanged.
