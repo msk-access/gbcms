@@ -25,7 +25,7 @@
 use rust_htslib::bam::record::{Cigar, Record};
 
 use crate::normalize::repeat::first_change_offset;
-use crate::shared::bam_utils::{aligned_blocks, find_read_pos};
+use crate::shared::bam_utils::{aligned_blocks, cigar_of, find_read_pos};
 use crate::types::Variant;
 
 /// Reference interval `[lo, hi)` (0-based, half-open) holding every base at
@@ -362,7 +362,7 @@ pub(crate) fn alt_bases_discriminate(record: &Record, v: &Variant, quals: &[u8],
     // still undecided where it ends has its deciding base past the edge.
     let right_cut = right.as_ref().is_some_and(|r| (r.len() as i64) < dhi + ext + nn - dlo);
     let left_cut = left.as_ref().is_some_and(|(_, l)| (l.len() as i64) < dhi - (dlo - ext - nn));
-    let cig: Vec<Cigar> = record.cigar().iter().copied().collect();
+    let cig = cigar_of(record);
     // Soft clips at either end (behind any hard clip) are not read.
     let clip = |ops: &mut dyn Iterator<Item = &Cigar>| -> usize {
         ops.take_while(|c| matches!(c, Cigar::SoftClip(_) | Cigar::HardClip(_)))
@@ -500,7 +500,7 @@ fn read_bases_fit(record: &Record, v: &Variant, quals: &[u8], min_baseq: u8, che
     let mut inserted: Vec<bool> = Vec::with_capacity(altw.len());
     let mut deleted = 0i64;
     let (mut rp, mut qp) = (record.pos(), 0usize);
-    for op in record.cigar().iter() {
+    for op in cigar_of(record).iter() {
         match op {
             Cigar::Match(n) | Cigar::Equal(n) | Cigar::Diff(n) => {
                 for k in 0..*n as usize {

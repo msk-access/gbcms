@@ -23,6 +23,7 @@ use rust_htslib::bam::record::{Cigar, Record};
 
 use super::variant_checks::reconstruct_span;
 use super::utils::ref_end;
+use crate::shared::bam_utils::{cigar_of, Reads};
 use super::window;
 use crate::types::Variant;
 
@@ -46,14 +47,27 @@ pub(crate) struct ObservedAllele {
 /// An allele in canonical form: 0-based POS, REF, ALT (left-aligned, minimal).
 type Allele = (i64, Vec<u8>, Vec<u8>);
 
+/// A genome interval every read [`observed_allele`] reads meets, for the core
+/// `[core_lo, core_hi)` (`core_lo <= core_hi`): such a read covers the core and [`FLANK`]
+/// bases each side (`pos <= core_lo - FLANK`, `ref_end >= core_hi + FLANK`).
+fn scan_interval(core_lo: i64, core_hi: i64) -> (i64, i64) {
+    (core_lo - FLANK, core_hi + FLANK)
+}
+
+/// Whether a read at `pos` ending (exclusive) at `read_end` covers the core
+/// `[core_lo, core_hi)` and [`FLANK`] bases each side, as [`observed_allele`] reads it.
+fn covers_core(pos: i64, read_end: i64, core_lo: i64, core_hi: i64) -> bool {
+    pos <= core_lo - FLANK && read_end >= core_hi + FLANK
+}
+
 /// The most frequent allele the reads carry at the event that is neither REF,
 /// the given allele, nor a co-annotated sibling's, if at least [`MIN_CARRIERS`]
 /// reads carry it exactly, more than carry the given allele, and at least
 /// [`MIN_FRACTION`] of the scanned reads. None without prep's `event_ref`.
 /// `counted` says which reads the row's counts read (strand and mapping rules),
 /// so n/m are taken over the same reads as `alt_count` and `ref_count`.
-pub(crate) fn observed_allele(
-    read_cache: &[Record],
+pub(crate) fn observed_allele<R: Reads + ?Sized>(
+    read_cache: &R,
     variant: &Variant,
     siblings: &[Variant],
     counted: &dyn Fn(&Record) -> bool,
@@ -77,12 +91,14 @@ pub(crate) fn observed_allele(
 
     let mut seen: HashMap<Allele, u32> = HashMap::new();
     let mut scanned: u32 = 0;
-    for record in read_cache {
+    // the run of the cache that can hold a read covering the core and FLANK bases each side
+    let (scan_lo, scan_hi) = scan_interval(core_lo, core_hi);
+    for record in read_cache.meeting(scan_lo, scan_hi) {
         if !counted(record) {
             continue;
         }
         let read_end = ref_end(record);
-        if record.pos() > core_lo - FLANK || read_end < core_hi + FLANK {
+        if !covers_core(record.pos(), read_end, core_lo, core_hi) {
             continue;
         }
         // Widen the comparison over any indel of the read that could sit on the
@@ -92,7 +108,7 @@ pub(crate) fn observed_allele(
         let (mut lo, mut hi) = (core_lo, core_hi);
         let (mut ref_pos, mut read_pos) = (record.pos(), 0usize);
         let seq = record.seq();
-        for op in record.cigar().iter() {
+        for op in cigar_of(record).iter() {
             match op {
                 Cigar::Del(len) => {
                     let d_end = ref_pos + *len as i64;
@@ -281,5 +297,151 @@ mod tests {
     fn equal_alleles_are_no_change() {
         let b = at(b"ACGT", 0);
         assert_eq!(canonical(0, b"ACG".to_vec(), b"ACG".to_vec(), &b), None);
+    }
+
+    use crate::shared::bam_utils::oracle::{admitted, allele_reads, cluster, reference, Lcg};
+    use crate::shared::bam_utils::ReadCache;
+
+    #[test]
+    fn the_scan_admits_in_its_run_what_it_admits_in_the_whole_cache() {
+        // The scan's test (copied from it): a read covering the core and FLANK bases each
+        // side. On random clusters of clipped reads in both orders, what it admits from its
+        // run is what it admits from the whole cache, index for index, and nothing outside.
+        let mut rng = Lcg::new(0x5eed_0301);
+        let mut admitted_total = 0;
+        for trial in 0..300 {
+            let n = rng.below(150) as usize;
+            let cache = ReadCache::new(cluster(&mut rng, n, 4_000, trial % 2 == 1));
+            for _ in 0..10 {
+                let core_lo = rng.below(4_200) as i64 - 100;
+                let core_hi = core_lo + rng.below(40) as i64;
+                let spans = |record: &Record| covers_core(record.pos(), ref_end(record), core_lo, core_hi);
+                let (in_run, whole, outside) = admitted(&cache, scan_interval(core_lo, core_hi), &spans);
+                assert_eq!((in_run, outside.len()), (whole.clone(), 0), "core [{core_lo}, {core_hi})");
+                admitted_total += whole.len();
+            }
+        }
+        assert!(admitted_total > 1_000, "{admitted_total}");
+    }
+
+    #[test]
+    fn the_observed_allele_from_its_run_is_the_one_from_the_whole_cache() {
+        // Rows of every kind with reads of the given allele and of another one at the same
+        // place (so an allele is named), in file order and shuffled: the allele named from
+        // the run is the one named from the whole cache, with its counts.
+        let mut rng = Lcg::new(0x5eed_0302);
+        let mut named = 0;
+        for trial in 0..400 {
+            let ctx = reference(&mut rng, 600);
+            let r = ctx[300..301 + rng.below(6) as usize].to_vec();
+            let pick = |rng: &mut Lcg| -> Vec<u8> {
+                let mut a: Vec<u8> = vec![r[0]];
+                a.extend((0..rng.below(8)).map(|_| b"ACGT"[rng.below(4) as usize]));
+                if a == r { [&r[..], b"T"].concat() } else { a }
+            };
+            let (a, other) = (pick(&mut rng), pick(&mut rng));
+            let text = String::from_utf8(ctx.clone()).unwrap();
+            let v = Variant::new(
+                "1".into(), 300, String::from_utf8(r.clone()).unwrap(), String::from_utf8(a.clone()).unwrap(), "COMPLEX".into(),
+                None, 0, 0, None, None, Some((0, text)), None,
+            );
+            let (n, k) = (20 + rng.below(80) as usize, 20 + rng.below(120) as usize);
+            let mut reads = allele_reads(&mut rng, &ctx, 300, &r, &a, n);
+            if other != a {
+                reads.extend(allele_reads(&mut rng, &ctx, 300, &r, &other, k));
+            }
+            if trial % 2 == 1 {
+                for i in (1..reads.len()).rev() {
+                    reads.swap(i, rng.below(i as u64 + 1) as usize);
+                }
+            }
+            let cache = ReadCache::new(reads.clone());
+            let counted = |r: &Record| r.mapq() > 0;
+            let whole = observed_allele(&reads, &v, &[], &counted, 20);
+            assert_eq!(observed_allele(&cache, &v, &[], &counted, 20), whole, "{v:?}");
+            named += usize::from(whole.is_some());
+        }
+        assert!(named > 40, "{named} alleles named");
+    }
+
+    #[test]
+    fn a_record_the_cache_cannot_decode_stops_the_scan_where_the_whole_walk_stops() {
+        // The rows above with some CIGARs holding an op code past 8: over the cache the scan
+        // names the same allele where the whole walk names one, and stops with the same
+        // message at the same record where it stops.
+        use crate::shared::bam_utils::oracle::{agree, both_walks, unknown_op};
+        let mut rng = Lcg::new(0x5eed_0303);
+        let (mut stopped, mut finished) = (0, 0);
+        for trial in 0..400 {
+            let ctx = reference(&mut rng, 600);
+            let r = ctx[300..301 + rng.below(6) as usize].to_vec();
+            let mut a: Vec<u8> = vec![r[0]];
+            a.extend((0..rng.below(8)).map(|_| b"ACGT"[rng.below(4) as usize]));
+            if a == r {
+                a.push(b'T');
+            }
+            let v = Variant::new(
+                "1".into(), 300, String::from_utf8(r.clone()).unwrap(), String::from_utf8(a.clone()).unwrap(), "COMPLEX".into(),
+                None, 0, 0, None, None, Some((0, String::from_utf8(ctx.clone()).unwrap())), None,
+            );
+            let n = 30 + rng.below(150) as usize;
+            let mut reads = allele_reads(&mut rng, &ctx, 300, &r, &a, n);
+            for rec in reads.iter_mut() {
+                if rng.chance(1, 60) {
+                    unknown_op(&mut rng, rec);
+                }
+            }
+            if trial % 2 == 1 {
+                for i in (1..reads.len()).rev() {
+                    reads.swap(i, rng.below(i as u64 + 1) as usize);
+                }
+            }
+            let cache = ReadCache::new(reads.clone());
+            if agree(both_walks(&reads, &cache, |reads, counted| observed_allele(reads, &v, &[], counted, 20))) {
+                stopped += 1;
+            } else {
+                finished += 1;
+            }
+        }
+        assert!(stopped > 50 && finished > 50, "{stopped} stopped, {finished} finished");
+    }
+
+    #[test]
+    fn the_observed_allele_from_a_tight_run_is_the_one_from_the_whole_cache() {
+        // Reads of one length tiled in order across the reference, of the given allele and of
+        // another at the same place (so an allele is named): a run holds about only the reads
+        // meeting the scan's interval, and the allele named from it is the one named from the
+        // whole cache, with its counts.
+        use crate::shared::bam_utils::oracle::tiled_reads;
+        let mut rng = Lcg::new(0x5eed_0304);
+        let mut named = 0;
+        for _ in 0..200 {
+            let ctx = reference(&mut rng, 800);
+            let r = ctx[400..401 + rng.below(6) as usize].to_vec();
+            let pick = |rng: &mut Lcg| -> Vec<u8> {
+                let mut a: Vec<u8> = vec![r[0]];
+                a.extend((0..rng.below(8)).map(|_| b"ACGT"[rng.below(4) as usize]));
+                if a == r { [&r[..], b"T"].concat() } else { a }
+            };
+            let (a, other) = (pick(&mut rng), pick(&mut rng));
+            let v = Variant::new(
+                "1".into(), 400, String::from_utf8(r.clone()).unwrap(), String::from_utf8(a.clone()).unwrap(), "COMPLEX".into(),
+                None, 0, 0, None, None, Some((0, String::from_utf8(ctx.clone()).unwrap())), None,
+            );
+            let (len, step) = (30 + rng.below(90) as usize, 1 + rng.below(3) as usize);
+            let mut reads = tiled_reads(&mut rng, &ctx, 400, &r, &a, len, step);
+            if other != a {
+                reads.extend(tiled_reads(&mut rng, &ctx, 400, &r, &other, len, step));
+                reads.sort_by_key(Record::pos);
+            }
+            let cache = ReadCache::new(reads.clone());
+            let w = window::read_window(&v);
+            assert!(cache.meeting(w.0, w.1).len() < reads.len(), "a run shorter than the cache");
+            let counted = |r: &Record| r.mapq() > 0;
+            let whole = observed_allele(&reads, &v, &[], &counted, 20);
+            assert_eq!(observed_allele(&cache, &v, &[], &counted, 20), whole, "{v:?}");
+            named += usize::from(whole.is_some());
+        }
+        assert!(named > 30, "{named} alleles named");
     }
 }

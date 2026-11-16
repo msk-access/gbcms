@@ -68,7 +68,7 @@ gbcms/
 │       ├── shared/
 │       │   ├── fragment.rs      # FragmentEvidence, QNAME/UMI hashing
 │       │   ├── stats.rs         # Fisher's exact test, strand bias
-│       │   ├── bam_utils.rs     # median_qual, find_read_pos
+│       │   ├── bam_utils.rs     # median_qual, find_read_pos; ReadCache (a bin's reads, each CIGAR decoded once) and Reads (the run a rule walks for its interval)
 │       │   ├── contig.rs        # Contig-name normalization across BAM/GTF/VCF (chrM vs MT)
 │       │   ├── filters.rs       # ReadFilter, FilterCounts
 │       │   ├── run_cache.rs     # Once-per-run cache: the GTF index and the RNA editing database

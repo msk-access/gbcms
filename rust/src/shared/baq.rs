@@ -16,6 +16,8 @@
 use rust_htslib::bam::record::Cigar;
 use rust_htslib::bam::Record;
 
+use super::bam_utils::cigar_of;
+
 /// Number of base-pairs on either side of an insertion or deletion to penalize.
 const BAQ_RADIUS: usize = 5;
 /// Quality penalty subtracted from BQ near an insertion or deletion (clamped to 0).
@@ -42,7 +44,7 @@ const BAQ_PENALTY: u8 = 20;
 /// reads, with no indel, keep full quality). Indels elsewhere in the read are
 /// penalized as before.
 pub fn apply_heuristic_baq(record: &Record, spare: Option<(i64, i64)>) -> Option<Vec<u8>> {
-    let cigar = record.cigar();
+    let cigar = cigar_of(record);
 
     // Quick scan: does this read have any insertion or deletion? A splice
     // junction (RefSkip, CIGAR N) is not one: it lowers no base's quality.

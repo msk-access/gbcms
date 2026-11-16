@@ -12,6 +12,7 @@ use rust_htslib::bam::Record;
 use bio::alignment::pairwise::Aligner;
 use log::trace;
 
+use crate::shared::bam_utils::cigar_of;
 use crate::types::Variant;
 use super::utils::{median_qual, build_haplotypes, ClassifyResult, ClassifyPhase, MIN_USABLE_BASES};
 
@@ -74,7 +75,7 @@ pub fn extract_raw_read_window(
     variant_pos: i64,
     variant_ref_len: usize,
 ) -> Option<(Vec<u8>, Vec<u8>)> {
-    let cigar = record.cigar();
+    let cigar = cigar_of(record);
     let mut ref_pos = record.pos();
     let mut read_pos: usize = 0;
     let seq = record.seq();
@@ -185,7 +186,7 @@ pub fn extract_raw_read_window(
 /// Clean M-only reads that span the variant are skipped (the vast majority
 /// at any locus), eliminating ~80-90% of unnecessary SW calls.
 pub fn is_worth_realignment(record: &Record, win_start: i64, win_end: i64) -> bool {
-    let cigar = record.cigar();
+    let cigar = cigar_of(record);
     let mut ref_pos = record.pos();
 
     for op in cigar.iter() {

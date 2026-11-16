@@ -1,8 +1,8 @@
 # #335 phase 2: shared scans, the judge's work and a narrower fetch (S2, S3, S5)
 
-Status: approved 2026-11-16 (operator: "Approve as drafted": the options, the order and the budget; D2 and D3 open) · plan-first (`plan-first.md`); Stage 3 of the 6.8.0 order (`420-cycle-order.md`) ·
+Status: approved 2026-11-16 (operator: "Approve as drafted": the options, the order and the budget; D2 decided (a), accept S5's log change; D3 open) · plan-first (`plan-first.md`); Stage 3 of the 6.8.0 order (`420-cycle-order.md`) ·
 base develop 473e8920 (S1 #439 and S4 #440, #441 merged) · phase 1: `335-exact-speedups.md`
-Rounds: 0 of 5 (one review per option) · New count conditions: 0 (speed changes add none) · Builds: 0 of 9 ·
+Rounds: 1 of 5 (one review per option; S2's) · New count conditions: 0 (speed changes add none) · Builds: 2 of 9 (`fin473`, `s2`) ·
 HPC batches: 0 of 3 · Reruns: 0 of 1 (phase 1's reserved rerun for M2's two IMPACT cells moves here)
 
 ## 1. The class
@@ -142,7 +142,7 @@ HPC batches: 0 of 3 · Reruns: 0 of 1 (phase 1's reserved rerun for M2's two IMP
 - **The proof:** with S2's lemma each rule reads only records that meet its own interval. Those records are
   all in the union and arrive in file order, so each rule reads the same records in the same order. The
   regions are the rules' own intervals, not the one-row read windows (F1 shows those are not enough).
-- **The log changes (your decision, D2):**
+- **The log changes (D2, decided 2026-11-16: (a); the operator: "accept the S5 log change (a)"):**
   1. the DEBUG line per bin, "Bin tid=... : N reads cached (M filtered ...)": the counts of the regions;
   2. the WARN lines per BAM that count records with no bases or no qualities: records outside every row's
      reach are no longer counted. Today these counts depend on the bin geometry; with S5 they do not;
@@ -206,7 +206,13 @@ site-build scores; WFA or bit-parallel distance as the scorer; any floating-poin
   the reserved rerun for M2's two IMPACT cells on Gold 6348 nodes (your yes first).
 - **The gate for every option (bar: 0 differences):** phase 1's 18 arms against a new baseline (develop
   473e8920), every output field of every row, the four whole-log arms; plus the option's oracle tests,
-  `cargo test` and `pytest`. S5's log arms are compared under D2's rule.
+  `cargo test` and `pytest`. S5's log arms are compared under D2's rule: every line identical, except
+  (1) the per-bin DEBUG line "Bin tid=T S-E: N reads cached (M filtered: ...)", which keeps its bin (tid,
+  start, end) and may change its counts, and (2) the two per-BAM WARN lines "skipped N record(s) stored
+  without bases (SEQ '*')" and "... without base qualities (QUAL '*')", which may change N or be absent.
+  The gate gets this mask with the S5 build. `--trace` is not in the log arms. The fourth change (a
+  corrupt record outside every row's reach no longer stops the run) gets its own test with a made-up
+  BAM. The CHANGELOG names all four.
 - **The gain (HPC, your yes first):** pf77 times S2, S3a and S5 against develop; pf78 times S3b and S3c.
   The rules of pf75: the 8 production cells, both paths, 3 repeats, order rotated; CPU is the main number.
   An option is kept if the gate holds and it cuts CPU on a path; a cell worse by more than 3% of CPU, or
@@ -240,6 +246,32 @@ site-build scores; WFA or bit-parallel distance as the scorer; any floating-poin
   10:14 (ERR-20261116-001); M5 restarted at 10:15. The S3b worked example corrected (four states at an SNV
   row, all certified; the deletion-row case added). Approved at 11:14 as drafted; D2 (S5's log) and D3
   (F1, F2 tickets) open. S2 with V started (branch `feature/335-s2-shared-scans`, from 473e8920).
+  M5 done (11:20; local shares, Mac, 4 threads): on the judge path the site build is 45-58% of CPU on
+  HG002 and a 35-row panel (about 14% at ACCESS on HPC), and the read-need test 5% (HG002 primary), 31%
+  (HG002 SV) and 57% (the panel), so N's gain depends on the data type; the site build outside the
+  read-need test (40% at HG002 primary) has no option yet, and M4's `build_core` profile is the first
+  step. Rules path: S2's scans 14-19%, fetch and decode 3-21%. The counts half of M5 (records fetched
+  against records used) waits for S5. M6 (pf75's table, no new run): one sample, as Nextflow runs it
+  (one BAM, 4 CPUs), keeps its CPUs 86-98% busy on the judge path and 53-94% on the rules path, so a CPU
+  cut is a wall-time cut on the judge path.
+  11:50: D2 decided, (a): S5 may change the four log outputs of §3.5; the gate's rule for them is in §4.
+- 2026-11-16, S2 with V (branch `feature/335-s2-shared-scans`; Opus wrote it, Fable reviewed it):
+  - The code: a bin's `ReadCache` keeps each record's decoded CIGAR and the two bounds; 13 walks read
+    only their run; 45 CIGAR copies borrow the kept list; the judge's call takes the view its site was
+    built from. A record whose CIGAR holds an op code 9-15 is not decoded at the cache build and lies in
+    every run, so a corrupt file stops at the same record, line and message as develop (found in our own
+    check: the first version stopped earlier, before develop's DEBUG lines, and at another panic site).
+  - The review (round 1, Fable): no input that breaks exactness; test gaps (narrowed intervals that
+    passed, five walks without an old-against-new test, a stale copy of each rule's test) and one memory
+    point (views kept for rows with no site), all fixed. Of 35 mutations, 29 fail a test and 6 cannot
+    change what a rule reads. The production changes after the review (two extracted functions, shared
+    predicates, the two view drops) were read line by line: each keeps develop's order of tests.
+  - The baseline `fin473` (develop 473e8920, build 1): 0 rows differ from `fin682` on all 18 arms; the
+    only log difference is S4's approved one on `logs_rnafill` (350 and 70 lines, as on 2026-11-15).
+  - The gate on `s2` (build 2: 473e8920 plus the patch, sha256 7b29efad8b5bfac1, test lines added after
+    it only): **0 differences on every arm**, every row and the four whole logs (`logs_rnafill` 6,900
+    lines). Local tests: clippy and cargo test (563 passed), pytest (2,769 passed), ruff, black, mypy, all
+    rc=0. The gain is pf77's (HPC; your yes first).
 
 ## 8. Cost log
 

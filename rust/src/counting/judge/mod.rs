@@ -169,7 +169,15 @@ pub(crate) struct Haplotypes<'a> {
     key: (i64, String, String),
     site: OnceCell<Option<Site>>,
     #[allow(clippy::type_complexity)]
-    build: Box<dyn Fn(&ReadRules) -> Option<Site> + 'a>,
+    build: Box<dyn Fn(&ReadRules) -> (Option<Site>, Vec<SiteView>) + 'a>,
+    /// The records the site's views were read from ([`SiteView::at`] indexes them), borrowed
+    /// unchanged for as long as these haplotypes live.
+    anchor: &'a [Record],
+    /// The read views the site was built from, by the address of the record each was read
+    /// from, until the call on that record takes its own ([`Haplotypes::view_of`]): one view
+    /// per record per row. Outside the thread's budget: the views the site's build reads,
+    /// kept for the calls rather than read again.
+    views: RefCell<HashMap<usize, SiteView, std::hash::BuildHasherDefault<ViewHasher>>>,
     verdicts: RefCell<HashMap<ReadKey, ClassifyResult>>,
     /// Each read view this row's site judged (its name cleared), whether it was asked for
     /// the anchor, and `--min-baseq`, with its verdict: the judge is a function of these
@@ -262,11 +270,26 @@ impl std::hash::Hasher for ViewHasher {
 pub(crate) type JudgedKey = (ReadView, bool, u8);
 
 impl<'a> Haplotypes<'a> {
+    /// The haplotypes `build` finds, keeping no read view for the calls (tests).
+    #[cfg(test)]
     pub(crate) fn new(v: &Variant, build: impl Fn(&ReadRules) -> Option<Site> + 'a) -> Self {
+        Self::with_views(v, &[], move |rules| (build(rules), Vec::new()))
+    }
+
+    /// The haplotypes `build` finds from the records of `anchor`, with the read views the
+    /// site was built from (each naming its record by its index in `anchor`), which the
+    /// calls on those records take ([`Haplotypes::view_of`]).
+    pub(crate) fn with_views(
+        v: &Variant,
+        anchor: &'a [Record],
+        build: impl Fn(&ReadRules) -> (Option<Site>, Vec<SiteView>) + 'a,
+    ) -> Self {
         Self {
             key: (v.pos, v.ref_allele.clone(), v.alt_allele.clone()),
             site: OnceCell::new(),
             build: Box::new(build),
+            anchor,
+            views: RefCell::new(HashMap::default()),
             verdicts: RefCell::new(HashMap::new()),
             judged: RefCell::new(HashMap::default()),
             scored: RefCell::new(HashMap::default()),
@@ -398,17 +421,95 @@ impl<'a> Haplotypes<'a> {
         if *pos != v.pos || *r != v.ref_allele || *a != v.alt_allele {
             return None;
         }
-        self.site.get_or_init(|| (self.build)(rules)).as_ref()
+        self.site
+            .get_or_init(|| {
+                let (site, views) = (self.build)(rules);
+                // without a site no call reads a view: none is kept
+                if site.is_some() {
+                    let anchor = self.anchor;
+                    self.views
+                        .borrow_mut()
+                        .extend(views.into_iter().filter_map(|k| anchor.get(k.at).map(|r| (address(r), k))));
+                }
+                site
+            })
+            .as_ref()
+    }
+
+    /// Drops the view kept for `record`: its call is the verdict of a read alike, kept for
+    /// good, so no call on it reads a view. (A dropped view is only read again: the call reads
+    /// the record itself, to the same view.)
+    pub(crate) fn drop_view(&self, record: &Record) {
+        self.views.borrow_mut().remove(&address(record));
+    }
+
+    /// The view the site was built from for `record`, taken (the call reads it once), where
+    /// it was read from this record with these qualities, `--min-baseq` and exon edges: then it
+    /// is the view [`decide::read_view`] gives now, which is a function of these alone. None
+    /// otherwise (the caller reads the record itself).
+    pub(crate) fn view_of(&self, record: &Record, quals: &[u8], min_baseq: u8, rules: &ReadRules) -> Option<ReadView> {
+        let key = address(record);
+        let mut views = self.views.borrow_mut();
+        let same = views.get(&key).is_some_and(|k| {
+            self.anchor.get(k.at).is_some_and(|r| std::ptr::eq(r, record))
+                && k.min_baseq == min_baseq
+                && k.edges == edges_of(rules)
+                && k.quals.as_deref().unwrap_or(record.qual()) == quals
+        });
+        if !same {
+            return None;
+        }
+        views.remove(&key).map(|k| k.view)
     }
 }
 
-/// The variant's reads as the judge reads them, from `(record, qualities)` pairs.
-pub(crate) fn read_views<'r>(
-    reads: impl Iterator<Item = (&'r Record, std::borrow::Cow<'r, [u8]>)>,
+/// A read view a row's site was built from, with what it was read from: the record (its
+/// index in the haplotypes' anchor), its qualities (None: the record's own, as stored),
+/// `--min-baseq` and the exon edges its readable bases were cut at (by address).
+pub(crate) struct SiteView {
+    at: usize,
+    quals: Option<Vec<u8>>,
+    min_baseq: u8,
+    edges: Option<usize>,
+    view: ReadView,
+}
+
+/// A record's address: the key of its site view. Two records alive at once have two.
+fn address(record: &Record) -> usize {
+    std::ptr::from_ref(record) as usize
+}
+
+/// The address of the exon edges `rules` cut a read's readable bases at (RNA), None in DNA.
+fn edges_of(rules: &ReadRules) -> Option<usize> {
+    rules.clip_edges.map(|e| std::ptr::from_ref(e) as usize)
+}
+
+/// The variant's reads as the judge reads them, from `(index in the anchor, record, qualities)`,
+/// each view with what it was read from: the views for the site's build, and per view its
+/// record's index and its qualities (None where they are the record's own, as stored), for
+/// [`kept_views`].
+#[allow(clippy::type_complexity)]
+pub(crate) fn site_views<'r>(
+    reads: impl Iterator<Item = (usize, &'r Record, std::borrow::Cow<'r, [u8]>)>,
     min_baseq: u8,
     rules: &ReadRules,
-) -> Vec<ReadView> {
-    reads.filter_map(|(record, quals)| decide::read_view(record, &quals, min_baseq, rules)).collect()
+) -> (Vec<ReadView>, Vec<(usize, Option<Vec<u8>>)>) {
+    let (mut views, mut from) = (Vec::new(), Vec::new());
+    for (at, record, quals) in reads {
+        if let Some(view) = decide::read_view(record, &quals, min_baseq, rules) {
+            views.push(view);
+            let own = matches!(&quals, std::borrow::Cow::Borrowed(q) if std::ptr::eq(*q, record.qual()));
+            from.push((at, (!own).then(|| quals.into_owned())));
+        }
+    }
+    (views, from)
+}
+
+/// The site views of `views` read from `from` ([`site_views`]), with `--min-baseq` and the
+/// exon edges of `rules`.
+pub(crate) fn kept_views(views: Vec<ReadView>, from: Vec<(usize, Option<Vec<u8>>)>, min_baseq: u8, rules: &ReadRules) -> Vec<SiteView> {
+    let edges = edges_of(rules);
+    views.into_iter().zip(from).map(|(view, (at, quals))| SiteView { at, quals, min_baseq, edges, view }).collect()
 }
 
 /// `v`'s haplotypes: its window read from `reference`, its rows within reach
@@ -2231,5 +2332,84 @@ mod tests {
         let s = haplotypes::Site::build_ins(x.clone(), &candidates, (0, c.to_vec()), &reads, ReadOn).unwrap();
         let got: Vec<Call> = reads.iter().map(|r| judge(&s, r, MIN_BQ, false).call).collect();
         assert_eq!(got, vec![Ref, Ref, Ref, Other, Other, Other, Ref, Ref], "{got:?}");
+    }
+
+    #[test]
+    fn a_call_takes_the_view_its_site_was_read_from_and_only_that_one() {
+        // Records of every shape (spliced, clipped, both alleles, random) with their own
+        // qualities or changed ones, in DNA and with exon edges: the view a call takes is the
+        // view it would read now, every field and every allocation alike; once only; none
+        // where the record, its qualities, --min-baseq or the edges differ; none once dropped;
+        // and none kept at all where the row has no site.
+        use crate::counting::carrier::ClipEdges;
+        use crate::shared::bam_utils::oracle::{allele_reads, cluster, reference, Lcg};
+        let mut rng = Lcg::new(0x5eed_0501);
+        let (mut taken, mut dropped) = (0, 0);
+        for trial in 0..60 {
+            let ctx = reference(&mut rng, 600);
+            let mut records = allele_reads(&mut rng, &ctx, 300, &ctx[300..302], &ctx[300..301], 60);
+            records.extend(cluster(&mut rng, 30, 600, false));
+            // changed qualities on some reads (as BAQ gives them), the record's own on others
+            let quals: Vec<std::borrow::Cow<[u8]>> = records
+                .iter()
+                .map(|r| {
+                    if rng.chance(1, 3) {
+                        std::borrow::Cow::Owned(r.qual().iter().map(|&q| q.saturating_sub(7)).collect())
+                    } else {
+                        std::borrow::Cow::Borrowed(r.qual())
+                    }
+                })
+                .collect();
+            let edges = ClipEdges::new(|| (vec![250, 330], vec![280, 360]));
+            let rna = ReadRules { clip_edges: Some(&edges), ..ReadRules::DNA };
+            let rules = if trial % 2 == 0 { ReadRules::DNA } else { rna };
+            let (r, a) = (String::from_utf8(ctx[300..302].to_vec()).unwrap(), String::from_utf8(ctx[300..301].to_vec()).unwrap());
+            let v = Variant::new("1".into(), 300, r.clone(), a.clone(), "DEL".into(), None, 0, 0, None, None, None, None);
+            let (all, qs) = (&records, &quals);
+            let built = |with_site: bool| {
+                let site = with_site.then(|| super::haplotypes::tests::site(&ctx, &row(301, &r, &a), &[], 60));
+                move |rules: &ReadRules| {
+                    let reads = all.iter().enumerate().map(|(i, r)| (i, r, qs[i].clone()));
+                    let (views, from) = site_views(reads, MIN_BQ, rules);
+                    (site.clone(), kept_views(views, from, MIN_BQ, rules))
+                }
+            };
+            // no site: no view kept
+            let bare = Haplotypes::with_views(&v, &records, built(false));
+            assert!(bare.get(&v, &rules).is_none());
+            assert!(records.iter().enumerate().all(|(i, r)| bare.view_of(r, &quals[i], MIN_BQ, &rules).is_none()), "no site, no view");
+            let haps = Haplotypes::with_views(&v, &records, built(true));
+            assert!(haps.get(&v, &rules).is_some(), "a site, the views kept");
+            let other_rules = if trial % 2 == 0 { rna } else { ReadRules::DNA };
+            for (i, record) in records.iter().enumerate() {
+                let q = &quals[i][..];
+                let now = decide::read_view(record, q, MIN_BQ, &rules);
+                // another record alike, its qualities, --min-baseq or edges: none taken
+                assert!(haps.view_of(&record.clone(), q, MIN_BQ, &rules).is_none());
+                let shifted: Vec<u8> = q.iter().map(|&x| x ^ 1).collect();
+                assert!(q.is_empty() || haps.view_of(record, &shifted, MIN_BQ, &rules).is_none());
+                assert!(haps.view_of(record, q, MIN_BQ + 1, &rules).is_none());
+                assert!(haps.view_of(record, q, MIN_BQ, &other_rules).is_none());
+                // a view dropped (its call a read alike's verdict) is never taken
+                if i % 7 == 3 {
+                    haps.drop_view(record);
+                    assert!(haps.view_of(record, q, MIN_BQ, &rules).is_none(), "dropped");
+                    dropped += 1;
+                    continue;
+                }
+                let got = haps.view_of(record, q, MIN_BQ, &rules);
+                match (&got, &now) {
+                    (Some(g), Some(n)) => {
+                        assert_eq!(g, n, "read {i}");
+                        assert_eq!((g.heap_bytes(), g.name.capacity()), (n.heap_bytes(), n.name.capacity()), "read {i}");
+                        taken += 1;
+                    }
+                    (None, None) => {}
+                    _ => panic!("read {i}: taken {} against read now {}", got.is_some(), now.is_some()),
+                }
+                assert!(haps.view_of(record, q, MIN_BQ, &rules).is_none(), "taken once");
+            }
+        }
+        assert!(taken > 2_500 && dropped > 500, "{taken} views taken, {dropped} dropped");
     }
 }

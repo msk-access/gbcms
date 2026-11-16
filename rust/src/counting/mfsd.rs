@@ -28,6 +28,7 @@ use log::{trace, warn};
 use rust_htslib::bam::record::Cigar;
 use rust_htslib::bam::Record;
 
+use crate::shared::bam_utils::cigar_of;
 use crate::types::Variant;
 
 /// Minimum number of fragments required in each class for the KS test.
@@ -209,7 +210,7 @@ pub fn calc_physical_insert_size(record: &Record) -> i32 {
     let mut ins_bp: i32 = 0;
     let mut skip_bp: i32 = 0;
 
-    for op in record.cigar().iter() {
+    for op in cigar_of(record).iter() {
         match op {
             Cigar::Del(n) => del_bp += *n as i32,
             Cigar::Ins(n) => ins_bp += *n as i32,
@@ -264,7 +265,7 @@ pub fn allele_insert_size(record: &Record, variant: &Variant, is_alt: bool) -> i
     let reach = change.unsigned_abs() as i64;
     let near = |rp: i64| rp >= ev_lo - reach && rp <= ev_hi + reach;
     let (mut written, mut rp) = (0i64, record.pos());
-    for op in record.cigar().iter() {
+    for op in cigar_of(record).iter() {
         match op {
             Cigar::Del(l) | Cigar::RefSkip(l) => {
                 if near(rp) {

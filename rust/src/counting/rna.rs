@@ -13,6 +13,7 @@ use std::sync::Arc;
 
 use log::{debug, trace};
 
+use crate::shared::bam_utils::cigar_of;
 use crate::shared::run_cache::{Memo, MemoKey};
 use rust_htslib::bam::record::Cigar;
 use rust_htslib::bam::Record;
@@ -171,7 +172,7 @@ pub fn read_transcript_strand(record: &Record, strandedness: Strandedness) -> Op
 /// and are counted as `splice_spanning_count` in BaseCounts.
 #[inline]
 pub fn has_splice_junction(record: &Record) -> bool {
-    record.cigar().iter().any(|op| matches!(op, Cigar::RefSkip(_)))
+    cigar_of(record).iter().any(|op| matches!(op, Cigar::RefSkip(_)))
 }
 
 /// Extract splice junction coordinates from a read's CIGAR string.
@@ -198,7 +199,7 @@ pub fn extract_splice_junctions(record: &Record) -> Vec<(i64, i64)> {
     let mut junctions = Vec::new();
     let mut ref_pos = record.pos(); // 0-based start position
 
-    for op in record.cigar().iter() {
+    for op in cigar_of(record).iter() {
         match op {
             // Operations that consume reference bases
             Cigar::Match(len) | Cigar::Equal(len) | Cigar::Diff(len) | Cigar::Del(len) => {

@@ -55,7 +55,7 @@
 use log::trace;
 use rust_htslib::bam::record::{Cigar, Record};
 
-use crate::shared::bam_utils::{fragment_query_span, placement_scores};
+use crate::shared::bam_utils::{cigar_of, fragment_query_span, placement_scores, Reads};
 use crate::types::Variant;
 
 use super::carrier::{
@@ -866,8 +866,8 @@ pub(crate) fn guard_for(
 /// diagnostic names (the deletion with the changes, through a run's last base past
 /// the windows), and beside any other run none is named. None when nothing is masked
 /// or named, or the variant is not judged here.
-pub(crate) fn guard_read_as(
-    read_cache: &[Record],
+pub(crate) fn guard_read_as<R: Reads + ?Sized>(
+    read_cache: &R,
     v: &Variant,
     counted: &dyn Fn(&Record) -> bool,
     min_baseq: u8,
@@ -899,16 +899,17 @@ pub(crate) fn guard_read_as(
     // better-quality one's stands.
     let mut order: Vec<&[u8]> = Vec::new();
     let mut fragments: std::collections::HashMap<&[u8], Vec<FragmentBase>> = std::collections::HashMap::new();
-    for record in read_cache {
+    // the run of the cache that can hold a read aligned at the windows' first base
+    let (aligned_lo, aligned_hi) = aligned_interval(j.first());
+    for record in read_cache.meeting(aligned_lo, aligned_hi) {
         if !counted(record) {
             continue;
         }
-        let bases = record.seq().as_bytes();
-        let quals = record.qual();
-        let Some(q) = find_read_pos(record, j.first()).filter(|&q| q + n <= bases.len() && quals.len() >= q + n)
-        else {
+        // placed first, its bases decoded only then
+        let Some(q) = holds_windows_from(record, j.first(), n) else {
             continue;
         };
+        let (bases, quals) = (record.seq().as_bytes(), record.qual());
         // Past the windows a read is read up to its next splice: the next exon is not
         // its allele's continuation.
         let stop = splice_after(record, q).unwrap_or(bases.len());
@@ -1115,6 +1116,32 @@ pub(crate) fn guard_read_as(
     Some(guard)
 }
 
+/// A genome interval every read aligned at `at` meets: `find_read_pos` finds a position
+/// only inside an aligned op, so inside the read's span `[pos, ref_end)`.
+fn aligned_interval(at: i64) -> (i64, i64) {
+    (at, at + 1)
+}
+
+/// A genome interval every read at the site `[first, last]` meets (`pos <= last` and
+/// `ref_end > first`), whatever the order of `first` and `last`.
+fn site_interval(first: i64, last: i64) -> (i64, i64) {
+    (first, last + 1)
+}
+
+/// The query position of a read's base at the windows' first base `first`, where it holds
+/// the `n` window bases from there (bases and qualities), as the junction guard reads it;
+/// None otherwise.
+fn holds_windows_from(record: &Record, first: i64, n: usize) -> Option<usize> {
+    let quals = record.qual();
+    find_read_pos(record, first).filter(|&q| q + n <= record.seq_len() && quals.len() >= q + n)
+}
+
+/// Whether a read reaches the site `[first, last]` (`pos <= last`, `ref_end > first`), as
+/// the other-allele scan reads it.
+fn reaches_site(record: &Record, first: i64, last: i64) -> bool {
+    record.pos() <= last && crate::shared::bam_utils::ref_end(record) > first
+}
+
 /// The other alleles at a long deletion's breakpoint that read like the ALT past the
 /// windows ([`hidden_alleles`], `siblings` the listed rows) and are present at the site
 /// within the longest read's reach, with the ALT's bases they are told from, and the
@@ -1128,8 +1155,8 @@ pub(crate) fn guard_read_as(
 /// positions fitting any base) but not REF's, each up to its next splice; mates telling the
 /// two apart differently spell neither.
 #[allow(clippy::too_many_arguments)]
-fn present_hidden(
-    read_cache: &[Record],
+fn present_hidden<R: Reads + ?Sized>(
+    read_cache: &R,
     v: &Variant,
     counted: &dyn Fn(&Record) -> bool,
     min_baseq: u8,
@@ -1139,8 +1166,11 @@ fn present_hidden(
     read_as: ReadAs,
 ) -> PresentHidden {
     let (first, last) = (j.first(), j.last(true));
-    let at_site = |r: &&Record| counted(r) && r.pos() <= last && crate::shared::bam_utils::ref_end(r) > first;
-    let longest = read_cache.iter().filter(at_site).map(Record::seq_len).max().unwrap_or(0);
+    let at_site = |r: &&Record| counted(r) && reaches_site(r, first, last);
+    // the run of the cache that can hold a read at the site
+    let (site_lo, site_hi) = site_interval(first, last);
+    let site_reads = read_cache.meeting(site_lo, site_hi);
+    let longest = site_reads.iter().filter(at_site).map(Record::seq_len).max().unwrap_or(0);
     let Some((alt, hidden)) = hidden_alleles(v, siblings, longest).filter(|(_, h)| !h.is_empty()) else {
         return PresentHidden::default();
     };
@@ -1173,7 +1203,7 @@ fn present_hidden(
         .unwrap_or_default();
     // per fragment, per allele in reach (`Tally`)
     let mut fragments: std::collections::HashMap<&[u8], Vec<Tally>> = std::collections::HashMap::new();
-    for record in read_cache.iter().filter(at_site) {
+    for record in site_reads.iter().filter(at_site) {
         // the qualities and the bases it may read, as `classify` reads them (F6)
         let Some((quals, readable)) = read_as(record) else { continue };
         let (seq, quals) = (record.seq().as_bytes(), &quals[..]);
@@ -1410,7 +1440,7 @@ fn another_breakpoint(
 /// Query index of the read's first splice (N) after query index `q`, if any.
 fn splice_after(record: &Record, q: usize) -> Option<usize> {
     let mut i = 0usize;
-    for op in record.cigar().iter() {
+    for op in cigar_of(record).iter() {
         match op {
             Cigar::RefSkip(_) if i > q => return Some(i),
             Cigar::Match(l) | Cigar::Equal(l) | Cigar::Diff(l) | Cigar::Ins(l) | Cigar::SoftClip(l) => i += *l as usize,
@@ -1424,7 +1454,7 @@ fn splice_after(record: &Record, q: usize) -> Option<usize> {
 /// [`MIN_OWN_INDEL`] bases or more starting inside the genomic span `[lo, hi)`.
 fn own_indel_inside(record: &Record, (lo, hi): (i64, i64)) -> bool {
     let mut rp = record.pos();
-    for op in record.cigar().iter() {
+    for op in cigar_of(record).iter() {
         match op {
             Cigar::Del(l) | Cigar::Ins(l) if *l >= MIN_OWN_INDEL && rp >= lo && rp < hi => return true,
             Cigar::Match(l) | Cigar::Equal(l) | Cigar::Diff(l) | Cigar::Del(l) | Cigar::RefSkip(l) => rp += *l as i64,
@@ -1438,7 +1468,7 @@ fn own_indel_inside(record: &Record, (lo, hi): (i64, i64)) -> bool {
 /// `hi`: the read's bases there are not one contiguous stretch of the genome.
 fn crosses_splice(record: &Record, lo: usize, hi: usize) -> bool {
     let mut q = 0usize;
-    for op in record.cigar().iter() {
+    for op in cigar_of(record).iter() {
         match op {
             Cigar::RefSkip(_) if q > lo && q < hi => return true,
             Cigar::Match(l) | Cigar::Equal(l) | Cigar::Diff(l) | Cigar::Ins(l) | Cigar::SoftClip(l) => {
@@ -2021,5 +2051,222 @@ mod tests {
     fn a_reference_too_short_for_the_windows_gives_none() {
         let ctx = cgt(162, 17);
         assert!(junction(&del(&ctx, 99, 60)).is_none()); // 2 right-flank bases only
+    }
+
+    use crate::shared::bam_utils::oracle::{admitted, allele_reads, cluster, reference, Lcg};
+    use crate::shared::bam_utils::ReadCache;
+
+    #[test]
+    fn each_junction_walk_admits_in_its_run_what_it_admits_in_the_whole_cache() {
+        // The junction guard's test (aligned at the windows' first base) and the site test
+        // of the other alleles' scan (the predicates they call), on random clusters of clipped reads
+        // in both orders: what each admits from its run is what it admits from the whole
+        // cache, index for index, and nothing outside the run.
+        let mut rng = Lcg::new(0x5eed_0201);
+        let mut admitted_total = [0usize; 2];
+        for trial in 0..300 {
+            let n = rng.below(150) as usize;
+            let cache = ReadCache::new(cluster(&mut rng, n, 4_000, trial % 2 == 1));
+            for _ in 0..10 {
+                let first = rng.below(4_200) as i64 - 100;
+                let n = 1 + rng.below(30) as usize;
+                let aligned = |record: &Record| holds_windows_from(record, first, n).is_some();
+                let (in_run, whole, outside) = admitted(&cache, aligned_interval(first), &aligned);
+                assert_eq!((in_run, outside.len()), (whole.clone(), 0), "aligned at {first}");
+                admitted_total[0] += whole.len();
+                let last = first - 3 + rng.below(200) as i64;
+                let at_site = |r: &Record| reaches_site(r, first, last);
+                let (in_run, whole, outside) = admitted(&cache, site_interval(first, last), &at_site);
+                assert_eq!((in_run, outside.len()), (whole.clone(), 0), "site [{first}, {last}]");
+                admitted_total[1] += whole.len();
+            }
+        }
+        assert!(admitted_total.iter().all(|&n| n > 1_000), "{admitted_total:?}");
+    }
+
+    #[test]
+    fn the_junction_guard_from_its_runs_is_the_guard_from_the_whole_cache() {
+        // Deletions of 50 to 120 bases: plain, through a copy of their own bases, or inside a
+        // run of a short unit (so other unit counts read like the ALT past the windows); reads
+        // of REF, the ALT and another count written as an aligner writes them, in file order
+        // and shuffled: the guard from the runs is the guard from the whole cache, field for
+        // field.
+        let mut rng = Lcg::new(0x5eed_0202);
+        let (mut found, mut reached) = (0, [0usize; 3]);
+        for trial in 0..450 {
+            let len = 50 + rng.below(71) as usize;
+            let mut ctx = reference(&mut rng, 800);
+            // the other count's deleted bases, past the anchor at 200
+            let other = match trial % 3 {
+                0 => None,
+                1 => {
+                    let unit = ctx[201..201 + len].to_vec();
+                    ctx[201 + len..201 + 2 * len].copy_from_slice(&unit);
+                    Some(2 * len)
+                }
+                _ => {
+                    // a run of a short unit right past the deleted bases: deleting more units
+                    // of it reads like the ALT for as long as the run goes on
+                    let unit: Vec<u8> = (0..2 + rng.below(3)).map(|_| b"ACGT"[rng.below(4) as usize]).collect();
+                    let run = 20 + rng.below(80) as usize;
+                    for i in 0..run {
+                        ctx[201 + len + i] = unit[i % unit.len()];
+                    }
+                    Some(len + unit.len() * (1 + rng.below(3) as usize))
+                }
+            };
+            let text = String::from_utf8(ctx.clone()).unwrap();
+            let v = del(&text, 200, len);
+            if junction(&v).is_none() {
+                continue;
+            }
+            let (r, a) = (ctx[200..201 + len].to_vec(), ctx[200..201].to_vec());
+            let n = 40 + rng.below(160) as usize;
+            let mut reads = allele_reads(&mut rng, &ctx, 200, &r, &a, n);
+            // the other count, listed as a row half the time (then present, its tallies read)
+            let mut siblings = Vec::new();
+            if let Some(m) = other {
+                let (r2, a2) = (ctx[200..201 + m].to_vec(), ctx[200..201].to_vec());
+                let k = 20 + rng.below(60) as usize;
+                reads.extend(allele_reads(&mut rng, &ctx, 200, &r2, &a2, k));
+                if rng.chance(1, 2) {
+                    siblings.push(del(&text, 200, m));
+                }
+            }
+            if trial % 2 == 1 {
+                for i in (1..reads.len()).rev() {
+                    reads.swap(i, rng.below(i as u64 + 1) as usize);
+                }
+            }
+            let cache = ReadCache::new(reads.clone());
+            let counted = |r: &Record| r.mapq() > 0;
+            let guard = guard_read_as(&reads, &v, &counted, 20, &siblings, &as_stored);
+            let whole = format!("{guard:?}");
+            assert_eq!(format!("{:?}", guard_read_as(&cache, &v, &counted, 20, &siblings, &as_stored)), whole, "{v:?}");
+            found += usize::from(guard.is_some());
+            let g = guard.as_ref();
+            reached[0] += usize::from(g.is_some_and(|g| !g.masked.is_empty()));
+            reached[1] += usize::from(g.is_some_and(|g| !g.unit_others.is_empty() || !g.unit_absent.is_empty() || g.unit_unspanned.is_some()));
+            reached[2] += usize::from(g.is_some_and(|g| g.unit_others.iter().any(|h| h.held > 0)));
+        }
+        // the cases reach the masks and the other unit counts' scan
+        assert!(found > 40 && reached[0] > 20 && reached[1] > 15, "{found} guards found, {reached:?} with masks and other unit counts");
+    }
+
+    #[test]
+    fn a_record_the_cache_cannot_decode_stops_the_junction_guard_where_the_whole_walk_stops() {
+        // Long deletions beside a short-unit run, with reads of the ALT and of another count,
+        // some CIGARs holding an op code past 8: over the cache the guard is the same where the
+        // whole walk gives one, and stops with the same message at the same record where it stops.
+        use crate::shared::bam_utils::oracle::{agree, both_walks, unknown_op};
+        let mut rng = Lcg::new(0x5eed_0203);
+        let (mut stopped, mut finished) = (0, 0);
+        for trial in 0..300 {
+            let len = 50 + rng.below(71) as usize;
+            let mut ctx = reference(&mut rng, 800);
+            let unit: Vec<u8> = (0..2 + rng.below(3)).map(|_| b"ACGT"[rng.below(4) as usize]).collect();
+            for i in 0..20 + rng.below(80) as usize {
+                ctx[201 + len + i] = unit[i % unit.len()];
+            }
+            let text = String::from_utf8(ctx.clone()).unwrap();
+            let v = del(&text, 200, len);
+            if junction(&v).is_none() {
+                continue;
+            }
+            let m = len + unit.len();
+            let n = 40 + rng.below(160) as usize;
+            let mut reads = allele_reads(&mut rng, &ctx, 200, &ctx[200..201 + len], &ctx[200..201], n);
+            reads.extend(allele_reads(&mut rng, &ctx, 200, &ctx[200..201 + m], &ctx[200..201], 30));
+            for rec in reads.iter_mut() {
+                if rng.chance(1, 200) {
+                    unknown_op(&mut rng, rec);
+                }
+            }
+            if trial % 2 == 1 {
+                for i in (1..reads.len()).rev() {
+                    reads.swap(i, rng.below(i as u64 + 1) as usize);
+                }
+            }
+            let siblings = [del(&text, 200, m)];
+            let cache = ReadCache::new(reads.clone());
+            let walks = both_walks(&reads, &cache, |reads, counted| format!("{:?}", guard_read_as(reads, &v, counted, 20, &siblings, &as_stored)));
+            if agree(walks) {
+                stopped += 1;
+            } else {
+                finished += 1;
+            }
+        }
+        assert!(stopped > 50 && finished > 50, "{stopped} stopped, {finished} finished");
+    }
+
+    #[test]
+    fn the_junction_guard_from_tight_runs_is_the_guard_from_the_whole_cache() {
+        // Long deletions beside a short-unit run, reads of one length tiled in order across
+        // the reference, of the ALT and of another unit count (listed as a row half the time):
+        // a run holds about only the reads meeting each walk's interval, and the guard from the
+        // runs is the guard from the whole cache, field for field.
+        use crate::shared::bam_utils::oracle::tiled_reads;
+        let mut rng = Lcg::new(0x5eed_0204);
+        let (mut found, mut held) = (0, 0);
+        for _ in 0..200 {
+            let len = 50 + rng.below(71) as usize;
+            let mut ctx = reference(&mut rng, 800);
+            let unit: Vec<u8> = (0..2 + rng.below(3)).map(|_| b"ACGT"[rng.below(4) as usize]).collect();
+            for i in 0..20 + rng.below(80) as usize {
+                ctx[201 + len + i] = unit[i % unit.len()];
+            }
+            let text = String::from_utf8(ctx.clone()).unwrap();
+            let v = del(&text, 200, len);
+            if junction(&v).is_none() {
+                continue;
+            }
+            let m = len + unit.len() * (1 + rng.below(2) as usize);
+            let (read_len, step) = (60 + rng.below(90) as usize, 1 + rng.below(3) as usize);
+            let mut reads = tiled_reads(&mut rng, &ctx, 200, &ctx[200..201 + len], &ctx[200..201], read_len, step);
+            let sparse = step * (2 + rng.below(3) as usize);
+            reads.extend(tiled_reads(&mut rng, &ctx, 200, &ctx[200..201 + m], &ctx[200..201], read_len, sparse));
+            // Reads at the walks' edges, each aligned over more bases than a tiled read so that
+            // no read before it reaches further: ALT reads aligned up to the windows' first base
+            // and clipped over the windows and on (a change past them on each), and ALT reads
+            // clipped up to the ALT window's last base and aligned from it.
+            let j = junction(&v).expect("a junction");
+            let (first, last, n) = (j.first() as usize, j.last(true) as usize, j.ref_w.len());
+            let alt: Vec<u8> = [&ctx[..201], &ctx[201 + len..]].concat();
+            let edge = |rng: &mut Lcg, name: String, ops: Vec<Cigar>, seq: Vec<u8>, pos: usize| {
+                let mut rec = Record::new();
+                rec.set(name.as_bytes(), Some(&CigarString(ops)), &seq, &vec![30 + rng.below(8) as u8; seq.len()]);
+                rec.set_pos(pos as i64);
+                rec.set_mapq(60);
+                rec
+            };
+            for e in 0..3 + rng.below(8) as usize {
+                let a = read_len + 5;
+                let clip = (n + 40).min(alt.len() - first - 1);
+                let mut seq = [&ctx[first - a..=first], &alt[first + 1..first + 1 + clip]].concat();
+                let past = a + 1 + n + 5;
+                if past < seq.len() {
+                    seq[past] = if seq[past] == b'A' { b'C' } else { b'A' };
+                }
+                reads.push(edge(&mut rng, format!("left{e}"), vec![Cigar::Match(a as u32 + 1), Cigar::SoftClip(clip as u32)], seq, first - a));
+            }
+            for e in 0..rng.below(6) as usize {
+                let h = last - len; // the ALT haplotype's index of the window's last base
+                let head = (n + 20).min(h);
+                let a = (read_len + 5).min(ctx.len() - last);
+                let seq = [&alt[h - head..h], &ctx[last..last + a]].concat();
+                reads.push(edge(&mut rng, format!("right{e}"), vec![Cigar::SoftClip(head as u32), Cigar::Match(a as u32)], seq, last));
+            }
+            reads.sort_by_key(Record::pos);
+            let siblings = if rng.chance(1, 2) { vec![del(&text, 200, m)] } else { Vec::new() };
+            let cache = ReadCache::new(reads.clone());
+            let (lo, hi) = super::super::window::read_window(&v);
+            assert!(cache.meeting(lo, hi).len() < reads.len(), "a run shorter than the cache");
+            let counted = |r: &Record| r.mapq() > 0;
+            let guard = guard_read_as(&reads, &v, &counted, 20, &siblings, &as_stored);
+            assert_eq!(format!("{:?}", guard_read_as(&cache, &v, &counted, 20, &siblings, &as_stored)), format!("{guard:?}"), "{v:?}");
+            found += usize::from(guard.is_some());
+            held += usize::from(guard.as_ref().is_some_and(|g| g.unit_others.iter().any(|h| h.held > 0)));
+        }
+        assert!(found > 50 && held > 10, "{found} guards, {held} holding another count");
     }
 }

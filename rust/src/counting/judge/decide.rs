@@ -17,7 +17,7 @@ use super::score::{Alignment, Placed, DELTA, WILD};
 use crate::counting::carrier::{readable_range, ReadRules};
 use crate::counting::utils::{soft_clips, ClassifyPhase, ClassifyResult};
 use crate::counting::window::{allele_kind, AlleleKind};
-use crate::shared::bam_utils::{find_read_pos, fragment_query_span, ref_end};
+use crate::shared::bam_utils::{cigar_of, find_read_pos, fragment_query_span, ref_end};
 use crate::types::Variant;
 
 /// The phase a judged call reports: the one downstream treats as decided by the read's
@@ -36,7 +36,7 @@ const TIED_OWN_DELETION: u32 = 20;
 fn long_deletions(record: &Record) -> Vec<(i64, i64)> {
     let mut at = record.pos();
     let mut out = Vec::new();
-    for op in record.cigar().iter() {
+    for op in cigar_of(record).iter() {
         match *op {
             Cigar::Del(n) => {
                 if n >= TIED_OWN_DELETION {
@@ -1263,7 +1263,7 @@ fn deciding_quality(read: &ReadView, won: &Alignment, lost: &Alignment) -> Optio
 /// The read as the judge reads it, or None: a record whose CIGAR splices (judged depth
 /// only for now), or one with no readable base.
 pub(crate) fn read_view(record: &Record, quals: &[u8], min_baseq: u8, rules: &ReadRules) -> Option<ReadView> {
-    let cigar = record.cigar();
+    let cigar = cigar_of(record);
     // TODO(step 6 of the judge's build): judge a spliced read on the reference spliced
     // along its junctions (`carrier::splice_segments`), as the exact-carrier rule does;
     // until then it is depth only.
@@ -1313,11 +1313,14 @@ pub(crate) fn classify(record: &Record, variant: &Variant, quals: &[u8], min_bas
         [record.raw_cigar().iter().flat_map(|op| op.to_le_bytes()).collect::<Vec<u8>>(), record.seq().encoded.to_vec()].concat(),
     );
     if let Some(kept) = haplotypes.verdict(&key) {
+        // the verdicts are kept for good: no later call on this record reads its view
+        haplotypes.drop_view(record);
         return kept;
     }
     let (start, end) = (record.pos(), ref_end(record));
     let overlaps_anchor = start <= variant.pos && end > variant.pos;
-    let out = match read_view(record, quals, min_baseq, rules) {
+    // the view the site was built from for this record, else read now: one view per record per row
+    let out = match haplotypes.view_of(record, quals, min_baseq, rules).or_else(|| read_view(record, quals, min_baseq, rules)) {
         None => depth(),
         Some(mut read) => {
             // The judge never reads a read's name: a read alike in all else (bases, qualities,
