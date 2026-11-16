@@ -837,6 +837,22 @@ and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semant
   takes 0.97 to 1.08 times its earlier wall time (CPU 0.97 to 1.05). Plan:
   <code>docs/harness/plans/435-context-read-test.md</code>.</li>
 </ul>
+<h3 id="changed-speed-whole-program-optimisation-libdeflate-and-the-log-cap-335">Changed — speed: whole-program optimisation, libdeflate and the log cap (#335)<a class="headerlink" href="#changed-speed-whole-program-optimisation-libdeflate-and-the-log-cap-335" title="Permanent link">¶</a></h3>
+<ul>
+<li>The release build is optimised as one program (<code>lto = "fat"</code>, <code>codegen-units = 1</code>), and htslib
+  reads BGZF blocks with libdeflate in place of zlib (the same bytes). For the length of a counting
+  call, a Rust <code>trace!</code> or <code>debug!</code> that no Python logger would pass is not built; outside a
+  counting call the logging is as before. No count changes: every output field of every row is
+  identical to develop's on the local regression sets (HG002, the IMPACT tier, ACCESS, WES, FORTE
+  RNA with the GTF on and off, a fill-out, <abbr title="Mutant Fragment Size Distribution - Insert-size analysis for REF vs ALT fragments">mFSD</abbr> with Parquet, the <abbr title="Multi-Nucleotide Polymorphism - Multiple adjacent base substitutions">MNP</abbr> rescue, <code>gbcms merge</code>, one row
+  per bin), and the <code>--verbose</code> logs of HG002, a fill-out and the FORTE RNA runs are the same line
+  for line (times and paths aside). On the production speed cells (IMPACT and ACCESS, 1 <abbr title="Binary Alignment Map - Compressed sequence alignment file format">BAM</abbr> x 1,000 to 20,000 rows and a 9-
+  or 10-<abbr title="Binary Alignment Map - Compressed sequence alignment file format">BAM</abbr> fill-out, whole nodes, 3 repeats), the default path takes 0.52 to 0.78 of its earlier CPU
+  time and the sequence judge 0.76 to 0.96; peak memory 0.95 to 1.09. On FORTE RNA with the GTF (1 <abbr title="Binary Alignment Map - Compressed sequence alignment file format">BAM</abbr>
+  x 1,000 to 20,000 rows and a 10-<abbr title="Binary Alignment Map - Compressed sequence alignment file format">BAM</abbr> fill-out) the default path takes 0.67 to 0.73. Example: IMPACT,
+  5,000 rows x 10 BAMs, the default path, 518 CPU seconds before and 270 after. Building a wheel from source takes
+  longer (about 4 minutes on an M-series Mac). Plan: <code>docs/harness/plans/335-exact-speedups.md</code>.</li>
+</ul>
 <h3 id="docs-read-judgment-what-gbcms-takes-from-the-aligner-and-naming-the-reads-it-holds-back-rj-33-rj-34">Docs — read judgment: what gbcms takes from the aligner, and naming the reads it holds back (RJ-33, RJ-34)<a class="headerlink" href="#docs-read-judgment-what-gbcms-takes-from-the-aligner-and-naming-the-reads-it-holds-back-rj-33-rj-34" title="Permanent link">¶</a></h3>
 <ul>
 <li>Decided, no count change (operator 2026-11-11). RJ-33: the allele comes from the read's own
