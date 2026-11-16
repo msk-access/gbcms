@@ -286,6 +286,8 @@ order of measured gain over effort (S1 and S4 first, then S2, S3, S5), each with
   2026-11-15 I listed M2's copy-back lanes with `find` (they hold only cell folders and timing files, and no
   identifier was printed, but the rule counts every lane as a patient folder); later scripts build lane paths
   from the known cell layout.
+- 2026-11-16, S4's fix merged (#441, develop 473e8920). Phase 2 (S2, S3, S5, the judge's kernel) has its own
+  page: `335-phase2.md`.
 
 ## 8. Cost log
 

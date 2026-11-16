@@ -33,6 +33,21 @@ regenerating a section.
 
 ---
 
+## [LRN-20261116-002] rule-trigger | a code-only agent listed the HPC copy-back folders to find a measured fact
+- **Status:** resolved (rule promoted).
+- **Cause:** rule-trigger.
+- **Summary:**
+  - For the #335 phase 2 judge study I briefed an Opus agent to read code only, and gave it M2's measured
+    shares. It went to find M2's files and ran `ls` and `find` on `~/test/gbcms/harness/hpc/out/` and
+    `hpc/out/m1profJ/`, the copy-back lanes, which the PHI rule counts as patient folders. No sample ID
+    or BAM name is in its transcript or report (checked by pattern); its numbers came from `m2_agg.md` and
+    the per-function `perf.txt` files.
+  - The rule says every brief that touches patient files carries the never-list rule. My brief did not
+    touch patient files, so it did not carry it; the agent reached them on its own.
+- **Promotion target:** `.agents/rules/security.md` (the never-list bullet) — `DONE:` every brief to an
+  agent with a shell carries the never-list rule and names the copy-back lanes, a code-only brief too, and
+  a brief that gives measured facts says where their PHI-free summary is.
+
 ## [LRN-20261116-001] rule-body | a cache key was changed without listing what each loader reads from the name
 - **Status:** resolved (rule promoted).
 - **Cause:** rule-body.
