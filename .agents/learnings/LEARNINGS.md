@@ -33,6 +33,24 @@ regenerating a section.
 
 ---
 
+## [LRN-20261116-001] rule-body | a cache key was changed without listing what each loader reads from the name
+- **Status:** resolved (rule promoted).
+- **Cause:** rule-body.
+- **Summary:**
+  - Fixing Greptile's first S4 finding (#440, 3f2c5f7f), I keyed the run cache on the file a name
+    resolves to, so two names for one file shared one entry. But the loaders read the name: the RNA
+    editing database picks gzip from a `.gz` ending (`rna.rs`), and the GTF's warnings print the name.
+    In one Python process, a second name for a database loaded under the first reused its sites, so a
+    name that fails on its own (plain bytes named `.gz`, or gzip bytes without it) passed, and a GTF
+    warning said again printed the first name. A CLI run was not affected (one name per run).
+  - Greptile's third review found it; the operator had merged 89 seconds after it arrived, unread by me.
+  - The code rules said nothing about what a cache key must hold, and my effects map listed the
+    callers, not what each builder reads.
+- **Promotion target:** `.agents/rules/code-quality.md` (a new "Caches and reuse" section) — `DONE:` a
+  cache key holds every input its build reads, the name as given included; a changed key lists what
+  each builder reads, and a test shows a reuse gives what a fresh call gives. The fix: the key holds the
+  name as given and the resolved file (`run_cache.rs`); tests for both loaders failed on the merged build.
+
 ## [LRN-20261115-003] rule-body | a line cut before the sanitizer printed a folder name of a FORTE slice
 - **Status:** resolved (rule promoted).
 - **Cause:** rule-body.

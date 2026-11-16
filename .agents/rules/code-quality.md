@@ -75,6 +75,13 @@ are in the qa-check skill (`.agents/skills/qa-check/SKILL.md`).
 - [ ] Missing files logged with path context
 - [ ] Errors include context (file path, sample name, variant position)
 
+## Caches and reuse
+
+- A cache key holds every input its build reads, the name as given included: a loader may pick a
+  format from a file's ending or print the name in its warnings, so two names for one file are two
+  entries. When you add or change a key, list what each builder reads (not only who calls it), and
+  test that a reuse gives what a fresh call gives (LRN-20261116-001).
+
 ## Dependencies
 
 `pyproject.toml` is the single source of truth: runtime dependencies in `[project.dependencies]`
