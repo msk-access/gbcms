@@ -5840,6 +5840,7 @@ mod tests {
             // (observations come out in the order of a per-call hash map: compared sorted)
             let count = |cache: &dyn Fn() -> Result<(BaseCounts, Vec<Observation>)>| {
                 let (counts, mut obs) = cache().expect("counts");
+                assert_counts_hold(&counts);
                 obs.sort_by_key(|o| (o.molecule_hash, o.allele, o.best_qual, o.min_mapq));
                 (format!("{counts:?}"), format!("{obs:?}"), counts.ad)
             };
@@ -5898,6 +5899,7 @@ mod tests {
                     "dna", false, rna::Strandedness::Unstranded, true, &None, &None, false, true, 0, &carrier::ReadRules::DNA,
                 )
                 .expect("counts");
+                assert_counts_hold(&counts);
                 obs.sort_by_key(|o| (o.molecule_hash, o.allele, o.best_qual, o.min_mapq));
                 (format!("{counts:?}"), format!("{obs:?}"))
             });
@@ -5938,6 +5940,27 @@ mod tests {
         tiled_reads(rng, ctx, at, r, a, len, step)
     }
 
+    /// The four relations every counting test checks (AGENTS.md): depth holds REF and ALT, for
+    /// reads and for fragments, and REF and ALT are each the sum of their two strands.
+    fn assert_counts_hold(c: &BaseCounts) {
+        assert!(c.dp >= c.rd + c.ad, "DP {} below RD {} + AD {}", c.dp, c.rd, c.ad);
+        assert!(c.dpf >= c.rdf + c.adf, "DPF {} below RDF {} + ADF {}", c.dpf, c.rdf, c.adf);
+        assert_eq!(c.rd, c.rd_fwd + c.rd_rev, "RD against its two strands");
+        assert_eq!(c.ad, c.ad_fwd + c.ad_rev, "AD against its two strands");
+    }
+
+    /// The depth relations for per-transcript counts (`"tx:AD,RD,DP|..."` for reads and
+    /// `"tx:ADF,RDF,DPF|..."` for fragments; they carry no strands).
+    fn assert_transcript_counts_hold((reads, fragments): &(String, String)) {
+        for entries in [reads, fragments] {
+            for entry in entries.split('|').filter(|e| !e.is_empty()) {
+                let n: Vec<u32> =
+                    entry.rsplit_once(':').expect("transcript:counts").1.split(',').map(|x| x.parse().expect("a count")).collect();
+                assert!(n.len() == 3 && n[2] >= n[0] + n[1], "{entry}: depth below REF + ALT");
+            }
+        }
+    }
+
     /// A row's counts and observations (sorted: they come out in a per-call hash map's order).
     fn counted_row<R: Reads + ?Sized>(reads: &R, v: &Variant, apply_baq: bool, mfsd: bool, rules: &carrier::ReadRules) -> (String, String) {
         let (counts, mut obs) = count_variant_from_cache(
@@ -5945,6 +5968,7 @@ mod tests {
             "dna", false, rna::Strandedness::Unstranded, mfsd, &None, &None, false, true, 0, rules,
         )
         .expect("counts");
+        assert_counts_hold(&counts);
         obs.sort_by_key(|o| (o.molecule_hash, o.allele, o.best_qual, o.min_mapq));
         (format!("{counts:?}"), format!("{obs:?}"))
     }
@@ -6199,6 +6223,7 @@ mod tests {
                 )
             };
             let whole = per_transcript(&reads);
+            assert_transcript_counts_hold(&whole);
             assert_eq!(per_transcript(&cache), whole, "{v:?}");
             counted_tx += usize::from(!whole.0.is_empty());
             let asjd = |reads: &dyn Reads| {
