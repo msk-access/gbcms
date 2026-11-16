@@ -8,7 +8,8 @@ Contracts:
   and loads them, each later call reuses them and says so at INFO, the parse's warnings are said
   again, and every BAM's row equals a one-BAM run's row;
 - a GTF that changes between two counting calls of one process is read again, never served
-  from the once-per-run index (the same path, another length);
+  from the once-per-run index (the same path, another length), and the same relative GTF name read
+  from another working folder is that folder's file (the same length and modification time);
 - importing ``gbcms`` (and its CLI) does not load polars, and the lazily read names still work.
 """
 
@@ -23,8 +24,10 @@ import pysam
 import pytest
 from helpers import read_maf_output
 from test_gtf_loading_group7_contract import _JUNK, POS, _gtf_text, _run
+from typer.testing import CliRunner
 
 from gbcms import pipeline as pl_mod
+from gbcms.cli import app
 
 
 def _old_properties_line(bam, min_baseq, sample=20_000):
@@ -81,12 +84,19 @@ def _write_mixed_bam(tmp_path, qual_values):
     return path
 
 
+@pytest.mark.parametrize("chunk", [None, 7], ids=["one-piece", "7-byte-pieces"])
 @pytest.mark.parametrize(
     "qual_values",
     [[37], [2, 12, 23, 37], [0, 1, 7, 20, 25, 30, 33, 37, 40, 41, 60, 93]],
     ids=["one-value", "binned", "unbinned"],
 )
-def test_bam_properties_line_equals_the_counter_loop(tmp_path, caplog, qual_values):
+def test_bam_properties_line_equals_the_counter_loop(
+    tmp_path, caplog, monkeypatch, qual_values, chunk
+):
+    """The line is the same whether the sampled qualities are tallied in one piece or in small
+    pieces (the bound that keeps a long-read BAM's sample from holding every quality)."""
+    if chunk:
+        monkeypatch.setattr(pl_mod, "BAM_QUAL_CHUNK", chunk)
     bam = _write_mixed_bam(tmp_path, qual_values)
     records, dups, primaries, hard, quals = _old_properties_line(bam, 20)
     bases = sum(quals.values())
@@ -196,6 +206,37 @@ def test_a_gtf_changed_between_two_calls_is_read_again(tmp_path):
     assert after == fresh
     again = _run(d, _gtf_text())
     assert again == before
+
+
+def test_the_same_relative_gtf_name_in_another_folder_is_that_folders_file(tmp_path, monkeypatch):
+    """The once-per-run index is keyed by the file a name resolves to. A Python caller that
+    moves to another working folder and passes the same relative GTF name, a file of the same
+    length and modification time, gets that folder's answers."""
+    a, b = tmp_path / "a", tmp_path / "b"
+    near_a = (
+        f'chr1\tTEST\texon\t{POS + 5}\t{POS + 40}\t.\t+\t.\tgene_id "G9"; transcript_id "T9";\n'
+    )
+    near_b = (
+        f'chr1\tTEST\texon\t{POS + 6}\t{POS + 40}\t.\t+\t.\tgene_id "G9"; transcript_id "T9";\n'
+    )
+    assert len(near_a) == len(near_b)
+    want_a = _run(a, _gtf_text(extra=near_a))
+    want_b = _run(b, _gtf_text(extra=near_b))
+    assert want_a["exon_boundary_dist"] != want_b["exon_boundary_dist"]
+    st = (a / "plain.gtf").stat()
+    os.utime(b / "plain.gtf", ns=(st.st_atime_ns, st.st_mtime_ns))
+    assert (b / "plain.gtf").stat().st_size == st.st_size
+
+    def relative_run(folder, out):
+        monkeypatch.chdir(folder)
+        args = ["rna", "-v", "variants.vcf", "-b", "S:rna.s.bam", "-f", "ref.fasta", "-o", out]
+        result = CliRunner().invoke(app, args + ["--format", "maf", "--gtf", "plain.gtf"])
+        assert result.exit_code == 0, result.output
+        (row,) = read_maf_output(glob.glob(str(folder / out / "*.maf"))[0])
+        return row
+
+    assert relative_run(a, "rel") == want_a
+    assert relative_run(b, "rel") == want_b, "the first folder's index was reused"
 
 
 def test_importing_gbcms_does_not_load_polars():

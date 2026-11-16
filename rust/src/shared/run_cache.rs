@@ -5,20 +5,29 @@
 //! time; each of those calls used to parse the same GTF and the same editing database from
 //! disk. A parse is a pure function of the file's bytes (and, for the GTF, the set of
 //! chromosomes asked for), so a result kept under that key is the same result. The key holds
-//! the file's path, its length and its modification time, so a file that changed between two
-//! calls is read again; a file that cannot be inspected is never cached (the loader then
-//! reports its own error as before).
+//! the file's resolved path (links followed, a relative name made absolute), on Unix its device
+//! and inode, its length and its modification time. So the same name read from another working
+//! folder, a file replaced at the same path, and a file changed between two calls are each read
+//! again; a file that cannot be inspected is never cached (the loader then reports its own error
+//! as before).
 //!
 //! The cache holds a few entries and drops the oldest when it is full, so a long Python
 //! session that reads many different files does not keep them all.
 
+use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 use std::time::SystemTime;
 
 /// What a cached parse depends on: the file and, for the GTF, the chromosomes asked for.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct MemoKey {
-    path: String,
+    /// The file's resolved path: the same relative name in another working folder is another
+    /// file, and a link and its target are one.
+    path: PathBuf,
+    /// The file's device and inode: a file replaced at the same path (a rename over it) is
+    /// another file, even with the same length and modification time.
+    #[cfg(unix)]
+    file_id: (u64, u64),
     len: u64,
     modified: SystemTime,
     /// The sorted chromosome names the parse was filtered to (empty when it has no filter).
@@ -28,10 +37,23 @@ pub struct MemoKey {
 impl MemoKey {
     /// The key for `path` filtered to `scope`, or None when the file cannot be inspected.
     pub fn for_file<'a>(path: &str, scope: impl IntoIterator<Item = &'a String>) -> Option<Self> {
-        let meta = std::fs::metadata(path).ok()?;
+        let path = std::fs::canonicalize(path).ok()?;
+        let meta = std::fs::metadata(&path).ok()?;
+        #[cfg(unix)]
+        let file_id = {
+            use std::os::unix::fs::MetadataExt;
+            (meta.dev(), meta.ino())
+        };
         let mut scope: Vec<String> = scope.into_iter().cloned().collect();
         scope.sort_unstable();
-        Some(Self { path: path.to_string(), len: meta.len(), modified: meta.modified().ok()?, scope })
+        Some(Self {
+            path,
+            #[cfg(unix)]
+            file_id,
+            len: meta.len(),
+            modified: meta.modified().ok()?,
+            scope,
+        })
     }
 }
 
@@ -129,6 +151,38 @@ mod tests {
         assert_eq!((*v, hit), (7, false));
         std::fs::remove_file(&path).ok();
         assert!(MemoKey::for_file(&path, std::iter::empty()).is_none());
+    }
+
+    #[test]
+    fn a_name_is_keyed_by_the_file_it_resolves_to() {
+        // Two folders, a file of the same name, length and modification time in each.
+        let base = std::env::temp_dir().join(format!("gbcms_run_cache_{}_names", std::process::id()));
+        let (a, b) = (base.join("a"), base.join("b"));
+        std::fs::create_dir_all(&a).unwrap();
+        std::fs::create_dir_all(&b).unwrap();
+        let when = SystemTime::UNIX_EPOCH + std::time::Duration::from_secs(1_700_000_000);
+        for (dir, body) in [(&a, "one"), (&b, "two")] {
+            let f = std::fs::File::create(dir.join("x.gtf")).unwrap();
+            (&f).write_all(body.as_bytes()).unwrap();
+            f.set_modified(when).unwrap();
+        }
+        let key = |p: &std::path::Path| MemoKey::for_file(p.to_str().unwrap(), std::iter::empty()).unwrap();
+        assert_ne!(key(&a.join("x.gtf")), key(&b.join("x.gtf")), "the same name in another folder is another file");
+        assert_eq!(key(&a.join("x.gtf")), key(&b.join("..").join("a").join("x.gtf")), "one file, two spellings");
+        #[cfg(unix)]
+        {
+            let link = base.join("link.gtf");
+            std::os::unix::fs::symlink(a.join("x.gtf"), &link).unwrap();
+            assert_eq!(key(&link), key(&a.join("x.gtf")), "a link and its target are one file");
+            // A file renamed over the path, with the same length and modification time, is another file.
+            let before = key(&a.join("x.gtf"));
+            let f = std::fs::File::create(base.join("new.gtf")).unwrap();
+            (&f).write_all(b"one").unwrap();
+            f.set_modified(when).unwrap();
+            std::fs::rename(base.join("new.gtf"), a.join("x.gtf")).unwrap();
+            assert_ne!(key(&a.join("x.gtf")), before, "a file replaced at the same path is read again");
+        }
+        std::fs::remove_dir_all(&base).ok();
     }
 
     #[test]
