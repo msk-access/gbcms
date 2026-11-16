@@ -16,8 +16,9 @@ pyo3 = { version = "0.29", features = ["extension-module", "abi3-py310"] }
 # used, because the CLI only takes paths that exist. The feature pulls libcurl and, on
 # Linux, OpenSSL 3 (curl 8 refuses OpenSSL 1.1.1) into every build, which a wheel for
 # RHEL 8 (manylinux_2_28, glibc 2.28) cannot get from the system. bzip2 and lzma stay
-# for CRAM.
-rust-htslib = { version = "1.0", default-features = false, features = ["bzip2", "lzma"] }
+# for CRAM. libdeflate: htslib inflates and checksums BGZF blocks with libdeflate (C source
+# bundled by libdeflate-sys, built by cc) in place of zlib; the bytes are the same.
+rust-htslib = { version = "1.0", default-features = false, features = ["bzip2", "lzma", "libdeflate"] }
 thiserror = "2.0"
 anyhow = "1.0"
 bio-types = "1.0"
@@ -44,3 +45,9 @@ flate2 = { version = "1", features = ["zlib-rs"] }
 # ── P4a: GTF-informed splice mask (v5.0.0) ─────────────────────────────────
 # COITree: cache-oblivious interval tree for O(n+m) exon overlap queries.
 coitrees = "0.4"
+
+# Whole-program optimisation, one code unit. No panic = "abort", no target-cpu and no
+# fast-math: floating-point results stay as they were.
+[profile.release]
+lto = "fat"
+codegen-units = 1

@@ -46,9 +46,15 @@ of the conversation. The operator decided (2026-10-26, after asking what reaches
 - **Patient BAM slices** (panel, ACCESS, WES, germline normals, the gate) are fine for testing,
   "as long as it's not used for anything downstream". The model-improvement setting is off. Report
   aggregates and allele shapes, never sample IDs or read names.
+  - A read's content may be shown to evaluate a sample: its bases, qualities, CIGAR, flags and
+    call. No identifier may: sample IDs, read names, BAM, run and folder names (operator
+    2026-11-14: "i am ok with looking at reads to evaluate the samples , but not any of the ids").
+    Positions may be shown too (operator 2026-11-14: "positions are fine too"). The sanitizer still
+    filters every printed line for identifiers; where it also masks a position, that is allowed.
   - Whoever inspects patient reads (a probe, a trace filter, a read-by-read check) writes the
-    sanitizer first and sends every printed line through it, so no output shows a position, sample
-    ID or read name, not even while debugging. Every brief that touches patient reads says so.
+    sanitizer first and sends every printed line through it, so no output shows a sample ID or read
+    name (positions are allowed since 2026-11-14), not even while debugging. Every brief that touches
+    patient reads says so.
     (Operator 2026-10-29, after two agents printed patient positions and a read name.)
   - The sanitizer covers stderr too. Libraries print file names (htslib's "index older than
     data" warning names the BAM, which is a sample ID); merge stderr into the filtered stream or

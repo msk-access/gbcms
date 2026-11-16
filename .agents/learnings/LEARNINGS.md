@@ -33,6 +33,38 @@ regenerating a section.
 
 ---
 
+## [LRN-20261115-002] rule-body | Greptile's state was reported from the app's PR status, unread
+- **Status:** resolved (rule promoted).
+- **Cause:** rule-body.
+- **Summary:**
+  - After opening PR #439 I told the operator "Greptile has not reviewed it yet". I had read only the
+    app's PR status (check counts, pending), which does not show the bot's summary or inline comments;
+    I did not read them with `gh`. Greptile's review (4 of 5, two valid findings) came minutes later.
+  - The operator (2026-11-15): "Did you read the greptile 4/5 root leak".
+  - The rule said when to read the review (before a PR is called ready or merged), not that its state
+    is never reported unread.
+- **Promotion target:** `.agents/rules/git-conventions.md` "Read the bot review as well as the checks" —
+  `DONE:` never report Greptile's state from memory or the app's PR status; read the summary and the
+  inline comments with `gh` first, and if none is posted yet, say so with the time you looked.
+
+## [LRN-20261115-001] rule-body | a speed option was put up for dropping before the data type it targets was timed
+- **Status:** resolved (rule promoted).
+- **Cause:** rule-body.
+- **Summary:**
+  - #335's timing batch (pf75) timed S4 (Python, RNA and small items) on the 8 DNA production cells
+    only. S4's planned gain was largest in RNA (the GTF read once per run, not per BAM), and pf75 had no
+    RNA cell.
+  - S4 showed no clear CPU cut on DNA (0.96 to 1.02), and I recommended dropping it, saying in the same
+    report that its RNA part was not measured.
+  - The operator (2026-11-15): "No we should test on RNA as well so keep s4".
+  - The speed note named the DNA kit (IMPACT and ACCESS cells) as the place to time a speed change; the
+    rule "every data type the change reaches" was written for count rules only (decision-protocol §7), so
+    the speed plan did not carry it.
+- **Promotion target:** `.agents/memory/speed-floor.md` "How to apply" — `DONE:` a speed option is timed
+  on every data type its change reaches (RNA with a GTF for an RNA or GTF change; mFSD; a fill-out for a
+  per-BAM change) before it is kept or dropped; a part that was not timed is never a reason to drop it.
+  `docs/harness/plans/335-exact-speedups.md` §4 — `DONE:` the gain batch names RNA cells for S4 (pf76).
+
 ## [LRN-20261114-001] rule-body | a speed bar was set to switch a count rule to a sample of the reads
 - **Status:** resolved (rule promoted).
 - **Cause:** rule-body.

@@ -27,6 +27,10 @@ merges.
   the harness's small lists: the C++ tool spends about 8 s loading the reference, which hides the
   per-row cost on small lists. The kit is `kit/run_prod.sbatch` with `kit/manifests/pf71.*`
   (IMPACT and ACCESS, 1 BAM × 1k/5k/20k rows and a 9–10-BAM fillout, whole nodes, 3 repeats).
+- Time a speed option on every data type its change reaches before it is kept or dropped: RNA with
+  a GTF for an RNA or GTF change, mFSD for an mFSD change, a fill-out for a per-BAM change. A part
+  that was not timed is never a reason to drop the option (operator, 2026-11-15: "No we should test
+  on RNA as well so keep s4").
 - Run that benchmark before each release, for whichever path is the default. Speed work goes to
   the path that is or will be the default; a speed-up only the outgoing path uses is out of scope
   (operator, 2026-10-31).
