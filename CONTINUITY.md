@@ -4,7 +4,43 @@
 > Update the **Now** and **Next** sections as work progresses. When a "Now" section is finished,
 > move it to `.agents/archive/CONTINUITY_ARCHIVE.md` (older sections live there).
 
-_Last updated: 2026-11-13_
+_Last updated: 2026-11-16_
+
+## Now — #335, exact speed-ups (Stage 3; plan `docs/harness/plans/335-exact-speedups.md`)
+
+Started 2026-11-14 on develop 1b11ffea (#438 merged: the judge fault fix RJ-35; #435 closed). The rule
+(operator, 2026-11-14): speed is never bought with accuracy; a change is kept only if every output field
+of every row is identical on every set, and the whole `--verbose` log too (from 2026-11-15).
+- **Merged:**
+  - S1, build settings (#439, develop 1992fcb4): LTO, one code unit, `libdeflate`, the Rust log cap held to
+    each counting call. CPU over develop's on HPC (pf75, pf76): the rules path 0.52 to 0.78, the judge path
+    0.76 to 0.96, RNA 0.67 to 0.73.
+  - S4, RNA and small items (#440, 8a3966d8; its fix #441, 473e8920): the GTF and the editing database read
+    once per run, keyed by the name as given and the resolved file; no insert size when mFSD is off; the
+    sampled base qualities tallied in pieces; `import gbcms` without polars. RNA CPU 0.87 to 0.91; DNA
+    within noise.
+- **Dropped:** S1b (mimalloc): 0 rows differ, but 1 judge run in about 3,500 ended with a segmentation
+  fault at exit.
+- **Left:** S2 (shared scans), S3 (the judge's work done once), S5 (a narrower fetch per bin), and the
+  judge's kernel (its own plan). The budget is spent: builds 8 of 8, HPC batches 3 of 3; the one rerun
+  (0 of 1) is held for M2's two IMPACT cells on Gold 6348 nodes. More needs the operator's approval.
+- **The floor, with S1** (pf73 times pf75, about +/-10%): the rules path 0.25 to 0.74 of the C++ tool's
+  wall time; the judge path under 1 only at 1,000 rows x 1 BAM, 1.14 at IMPACT 5,000 x 1, 2.2 to 5.0 at
+  the deep ACCESS and the 9- and 10-BAM cells. M2: the read call is 44 to 69% of the judge's CPU; M3: reads
+  with best score 0 hold 85 to 87% of the scoring clock.
+- **Harness:** the gate `batch680/gate335.py` (18 arms with three log arms and the RNA fill-out; baseline
+  `fin682`, develop 1b11ffea); the frozen builds `src_s1c`, `src_s1d`, `src_s4b`, `src_s4c` and others.
+  After #335 closes, the retirement checklist (`docs/harness/measurement-harness.md`).
+- **Next (operator, 2026-11-16):** plan S2, S3 and S5 "meticulously including research and solutions for
+  the source and class". The draft: `docs/harness/plans/335-phase2.md` (research in the session's
+  `scratchpad/speed2/plan2/`). Approved 2026-11-16 11:14 as drafted; D2 (S5's log) and D3 (F1, F2
+  tickets) open. Work order: S2 with V (started), S3a, M4, S3b, S3c, S5. M0 cleared at 10:14:
+  the two reference genomes read again (ERR-20261116-001); the local profiles (M5: hg002_pri x6, panel
+  x20, hg002_sv x1, rules then judge, 4 threads; the shared venv's build, DNA code = 473e8920) restarted
+  at 10:15 (`plan2/measure/run_all.sh`, log `run.log`).
+- **Two findings outside #335** (from the code, not reproduced; own tickets): F1, the junction judge's
+  scan reads past the one-row geometry's fetch (invariant 1, test geometry only); F2, the verdict cache's
+  key leaves out qualities, so a rare duplicated record can get another call between runs.
 
 ## Now — 6.8.0 starts (tracker #420)
 

@@ -11,6 +11,23 @@ Newest at the top.
 
 ---
 
+## [ERR-20261116-001] reads of the two reference genomes hang from the session
+- **What happened:** on 2026-11-16 the profile agent's runs of develop 473e8920 stopped in
+  `prepare_variants`, opening `genome.fa.fai`: no error, no CPU, until the process was killed. Every
+  `open()` of `~/Downloads/genome.fa` and of the OneDrive copy of `Homo_sapiens_assembly19.fasta`
+  (`~/Library/CloudStorage/OneDrive-.../test_data/`) hung, `head -c` included; `stat` worked. The gate
+  (`batch680.py`, `FA38`) and the profile arms read the same files; on 2026-11-15 they read them.
+- **Rule/hook involved:** none at fault. The likely cause is outside the harness: a macOS privacy check for
+  Downloads waiting for an answer on the Mac's screen, or a OneDrive file kept online only.
+- **Environment fix:** the operator's choice: copy both files, with their `.fai`, to
+  `~/test/gbcms/refs/` (outside Downloads and OneDrive) and point the manifests there, or allow the access
+  on the Mac. Not worked round from the session (the Terminal panel runs outside the sandbox).
+- **Cleared:** at 10:14 the same day both files read again (a 4 KB read of each `.fai`, a 64 KB read 2 GB
+  into each FASTA, each under a 15 to 20 second limit), with nothing changed from the session. The cause
+  is not known; the likely one is an answer to the Mac's privacy prompt. If it comes back, ask the
+  operator first, and test with a time limit; never list the folder.
+- **Date:** 2026-11-16
+
 ## [ERR-20261115-002] CI's Rocky 8 test job could not pull its container image, a second time
 - **What happened:** on PR #440, `Rocky 8, Python 3.12, manylinux_2_28` (`wheels.yml`, step "Install and
   test the wheel") failed after 7 s: `docker run` pulled `quay.io/rockylinux/rockylinux:8`, and the

@@ -72,7 +72,11 @@ of the conversation. The operator decided (2026-10-26, after asking what reaches
     germline sample IDs.) The HPC copy-back lanes (`~/test/gbcms/harness/hpc/out/<label>/`) and
     their clones (`out_<label>/`, `across/`, `wes/`, `germ/`, `xdata/gatex/`) are patient folders
     too; a lane's copy command is in the ledger and `~/test/gbcms/harness/hpc/PLAN.md` §6.
-    (2026-11-05: an `ls` of two lanes was refused before any output.)
+    (2026-11-05: an `ls` of two lanes was refused before any output.) Every brief to an agent with a
+    shell carries this rule and names the lanes, a code-only brief too: an agent may go looking for the
+    files behind a measured fact. A brief that gives measured facts names their PHI-free summary file.
+    (2026-11-16: a code-only agent listed `hpc/out/` and `hpc/out/m1profJ/` to find M2's numbers; no
+    identifier was printed.)
 - **cBioPortal study files** (`data_*.txt`, `meta_*.txt`, case lists: cohort-wide patient-level
   rows) stay on this machine: "I need you to only write scripts and run them here to understand
   and tease what can be used". Enforced by `.claude/hooks/protect-cbioportal.py`; the protected
