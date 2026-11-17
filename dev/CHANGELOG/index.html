@@ -815,6 +815,15 @@
 </a>
 </li>
 <li class="md-nav__item">
+<a class="md-nav__link" href="#changed-speed-the-sequence-judge-repeats-less-of-its-own-work-335">
+<span class="md-ellipsis">
+      
+        Changed — speed: the sequence judge repeats less of its own work (#335)
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
 <a class="md-nav__link" href="#docs-read-judgment-what-gbcms-takes-from-the-aligner-and-naming-the-reads-it-holds-back-rj-33-rj-34">
 <span class="md-ellipsis">
       
@@ -3386,6 +3395,28 @@ and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semant
 <li>No output field and no <code>--verbose</code> line changes. In RNA, <code>--trace</code> prints fewer
   "uniquely-mapped read (<abbr title="Number of Hits - BAM tag indicating number of reported alignments">NH</abbr>=1) rescued below <abbr title="Mapping Quality - Confidence score for read alignment">MAPQ</abbr> floor" lines: a rule no longer asks whether a read
   outside its run is counted. Plan: <code>docs/harness/plans/335-phase2.md</code>.</li>
+</ul>
+<h3 id="changed-speed-the-sequence-judge-repeats-less-of-its-own-work-335">Changed — speed: the sequence judge repeats less of its own work (#335)<a class="headerlink" href="#changed-speed-the-sequence-judge-repeats-less-of-its-own-work-335" title="Permanent link">¶</a></h3>
+<ul>
+<li>The read-need test (whether the reads that reach a context item beside X's site need it for their
+  calls) now does each piece of its work once. It calls each read on the site with every item once,
+  for all the items it weighs, not once per item. It scores reads alike in all that the scorer reads
+  of them (their bases, as masked, their aligned positions and their span) once, and counts each such
+  group as the number of reads in it. It scores a read's states together, as a read's call does: a
+  state laid out like an earlier one takes its first columns from that state's programme, and gets
+  the same score as when scored alone. It stops weighing reads once the answer is fixed: the count of
+  reads that need the item only grows, so the test stops when the count meets the bar (2 reads and
+  5% of the reads that reach the item), or when the reads not yet weighed cannot bring it there.</li>
+<li>The found-allele check scores each read on the given alleles (REF, X and the states that hold X)
+  once, not once for each found allele: no graph is dropped until every found allele is weighed.</li>
+<li>A read's call reads the best path of each state it can be examined on, and that path base by base,
+  from one walk back through the programme, not two.</li>
+<li>The verdict cache's key for a read is built in one list, and the call's clock is read only when
+  <code>--trace</code> is on (only the trace line reads it).</li>
+<li>No output field, no <code>--verbose</code> line and no <code>--trace</code> line changes (the trace line's time aside).
+  The thread's cache budget charges the same bytes for every entry, so it keeps the same entries.
+  While the read-need test runs, it holds one score table per state of the site, not one in all.
+  Plan: <code>docs/harness/plans/335-phase2.md</code>.</li>
 </ul>
 <h3 id="docs-read-judgment-what-gbcms-takes-from-the-aligner-and-naming-the-reads-it-holds-back-rj-33-rj-34">Docs — read judgment: what gbcms takes from the aligner, and naming the reads it holds back (RJ-33, RJ-34)<a class="headerlink" href="#docs-read-judgment-what-gbcms-takes-from-the-aligner-and-naming-the-reads-it-holds-back-rj-33-rj-34" title="Permanent link">¶</a></h3>
 <ul>
