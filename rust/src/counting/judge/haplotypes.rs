@@ -1553,34 +1553,99 @@ fn named(r: &Row) -> String {
     format!("{}:{}>{}", r.pos + 1, String::from_utf8_lossy(&r.ref_al), String::from_utf8_lossy(&r.alt_al))
 }
 
-/// Whether the reads reaching `item` need it, every read reaching it weighed, in no order
-/// (a cap on the reads, or an order among them, would make the answer depend on the site's
-/// depth and on which reads come first): on [`FOUND_MIN_READS`] of them and
-/// [`GUARD_REF_SHARE`] of all of them, a read the site's candidate sequences call REF or ALT with it
-/// (`kept`) gets another call without it (`without`). An item no read needs for its call
-/// (a germline deletion beside the row does: its reads keep their call only with it)
-/// explains none of their differences.
-fn needed_by(kept: &Site, without: &Site, reads: &[ReadView], item: &Row) -> bool {
-    let near: Vec<&ReadView> = reads.iter().filter(|r| reaches(r, item)).collect();
-    let mut ws = Workspace::default();
-    let mut call = |site: &Site, read: &ReadView| {
-        let gr = site.graph_read(read);
-        let mut best: [Option<i32>; 3] = [None; 3];
-        for g in &site.graphs {
-            let s = graph::decided(&ShortReads, &gr, &g.graph, &mut ws).0;
-            let b = &mut best[g.class as usize];
-            *b = Some(b.map_or(s, |v| v.max(s)));
+/// The read-need test over one site build's reads ([`ReadNeed::needed_by`]), its work shared
+/// across the items it weighs: the reads alike in all the graph scorer reads of them (their
+/// bases, masked, their aligned positions and their span) scored once and weighed by their
+/// number, and each such group's call on the site with every item (`kept`) made once.
+struct ReadNeed<'r> {
+    /// One read per group of reads alike, with the number of reads it stands for, in the order
+    /// the reads first give them.
+    groups: Vec<(&'r ReadView, usize)>,
+    /// Each group's call on `kept`, once made.
+    kept: Vec<Option<super::decide::Call>>,
+    /// A workspace per state graph, reused across the reads and the items.
+    wss: Vec<Workspace>,
+}
+
+/// What the graph scorer reads of a read ([`Site::graph_read`]): its bases (masked), their
+/// aligned positions, and its aligned span.
+type GraphReadKey<'r> = (&'r [u8], &'r [i64], i64, i64);
+
+impl<'r> ReadNeed<'r> {
+    fn new(reads: &'r [ReadView]) -> Self {
+        let mut at: HashMap<GraphReadKey<'r>, usize, std::hash::BuildHasherDefault<super::ViewHasher>> = HashMap::default();
+        let mut groups: Vec<(&'r ReadView, usize)> = Vec::new();
+        for r in reads {
+            let g = *at.entry((&r.seq[..], &r.refpos[..], r.ref_start, r.ref_end)).or_insert_with(|| {
+                groups.push((r, 0));
+                groups.len() - 1
+            });
+            groups[g].1 += 1;
         }
-        super::decide::decide(best)
-    };
-    let need = near
-        .iter()
-        .filter(|r| {
-            let with = call(kept, r);
-            matches!(with, super::decide::Call::Alt | super::decide::Call::Ref) && call(without, r) != with
+        let kept = vec![None; groups.len()];
+        ReadNeed { groups, kept, wss: Vec::new() }
+    }
+
+    /// Whether the reads reaching `item` need it, every read reaching it weighed, in no order
+    /// (a cap on the reads, or an order among them, would make the answer depend on the site's
+    /// depth and on which reads come first): on [`FOUND_MIN_READS`] of them and
+    /// [`GUARD_REF_SHARE`] of all of them, a read the site's candidate sequences call REF or ALT
+    /// with it (`kept`, the same site for every item asked) gets another call without it
+    /// (`without`). An item no read needs for its call (a germline deletion beside the row
+    /// does: its reads keep their call only with it) explains none of their differences. The
+    /// reads are weighed until the answer is fixed ([`weighed`]).
+    fn needed_by(&mut self, kept: &Site, without: &Site, item: &Row) -> bool {
+        let near: Vec<usize> = (0..self.groups.len()).filter(|&g| reaches(self.groups[g].0, item)).collect();
+        let weights: Vec<usize> = near.iter().map(|&g| self.groups[g].1).collect();
+        let floor = GUARD_REF_SHARE * weights.iter().sum::<usize>() as f64;
+        let met = |need: usize| need as u32 >= FOUND_MIN_READS && need as f64 >= floor;
+        weighed(&weights, met, |i| {
+            let (g, read) = (near[i], self.groups[near[i]].0);
+            let with = *self.kept[g].get_or_insert_with(|| call(kept, read, &mut self.wss));
+            matches!(with, super::decide::Call::Alt | super::decide::Call::Ref) && call(without, read, &mut self.wss) != with
         })
-        .count();
-    need as u32 >= FOUND_MIN_READS && need as f64 >= GUARD_REF_SHARE * near.len() as f64
+    }
+}
+
+/// Whether `met` holds of the reads `needs` holds of, counted: the reads come in groups, group
+/// `i` of `weights[i]` reads, each read of a group as its group. `met` holds of any count at or
+/// above the least it holds of (as the read-need test's floors do), and the count only grows as
+/// groups are weighed, so the weighing stops once the count meets it, or once the groups not yet
+/// weighed cannot bring it there: the answer is the one every group gives.
+fn weighed(weights: &[usize], met: impl Fn(usize) -> bool, mut needs: impl FnMut(usize) -> bool) -> bool {
+    let (mut need, mut left) = (0usize, weights.iter().sum::<usize>());
+    for (i, &n) in weights.iter().enumerate() {
+        if met(need) {
+            return true;
+        }
+        if !met(need + left) {
+            return false;
+        }
+        left -= n;
+        if needs(i) {
+            need += n;
+        }
+    }
+    met(need)
+}
+
+/// A read's call on a site's graphs from its best score per class, every state scored at once
+/// ([`graph::decided_states`]: each state's score is the one it gets alone), a workspace per
+/// state from `wss` (grown to the site's states).
+fn call(site: &Site, read: &ReadView, wss: &mut Vec<Workspace>) -> super::decide::Call {
+    let gr = site.graph_read(read);
+    let refs: Vec<&Graph> = site.graphs.iter().map(|g| &g.graph).collect();
+    let shares: Vec<Option<(usize, usize)>> = site.graphs.iter().map(|g| g.share).collect();
+    if wss.len() < refs.len() {
+        wss.resize_with(refs.len(), Workspace::default);
+    }
+    let decided = graph::decided_states(&ShortReads, &gr, &refs, &shares, &mut wss[..refs.len()]);
+    let mut best: [Option<i32>; 3] = [None; 3];
+    for (g, &(s, _)) in site.graphs.iter().zip(&decided) {
+        let b = &mut best[g.class as usize];
+        *b = Some(b.map_or(s, |v| v.max(s)));
+    }
+    super::decide::decide(best)
 }
 
 /// Context items (the guard's background, the found contexts) weighed together when
@@ -1994,7 +2059,7 @@ impl Site {
     }
 
     /// The read's alignment to state `k`'s haplotype `hap` (the one its best path spells,
-    /// [`Site::hap_on_path_in`]) read off that path (`steps`, [`graph::kept_steps`]) on the graphs
+    /// [`Site::hap_on_path_in`]) read off that path (`steps`, [`graph::kept_path_steps`]) on the graphs
     /// `graphs` the read was scored on: each read base's graph base mapped to its column in `hap`
     /// (a reference base by its coordinate past the rows applied before it, an allele's by its
     /// place in the row's span on `hap`); columns are `hap`'s own (the trim starts at 0). The
@@ -2704,10 +2769,11 @@ impl Site {
             };
             let Some(kept) = build(&whole) else { return whole };
             let mut out = whole.clone();
+            let mut need = ReadNeed::new(reads);
             for item in partial {
                 let mut d = whole.clone();
                 d.rows.push(item.clone());
-                let attested = build(&d).is_some_and(|without| needed_by(&kept, &without, reads, item));
+                let attested = build(&d).is_some_and(|without| need.needed_by(&kept, &without, item));
                 log::debug!(
                     "haplotype judge {}: {} respells a candidate sequence over a read; {}",
                     named(&target),
@@ -3618,7 +3684,7 @@ impl Site {
         let mut gr = GraphRead { seq: &read.seq, rp, span, free_shift: self.free_shift(read), full: self.band_full, long: true, lies_in: None };
         // where any state's graph holds a long insertion past the read's band, every state runs
         // the full programme: one exactness for the read's call, the found-allele check
-        // and `needed_by` alike
+        // and the read-need test alike
         if !gr.full {
             gr.full = self.graphs.iter().any(|g| graph::skips_bands(&g.graph, &gr));
         }
@@ -3810,6 +3876,8 @@ impl Site {
         let mut ws = Workspace::default();
         let mut dropped: Vec<usize> = Vec::new();
         let given: Vec<usize> = (0..self.graphs.len()).filter(|&k| self.graphs[k].class != Class::Other).collect();
+        // per read, its best score on the given graphs, scored once for every found allele
+        let mut given_best: Vec<Option<[Option<i32>; 2]>> = vec![None; reads.len()];
         for (row, by) in found {
             let Some(o) = self.rows.iter().position(|r| r == row).filter(|&o| self.is_state(o)) else {
                 continue;
@@ -3819,7 +3887,7 @@ impl Site {
             let order = by.iter().copied().chain(rest).filter(|&i| i < reads.len());
             let (keep, told, nearest) = if let Some(min_reads) = fixed {
                 let told_reads = order
-                    .map(|i| self.verdict(&reads[i], k, &given, &mut ws))
+                    .map(|i| self.verdict(&reads[i], k, &given, &mut ws, &mut given_best[i]))
                     .filter(|&v| v == Verdict::Told)
                     .take(min_reads)
                     .count();
@@ -3834,7 +3902,7 @@ impl Site {
                         continue;
                     }
                     scored[i] = true;
-                    let v = self.verdict(&reads[i], k, &given, &mut ws);
+                    let v = self.verdict(&reads[i], k, &given, &mut ws, &mut given_best[i]);
                     tally.add(&keys[i], v);
                     // the fragments of the site are at least those spelling the allele it is
                     // nearest: found against all of them is found against those. Fragments
@@ -3846,7 +3914,7 @@ impl Site {
                             for &j in &mates[key] {
                                 if !scored[j] {
                                     scored[j] = true;
-                                    let w = self.verdict(&reads[j], k, &given, &mut ws);
+                                    let w = self.verdict(&reads[j], k, &given, &mut ws, &mut given_best[j]);
                                     tally.add(&keys[j], w);
                                 }
                             }
@@ -3909,16 +3977,21 @@ impl Site {
     /// How one read bears on the found allele with graph `k`: its graph beats every given
     /// allele's (`given`: the graphs of REF, X and the states holding X) by [`DELTA`] on the
     /// read (`Told`), a given allele's beats it by [`DELTA`] (`Beaten`, by the classes of given
-    /// allele that score best on the read, both on a tie), or neither.
-    fn verdict(&self, read: &ReadView, k: usize, given: &[usize], ws: &mut Workspace) -> Verdict {
+    /// allele that score best on the read, both on a tie), or neither. `given_best`: the read's
+    /// best score per class of given allele (REF, X), scored here where not yet: the same for
+    /// every found allele, as no graph is dropped until every found allele is weighed.
+    fn verdict(&self, read: &ReadView, k: usize, given: &[usize], ws: &mut Workspace, given_best: &mut Option<[Option<i32>; 2]>) -> Verdict {
         let gr = self.graph_read(read);
         let own = graph::score(&ShortReads, &gr, &self.graphs[k].graph, ws);
-        let mut best: [Option<i32>; 2] = [None, None];
-        for &g in given {
-            let score = graph::score(&ShortReads, &gr, &self.graphs[g].graph, ws);
-            let class = usize::from(self.graphs[g].class != Class::Ref);
-            best[class] = best[class].max(Some(score));
-        }
+        let best = *given_best.get_or_insert_with(|| {
+            let mut best: [Option<i32>; 2] = [None, None];
+            for &g in given {
+                let score = graph::score(&ShortReads, &gr, &self.graphs[g].graph, ws);
+                let class = usize::from(self.graphs[g].class != Class::Ref);
+                best[class] = best[class].max(Some(score));
+            }
+            best
+        });
         match best.iter().flatten().max().copied() {
             None => Verdict::Told,
             Some(top) if top <= own - DELTA => Verdict::Told,
@@ -4953,7 +5026,7 @@ mod band_tests {
     }
 }
 
-/// Tests of the call examined on the traced path (`graph::kept_steps`, `Site::alignment_on_path_in`).
+/// Tests of the call examined on the traced path (`graph::kept_path_steps`, `Site::alignment_on_path_in`).
 #[cfg(test)]
 mod path_tests {
     use super::super::decide::judge;
@@ -5186,5 +5259,751 @@ mod path_tests {
         let path = (deleted_after(&both[0].1 .0), deleted_after(&both[1].1 .0));
         let lin = (deleted_after(&both[0].2 .0), deleted_after(&both[1].2 .0));
         assert!(path != lin, "the deletion's places on REF's and X's haplotypes: paths {path:?}, aligner {lin:?}");
+    }
+}
+
+/// Tests of the site build's shared scoring: the read-need test against develop's, every read
+/// scored alone, and the found-allele check against develop's, the given alleles scored for
+/// every found allele.
+#[cfg(test)]
+pub(crate) mod shared_work_tests {
+    use super::tests::random_seq;
+    use super::*;
+    use crate::shared::bam_utils::oracle::Lcg;
+
+    /// develop's read-need test (returning its count of reads that need the item and of reads
+    /// reaching it beside its answer), and its found-allele check and per-read verdict, as
+    /// free functions of the site.
+    mod develop {
+        use super::super::*;
+
+        pub(super) fn needed_by(kept: &Site, without: &Site, reads: &[ReadView], item: &Row) -> (bool, usize, usize) {
+            let near: Vec<&ReadView> = reads.iter().filter(|r| reaches(r, item)).collect();
+            let mut ws = Workspace::default();
+            let mut call = |site: &Site, read: &ReadView| {
+                let gr = site.graph_read(read);
+                let mut best: [Option<i32>; 3] = [None; 3];
+                for g in &site.graphs {
+                    let s = graph::decided(&ShortReads, &gr, &g.graph, &mut ws).0;
+                    let b = &mut best[g.class as usize];
+                    *b = Some(b.map_or(s, |v| v.max(s)));
+                }
+                super::super::super::decide::decide(best)
+            };
+            let need = near
+                .iter()
+                .filter(|r| {
+                    let with = call(kept, r);
+                    matches!(with, super::super::super::decide::Call::Alt | super::super::super::decide::Call::Ref) && call(without, r) != with
+                })
+                .count();
+            (need as u32 >= FOUND_MIN_READS && need as f64 >= GUARD_REF_SHARE * near.len() as f64, need, near.len())
+        }
+
+        pub(super) fn drop_graph_spellings(site: &mut Site, found: &[(Row, &[usize])], reads: &[ReadView], rule: FoundRule) {
+            let fixed = match rule {
+                FoundRule::All => return,
+                FoundRule::Told(k) if k > 0 => Some(k),
+                FoundRule::Told(_) => None,
+            };
+            // a read's fragment: its name (the mates share it); a read with none stands alone
+            let keys: Vec<Vec<u8>> = reads
+                .iter()
+                .enumerate()
+                .map(|(i, r)| if r.name.is_empty() { i.to_string().into_bytes() } else { r.name.clone() })
+                .collect();
+            let fragments = keys.iter().collect::<HashSet<_>>().len();
+            let mut mates: HashMap<&Vec<u8>, Vec<usize>> = HashMap::new();
+            for (i, key) in keys.iter().enumerate() {
+                mates.entry(key).or_default().push(i);
+            }
+            let mut ws = Workspace::default();
+            let mut dropped: Vec<usize> = Vec::new();
+            let given: Vec<usize> = (0..site.graphs.len()).filter(|&k| site.graphs[k].class != Class::Other).collect();
+            for (row, by) in found {
+                let Some(o) = site.rows.iter().position(|r| r == row).filter(|&o| site.is_state(o)) else {
+                    continue;
+                };
+                let Some(k) = site.graphs.iter().position(|g| g.row == Some(o)) else { continue };
+                let rest = (0..reads.len()).filter(|i| by.binary_search(i).is_err());
+                let order = by.iter().copied().chain(rest).filter(|&i| i < reads.len());
+                let (keep, told, nearest) = if let Some(min_reads) = fixed {
+                    let told_reads = order
+                        .map(|i| verdict(site, &reads[i], k, &given, &mut ws))
+                        .filter(|&v| v == Verdict::Told)
+                        .take(min_reads)
+                        .count();
+                    (told_reads >= min_reads, told_reads, None)
+                } else {
+                    let mut tally = FragmentTally::default();
+                    let mut scored = vec![false; reads.len()];
+                    let mut settled = 0usize;
+                    let mut present = false;
+                    for i in order {
+                        if scored[i] {
+                            continue;
+                        }
+                        scored[i] = true;
+                        let v = verdict(site, &reads[i], k, &given, &mut ws);
+                        tally.add(&keys[i], v);
+                        // the fragments of the site are at least those spelling the allele it is
+                        // nearest: found against all of them is found against those. Fragments
+                        // with a telling read are settled first: a mate not yet read may disagree.
+                        if v == Verdict::Told && is_found(tally.told_order.len(), fragments) {
+                            while settled < tally.told_order.len() {
+                                let key = tally.told_order[settled];
+                                settled += 1;
+                                for &j in &mates[key] {
+                                    if !scored[j] {
+                                        scored[j] = true;
+                                        let w = verdict(site, &reads[j], k, &given, &mut ws);
+                                        tally.add(&keys[j], w);
+                                    }
+                                }
+                            }
+                            if is_found(tally.told, fragments) {
+                                present = true;
+                                break;
+                            }
+                        }
+                    }
+                    if present {
+                        (true, tally.told, None)
+                    } else {
+                        // under the floor of fragments the nearest allele's are not asked for
+                        let larger = tally.beaten[0].max(tally.beaten[1]);
+                        let nearest = if tally.told < GUARD_MIN_READS as usize {
+                            larger
+                        } else {
+                            match site.nearer_given(o) {
+                                std::cmp::Ordering::Less => tally.beaten[0],
+                                std::cmp::Ordering::Greater => tally.beaten[1],
+                                std::cmp::Ordering::Equal => larger,
+                            }
+                        };
+                        (is_found(tally.told, nearest), tally.told, Some(nearest))
+                    }
+                };
+                log::debug!(
+                    "haplotype judge: the found allele {}:{}>{} at {}:{}>{} (written by {} of {} reads, told on {} fragments, beaten by the allele it is nearest on {}) → {}",
+                    row.pos + 1,
+                    String::from_utf8_lossy(&row.ref_al),
+                    String::from_utf8_lossy(&row.alt_al),
+                    site.rows[0].pos + 1,
+                    String::from_utf8_lossy(&site.rows[0].ref_al),
+                    String::from_utf8_lossy(&site.rows[0].alt_al),
+                    by.len(),
+                    reads.len(),
+                    told,
+                    nearest.map_or_else(|| "-".to_string(), |n| n.to_string()),
+                    if keep { "another allele, a state" } else { "X's or REF's spelling, not a state" },
+                );
+                if !keep {
+                    dropped.push(k);
+                }
+            }
+            dropped.sort_unstable();
+            dropped.dedup();
+            let gone: Vec<usize> = dropped.iter().filter_map(|&k| site.graphs[k].row).collect();
+            for k in dropped.into_iter().rev() {
+                site.graphs.remove(k);
+            }
+            if !gone.is_empty() {
+                site.max_shift = (0..site.rows.len())
+                    .filter(|r| !gone.contains(r))
+                    .map(|r| site.rows[r].ref_al.len().abs_diff(site.rows[r].alt_al.len()) as i64)
+                    .sum();
+            }
+        }
+
+        pub(super) fn verdict(site: &Site, read: &ReadView, k: usize, given: &[usize], ws: &mut Workspace) -> Verdict {
+            let gr = site.graph_read(read);
+            let own = graph::score(&ShortReads, &gr, &site.graphs[k].graph, ws);
+            let mut best: [Option<i32>; 2] = [None, None];
+            for &g in given {
+                let score = graph::score(&ShortReads, &gr, &site.graphs[g].graph, ws);
+                let class = usize::from(site.graphs[g].class != Class::Ref);
+                best[class] = best[class].max(Some(score));
+            }
+            match best.iter().flatten().max().copied() {
+                None => Verdict::Told,
+                Some(top) if top <= own - DELTA => Verdict::Told,
+                Some(top) if top >= own + DELTA => Verdict::Beaten((0..2).filter(|&c| best[c] == Some(top)).fold(0, |m, c| m | 1 << c)),
+                Some(_) => Verdict::Silent,
+            }
+        }
+
+    }
+
+    /// `contig` with `rows` applied, right to left.
+    pub(crate) fn applied(contig: &[u8], rows: &[&Row]) -> Vec<u8> {
+        let mut rows: Vec<&Row> = rows.to_vec();
+        rows.sort_by_key(|r| std::cmp::Reverse(r.pos));
+        let mut s = contig.to_vec();
+        for r in rows {
+            s.splice(r.pos as usize..r.pos as usize + r.ref_al.len(), r.alt_al.iter().copied());
+        }
+        s
+    }
+
+    fn other(b: u8) -> u8 {
+        if b == b'A' {
+            b'C'
+        } else {
+            b'A'
+        }
+    }
+
+    fn bases(rng: &mut Lcg, n: usize) -> Vec<u8> {
+        (0..n).map(|_| b"ACGT"[rng.below(4) as usize]).collect()
+    }
+
+    /// A row at 0-based `at` of `c`: an SNV, an MNV, an insertion or a deletion of 1 to 3 bases,
+    /// or (`long`) a deletion of 15 to 80 bases now and then.
+    fn random_row(rng: &mut Lcg, c: &[u8], at: usize, long: bool) -> Row {
+        if long && rng.chance(1, 2) {
+            return Row::new(at as i64, &c[at..at + 16 + rng.below(65) as usize], &c[at..=at]);
+        }
+        match rng.below(4) {
+            0 => Row::new(at as i64, &c[at..=at], &[other(c[at])]),
+            1 => Row::new(at as i64, &c[at..at + 2], &[other(c[at]), other(c[at + 1])]),
+            2 => {
+                let n = 1 + rng.below(3) as usize;
+                Row::new(at as i64, &c[at..=at], &[&c[at..=at], &bases(rng, n)[..]].concat())
+            }
+            _ => Row::new(at as i64, &c[at..at + 2 + rng.below(3) as usize], &c[at..=at]),
+        }
+    }
+
+    /// The haplotype `rows` (none overlapping) make of `c`, and the reference position of each
+    /// of its bases (None for an inserted one): the alignment an aligner writes for its reads.
+    fn haplotype_on(c: &[u8], rows: &[&Row]) -> (Vec<u8>, Vec<Option<i64>>) {
+        let mut sorted: Vec<&Row> = rows.to_vec();
+        sorted.sort_by_key(|r| r.pos);
+        let (mut h, mut at) = (Vec::new(), Vec::new());
+        let mut cursor = 0usize;
+        for r in sorted {
+            let p = r.pos as usize;
+            h.extend_from_slice(&c[cursor..p]);
+            at.extend((cursor..p).map(|g| Some(g as i64)));
+            let common = r.ref_al.len().min(r.alt_al.len());
+            h.extend_from_slice(&r.alt_al);
+            at.extend((0..r.alt_al.len()).map(|i| (i < common).then_some((p + i) as i64)));
+            cursor = p + r.ref_al.len();
+        }
+        h.extend_from_slice(&c[cursor..]);
+        at.extend((cursor..c.len()).map(|g| Some(g as i64)));
+        (h, at)
+    }
+
+    /// A read of `len` bases of the haplotype `rows` make of `c` from its position `s`: as its
+    /// aligner writes it (its indels as I and D ops, an inserted run at an end as a soft clip),
+    /// or aligned through in one block, or that block with an inserted and a deleted base (the
+    /// same span, other positions); a base or three read below `--min-baseq` now and then.
+    fn read_of(rng: &mut Lcg, c: &[u8], rows: &[&Row], s: usize, len: usize) -> Option<ReadView> {
+        let (h, at) = haplotype_on(c, rows);
+        let seq = h.get(s..s + len)?;
+        let pos = &at[s..s + len];
+        let mut quals = vec![30u8; len];
+        if rng.chance(1, 6) {
+            for _ in 0..1 + rng.below(3) {
+                quals[rng.below(len as u64) as usize] = 10;
+            }
+        }
+        let first = pos.iter().position(Option::is_some)?;
+        let start = pos[first]?;
+        let (cigar, ref_start) = match rng.below(8) {
+            0 => (vec![Cigar::Match(len as u32)], start - first as i64),
+            1 if len > 20 => {
+                let a = 5 + rng.below(len as u64 / 2) as u32;
+                let b = 3 + rng.below(len as u64 / 4) as u32;
+                (vec![Cigar::Match(a), Cigar::Ins(1), Cigar::Match(b), Cigar::Del(1), Cigar::Match(len as u32 - a - b - 1)], start - first as i64)
+            }
+            _ => {
+                let mut ops: Vec<Cigar> = Vec::new();
+                let push = |ops: &mut Vec<Cigar>, op: Cigar| match (ops.last_mut(), op) {
+                    (Some(Cigar::Match(k)), Cigar::Match(n)) | (Some(Cigar::Ins(k)), Cigar::Ins(n)) | (Some(Cigar::SoftClip(k)), Cigar::SoftClip(n)) => *k += n,
+                    _ => ops.push(op),
+                };
+                let last = pos.iter().rposition(Option::is_some)?;
+                let mut prev: Option<i64> = None;
+                for (i, p) in pos.iter().enumerate() {
+                    match *p {
+                        _ if i < first || i > last => push(&mut ops, Cigar::SoftClip(1)),
+                        None => push(&mut ops, Cigar::Ins(1)),
+                        Some(g) => {
+                            if let Some(q) = prev.filter(|&q| g > q + 1) {
+                                ops.push(Cigar::Del((g - q - 1) as u32));
+                            }
+                            push(&mut ops, Cigar::Match(1));
+                            prev = Some(g);
+                        }
+                    }
+                }
+                (ops, start)
+            }
+        };
+        ReadView::new(seq, &quals, ref_start.max(0), &cigar, (0, len), 20)
+    }
+
+    /// Another read alike to `r`, or one differing in a way the scorer reads: its qualities
+    /// changed where no base's masking changes (alike), a base masked more (not alike), or its
+    /// bases placed with an inserted and a deleted base over the same span (not alike).
+    fn twin(rng: &mut Lcg, r: &ReadView) -> ReadView {
+        let mut t = r.clone();
+        match rng.below(4) {
+            0 => {}
+            1 => {
+                for q in t.quals.iter_mut() {
+                    *q = if *q >= 20 { 35 + rng.below(6) as u8 } else { 2 + rng.below(15) as u8 };
+                }
+            }
+            2 => {
+                let i = rng.below(t.seq.len() as u64) as usize;
+                t.quals[i] = 5;
+                t.seq[i] = WILD;
+            }
+            _ => {
+                let n = t.seq.len();
+                if n > 20 && t.refpos.windows(2).all(|w| w[1] == w[0] + 1) {
+                    let a = 5 + rng.below(n as u64 / 2) as usize;
+                    let b = a + 2 + rng.below(4) as usize;
+                    let start = t.refpos[0];
+                    let cigar = [Cigar::Match(a as u32), Cigar::Ins(1), Cigar::Match((b - a - 1) as u32), Cigar::Del(1), Cigar::Match((n - b) as u32)];
+                    if let Some(v) = ReadView::new(&r.seq, &r.quals, start, &cigar, (0, n), 20) {
+                        t = v;
+                    }
+                }
+            }
+        }
+        t
+    }
+
+    /// `r` placed as it is (its positions and span) with the bases of haplotype `h` from `s` in
+    /// place of its own, masked where its qualities are below `--min-baseq`: a read the scorer
+    /// reads apart from `r`, though its aligner placed it alike.
+    fn placed_like(r: &ReadView, h: &[u8], s: usize) -> Option<ReadView> {
+        let bases = h.get(s..s + r.seq.len())?;
+        let seq = bases.iter().zip(&r.quals).map(|(&b, &q)| if q < 20 { WILD } else { b }).collect();
+        Some(ReadView { seq, ..r.clone() })
+    }
+
+    /// The bases a read takes before the junction of the long deletion past X (haplotype
+    /// position `junction`), X's own among them: from those reaching back to X's first base to
+    /// some 20 more.
+    fn least_pre(rng: &mut Lcg, junction: usize) -> usize {
+        junction - 299 + rng.below(20) as usize
+    }
+
+    /// A read-need case: X (an SNV, an MNV, an insertion or a deletion) at 0-based 299 of a
+    /// 700-base contig; one to three items beside it (rows of the same kinds, 6 to 60 bases
+    /// off); reads of REF and of X, and of each with one item, their numbers about the read-need
+    /// test's bar (two reads, and a twentieth of those reaching the item), placed over X and
+    /// the items or past them; some reads repeated alike or nearly alike ([`twin`]); in BAM
+    /// order, in no order, or the item's carriers last.
+    pub(crate) fn need_case(rng: &mut Lcg) -> (Vec<u8>, Row, Vec<Row>, Vec<ReadView>) {
+        let c = random_seq(700, rng.below(1 << 40));
+        let x = random_row(rng, &c, 299, false);
+        let mut items: Vec<Row> = Vec::new();
+        // half the cases: a long deletion just past X, which its carriers holding X on the
+        // deletion's shorter side need (their count drawn about the bar)
+        let bar = rng.chance(1, 2);
+        if bar {
+            let at = 299 + x.ref_al.len() + 3 + rng.below(12) as usize;
+            items.push(Row::new(at as i64, &c[at..at + 26 + rng.below(35) as usize], &c[at..=at]));
+        }
+        for _ in 0..rng.below(3) {
+            // a long deletion near X: the carriers holding X on its shorter side need it
+            let d = if rng.chance(1, 2) { 2 + rng.below(25) as i64 } else { 6 + rng.below(55) as i64 };
+            let item = if rng.chance(1, 2) { random_row(rng, &c, (299 + d + 4) as usize, true) } else {
+                let r = random_row(rng, &c, (299 - d - 4) as usize, true);
+                if r.end() > 297 {
+                    continue;
+                }
+                r
+            };
+            if items.iter().all(|r| item.pos > r.end() + 3 || r.pos > item.end() + 3) {
+                items.push(item);
+            }
+        }
+        let mut reads: Vec<ReadView> = Vec::new();
+        let mut carriers: Vec<ReadView> = Vec::new();
+        let mut add = |rng: &mut Lcg, rows: &[&Row], n: u64, into_carriers: bool| {
+            for _ in 0..n {
+                let len = 50 + rng.below(51) as usize;
+                let s = (299 + 12 - len as i64 + rng.below(len as u64 + 60) as i64 - 30).max(0) as usize;
+                // the haplotype's own coordinates: an item before X shifts X along it
+                let s = (s as i64 + rows.iter().filter(|r| r.pos < 299).map(|r| r.alt_al.len() as i64 - r.ref_al.len() as i64).sum::<i64>()).max(0) as usize;
+                let Some(r) = read_of(rng, &c, rows, s, len) else { continue };
+                let copies = if rng.chance(1, 4) { 1 + rng.below(3) } else { 0 };
+                let out = if into_carriers { &mut carriers } else { &mut reads };
+                for _ in 0..copies {
+                    out.push(twin(rng, &r));
+                }
+                out.push(r);
+            }
+        };
+        let (n_ref, n_x) = (rng.below(50), rng.below(30));
+        add(rng, &[], n_ref, false);
+        add(rng, &[&x], n_x, false);
+        for item in items.clone() {
+            let (n_both, n_item, last) = (rng.below(9), rng.below(6), rng.chance(1, 2));
+            add(rng, &[&x, &item], n_both, true);
+            add(rng, &[&item], n_item, last);
+        }
+        if bar {
+            // The reads across the deletion's junction holding X on its shorter side, which need
+            // it, their number drawn about the bar; each drawn as one of three shapes.
+            let item = &items[0];
+            let junction = (item.pos + 1 + x.alt_al.len() as i64 - x.ref_al.len() as i64) as usize;
+            let h = applied(&c, &[&x, item]);
+            let (end, at, gap) = (item.end(), item.pos, (item.ref_al.len() - item.alt_al.len()) as u32);
+            // a pair in either order; a read whose pair is not drawn, alone
+            let mut pair = |rng: &mut Lcg, a: Option<ReadView>, b: Option<ReadView>| match (a, b) {
+                (Some(a), Some(b)) if rng.chance(1, 2) => carriers.extend([a, b]),
+                (Some(a), Some(b)) => carriers.extend([b, a]),
+                (Some(a), None) => carriers.push(a),
+                _ => {}
+            };
+            for _ in 0..rng.below(6) {
+                let (pre, post) = (least_pre(rng, junction), 30 + rng.below(50) as usize);
+                let len = pre + post;
+                let Some(bases) = h.get(junction - pre..junction + post) else { continue };
+                let quals = vec![30u8; len];
+                let view = |start: i64, cigar: &[Cigar]| ReadView::new(bases, &quals, start, cigar, (0, len), 20);
+                match rng.below(5) {
+                    // as its aligner writes it, now and then beside a read placed alike that holds
+                    // REF's or X's bases alone (which needs no item)
+                    0 | 1 => {
+                        let Some(r) = read_of(rng, &c, &[&x, item], junction - pre, len) else { continue };
+                        let other = if rng.chance(1, 2) { c.clone() } else { applied(&c, &[&x]) };
+                        let twin = if rng.chance(1, 2) { placed_like(&r, &other, junction - pre) } else { None };
+                        pair(rng, Some(r), twin);
+                    }
+                    // alike in bases, positions and span but for a clip: written through (the bases
+                    // before the junction placed over the deleted ones), or with the aligner's clip
+                    // of the bases before the junction, which starts it where the deletion ends,
+                    // so it does not reach it
+                    2 => {
+                        let (through, clipped) = (view(end - pre as i64, &[Cigar::Match(len as u32)]), view(end, &[Cigar::SoftClip(pre as u32), Cigar::Match(post as u32)]));
+                        assert!(through.as_ref().is_some_and(|r| reaches(r, item)) && clipped.as_ref().is_some_and(|r| !reaches(r, item)));
+                        pair(rng, through, clipped);
+                    }
+                    // the same, the clip of the anchor and the bases after it, which ends it before
+                    // the deletion's first base
+                    3 => {
+                        let s = at - (pre as i64 - 1);
+                        let (through, clipped) = (view(s, &[Cigar::Match(len as u32)]), view(s, &[Cigar::Match(pre as u32 - 1), Cigar::SoftClip(post as u32 + 1)]));
+                        assert!(through.as_ref().is_some_and(|r| reaches(r, item)) && clipped.as_ref().is_some_and(|r| !reaches(r, item)));
+                        pair(rng, through, clipped);
+                    }
+                    // alike but for their positions: the deletion written where it lies, or at the
+                    // read's end (the bases past the junction placed over the deleted ones), over
+                    // the same span. Without the deletion as a row the first read's band, around
+                    // its bases' places, may stand on leaving X's side over; the second's cannot.
+                    _ => {
+                        let s = at + 1 - pre as i64;
+                        let placed = view(s, &[Cigar::Match(pre as u32), Cigar::Del(gap), Cigar::Match(post as u32)]);
+                        let moved = view(s, &[Cigar::Match(len as u32), Cigar::Del(gap)]);
+                        assert!(placed.as_ref().zip(moved.as_ref()).is_some_and(|(p, m)| (p.ref_start, p.ref_end) == (m.ref_start, m.ref_end) && p.refpos != m.refpos));
+                        pair(rng, placed, moved);
+                    }
+                }
+            }
+        }
+        match rng.below(3) {
+            0 => {
+                reads.extend(carriers);
+                reads.sort_by_key(|r| r.ref_start);
+            }
+            1 => {
+                reads.extend(carriers);
+                for i in (1..reads.len()).rev() {
+                    reads.swap(i, rng.below(i as u64 + 1) as usize);
+                }
+            }
+            _ => reads.extend(carriers),
+        }
+        (c, x, items, reads)
+    }
+
+    /// The site with `whole` left out, as the read-need test builds it.
+    pub(crate) fn built(c: &[u8], x: &Row, items: &[Row], reads: &[ReadView], whole: &[Row]) -> Option<Site> {
+        let candidates = Candidates { background: items.to_vec(), ..Candidates::default() };
+        let d = Dropped { rows: whole.to_vec() };
+        Site::build_core(x.clone(), &candidates, (0, c.to_vec()), reads, other_option().rule, background_rule(), long_ins_rule(), Some(&d))
+    }
+
+    #[test]
+    fn reads_are_scored_as_one_only_where_the_scorer_reads_them_alike() {
+        // The read-need test scores one read per group and weighs it by its group's reads. Reads
+        // alike in their bases (as masked), their aligned positions and their span are one group,
+        // whatever their qualities (masking alike), tags and names; a read differing in any of
+        // those is a group of its own: the scorer reads each of them ([`Site::graph_read`]).
+        let c = random_seq(400, 0x3a07);
+        let view = |seq: &[u8], quals: &[u8], start: i64, cigar: &[Cigar]| ReadView::new(seq, quals, start, cigar, (0, seq.len()), 20).unwrap();
+        let bases = &c[100..200];
+        let one = view(bases, &[30; 100], 100, &[Cigar::Match(100)]);
+        let mut another = bases.to_vec();
+        another[50] = other(another[50]);
+        let (mut low, mut high) = ([30u8; 100], [38u8; 100]);
+        low[50] = 10;
+        high[7] = 21;
+        let tags = AlnTags { mapq: 3, best: Some(5), elsewhere: None, nm: Some(2) };
+        let reads = vec![
+            one.clone(),
+            // other qualities (no base masked), tags and name: alike
+            view(bases, &high, 100, &[Cigar::Match(100)]).named(b"m").tagged(tags),
+            // another base
+            view(&another, &[30; 100], 100, &[Cigar::Match(100)]),
+            // a base masked
+            view(bases, &low, 100, &[Cigar::Match(100)]),
+            // other positions over the same span
+            view(bases, &[30; 100], 100, &[Cigar::Match(40), Cigar::Ins(1), Cigar::Match(30), Cigar::Del(1), Cigar::Match(29)]),
+            // the same positions, a longer span
+            view(bases, &[30; 100], 100, &[Cigar::Match(100), Cigar::Del(2)]),
+            // another start
+            view(bases, &[30; 100], 101, &[Cigar::Match(100)]),
+            one.clone(),
+            // its first five bases clipped: the same positions (a clip's are extrapolated) and
+            // end, another start
+            view(bases, &[30; 100], 105, &[Cigar::SoftClip(5), Cigar::Match(95)]),
+            // its last five bases clipped: the same positions and start, another end
+            view(bases, &[30; 100], 100, &[Cigar::Match(95), Cigar::SoftClip(5)]),
+        ];
+        assert!(reads[4].ref_end == reads[0].ref_end && reads[4].refpos != reads[0].refpos);
+        assert!(reads[5].refpos == reads[0].refpos && reads[5].ref_end != reads[0].ref_end);
+        let (lead, trail) = (&reads[8], &reads[9]);
+        assert!((&lead.seq, &lead.refpos, lead.ref_end) == (&one.seq, &one.refpos, one.ref_end) && lead.ref_start != one.ref_start);
+        assert!((&trail.seq, &trail.refpos, trail.ref_start) == (&one.seq, &one.refpos, one.ref_start) && trail.ref_end != one.ref_end);
+        let need = ReadNeed::new(&reads);
+        let groups: Vec<(usize, usize)> = need.groups.iter().map(|&(r, n)| (reads.iter().position(|x| std::ptr::eq(x, r)).unwrap(), n)).collect();
+        assert_eq!(groups, vec![(0, 3), (2, 1), (3, 1), (4, 1), (5, 1), (6, 1), (8, 1), (9, 1)]);
+    }
+
+    #[test]
+    fn the_weighing_stops_only_where_every_group_gives_the_answer() {
+        // Random groups of reads (weights 1 to 4), random needs, and random bars of the
+        // read-need test's form (at least `min` reads and a `share` of all of them): the answer
+        // with the weighing cut short is the one counting every group, each group is asked about
+        // once and in order, and none is asked about once the answer is fixed.
+        let mut rng = Lcg::new(0x5eed_3a01);
+        let (mut early, mut met_cases) = (0usize, 0usize);
+        for case in 0..40_000 {
+            let weights: Vec<usize> = (0..rng.below(30)).map(|_| 1 + rng.below(4) as usize).collect();
+            let odds = 1 + rng.below(3);
+            let needs: Vec<bool> = weights.iter().map(|_| rng.chance(odds, 4)).collect();
+            let total: usize = weights.iter().sum();
+            let (min, share) = (rng.below(5) as u32, [0.0, 0.05, 0.1, 0.3, 0.5][rng.below(5) as usize]);
+            let floor = share * total as f64;
+            let met = |n: usize| n as u32 >= min && n as f64 >= floor;
+            let all: usize = weights.iter().zip(&needs).filter(|(_, &b)| b).map(|(w, _)| w).sum();
+            let mut asked: Vec<usize> = Vec::new();
+            let got = weighed(&weights, met, |i| {
+                asked.push(i);
+                needs[i]
+            });
+            assert_eq!(got, met(all), "case {case}: {weights:?} {needs:?} {min} {share}");
+            assert!(asked.iter().enumerate().all(|(k, &i)| k == i), "case {case}: asked out of order");
+            // the answer was open before the last group asked about was weighed
+            let before: usize = asked.iter().take(asked.len().saturating_sub(1)).filter(|&&i| needs[i]).map(|&i| weights[i]).sum();
+            let left: usize = asked.last().map_or(0, |&l| weights[l..].iter().sum());
+            assert!(asked.is_empty() || (!met(before) && met(before + left)), "case {case}: asked past the answer");
+            early += usize::from(asked.len() < weights.len());
+            met_cases += usize::from(got);
+        }
+        assert!(early > 10_000 && met_cases > 10_000 && met_cases < 35_000, "{early} stopped early, {met_cases} met");
+    }
+
+    #[test]
+    fn the_read_need_test_answers_as_develops_every_read_scored_alone() {
+        // Random sites and reads about the bar (above): for every item, in random order, the
+        // test with its work shared (reads alike scored once, each read's call with every item
+        // made once for every item, the states scored together) answers as develop's, which
+        // scored every reaching read on both sites, each state alone.
+        let mut rng = Lcg::new(0x5eed_3a02);
+        let (mut asked, mut at_bar, mut yes, mut alike) = (0usize, 0usize, 0usize, 0usize);
+        for case in 0..160 {
+            let (c, x, items, reads) = need_case(&mut rng);
+            let Some(kept) = built(&c, &x, &items, &reads, &[]) else { continue };
+            let mut need = ReadNeed::new(&reads);
+            alike += need.groups.iter().filter(|g| g.1 > 1).count();
+            let mut order: Vec<usize> = (0..items.len()).collect();
+            order.extend(0..items.len());
+            for i in (1..order.len()).rev() {
+                order.swap(i, rng.below(i as u64 + 1) as usize);
+            }
+            for &k in &order {
+                let item = &items[k];
+                let Some(without) = built(&c, &x, &items, &reads, std::slice::from_ref(item)) else { continue };
+                let (want, n, near) = develop::needed_by(&kept, &without, &reads, item);
+                // its score tables are its own: the thread's pooled ones, which the budget charges,
+                // are as they were
+                let pool = graph::pool_bytes();
+                assert_eq!(need.needed_by(&kept, &without, item), want, "case {case} item {k}: {n} of {near} reads need it");
+                assert_eq!(graph::pool_bytes(), pool, "case {case} item {k}: the thread's pooled work space");
+                let bar = (0..=near).find(|&m| m as u32 >= FOUND_MIN_READS && m as f64 >= GUARD_REF_SHARE * near as f64).unwrap_or(usize::MAX);
+                asked += 1;
+                at_bar += usize::from(n.abs_diff(bar) <= 1);
+                yes += usize::from(want);
+            }
+        }
+        assert!(asked > 250 && at_bar > 60 && yes > 30 && yes + 30 < asked, "{asked} asked, {at_bar} at the bar, {yes} needed");
+        assert!(alike > 300, "{alike} groups of reads alike");
+    }
+
+    /// A found-allele case: X an insertion of 2 to 5 bases after 0-based 300 of a 600-base
+    /// contig, and two to four other insertions or deletions there (the found alleles); reads of
+    /// REF, of X and of each found allele, as their aligners write them (an I or a D op), some
+    /// repeated; the found alleles' writers first named.
+    #[allow(clippy::type_complexity)]
+    fn found_case(rng: &mut Lcg) -> (Vec<u8>, Row, Vec<(Row, Vec<usize>)>, Vec<ReadView>) {
+        let c = random_seq(600, rng.below(1 << 40));
+        let n = 2 + rng.below(4) as usize;
+        let unit = bases(rng, n);
+        let ins = |b: &[u8]| Row::new(300, &c[300..301], &[&c[300..301], b].concat());
+        let x = ins(&unit);
+        let mut found: Vec<Row> = Vec::new();
+        for _ in 0..2 + rng.below(3) {
+            let r = if rng.chance(1, 3) {
+                Row::new(300, &c[300..302 + rng.below(3) as usize], &c[300..301])
+            } else {
+                let mut b = unit.clone();
+                match rng.below(3) {
+                    0 => b.push(b"ACGT"[rng.below(4) as usize]),
+                    1 => {
+                        b.pop();
+                    }
+                    _ => {
+                        let n = 1 + rng.below(6) as usize;
+                        b = bases(rng, n);
+                    }
+                }
+                if b.is_empty() {
+                    b.push(b'T');
+                }
+                ins(&b)
+            };
+            if r != x && !found.contains(&r) {
+                found.push(r);
+            }
+        }
+        let mut reads: Vec<ReadView> = Vec::new();
+        let mut by: Vec<Vec<usize>> = vec![Vec::new(); found.len()];
+        let write = |rng: &mut Lcg, row: Option<&Row>, name: String| -> Option<ReadView> {
+            let len = 60 + rng.below(41) as usize;
+            let s = 301 - 10 - rng.below(len as u64 - 20) as usize;
+            let rows: Vec<&Row> = row.into_iter().collect();
+            let h = applied(&c, &rows);
+            let seq = h.get(s..s + len)?;
+            let before = (301 - s) as u32;
+            let cigar = match row {
+                Some(r) if r.alt_al.len() > r.ref_al.len() => {
+                    let k = (r.alt_al.len() - r.ref_al.len()) as u32;
+                    vec![Cigar::Match(before), Cigar::Ins(k), Cigar::Match(len as u32 - before - k)]
+                }
+                Some(r) if r.alt_al.len() < r.ref_al.len() => {
+                    let k = (r.ref_al.len() - r.alt_al.len()) as u32;
+                    vec![Cigar::Match(before), Cigar::Del(k), Cigar::Match(len as u32 - before)]
+                }
+                _ => vec![Cigar::Match(len as u32)],
+            };
+            let quals: Vec<u8> = (0..len).map(|_| if rng.chance(1, 40) { 10 } else { 30 }).collect();
+            ReadView::new(seq, &quals, s as i64, &cigar, (0, len), 20).map(|v| v.named(name.as_bytes()))
+        };
+        for (j, f) in found.iter().enumerate() {
+            for i in 0..1 + rng.below(6) {
+                if let Some(r) = write(rng, Some(f), format!("f{j}.{i}")) {
+                    by[j].push(reads.len());
+                    reads.push(r);
+                }
+            }
+        }
+        for i in 0..rng.below(40) {
+            if let Some(r) = write(rng, Some(&x), format!("x{i}")) {
+                reads.push(r);
+            }
+        }
+        for i in 0..rng.below(60) {
+            if let Some(r) = write(rng, None, format!("r{i}")) {
+                reads.push(r);
+            }
+        }
+        // reads alike, and the mates of some fragments: a read of another allele (REF, X or
+        // another found allele) under the name of one that writes a found allele
+        for _ in 0..rng.below(8) {
+            if reads.is_empty() {
+                break;
+            }
+            let k = rng.below(reads.len() as u64) as usize;
+            let t = reads[k].clone();
+            reads.push(t);
+        }
+        let writers: Vec<usize> = by.iter().flatten().copied().collect();
+        for _ in 0..rng.below(6) {
+            let Some(&w) = writers.get(rng.below(writers.len() as u64) as usize) else { break };
+            let pick = rng.below(found.len() as u64 + 2) as usize;
+            let row = match pick {
+                0 => None,
+                1 => Some(&x),
+                k => Some(&found[k - 2]),
+            };
+            let name = String::from_utf8_lossy(&reads[w].name).into_owned();
+            if let Some(m) = write(rng, row, name) {
+                reads.push(m);
+            }
+        }
+        (c, x, found.into_iter().zip(by).collect(), reads)
+    }
+
+    #[test]
+    fn the_found_allele_check_scores_each_reads_given_alleles_once_as_develop_scored_them_for_each() {
+        // Random found-allele sites (all found alleles kept as states): each read's verdict on
+        // each found allele, asked in random order with its given alleles' scores kept from its
+        // first verdict, is develop's verdict scored afresh; and the check itself, under every
+        // rule, drops the graphs develop's drops.
+        let mut rng = Lcg::new(0x5eed_3a03);
+        let (mut verdicts, mut kinds, mut sites, mut dropped) = (0usize, [0usize; 3], 0usize, 0usize);
+        for case in 0..80 {
+            let (c, x, found, reads) = found_case(&mut rng);
+            let candidates = Candidates { found: found.clone(), ..Candidates::default() };
+            let Some(site) = Site::build_backed(x.clone(), &candidates, (0, c.clone()), &reads, FoundRule::All, BackgroundRule::AsIs) else { continue };
+            let given: Vec<usize> = (0..site.graphs.len()).filter(|&k| site.graphs[k].class != Class::Other).collect();
+            let others: Vec<usize> = (0..site.graphs.len()).filter(|&k| site.graphs[k].class == Class::Other).collect();
+            if others.len() < 2 {
+                continue;
+            }
+            sites += 1;
+            let (mut ws, mut ws0) = (Workspace::default(), Workspace::default());
+            let mut kept: Vec<Option<[Option<i32>; 2]>> = vec![None; reads.len()];
+            for _ in 0..others.len() * reads.len() {
+                let (k, i) = (others[rng.below(others.len() as u64) as usize], rng.below(reads.len() as u64) as usize);
+                let got = site.verdict(&reads[i], k, &given, &mut ws, &mut kept[i]);
+                let want = develop::verdict(&site, &reads[i], k, &given, &mut ws0);
+                assert_eq!(got, want, "case {case}: read {i}, state {k}");
+                verdicts += 1;
+                kinds[match want {
+                    Verdict::Told => 0,
+                    Verdict::Beaten(_) => 1,
+                    Verdict::Silent => 2,
+                }] += 1;
+            }
+            let found_at: Vec<(Row, &[usize])> = found.iter().map(|(r, b)| (r.clone(), &b[..])).collect();
+            // a fixed number of telling reads past the allele's writers weighs X's and the other
+            // alleles' reads too
+            for rule in [FoundRule::Told(0), FoundRule::Told(1), FoundRule::Told(2), FoundRule::Told(4), FoundRule::Told(8)] {
+                let (mut ours, mut theirs) = (site.clone(), site.clone());
+                let pool = graph::pool_bytes();
+                ours.drop_graph_spellings(&found_at, &reads, rule);
+                assert_eq!(graph::pool_bytes(), pool, "case {case}, {rule:?}: the thread's pooled work space");
+                develop::drop_graph_spellings(&mut theirs, &found_at, &reads, rule);
+                let rows = |s: &Site| s.graphs.iter().map(|g| (g.class as u8, g.row)).collect::<Vec<_>>();
+                assert_eq!((rows(&ours), ours.max_shift), (rows(&theirs), theirs.max_shift), "case {case}, {rule:?}");
+                dropped += site.graphs.len() - ours.graphs.len();
+            }
+        }
+        let [told, beaten, silent] = kinds;
+        assert!(sites > 60 && verdicts > 8_000, "{sites} sites, {verdicts} verdicts");
+        assert!(told > 400 && beaten > 4_000 && silent > 300 && dropped > 50, "told {told}, beaten {beaten}, silent {silent}, dropped {dropped}");
     }
 }
