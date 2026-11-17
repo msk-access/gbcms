@@ -21,6 +21,12 @@ stop a count once its answer cannot change, compute a shared value once, skip wo
 cannot reach the output. Show each one count-neutral (identical outputs on every set) before it
 merges.
 
+**Memory may rise to buy time, within a limit** (operator, 2026-11-16: "I am ok with memory
+increase as long as we can reduce time and maintain accuracy", "Not unlimited increase", "I am ok
+with 1.5 to 2x increase"). Report peak memory beside each timed cell, against the baseline before the
+work began. Up to 2 times the baseline's peak is accepted when time falls and every output is
+identical; name any cell above 1.5 times; above 2 times, bring it to the operator.
+
 **How to apply:**
 - Measure against the production C++ binary 1.2.5 on HPC (run in place; the operator allowed it)
   on the same BAMs, variant list, reference, filters, counts and threads. Use production sizes, not

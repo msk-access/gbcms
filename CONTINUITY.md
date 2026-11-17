@@ -34,11 +34,15 @@ of every row is identical on every set, and the whole `--verbose` log too (from 
 - **Next (operator, 2026-11-16):** plan S2, S3 and S5 "meticulously including research and solutions for
   the source and class". The draft: `docs/harness/plans/335-phase2.md` (research in the session's
   `scratchpad/speed2/plan2/`). Approved 2026-11-16 11:14 as drafted (PR #442); D2 decided 11:50, (a):
-  accept S5's log change; D3 (F1, F2 tickets) open. Work order: S2 with V (gate 0 differences on all
-  18 arms; its PR), S3a, M4, S3b, S3c, S5. M0 cleared at 10:14 (ERR-20261116-001). M5 done (local shares, `plan2/measure/MEASURE.md`): the
-  site build is 45-58% of the judge here (14% at ACCESS on HPC). M6 (pf75): one sample keeps its 4 CPUs
-  86-98% busy on the judge path, 53-94% on the rules path. When S2 is done: move the scratchpad's
-  `dev473/` (an unused develop build, 1.3 GB) to the Trash (operator 12:22: "Clean up when its done").
+  accept S5's log change; D3 (F1, F2 tickets) open.
+  - Done: S2 with V (#443, merged; gate 0 differences on all 18 arms). S3a (gate 0 differences against
+    `s2`; its PR): CPU 0.88, peak memory 1.37 on the HG002 SV judge arm, within the operator's limit
+    (2026-11-16: memory may rise when time falls and accuracy holds, up to 2 times develop's peak before
+    phase 2; above 1.5 times named). Builds 3 of 9, reviews 2 of 5.
+  - Next: M4 (the counter build), S3b, S3c, S5; then pf77 and pf78 on HPC (the operator's yes first).
+  - Measured: M5 (local shares, `plan2/measure/MEASURE.md`): the site build is 45-58% of the judge on
+    HG002 and a deep panel (14% at ACCESS on HPC). M6 (pf75): one sample keeps its 4 CPUs 86-98% busy on
+    the judge path, 53-94% on the rules path.
 - **Two findings outside #335** (from the code, not reproduced; own tickets): F1, the junction judge's
   scan reads past the one-row geometry's fetch (invariant 1, test geometry only); F2, the verdict cache's
   key leaves out qualities, so a rare duplicated record can get another call between runs.

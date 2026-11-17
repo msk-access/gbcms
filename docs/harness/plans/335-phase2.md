@@ -2,7 +2,7 @@
 
 Status: approved 2026-11-16 (operator: "Approve as drafted": the options, the order and the budget; D2 decided (a), accept S5's log change; D3 open) · plan-first (`plan-first.md`); Stage 3 of the 6.8.0 order (`420-cycle-order.md`) ·
 base develop 473e8920 (S1 #439 and S4 #440, #441 merged) · phase 1: `335-exact-speedups.md`
-Rounds: 1 of 5 (one review per option; S2's) · New count conditions: 0 (speed changes add none) · Builds: 2 of 9 (`fin473`, `s2`) ·
+Rounds: 2 of 5 (one review per option; S2's, S3a's) · New count conditions: 0 (speed changes add none) · Builds: 3 of 9 (`fin473`, `s2`, `s3a`) ·
 HPC batches: 0 of 3 · Reruns: 0 of 1 (phase 1's reserved rerun for M2's two IMPACT cells moves here)
 
 ## 1. The class
@@ -215,9 +215,13 @@ site-build scores; WFA or bit-parallel distance as the scorer; any floating-poin
   BAM. The CHANGELOG names all four.
 - **The gain (HPC, your yes first):** pf77 times S2, S3a and S5 against develop; pf78 times S3b and S3c.
   The rules of pf75: the 8 production cells, both paths, 3 repeats, order rotated; CPU is the main number.
-  An option is kept if the gate holds and it cuts CPU on a path; a cell worse by more than 3% of CPU, or
-  peak memory up by more than 10%, comes back to you. S2 and S5 reach RNA too, so pf77 holds the FORTE RNA
-  cells (rules path).
+  An option is kept if the gate holds and it cuts CPU on a path; a cell worse by more than 3% of CPU
+  comes back to you. Peak memory is reported beside each cell. It may rise when time falls and every
+  output is identical, up to 2 times develop's peak before phase 2 (`fin473`) on every timed cell, for
+  the phase as a whole; a cell above 1.5 times is named in the report, and one above 2 times comes back
+  to you (operator, 2026-11-16: "I am ok with memory increase as long as we can reduce time and
+  maintain accuracy", "Not unlimited increase", "I am ok with 1.5 to 2x increase"; this replaces the
+  earlier 10% limit). S2 and S5 reach RNA too, so pf77 holds the FORTE RNA cells (rules path).
 - **What this cannot see:** whether ACCESS 20,000 x 1 reaches the floor before S3b is built (M4 says how
   much S3b can cover); timings on this Mac are not speed results.
 
@@ -272,6 +276,25 @@ site-build scores; WFA or bit-parallel distance as the scorer; any floating-poin
     it only): **0 differences on every arm**, every row and the four whole logs (`logs_rnafill` 6,900
     lines). Local tests: clippy and cargo test (563 passed), pytest (2,769 passed), ruff, black, mypy, all
     rc=0. The gain is pf77's (HPC; your yes first).
+- 2026-11-16, S3a (branch `feature/335-s3a-judge-cuts`, from develop dcba8a94; Opus wrote it, Fable
+  reviewed it):
+  - The code: P (one walk back gives a state's path and its steps); N's cuts 1, 2, 3, 5 and 6 in the
+    read-need test (each group's call on `kept` once per `settle`; the count stops once its answer is
+    fixed; a read's states scored together; reads alike in all the scorer reads scored once, weighed by
+    their number); F (the found-allele check scores the given graphs once per read); M (the read's key
+    built once, the clock read only when tracing). Left out: tracing only the paths a reader reads (the
+    budget charges each path's capacity), two M items that save nothing, and cut 4.
+  - The review (round 2, Fable): no input that changes an output, a `--verbose` or `--trace` line, an
+    error or a budget choice. Two test gaps (nothing pinned the read's start in N's grouping key; nothing
+    kept the read-need test off the thread's pool) closed with tests only. Mutations: 24 of the author's
+    25 fail a test (the 25th is the control the proof says changes nothing), and 7 of the review's 8
+    (the 8th moves only the trace clock).
+  - The gate on `s3a` (build 3: dcba8a94 plus the patch, sha256 283fb6c559e5b8c4, test lines added after
+    it only) against `s2`: **0 differences on every arm**, the four whole logs included.
+  - Memory (HG002 SV judge arm, 15,054 rows, 4 threads, one run each on this Mac): CPU 1,852 to 1,631 s
+    (0.88), wall 1,001 to 908 s (0.91), peak memory 1,406 to 1,924 MB (1.37); the 13,473 data rows
+    identical. The rise is N's one score table per state during `settle` (develop reused one); the budget
+    counts neither. Within the operator's limit above (at most 2 times; 2026-11-16).
 
 ## 8. Cost log
 
