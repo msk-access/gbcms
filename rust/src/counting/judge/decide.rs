@@ -446,7 +446,7 @@ pub(crate) struct Scored {
     haps: std::cell::RefCell<Vec<(usize, std::rc::Rc<Hap>)>>,
     aligns: std::cell::RefCell<Vec<(usize, Aligned)>>,
     /// Per state a call can be examined on (each class's best, and state 0), its best path read
-    /// base by read base ([`graph::kept_steps`]): the read's alignment to the state's
+    /// base by read base ([`graph::kept_path_steps`]): the read's alignment to the state's
     /// haplotype, which its call is examined on. None for the other states: kept with the
     /// read's programmes for every read alike, their two read-length arrays would only hold
     /// memory.
@@ -675,14 +675,19 @@ fn score_once(graphs: &[StateGraph], gr: &graph::GraphRead, wss: &mut [Workspace
     let examined = |k: usize| k == 0 || best.iter().flatten().any(|&(_, h)| h == k);
     let (mut rows, mut copies, mut reach, mut steps) = (Vec::with_capacity(graphs.len()), Vec::with_capacity(graphs.len()), Vec::with_capacity(graphs.len()), Vec::with_capacity(graphs.len()));
     for k in 0..graphs.len() {
-        let p = graph::kept_path(&ShortReads, gr, &graphs[k].graph, halves[k], &wss[k]);
+        // an examined state's path and steps from one walk back
+        let (p, st) = if examined(k) {
+            graph::kept_path_steps(&ShortReads, gr, &graphs[k].graph, halves[k], &wss[k])
+        } else {
+            (graph::kept_path(&ShortReads, gr, &graphs[k].graph, halves[k], &wss[k]), None)
+        };
         if best.iter().flatten().any(|&(s, h)| h == k && s != p.score) {
             trace!("haplotype judge: state {k}'s traced path scores {} against its score", p.score);
         }
         rows.push(p.rows);
         copies.push(p.copy);
         reach.push(p.reach);
-        steps.push(if examined(k) { graph::kept_steps(&ShortReads, gr, &graphs[k].graph, &wss[k]) } else { None });
+        steps.push(st);
     }
     Scored { best, halves, rows, copies, reach, over: None, over_kept: false, lies_in: None, haps: Default::default(), aligns: Default::default(), steps }
 }
@@ -716,7 +721,7 @@ pub(crate) fn examined_alignments(site: &Site, read: &ReadView, free: Option<i64
         };
         graph::with_workspaces(graphs.len(), |wss| {
             let d = graph::decided_states(&ShortReads, &gr, &refs, &shares, wss);
-            let st = (0..graphs.len()).map(|k| graph::kept_steps(&ShortReads, &gr, &graphs[k].graph, &wss[k])).collect();
+            let st = (0..graphs.len()).map(|k| graph::kept_path_steps(&ShortReads, &gr, &graphs[k].graph, d[k].1, &wss[k]).1).collect();
             (d.into_iter().map(|x| x.0).collect(), st)
         })
     };
@@ -748,7 +753,7 @@ pub(crate) struct Examined<'h, 'a, F: Fn(usize) -> std::rc::Rc<Hap>> {
     /// alike in bases and placement ([`Scored`]), which the alignment is fixed by.
     aligns: &'a std::cell::RefCell<Vec<(usize, Aligned)>>,
     /// The alignment read off a candidate's traced path (the one its score came from); None
-    /// only where the path keeps no steps ([`graph::kept_steps`]: a graph not laid out in
+    /// only where the path keeps no steps ([`graph::kept_path_steps`]: a graph not laid out in
     /// order, which the builder never lays out, or an empty read), which the linear aligner
     /// (`scorer`) then answers.
     on_path: &'a OnPath<'a>,
@@ -1277,6 +1282,19 @@ pub(crate) fn read_view(record: &Record, quals: &[u8], min_baseq: u8, rules: &Re
     ReadView::new(&seq, quals, record.pos(), &cigar, readable, min_baseq).map(|v| v.named(record.qname()).tagged(tags))
 }
 
+/// A record's identity at one row ([`super::ReadKey`]): its name, flags and position, and its
+/// packed CIGAR words (each as its four little-endian bytes) followed by its packed bases, both
+/// copied from the record as stored (neither is decoded), into one list sized to hold them.
+fn record_key(record: &Record) -> super::ReadKey {
+    let (cigar, seq) = (record.raw_cigar(), record.seq().encoded);
+    let mut bytes = Vec::with_capacity(cigar.len() * 4 + seq.len());
+    for op in cigar {
+        bytes.extend_from_slice(&op.to_le_bytes());
+    }
+    bytes.extend_from_slice(seq);
+    (record.qname().to_vec(), record.flags(), record.pos(), bytes)
+}
+
 /// The haplotype judge's call for one read at `variant` (after the splice-skip triage),
 /// as the engine counts it:
 /// - ALT / REF: `is_alt` / `is_ref`, with `qual` the lowest quality among the bases
@@ -1306,12 +1324,7 @@ pub(crate) fn classify(record: &Record, variant: &Variant, quals: &[u8], min_bas
     let Some(site) = haplotypes.get(variant, rules) else {
         return depth();
     };
-    let key = (
-        record.qname().to_vec(),
-        record.flags(),
-        record.pos(),
-        [record.raw_cigar().iter().flat_map(|op| op.to_le_bytes()).collect::<Vec<u8>>(), record.seq().encoded.to_vec()].concat(),
-    );
+    let key = record_key(record);
     if let Some(kept) = haplotypes.verdict(&key) {
         // the verdicts are kept for good: no later call on this record reads its view
         haplotypes.drop_view(record);
@@ -1336,7 +1349,8 @@ pub(crate) fn classify(record: &Record, variant: &Variant, quals: &[u8], min_bas
                 site.trace_far(&String::from_utf8_lossy(record.qname()), mate, &site.graph_read(&read));
             }
             let view = (read, !overlaps_anchor, min_baseq);
-            let clock = std::time::Instant::now();
+            // the judge's time, for the per-read trace line alone
+            let clock = tracing.then(std::time::Instant::now);
             let judged = haplotypes.judged(&view);
             let verdict = judged.unwrap_or_else(|| {
                 // what a read alike in bases (masked) and placement left: its programmes
@@ -1352,7 +1366,7 @@ pub(crate) fn classify(record: &Record, variant: &Variant, quals: &[u8], min_bas
                 }
                 verdict
             });
-            let ns = clock.elapsed().as_nanos();
+            let ns = clock.map_or(0, |c| c.elapsed().as_nanos());
             let read = &view.0;
             // X's placements touch a contig edge (its repeat runs to it, or X sits at the
             // contig's first or last base) and the read reaches it: an ALT call there
@@ -1872,5 +1886,157 @@ mod tests {
         assert_eq!(windows_to_hold(best(-4, 0, -20), 0), vec![0]);
         // a class with no haplotype is not asked for
         assert_eq!(windows_to_hold([None, Some((0, 0)), Some((-1, 2))], 2), vec![2, 0]);
+    }
+
+    /// develop's scoring of a read over a site's states, each examined state's path and its
+    /// steps read off two walks back over its kept run ([`graph::tests::develop`]): the
+    /// reference the one walk is held to.
+    fn score_once_develop(graphs: &[StateGraph], gr: &graph::GraphRead, wss: &mut [Workspace]) -> Scored {
+        use graph::tests::develop::{kept_path, kept_steps};
+        let mut best: [Option<(i32, usize)>; 3] = [None; 3];
+        let refs: Vec<&graph::Graph> = graphs.iter().map(|st| &st.graph).collect();
+        let shares: Vec<Option<(usize, usize)>> = graphs.iter().map(|st| st.share).collect();
+        let decided = graph::decided_states(&ShortReads, gr, &refs, &shares, wss);
+        let mut halves = Vec::with_capacity(graphs.len());
+        for (k, (st, &(s, half))) in graphs.iter().zip(&decided).enumerate() {
+            halves.push(half);
+            raise(&mut best, st.class as usize, s, k);
+        }
+        let examined = |k: usize| k == 0 || best.iter().flatten().any(|&(_, h)| h == k);
+        let (mut rows, mut copies, mut reach, mut steps) = (Vec::with_capacity(graphs.len()), Vec::with_capacity(graphs.len()), Vec::with_capacity(graphs.len()), Vec::with_capacity(graphs.len()));
+        for k in 0..graphs.len() {
+            let p = kept_path(&ShortReads, gr, &graphs[k].graph, halves[k], &wss[k]);
+            rows.push(p.rows);
+            copies.push(p.copy);
+            reach.push(p.reach);
+            steps.push(if examined(k) { kept_steps(&ShortReads, gr, &graphs[k].graph, &wss[k]) } else { None });
+        }
+        Scored { best, halves, rows, copies, reach, over: None, over_kept: false, lies_in: None, haps: Default::default(), aligns: Default::default(), steps }
+    }
+
+    #[test]
+    fn a_reads_scoring_keeps_the_paths_and_steps_of_develops_two_walks() {
+        // Random sites (X of every kind, items beside it as contexts, long deletions among them)
+        // and their reads (as their aligners write them, aligned through, clipped, masked, alike
+        // and nearly alike): a read's scoring over the site's states, on the first graphs and on
+        // the site's own, keeps develop's scores, bands, paths and steps, and holds the bytes
+        // develop's held (the thread's budget charges them).
+        use crate::counting::judge::haplotypes::shared_work_tests::{built, need_case};
+        use crate::shared::bam_utils::oracle::Lcg;
+        let mut rng = Lcg::new(0x5eed_3a04);
+        let (mut scorings, mut examined, mut walked_alone, mut skipped, mut inserted) = (0usize, 0usize, 0usize, 0usize, 0usize);
+        for case in 0..60 {
+            let (c, x, items, reads) = need_case(&mut rng);
+            let Some(site) = built(&c, &x, &items, &reads, &[]) else { continue };
+            for (i, read) in reads.iter().enumerate().filter(|(i, _)| i % 2 == 0) {
+                let gr = site.graph_read(read);
+                for graphs in [site.first_graphs(), &site.graphs[..]] {
+                    let ours = graph::with_workspaces(graphs.len(), |wss| score_once(graphs, &gr, wss));
+                    let theirs = graph::with_workspaces(graphs.len(), |wss| score_once_develop(graphs, &gr, wss));
+                    let what = format!("case {case} read {i}");
+                    assert_eq!((ours.best, &ours.halves, &ours.rows, &ours.copies, &ours.reach), (theirs.best, &theirs.halves, &theirs.rows, &theirs.copies, &theirs.reach), "{what}");
+                    assert_eq!(ours.steps, theirs.steps, "{what}: steps");
+                    let caps = |s: &Scored| {
+                        let rows: Vec<usize> = s.rows.iter().map(Vec::capacity).collect();
+                        let steps: Vec<Option<(usize, usize)>> = s.steps.iter().map(|p| p.as_ref().map(|p| (p.steps.capacity(), p.skipped_after.capacity()))).collect();
+                        (s.rows.capacity(), rows, s.steps.capacity(), steps)
+                    };
+                    assert_eq!(caps(&ours), caps(&theirs), "{what}: capacities");
+                    assert_eq!(ours.heap_bytes(), theirs.heap_bytes(), "{what}: bytes");
+                    scorings += 1;
+                    examined += ours.steps.iter().flatten().count();
+                    walked_alone += ours.steps.iter().filter(|p| p.is_none()).count();
+                    skipped += ours.steps.iter().flatten().filter(|p| p.skipped_after.iter().any(|&k| k > 0)).count();
+                    inserted += ours.steps.iter().flatten().filter(|p| p.steps.contains(&graph::Step::Inserted)).count();
+                }
+            }
+        }
+        assert!(scorings > 2_000 && examined > 4_000 && walked_alone > 500 && skipped > 200 && inserted > 300, "{scorings} scorings, {examined} examined, {walked_alone} paths alone, {skipped} skipping bases, {inserted} inserting");
+    }
+
+    /// develop's record key: its lists built apart and joined.
+    fn key_develop(record: &Record) -> super::super::ReadKey {
+        (
+            record.qname().to_vec(),
+            record.flags(),
+            record.pos(),
+            [record.raw_cigar().iter().flat_map(|op| op.to_le_bytes()).collect::<Vec<u8>>(), record.seq().encoded.to_vec()].concat(),
+        )
+    }
+
+    #[test]
+    fn a_records_key_is_develops_in_its_bytes_and_its_capacity() {
+        // Random records (every op code 0 to 8, clips, splices, pairs), some with an op code past 8
+        // in their CIGAR, some with no bases: the key built in one list holds develop's bytes, and
+        // the capacities the verdict cache charges to the thread's budget are develop's. Neither
+        // decodes the CIGAR, so neither stops.
+        use crate::shared::bam_utils::oracle::{pair, random_cigar, record, unknown_op, Lcg};
+        let mut rng = Lcg::new(0x5eed_3a05);
+        let mut unreadable = 0;
+        for i in 0..5_000 {
+            let (cigar, pos) = (random_cigar(&mut rng), rng.below(10_000) as i64);
+            let mut rec = record(&mut rng, format!("read{i}").as_bytes(), cigar, pos);
+            if rng.chance(1, 20) {
+                let (name, cigar) = (rec.qname().to_vec(), rec.cigar().take());
+                rec.set(&name, Some(&cigar), &[], &[]);
+            }
+            if rng.chance(1, 2) {
+                pair(&mut rng, &mut rec);
+            }
+            if rng.chance(1, 3) {
+                unreadable += usize::from(unknown_op(&mut rng, &mut rec));
+            }
+            let (ours, theirs) = (record_key(&rec), key_develop(&rec));
+            assert_eq!(ours, theirs, "record {i}");
+            assert_eq!((ours.0.capacity(), ours.3.capacity()), (theirs.0.capacity(), theirs.3.capacity()), "record {i}");
+        }
+        assert!(unreadable > 1_000, "{unreadable} unreadable");
+    }
+
+    #[test]
+    fn a_record_whose_cigar_cannot_be_read_stops_the_rows_calls_where_the_decoder_stops() {
+        // A row's reads called in order, some with an op code past 8 in their CIGAR: the calls
+        // stop at the first such read that holds bases (one with none is no coverage, read no
+        // further), with the message rust-htslib's decoder stops with and at its line, as
+        // develop's did (its key read the CIGAR's words undecoded too, and its first decode of
+        // the read was the same).
+        use crate::shared::bam_utils::oracle::{random_cigar, record, stopped, unknown_op, Lcg};
+        let mut rng = Lcg::new(0x5eed_3a06);
+        let c = random_seq(600, 0x3a06);
+        let x = row(301, &String::from_utf8_lossy(&c[300..301]), if c[300] == b'A' { "C" } else { "A" });
+        let (mut stops, mut called) = (0, 0);
+        for trial in 0..200 {
+            let records: Vec<Record> = (0..20)
+                .map(|i| {
+                    let (cigar, pos) = (random_cigar(&mut rng), 200 + rng.below(100) as i64);
+                    let mut rec = record(&mut rng, format!("t{trial}r{i}").as_bytes(), cigar, pos);
+                    if rng.chance(1, 12) {
+                        unknown_op(&mut rng, &mut rec);
+                    }
+                    rec
+                })
+                .collect();
+            let first = records.iter().position(|r| r.seq_len() > 0 && stopped(|| r.cigar()).is_err());
+            with_rules(&c, &x, |v, rules| {
+                for (i, rec) in records.iter().enumerate() {
+                    let quals = rec.qual().to_vec();
+                    match stopped(|| classify(rec, v, &quals, 20, rules)) {
+                        Ok(_) => {
+                            assert!(first.is_none_or(|f| i < f), "trial {trial}: read {i} called past the first unreadable one");
+                            called += 1;
+                        }
+                        Err(got) => {
+                            assert_eq!(Some(i), first, "trial {trial}: stopped at read {i}");
+                            let want = stopped(|| rec.cigar()).expect_err("an unreadable CIGAR");
+                            assert_eq!(got, want, "trial {trial}");
+                            assert!(got.0 == "Unexpected cigar operation" && got.1.ends_with("bam/record.rs"), "{got:?}");
+                            stops += 1;
+                            break;
+                        }
+                    }
+                }
+            });
+        }
+        assert!(stops > 50 && called > 1_000, "{stops} stopped, {called} called");
     }
 }

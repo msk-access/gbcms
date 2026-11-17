@@ -112,6 +112,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   "uniquely-mapped read (NH=1) rescued below MAPQ floor" lines: a rule no longer asks whether a read
   outside its run is counted. Plan: `docs/harness/plans/335-phase2.md`.
 
+### Changed — speed: the sequence judge repeats less of its own work (#335)
+
+- The read-need test (whether the reads that reach a context item beside X's site need it for their
+  calls) now does each piece of its work once. It calls each read on the site with every item once,
+  for all the items it weighs, not once per item. It scores reads alike in all that the scorer reads
+  of them (their bases, as masked, their aligned positions and their span) once, and counts each such
+  group as the number of reads in it. It scores a read's states together, as a read's call does: a
+  state laid out like an earlier one takes its first columns from that state's programme, and gets
+  the same score as when scored alone. It stops weighing reads once the answer is fixed: the count of
+  reads that need the item only grows, so the test stops when the count meets the bar (2 reads and
+  5% of the reads that reach the item), or when the reads not yet weighed cannot bring it there.
+- The found-allele check scores each read on the given alleles (REF, X and the states that hold X)
+  once, not once for each found allele: no graph is dropped until every found allele is weighed.
+- A read's call reads the best path of each state it can be examined on, and that path base by base,
+  from one walk back through the programme, not two.
+- The verdict cache's key for a read is built in one list, and the call's clock is read only when
+  `--trace` is on (only the trace line reads it).
+- No output field, no `--verbose` line and no `--trace` line changes (the trace line's time aside).
+  The thread's cache budget charges the same bytes for every entry, so it keeps the same entries.
+  While the read-need test runs, it holds one score table per state of the site, not one in all.
+  Plan: `docs/harness/plans/335-phase2.md`.
+
 ### Docs — read judgment: what gbcms takes from the aligner, and naming the reads it holds back (RJ-33, RJ-34)
 
 - Decided, no count change (operator 2026-11-11). RJ-33: the allele comes from the read's own

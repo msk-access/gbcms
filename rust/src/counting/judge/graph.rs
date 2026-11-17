@@ -1542,8 +1542,24 @@ pub(crate) struct GraphPath {
 /// graph not laid out in order), [`path`] runs it.
 pub(crate) fn kept_path<M: ErrorModel>(m: &M, read: &GraphRead, g: &Graph, half: Option<i64>, ws: &Workspace) -> GraphPath {
     match &ws.last {
-        Some((band, r)) => traceback(m, read.seq, g, band, ws, *r),
+        Some((band, r)) => traceback(m, read.seq, g, band, ws, *r, None),
         None => path(m, read, g, half, &mut Workspace::default()),
+    }
+}
+
+/// [`kept_path`], and the same path read base by read base ([`PathSteps`]), from one walk
+/// back: the path's moves are read off the same cells either way. The steps are None where
+/// `ws` keeps no run (an empty read, a graph not laid out in order), where [`path`] runs
+/// the programme again for the path.
+pub(crate) fn kept_path_steps<M: ErrorModel>(m: &M, read: &GraphRead, g: &Graph, half: Option<i64>, ws: &Workspace) -> (GraphPath, Option<PathSteps>) {
+    match &ws.last {
+        Some((band, r)) => {
+            let n = read.seq.len();
+            let mut steps = PathSteps { score: r.score, steps: vec![Step::LeftOver; n], skipped_after: vec![0u32; n] };
+            let p = traceback(m, read.seq, g, band, ws, *r, Some(&mut steps));
+            (p, Some(steps))
+        }
+        None => (path(m, read, g, half, &mut Workspace::default()), None),
     }
 }
 
@@ -1572,7 +1588,7 @@ pub(crate) fn path<M: ErrorModel>(m: &M, read: &GraphRead, g: &Graph, half: Opti
         return traceback_reference(g, &band, ws, r);
     }
     let r = run::<M, false>(m, read.seq, g, &band, ws);
-    traceback(m, read.seq, g, &band, ws, r)
+    traceback(m, read.seq, g, &band, ws, r, None)
 }
 
 /// The best path back from its end, each cell's move read back from the programme's arrays
@@ -1580,7 +1596,9 @@ pub(crate) fn path<M: ErrorModel>(m: &M, read: &GraphRead, g: &Graph, half: Opti
 /// from the first predecessor reaching the diagonal, else starts there; A is D where they
 /// are equal, else E, else F; E extends a deletion where the first predecessor reaching it
 /// does so by more than by opening one; F extends an insertion where that beats opening one.
-fn traceback<M: ErrorModel>(m: &M, read: &[u8], g: &Graph, band: &GraphBand, ws: &Workspace, r: GraphRun) -> GraphPath {
+/// Where `steps` is given (every read base left over, nothing skipped), the walk also writes
+/// what the path does with each read base it passes ([`PathSteps`]).
+fn traceback<M: ErrorModel>(m: &M, read: &[u8], g: &Graph, band: &GraphBand, ws: &Workspace, r: GraphRun, mut steps: Option<&mut PathSteps>) -> GraphPath {
     let (open, ext) = (m.gap_open(), m.gap_extend());
     let mut visited: Vec<u32> = Vec::new();
     let Some((mut i, mut v)) = r.end else {
@@ -1596,6 +1614,9 @@ fn traceback<M: ErrorModel>(m: &M, read: &[u8], g: &Graph, band: &GraphBand, ws:
         match state {
             0 => {
                 visited.push(v);
+                if let Some(s) = steps.as_deref_mut() {
+                    s.steps[i as usize - 1] = Step::At(v);
+                }
                 if !c.from_a || i == 1 {
                     break;
                 }
@@ -1617,6 +1638,10 @@ fn traceback<M: ErrorModel>(m: &M, read: &[u8], g: &Graph, band: &GraphBand, ws:
             }
             2 => {
                 visited.push(v);
+                // graph base v skipped after read base i - 1
+                if let Some(s) = steps.as_deref_mut() {
+                    s.skipped_after[i as usize - 1] += 1;
+                }
                 // the first predecessor reaching the deletion, and whether it extends one
                 let first = g.preds(v as usize).iter().copied().find_map(|u| {
                     let x = band.cell(u as usize, i)?;
@@ -1628,6 +1653,9 @@ fn traceback<M: ErrorModel>(m: &M, read: &[u8], g: &Graph, band: &GraphBand, ws:
                 v = u;
             }
             _ => {
+                if let Some(s) = steps.as_deref_mut() {
+                    s.steps[i as usize - 1] = Step::Inserted;
+                }
                 state = if c.fe > c.fo { 3 } else { 1 };
                 i -= 1;
             }
@@ -1657,66 +1685,6 @@ pub(crate) enum Step {
     At(u32),
     Inserted,
     LeftOver,
-}
-
-/// [`kept_path`] as steps per read base ([`PathSteps`]): the same traceback, read base by
-/// read base. None where `ws` keeps no run (an empty read, a graph not laid out in order).
-pub(crate) fn kept_steps<M: ErrorModel>(m: &M, read: &GraphRead, g: &Graph, ws: &Workspace) -> Option<PathSteps> {
-    let (band, r) = ws.last.as_ref()?;
-    let (open, ext) = (m.gap_open(), m.gap_extend());
-    let n = read.seq.len();
-    let mut steps = vec![Step::LeftOver; n];
-    let mut skipped_after = vec![0u32; n];
-    if let Some((mut i, mut v)) = r.end {
-        // states: 0 D, 1 A, 2 E, 3 F (as [`traceback`])
-        let mut state = 0u8;
-        while i > 0 {
-            if band.cell(v as usize, i).is_none() {
-                break;
-            }
-            let c = sources(m, read.seq, g, band, ws, v as usize, i);
-            match state {
-                0 => {
-                    steps[i as usize - 1] = Step::At(v);
-                    if !c.from_a || i == 1 {
-                        break;
-                    }
-                    let first = g.preds(v as usize).iter().copied().find(|&u| band.cell(u as usize, i - 1).is_some_and(|x| ws.a[x] == c.diag));
-                    let Some(u) = first else { break };
-                    v = u;
-                    i -= 1;
-                    state = 1;
-                }
-                1 => {
-                    state = if c.d == c.a {
-                        0
-                    } else if c.en == c.a {
-                        2
-                    } else {
-                        3
-                    }
-                }
-                2 => {
-                    // graph base v skipped after read base i - 1
-                    skipped_after[i as usize - 1] += 1;
-                    let first = g.preds(v as usize).iter().copied().find_map(|u| {
-                        let x = band.cell(u as usize, i)?;
-                        let (eo, ee) = (ws.a[x] - open, ws.e[x] - ext);
-                        (eo.max(ee) == c.en).then_some((u, ee > eo))
-                    });
-                    let Some((u, extends)) = first else { break };
-                    state = if extends { 2 } else { 1 };
-                    v = u;
-                }
-                _ => {
-                    steps[i as usize - 1] = Step::Inserted;
-                    state = if c.fe > c.fo { 3 } else { 1 };
-                    i -= 1;
-                }
-            }
-        }
-    }
-    Some(PathSteps { score: r.score, steps, skipped_after })
 }
 
 /// The traceback over the reference programme's directions.
@@ -1775,7 +1743,7 @@ pub(crate) fn full_score<M: ErrorModel>(m: &M, read: &[u8], g: &Graph) -> i32 {
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use super::*;
 
     #[test]
@@ -2080,7 +2048,7 @@ mod tests {
         assert_eq!((r0.score, r0.end, r0.clipped), (r1.score, r1.end, r1.clipped), "case {case}");
         assert_eq!(w0.a[..c], ws.a[..c], "A, case {case}");
         assert_eq!(w0.e[..c], ws.e[..c], "E, case {case}");
-        let (p0, p1) = (traceback_reference(g, band, &w0, r0), traceback(&ShortReads, read, g, band, ws, r1));
+        let (p0, p1) = (traceback_reference(g, band, &w0, r0), traceback(&ShortReads, read, g, band, ws, r1, None));
         assert_eq!((p0.score, &p0.rows), (p1.score, &p1.rows), "path, case {case}");
         // the plain programme: the same values and end, no flag
         let r2 = run::<ShortReads, false>(&ShortReads, read, g, band, ws);
@@ -2270,5 +2238,215 @@ mod tests {
         assert_eq!((s0, h0), (s1, h1));
         let p1 = path(&ShortReads, &gr, &g, h1, &mut ws);
         assert_eq!((p0.score, p0.rows), (p1.score, p1.rows));
+    }
+
+    /// develop's two walks back over a kept run, the references the one walk is held to: the
+    /// path (develop's `traceback`, a walk of its own) and the steps (develop's `kept_steps`, a
+    /// second walk over the same cells).
+    pub(crate) mod develop {
+        use super::super::*;
+
+        pub(super) fn traceback<M: ErrorModel>(m: &M, read: &[u8], g: &Graph, band: &GraphBand, ws: &Workspace, r: GraphRun) -> GraphPath {
+            let (open, ext) = (m.gap_open(), m.gap_extend());
+            let mut visited: Vec<u32> = Vec::new();
+            let Some((mut i, mut v)) = r.end else {
+                return GraphPath { score: r.score, rows: Vec::new(), copy: 0, reach: (i64::MAX, i64::MIN) };
+            };
+            let mut state = 0u8;
+            while i > 0 {
+                if band.cell(v as usize, i).is_none() {
+                    break;
+                }
+                let c = sources(m, read, g, band, ws, v as usize, i);
+                match state {
+                    0 => {
+                        visited.push(v);
+                        if !c.from_a || i == 1 {
+                            break;
+                        }
+                        let first = g.preds(v as usize).iter().copied().find(|&u| band.cell(u as usize, i - 1).is_some_and(|x| ws.a[x] == c.diag));
+                        let Some(u) = first else { break };
+                        v = u;
+                        i -= 1;
+                        state = 1;
+                    }
+                    1 => {
+                        state = if c.d == c.a {
+                            0
+                        } else if c.en == c.a {
+                            2
+                        } else {
+                            3
+                        }
+                    }
+                    2 => {
+                        visited.push(v);
+                        let first = g.preds(v as usize).iter().copied().find_map(|u| {
+                            let x = band.cell(u as usize, i)?;
+                            let (eo, ee) = (ws.a[x] - open, ws.e[x] - ext);
+                            (eo.max(ee) == c.en).then_some((u, ee > eo))
+                        });
+                        let Some((u, extends)) = first else { break };
+                        state = if extends { 2 } else { 1 };
+                        v = u;
+                    }
+                    _ => {
+                        state = if c.fe > c.fo { 3 } else { 1 };
+                        i -= 1;
+                    }
+                }
+            }
+            let mut rows: Vec<usize> = visited.iter().filter_map(|&v| g.segment_of(v as usize).row).collect();
+            rows.sort_unstable();
+            rows.dedup();
+            let copy = visited.iter().map(|&v| g.segment_of(v as usize).copy).find(|&c| c != 0).unwrap_or(0);
+            let reach = g.reach_of(&visited);
+            GraphPath { score: r.score, rows, copy, reach }
+        }
+
+        pub(crate) fn kept_path<M: ErrorModel>(m: &M, read: &GraphRead, g: &Graph, half: Option<i64>, ws: &Workspace) -> GraphPath {
+            match &ws.last {
+                Some((band, r)) => traceback(m, read.seq, g, band, ws, *r),
+                None => path(m, read, g, half, &mut Workspace::default()),
+            }
+        }
+
+        pub(crate) fn kept_steps<M: ErrorModel>(m: &M, read: &GraphRead, g: &Graph, ws: &Workspace) -> Option<PathSteps> {
+            let (band, r) = ws.last.as_ref()?;
+            let (open, ext) = (m.gap_open(), m.gap_extend());
+            let n = read.seq.len();
+            let mut steps = vec![Step::LeftOver; n];
+            let mut skipped_after = vec![0u32; n];
+            if let Some((mut i, mut v)) = r.end {
+                let mut state = 0u8;
+                while i > 0 {
+                    if band.cell(v as usize, i).is_none() {
+                        break;
+                    }
+                    let c = sources(m, read.seq, g, band, ws, v as usize, i);
+                    match state {
+                        0 => {
+                            steps[i as usize - 1] = Step::At(v);
+                            if !c.from_a || i == 1 {
+                                break;
+                            }
+                            let first = g.preds(v as usize).iter().copied().find(|&u| band.cell(u as usize, i - 1).is_some_and(|x| ws.a[x] == c.diag));
+                            let Some(u) = first else { break };
+                            v = u;
+                            i -= 1;
+                            state = 1;
+                        }
+                        1 => {
+                            state = if c.d == c.a {
+                                0
+                            } else if c.en == c.a {
+                                2
+                            } else {
+                                3
+                            }
+                        }
+                        2 => {
+                            skipped_after[i as usize - 1] += 1;
+                            let first = g.preds(v as usize).iter().copied().find_map(|u| {
+                                let x = band.cell(u as usize, i)?;
+                                let (eo, ee) = (ws.a[x] - open, ws.e[x] - ext);
+                                (eo.max(ee) == c.en).then_some((u, ee > eo))
+                            });
+                            let Some((u, extends)) = first else { break };
+                            state = if extends { 2 } else { 1 };
+                            v = u;
+                        }
+                        _ => {
+                            steps[i as usize - 1] = Step::Inserted;
+                            state = if c.fe > c.fo { 3 } else { 1 };
+                            i -= 1;
+                        }
+                    }
+                }
+            }
+            Some(PathSteps { score: r.score, steps, skipped_after })
+        }
+    }
+
+    /// The path and steps of one walk against develop's two walks over the same kept run: every
+    /// field, and the capacity of every list (a kept programme's bytes are charged to the
+    /// thread's budget by them). Counts what the case exercised: (inserted, skipped, left over,
+    /// rows on the path).
+    fn same_walks(gr: &GraphRead, g: &Graph, half: Option<i64>, ws: &Workspace, case: u64, seen: &mut [usize; 4]) {
+        let (p1, s1) = kept_path_steps(&ShortReads, gr, g, half, ws);
+        let (p0, s0) = (develop::kept_path(&ShortReads, gr, g, half, ws), develop::kept_steps(&ShortReads, gr, g, ws));
+        assert_eq!((p1.score, &p1.rows, p1.copy, p1.reach), (p0.score, &p0.rows, p0.copy, p0.reach), "path, case {case}");
+        assert_eq!(p1.rows.capacity(), p0.rows.capacity(), "path rows' capacity, case {case}");
+        assert_eq!(s1, s0, "steps, case {case}");
+        if let (Some(a), Some(b)) = (&s1, &s0) {
+            assert_eq!((a.steps.capacity(), a.skipped_after.capacity()), (b.steps.capacity(), b.skipped_after.capacity()), "steps' capacity, case {case}");
+            seen[0] += usize::from(a.steps.contains(&Step::Inserted));
+            seen[1] += usize::from(a.skipped_after.iter().any(|&k| k > 0));
+            seen[2] += usize::from(a.steps.contains(&Step::LeftOver));
+        }
+        seen[3] += usize::from(!p1.rows.is_empty());
+        // the path alone is develop's too
+        let p2 = kept_path(&ShortReads, gr, g, half, ws);
+        assert_eq!((p2.score, &p2.rows, p2.copy, p2.reach, p2.rows.capacity()), (p0.score, &p0.rows, p0.copy, p0.reach, p0.rows.capacity()), "path alone, case {case}");
+    }
+
+    #[test]
+    fn one_walk_back_gives_the_path_and_the_steps_of_develops_two_walks() {
+        // Random graphs and reads (substitutions, indels, masked bases, junk ends, reads placed
+        // off their path), small and of a site's size, each graph alone and with states laid
+        // out alike (their runs share first columns): the path and steps read off one walk are
+        // develop's path and steps, read off two.
+        let mut st = 0x0ddb_a11c_afe5_0001u64;
+        let mut seen = [0usize; 4];
+        let mut ws = Workspace::default();
+        for case in 0..6000u64 {
+            let (g, take) = if case % 40 == 0 { (random_graph_of(&mut st, 700, 40), 160) } else { (random_graph(&mut st), 60) };
+            let (read, rp) = random_read_of(&g, &mut st, take);
+            let (lo, hi) = (rp[0], *rp.last().unwrap());
+            let gr = GraphRead { seq: &read, rp: rp.clone(), span: (lo, hi + 1), free_shift: 0, full: roll(&mut st, 8) == 0, long: true, lies_in: None };
+            let (_, half) = decided(&ShortReads, &gr, &g, &mut ws);
+            same_walks(&gr, &g, half, &ws, case, &mut seen);
+        }
+        for case in 0..800u64 {
+            let g0 = random_graph_of(&mut st, 200, 6);
+            let mut graphs: Vec<Graph> = vec![g0.clone()];
+            for _ in 0..1 + roll(&mut st, 3) {
+                let mut g = g0.clone();
+                let p = roll(&mut st, g.len() as u64) as usize;
+                for v in p..(p + 1 + roll(&mut st, 3) as usize).min(g.len()) {
+                    g.bases[v] = b"ACGT"[roll(&mut st, 4) as usize];
+                }
+                graphs.push(g);
+            }
+            let mut shares: Vec<Option<(usize, usize)>> = Vec::new();
+            for k in 0..graphs.len() {
+                let share = (0..k).filter(|&s| shares[s].is_none()).find_map(|s| graphs[s].layout_until(&graphs[k]).map(|p| (s, p)));
+                shares.push(share);
+            }
+            let (read, rp) = random_read_of(&g0, &mut st, 100);
+            let (lo, hi) = (rp[0], *rp.last().unwrap());
+            let gr = GraphRead { seq: &read, rp: rp.clone(), span: (lo, hi + 1), free_shift: 0, full: false, long: true, lies_in: None };
+            let refs: Vec<&Graph> = graphs.iter().collect();
+            let mut wss: Vec<Workspace> = (0..graphs.len()).map(|_| Workspace::default()).collect();
+            let all = decided_states(&ShortReads, &gr, &refs, &shares, &mut wss);
+            for (k, g) in graphs.iter().enumerate() {
+                same_walks(&gr, g, all[k].1, &wss[k], 10_000 + case, &mut seen);
+            }
+        }
+        // a graph not laid out in order keeps no run: the path from a programme run again, no steps
+        let mut b = GraphBuilder::default();
+        let x = b.segment(None, (0, 3), b"ACG".to_vec());
+        let y = b.segment(None, (3, 6), b"TTA".to_vec());
+        b.edge(x, y);
+        let mut g = b.finish();
+        g.pred_off = vec![0, 1, 2, 3, 4, 5, 6];
+        g.preds = vec![4, 0, 1, 2, 3, 4];
+        g.topological = false;
+        let gr = GraphRead { seq: b"ACGTA", rp: (0..5).collect(), span: (0, 5), free_shift: 0, full: false, long: true, lies_in: None };
+        let (_, half) = decided(&ShortReads, &gr, &g, &mut ws);
+        assert!(ws.last.is_none());
+        same_walks(&gr, &g, half, &ws, 99_999, &mut seen);
+        let [inserted, skipped, left, rows] = seen;
+        assert!(inserted > 500 && skipped > 500 && left > 1_000 && rows > 2_000, "inserted {inserted}, skipped {skipped}, left over {left}, rows {rows}");
     }
 }
