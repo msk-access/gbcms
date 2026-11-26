@@ -6,6 +6,20 @@
 
 _Last updated: 2026-11-16_
 
+## Resume here — #334 (2026-11-26 14:30)
+
+#334/#333, reads that end inside a run: read `docs/harness/plans/334-run-length-reads.md` §7 from its last entry.
+A1's form is settled as A1 narrowed (memory `run-length-reads`); the SNV and MNV arms are being rebuilt on it
+(worktrees `334-snvn`, `334-mnvn`), then measured on HG002 DNA here and on HPC (pat334, HG002 RNA, FORTE). Then the
+operator chooses between the faithful options. Tools: `~/test/gbcms/harness/d334/bin/` (measurement-harness.md,
+"Known effects"). Nothing of #334 is committed.
+
+## Resume here (2026-11-18 21:55, before a machine restart)
+
+#333 (the RNA sequence judge) is mid-measurement: read `docs/harness/plans/333-rna-judge.md` §7, its last entry
+("machine restart at 22:00; where to resume"): the scratch copy, M14 done, M16's HPC job ids, and the next steps.
+Nothing of #333 or #335 phase 2 is committed; this worktree's docs edits are uncommitted too.
+
 ## Now — #335, exact speed-ups (Stage 3; plan `docs/harness/plans/335-exact-speedups.md`)
 
 Started 2026-11-14 on develop 1b11ffea (#438 merged: the judge fault fix RJ-35; #435 closed). The rule
@@ -122,6 +136,9 @@ The plan page: `docs/harness/plans/420-cycle-order.md` (the measurements, the op
   D2-B, measure and design speed now and build it after the counts settle; D3-B, DNA flips in
   6.8.0 and RNA stays on the rules path until #333 (6.9.0); D4-A, 6.8.0 keeps the path to the
   default (34 tickets, plus #364, #397, #401 and the fault ticket #435) and 24 tickets move to 6.9.0.
+- **D3-B amended (operator, 2026-11-17: "R1 (a), R2 (c)"):** #333 is built in this cycle, RNA under the
+  judge opt-in, its default decided at the freeze by DNA's bars; the speed work covers DNA and RNA
+  (`335-phase2.md` §3.9). The ticket moves are drafted for the operator first.
 - **Stage 0, housekeeping (posted 2026-11-13):** #429 closed; #425 added to #420; the milestone
   moves; #331's "done when" item 3 (RNA) moved with #333 under #328; the fault ticket #435. Open:
   Greptile's review credits (the operator) and the old-worktree script.

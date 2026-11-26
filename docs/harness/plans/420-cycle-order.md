@@ -206,6 +206,12 @@ are on the path to the default (D4; #429 among them, to close now); 22 are not.
 
 The operator took the four recommended options: D1-A, D2-B, D3-B, D4-A.
 
+**D3-B amended (operator, 2026-11-17: "Judge is eventually shared by both so if the optimization plan
+dont include RNA its twice the effort"; then "R1 (a), R2 (c)"; `335-phase2.md` §3.9).** #333 (RNA under
+the judge) comes back to 6.8.0 and is built in this cycle as an opt-in, so the speed work is built once
+for DNA and RNA. RNA's default switches to the judge at the freeze only if it passes DNA's bars; else
+RNA stays on the rules path in 6.8.0 and DNA's flip goes ahead.
+
 D3-B changes D4-A's lists. The draft kept #333 (J2, RNA under the judge) with #331's sub-issues
 and #293 (a per-read reading flank in a short exon; RNA, validated on FORTE) with the acceptance
 rows. Under D3-B, RNA stays on the rules path in 6.8.0, so both move to 6.9.0 with #409 and #178.

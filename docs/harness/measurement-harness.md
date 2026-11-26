@@ -81,6 +81,17 @@ A count is judged by the reads' own bases, never by the aligner's placement
 (`genotyper-not-caller` memory). Each oracle below trusts no alignment, but check that it does
 not share the rule under test.
 
+A score takes truth from the reads' bases or from a truth of the germline genome (GIAB; a germline
+call's het or hom in the matched normal). It never takes truth from what a sample is expected to
+hold: gbcms does not model a somatic call's absence from the normal, an error rate, clonal
+haematopoiesis or tumour in the normal. A read whose bases carry the ALT is ALT, whatever its
+origin (operator, 2026-11-24: "the point is to measure what we see in BAM").
+
+A check on the read judge leads with the MNV and complex rows where the judge and the rules can
+differ (het, reads that carry part of the allele, alleles the aligner writes another way, events in
+repeats or beside other variants), for missed and false ALT: being better there is the switch's
+purpose (`universal-haplotype-judge` memory). Clean hom rows cannot separate the two.
+
 | Oracle | Use |
 |:--|:--|
 | Bases-only oracle (`oracle.py`, `oracle_c40.py`) | Judges each read by its own bases against REF and ALT, whatever the aligner did. Alignment scores are rescored over the whole read from the CIGAR (`r2/bwa_rescore.py`, shared with the patient oracle): BWA's local `AS` leaves a read-end mismatch uncharged. |
@@ -139,6 +150,32 @@ trusting a diff of two traces.
   for which reads.
 - The key is the prepared variant (VCF-anchored, left-aligned), not the input row: match a trace
   key to a row by the haplotype both give.
+
+## Known effects (explained; check these before you trace)
+
+A row that changes outside a change's class is a stop-rule item, unless one of these effects explains it.
+Each was traced once; do not trace it again.
+
+- **The multi-allelic REF guard moves a neighbour's REF** (#334, traced on HG002 RNA 2026-11-26, plan
+  `334-run-length-reads.md` §7 12:36). A row's REF read is withdrawn when the read is ALT for a co-annotated
+  sibling whose change lies in the row's REF window (`sibling_claims_ref`, `ref_guard_siblings` in `engine.rs`).
+  So an option that changes how a complex row judges a read also moves RD (and RNA antisense depth) at each row
+  whose REF window holds that row's change, SNVs included. No ALT-side field moves, so FN and FP do not change.
+  The sibling's own counts can stay the same. On HG002 RNA all 92 SNV rows that B, A1 and A1n changed were this
+  effect, through 41 `cis` delins siblings.
+- **BH q-values move with the row set's p-values** (invariant 1): `asjd_qval` can change at rows whose counts do
+  not change.
+- **The RNA scorer's VAF is ALT/DP, not the decided VAF** (#334, HG002 RNA 2026-11-26, plan §7 15:08).
+  `score_hg333.py`'s `vaf_med` and `dvaf_med` divide ALT by DP, and DP includes "neither" reads. So an option that
+  makes a read depth only lowers them, even when AD/(RD+AD) (`vaf`) moves toward the expected value. The SNV arm
+  lowered the SNV rows' `vaf_med` from 0.610 to 0.583, but at hom SNVs a run holds its mean |`vaf` - 1| fell from
+  0.0104 to 0.0088. For VAF, use `d334/bin/rna_vaf334.py` (the decided VAF, by run category and zygosity).
+- **Tools** (`d334/bin/`, public HG002 only, since they print positions): `norun334.py` is the no-run bar. It sorts
+  each changed no-run row into qval-only, ref-guard or unexplained (`tree TREE FASTA OPT...` for the RNA chunk tree
+  `d334/rna_tree/`, `pair BASE NEW FASTA` for DNA). Trace only the unexplained rows: `hpc/kit/trace334.sbatch`,
+  then `d334/bin/trace334/` (`make_rows.py`, `read_traces.py`, `siblings.py`, `snv_truth.py`, `snv_vaf.py`).
+  `cmp_rows.py` compares two MAFs field by field. The option patches are in `hpc/stage/inputs/builds_patches/`
+  (staged builds) and `d334/patches/` (earlier snapshots and the old SNV and MNV arms).
 
 ## Other tools
 

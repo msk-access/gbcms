@@ -90,7 +90,9 @@ Read from the public repos on 2026-10-19 (full flag tables in the #275 comment o
 - **IMPACT** has its own pipeline; the operator decided (2026-10-19) to use ACCESS's standard-BAM
   path as its stand-in for D12 ("should be similar for standard BAMs"). Production BWA sets
   `-K 1000000 -Y` (operator, 2026-10-19); `-T` is unset (the docs' T=30 is bwa's default).
-- **FORTE** (`mskcc/forte`, Nextflow; main 0b3d9275): fastp 0.23.2, STAR 2.7.10a `--twopassMode
+- **FORTE** (`mskcc/forte`, Nextflow; main 0b3d9275): fastp 0.23.2, STAR 2.7.9a in its Singularity container (the
+  module's conda line says 2.7.10a, but the image it names holds `star-2.7.9a-h9ee0642_0`: checked on HPC
+  2026-11-17, job 11727992; a production BAM's `@PG VN` would confirm what production ran) `--twopassMode
   Basic --outFilterMultimapNmax 20 --alignSJDBoverhangMin 1 --outSAMattributes NH HI AS NM MD
   --outSAMstrandField intronMotif`, UMI dedup only (no MarkDuplicates). The config default genome is
   GRCh37 (Ensembl 75), but production runs GRCh38 (operator, 2026-10-19), as our FORTE arm does
@@ -98,6 +100,15 @@ Read from the public repos on 2026-10-19 (full flag tables in the #275 comment o
   (`gbcms:1.2.5`), not this package.
 - For D12 (#275), re-align spike-ins with these tools and flags, and say which values are CWL
   defaults and which come from the docs where they disagree.
+
+## Sample IDs: IMPACT and ACCESS are DMP IDs only
+
+IMPACT and ACCESS clinical samples carry DMP IDs (`P-` and seven digits). The operator, 2026-11-23, on C-*
+(CMO) IDs in the #334 selection: "They should not have any cmo ids, are these from WES repo or Forte?". The
+cBio roots also hold research studies (the WES repo, Forte) whose samples carry CMO IDs.
+**How to apply:** a selection from the cBio roots keeps only the IMPACT and ACCESS families in every branch
+(somatic and germline), and counts the selected samples by ID form before a mapping template goes to the
+operator; a CMO ID there means a research study came in.
 
 ## No QC-fail flag in MSK data
 

@@ -19,6 +19,17 @@ on-demand docs and rules. Targets (#317): `MEMORY.md` at most 5 KB, `AGENTS.md` 
 skill descriptions short, `CONTINUITY.md` holding only the current state ("Now" and "Next"; finished
 sections go to `.agents/archive/`).
 
+## Testing is never capped
+
+Builds for testing, review rounds and HPC test batches are not limited by a number (operator,
+2026-11-17: "why do we have limits, we should sumbit to HPC as required ... testing is core part so we
+should not limit it"). A plan counts them in its cost log; it stops by content, not by count: an output
+difference it did not accept, more new conditions than declared, or a change of design or decision.
+
+**How to apply:** never write a "N at most" cap on builds, reviews or HPC batches in a plan, and never
+stop a test because a count was reached. The PHI and HPC rules still hold: copy back counts, times and
+profiles only, and log every HPC step. Home of the rule: `docs/harness/plan-first.md` §5.
+
 ## Explain so the operator can follow
 
 The operator follows from the app, often after time away; a label helps only once its meaning is in
@@ -77,7 +88,32 @@ adversarially, from the code and the numbers, not from the author's conclusion.
   understand how can Signout event got to AD 0 ... we should check and understand each"). A class
   count does not explain a signed-out call that falls to AD 0: look at its listed neighbours, the
   changes its ALT reads share and each read judgment's count (`docs/development/regression-panel.md`).
+- **Measure what is built before deciding** (2026-11-19: "we should measure if we already built"). A decision
+  never goes to the operator while a built option lacks a run on the row sets the recommended option ran on; the
+  coverage check is in `.agents/rules/decision-protocol.md` §8.
+- **Fix at the core, for accuracy; no patches unless asked** (2026-11-20: "we should solve problem at it core/source
+  keeping accuracy in mind, and not patches unless i explicitly ask for patches"). Find the cause and change it where
+  it lives (the judge, the read model, the shared contract), so the whole class is right and the counts stay accurate.
+  A patch is a narrow change that hides a symptom: a special case, a row-level exception, a skip, a threshold moved to
+  pass, a switch, a workaround around the cause. Do not propose or build one unless the operator asks for a patch by
+  name. When only a patch is possible now, say so, say what the core fix is, and let the operator decide. Prototype
+  switches in a measurement build are measurement tools, not the fix: the decided rule goes into the core code.
+  **The test is accuracy against truth, not unchanged counts** (2026-11-20: "it should be about regression, we
+  want to be closer to the truth with less FP and FN increasing accuracy"). A rule ships when it lowers false ALT
+  (FP) and missed ALT (FN) on rows of known truth (HG002's benchmark, FORTE rows with matched DNA, catalogue-absent
+  rows). A regression is any class that moves away from the truth; such a rule is fixed at the core until no class
+  is worse. Shipped code has one behaviour, the most accurate; a kept option is a documented CLI option with tests,
+  never a hidden environment switch.
+- **Read an unknown word as a typo first** (2026-11-19: "*enough What about the 50 forte bams dont they have
+  enough data?"). A word that names nothing in the notes is first read as a typo of a common word. If I still ask,
+  the plain reading is the first option, and the data already in hand comes before new data.
 - **Every failed task is reported** (2026-10-30: "when i see failed task should i probe you"). When a
   background task, HPC job or agent run fails, the next message says what failed and what follows:
   fixed and rerun, stopped on purpose, a red-first test failing as intended, or still open. The
   operator should never need to ask.
+
+## Local first while CI minutes are short (operator, 2026-11-17)
+"we are running currently out of github actioins minutes assigned to us and we should do most of it local untill we
+are sure". Build, test and gate on this machine (the qa-check gate in full, the local gate arms); push a branch or
+open a PR only when the work is sure, so CI runs once per finished change. HPC is not GitHub's and stays available
+under its own scope.

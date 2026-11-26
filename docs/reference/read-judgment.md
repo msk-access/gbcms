@@ -183,6 +183,16 @@ it shows in review instead of slipping in with an unrelated fix.
   but most clipped bases are below `--min-baseq` and weigh nothing, so a few confident bases
   decide REF against X by one mismatch or more (a 38M113S read: REF −4, X −29). Not decided: how
   a call weighs a read whose bases the candidates explain only in part.
+- **Reads that end inside a run beside or inside the change** (#334 DNA, #333 RNA; plan
+  `docs/harness/plans/334-run-length-reads.md`). Such a read fits the ALT and a run one unit longer or shorter
+  alike. Faithful options under measurement: A1 (the windows grow through the run; a read short of the base past
+  it is depth only), B (a read that beats REF and fits the ALT counts ALT), and two arms on A1 (SNVs; plain MNVs).
+  Settled so far, not yet a rule: **A1's form is the narrowed one** (operator, 2026-11-26): its run-next rule
+  leaves RJ-23's guard credit as decided, because the broader form's extra false-ALT cuts came from overriding
+  RJ-23 next to runs, a class of its own (open: RJ-23's guard credits a read whose truth allele differs from the
+  row's ALT at a base beside the event). Known effect, explained (2026-11-26 trace): when an option changes how a
+  co-annotated complex row judges a read, an SNV row whose REF window holds that row's change gains or loses the
+  read as REF through the multi-allelic REF guard (`sibling_claims_ref`); its ALT count does not move.
 
 Evidence behind RJ-4 (2026-09-25 to 09-28), #141. The decision is
 [the #141 comment of 2026-09-25](https://github.com/msk-access/gbcms/issues/141#issuecomment-5839231028);
