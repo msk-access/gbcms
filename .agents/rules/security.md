@@ -86,7 +86,9 @@ of the conversation. The operator decided (2026-10-26, after asking what reaches
   - The only console channel is the fixed summary script (schema and counts, small counts hidden):
     `python3 -I ~/test/gbcms/harness/cbio/cbio_summary.py --all`. It prints column names, row
     counts, fill rates, distinct counts, counts per value for a fixed set of categorical columns,
-    and binned read counts.
+    and binned read counts. ID-like column names and values print hidden, and key-value files print
+    their keys only. (2026-11-23: it printed a matrix file's column names, which are sample IDs;
+    fixed and tested on made-up IDs.)
   - Anything finer: write a script and send all of its output (stdout and stderr) to a file under
     `~/test/gbcms/harness/cbio/out/`, no pipes or chains, then let the operator review it. Never
     read that directory with a tool. For GitHub text that names these files, use `--body-file`.
@@ -130,9 +132,25 @@ incomplete denies every ssh, scp, rsync and sftp. Every list in the hook is an a
   installs from the internet, no `sudo`, and no changes to dotfiles, crontab or modules.
 - **Shared storage.** SLURM jobs may read the copies in the work folder in parallel. Clinical
   BAMs elsewhere are read one file at a time, by a reviewed job script.
-- **Ask first.** Every copy (`rsync`, `scp`), every read of a file or folder on HPC, and every
-  `sbatch`, `scancel` and `mkdir` waits for the operator's approval (the hook asks). Status
-  queries (`squeue`, `sacct`, `sinfo`, `ssh -O check`) need none.
+- **Ask first, outside the work folders.** The hook marks every copy (`rsync`, `scp`), every read
+  of a file or folder on HPC, and every `sbatch`, `scancel` and `mkdir` as "ask"; a hook's "ask"
+  prompts the operator in every permission mode. The operator allows, without asking (2026-11-20:
+  "auto run commands on hpc limited to the folders you work and operate on and ask for any thing
+  else"), the commands whose paths stay inside the work folder and its temporary folder: reads of
+  our files and logs, kit copies up, copy-backs of aggregates and sanitized logs, jobs that read
+  and write only those folders, and unchanged reruns of approved jobs. The hook answers "allow" for
+  these commands when the operator sets `allow_in_remote_roots: true` in the local settings. Patient
+  data inside the work folders still asks: the local `ask_patterns` (regular expressions on the
+  remote paths, for example the patient and production inputs and per-sample data files) keep a
+  matching command at "ask", as do globs and recursive reads while any pattern is set.
+  Copies between the work folders and this machine, in either direction, need no approval
+  (2026-11-20; from patient runs only aggregates and sanitized logs come back); a copy that
+  stays inside HPC (from a snapshot or another HPC folder into the work folders, or between HPC
+  folders) waits for the operator's approval.
+  Everything else waits for the operator's approval: a read or job outside those folders
+  (clinical BAMs, shared resources, other projects, snapshots), a new kind of job that reads
+  clinical BAMs, a download, a restore.
+  Status queries (`squeue`, `sacct`, `sinfo`, `ssh -O check`) need none.
 - **Never delete there.** No `rm`, `find -delete` or `rsync --delete`. The operator clears
   HPC files.
 - **cBioPortal stays off HPC commands too.** Any command naming a cBioPortal path is denied.
