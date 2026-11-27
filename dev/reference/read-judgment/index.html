@@ -22,7 +22,7 @@
       
       
       <link rel="icon" href="../../assets/images/favicon.png">
-      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.8.1">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.8.2">
     
     
       
@@ -2443,6 +2443,12 @@ it shows in review instead of slipping in with an unrelated fix.</p>
 <td style="text-align: left;">The read-need test weighs every read that reaches the item, in no order and with no cap: the item stays where 2 reads and 5% of those reads need it (the decided text of 2026-10-27 and 2026-10-28, <a href="../../proposals/sequence-judge/">sequence-judge.md</a>). It qualifies RJ-8 under the judge: a found indel that fails the test is left out as a context. The first build weighed the first 400 in start order. Measured 2026-11-13 and 2026-11-14 against it, on the IMPACT tier, ACCESS, WES and HG002 (7 sets, and the 4 sets that hold truth v2dbq20): 4 items decide otherwise, all on the tier. There 194 reads move to ALT, and all 194 carry X's ALT by their own bases. No read is lost on any data set, and HG002 truth is unchanged. Worked example: two signed-out SNVs 9 bases apart, with a found 1,086-base deletion 10 bases on, go from ALT 148 and 206 to 201 and 250, as 6.6.0 counts them. Cost: the test scores 1.34 times as many reads on the tier and 2.05 times on the truth sets, on average, with no bound at one item (the worst measured: 22,520 reaching reads, each scored twice). On the production speed cells (IMPACT and ACCESS, 1,000 to 20,000 rows on 1 <abbr title="Binary Alignment Map - Compressed sequence alignment file format">BAM</abbr> and a fill-out of 9 or 10 BAMs, 3 repeats on whole nodes), the judge's wall time is 0.97 to 1.08 times what it was with the first 400 reads (CPU 0.97 to 1.05), and the rules path's 0.88 to 1.15 (CPU 0.98 to 1.02). No cap or sample of the reads takes this rule's place for speed: speed work keeps every count (2026-11-14). Thin: ACCESS and WES ran the test 5 and 6 times, and at <code>--min-baseq</code> 30 no item decides otherwise. Known partial: dilution, a long deletion whose needing carriers are fewer than 5% of all the reads that reach it (5 of 8 made-up shapes). A 1% share, a share over the indel's writers and a need-against-harm rule each lost real reads on these sets, so dilution stays the share family's question (#306, #401). There too: the need is counted with every other tested item in place, while the final site keeps only the items that pass.</td>
 <td style="text-align: left;">operator 2026-11-14; #435</td>
 </tr>
+<tr>
+<td style="text-align: left;">RJ-36</td>
+<td style="text-align: left;">A read that ends inside a run beside or inside the change shows the change but not the run's length: its bases fit the ALT and the same run one unit longer or shorter alike, so they cannot tell the row's allele from another length of the run.</td>
+<td style="text-align: left;"><strong>Both paths (A1 narrowed).</strong> (1) <em>Windows.</em> A complex event's windows (a delins or an MNV) grow through every run on either allele that overlaps the change, starts at its first base past it, or ends at its last base before it (RJ-23's "its event, grown through repeats"), to one base past the run's far end. A run is a unit of 1 to 6 bases in 2 or more copies, so a doublet counts. A side with no run keeps its flank as decided. A read holds that base only with a confident base there (at or above <code>--min-baseq</code>, not N, not masked by the guard); a read short of it, or with no confident base there, is depth only (HG002 DNA: 204 reads with that base below Q20 or N), and a later confident base does not stand in for it. A read that reaches it with another length is another allele (RJ-9). Pure indels keep RJ-27; SNVs (C10 #157), padded rows with one changed base, and RJ-4's plain <abbr title="Multi-Nucleotide Polymorphism - Multiple adjacent base substitutions">MNP</abbr> reads (no indel at the block, judged on the block alone) grow no window. Only the windows grow, with the fetch and the rules path's guard reach that must hold them (invariant 1); the guard zone and the long-layout switch stay on the event. (2) <em>A run beside the guard's mask.</em> A read that shows, at the first base past the event's run where the guard masks it, a confident base that goes on with the run is depth only, unless its confident base at Q (the first base where one more unit of the run and the guard's change at the masked base differ) shows the change. RJ-23's guard credit otherwise stands. (3) <em>Every site</em> (operator, 2026-11-26). The judge holds the rules path's windows at every complex site, also where no run lies, so a read short of a window is depth only in both paths ("Informative reads only"); long insertions, 50+ bp deletions and delins cores keep RJ-23 and RJ-24. So the reads that end three bases into a 24&gt;6 delins in <code>test_reads_ending_inside_a_delins_count_alike_on_either_allele</code> are depth only: (<abbr title="Reference Depth - Reads supporting the reference allele">RD</abbr>, <abbr title="Alternate Depth - Reads supporting the alternate allele">AD</abbr>) (20, 20) to (10, 10), as the rules path already counts them. RNA: the sequence judge refuses RNA mode, so RNA takes the rules half. Named limits: imperfect repeats; a run longer than any read leaves every read depth only; a confident end base that the alignment leaves out still misses the window; ALT bases behind a soft clip. Not taken (measured, plan §7): B, a read that beats REF and fits the ALT counts ALT (its bases carry the change, not the run's length; patients: +40 false ALT reads at ACCESS del+1 partners); the SNV arm (amends C10; HG002 RNA FN +68 past A1n; 3.6x to 4.7x develop's CPU); the MNV arm (amends RJ-4; oracle-ALT reads lost at IMPACT tumour MNV calls, 3,335 rules and 8,778 judge); A1 as built (overrode RJ-23 beside runs, the open class below); A2, the run's other lengths as candidates (memory above 2x for no time, so it fails the speed floor).</td>
+<td style="text-align: left;">#334 DNA, #333 RNA; operator 2026-11-25 ("Narrow, SNVs as an arm"), 2026-11-26 ("Ok lets go with A1 narrowed", "A1n", "Every site"); plan <code>docs/harness/plans/334-run-length-reads.md</code> §3 and §7; evidence below</td>
+</tr>
 </tbody>
 </table>
 <h3 id="open">Open<a class="headerlink" href="#open" title="Permanent link">¶</a></h3>
@@ -2455,7 +2461,34 @@ it shows in review instead of slipping in with an unrelated fix.</p>
   but most clipped bases are below <code>--min-baseq</code> and weigh nothing, so a few confident bases
   decide REF against X by one mismatch or more (a 38M113S read: REF −4, X −29). Not decided: how
   a call weighs a read whose bases the candidates explain only in part.</li>
+<li><strong>RJ-23's guard credit for a read that carries another allele beside the event</strong> (found in #334, plan
+  <code>docs/harness/plans/334-run-length-reads.md</code> §7, 2026-11-25 18:11; decided apart from RJ-36). RJ-23's guard
+  tolerates a change that recurs beside the event on the ALT fragments. So a read that carries the truth allele,
+  which differs from the row's ALT at one base beside the event, counts ALT for the row (HG002 DNA wrong-allele
+  rows: 8:145151666 ALT 187, 16:18865325 67, 16:28903765 19; on the base partners, 272 such reads in each path).
+  A1 as built cut these reads by overriding RJ-23 where the changed base goes on with a run; RJ-36 leaves RJ-23 as
+  decided. Not decided: when a recurring change beside the event is the molecule's own allele, not background.</li>
 </ul>
+<p>Evidence behind RJ-36 (2026-11-25/26), #334 and #333. Every run, build and trace is in plan
+<code>docs/harness/plans/334-run-length-reads.md</code> §7; aggregates only, develop against A1 narrowed, no count-relation
+failure in any run.
+- HG002 DNA (rules / judge): false ALT reads at the del+1 partners 1,032 / 1,189 to 826 / 706, at the base
+  partners 726 / 1,483 to 671 / 1,204; "either" reads credited at true calls 797 / 2,368 to 711 / 733.
+  Oracle-ALT reads missed at true calls 1,402 / 27 to 1,835 / 1,788: the oracle labels a read ALT by its call
+  and its partners, so a read that ends inside the run is oracle-ALT though its bases cannot show the run's
+  length (the trace of 2026-11-25 23:36). Rows with no run: 0 of 9 change.
+- HG002 RNA (the rules half; 523,342 rows): FN +18 (INS +10, DEL +6, DELINS +2); truth-REF rows with ALT 1+ / 2+
+  −9 / −4; ALT reads on truth-REF rows −212, on truth-ALT rows −1,723; 0 of 450 rows with no run change. Het
+  rows beside a run, mean |<abbr title="Variant Allele Frequency - Fraction of reads supporting the variant allele">VAF</abbr> − 0.5| with the decided <abbr title="Variant Allele Frequency - Fraction of reads supporting the variant allele">VAF</abbr>, <abbr title="Alternate Depth - Reads supporting the alternate allele">AD</abbr>/(<abbr title="Reference Depth - Reads supporting the reference allele">RD</abbr>+<abbr title="Alternate Depth - Reads supporting the alternate allele">AD</abbr>): 0.1613 to 0.1614; hom rows 0.0324 to
+  0.0321.
+- Patients (IMPACT and ACCESS, tumour and matched normal, the patient oracle; rules / judge): false ALT reads at
+  the del+1 partners IMPACT 182 / 758 to 148 / 132, ACCESS 64 / 583 to 49 / 135; oracle-ALT reads missed at true
+  calls IMPACT 10,125 / 1,459 to 11,513 / 3,558 of 148,101, ACCESS 4,281 / 1,045 to 4,905 / 2,831 of 86,017.
+- FORTE (43 patients, the rules half): het carriers' FN 1,762, unchanged; at rows that expect ALT 0, ALT reads
+  at depth 10+ 25,733 to 25,546 and rows with ALT 1+ 7,312 to 7,288. CPU 1.08x develop's.
+- Known effect, traced (2026-11-26 12:36): where a co-annotated complex row's call on a read changes, an SNV row
+  whose REF window holds that row's change gains or loses the read as REF through the multi-allelic REF guard
+  (<code>sibling_claims_ref</code>); the SNV's <abbr title="Alternate Depth - Reads supporting the alternate allele">AD</abbr> never moves (HG002 RNA: 24 reads, 6 SNV rows).</p>
 <p>Evidence behind RJ-4 (2026-09-25 to 09-28), #141. The decision is
 <a href="https://github.com/msk-access/gbcms/issues/141#issuecomment-5839231028">the #141 comment of 2026-09-25</a>;
 the rounds are in the archived plan, <code>.agents/archive/CYCLE_6.6.0_PLAN.md</code> § C1. The ticket began as a
@@ -3319,7 +3352,7 @@ with the read census's verdict next to each pure-indel case.</p>
     <span class="md-icon" title="Last update">
       <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M21 13.1c-.1 0-.3.1-.4.2l-1 1 2.1 2.1 1-1c.2-.2.2-.6 0-.8l-1.3-1.3c-.1-.1-.2-.2-.4-.2m-1.9 1.8-6.1 6V23h2.1l6.1-6.1zM12.5 7v5.2l4 2.4-1 1L11 13V7zM11 21.9c-5.1-.5-9-4.8-9-9.9C2 6.5 6.5 2 12 2c5.3 0 9.6 4.1 10 9.3-.3-.1-.6-.2-1-.2s-.7.1-1 .2C19.6 7.2 16.2 4 12 4c-4.4 0-8 3.6-8 8 0 4.1 3.1 7.5 7.1 7.9l-.1.2z"></path></svg>
     </span>
-    <span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-timeago" title="November 14, 2026 20:20:11 UTC"><span class="timeago" datetime="2026-11-14T20:20:11+00:00" locale="en"></span></span><span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-iso_date" title="November 14, 2026 20:20:11 UTC">2026-11-14</span>
+    <span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-timeago" title="November 27, 2026 00:30:18 UTC"><span class="timeago" datetime="2026-11-27T00:30:18+00:00" locale="en"></span></span><span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-iso_date" title="November 27, 2026 00:30:18 UTC">2026-11-27</span>
   </span>
 
     
