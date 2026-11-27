@@ -99,7 +99,8 @@ Every option fixes mechanism 3: a read that reaches past the run and shows anoth
        which is its own class (§7, 18:11); A1 narrowed misses fewer true variants on HG002 RNA (FN +18 against
        +46); on patients the two forms differ by 4 reads. The SNV and MNV arms are built on this form (labels
        snvn, mnvn). A1 as built (o334a1, `.so` 1e30c02b) is not measured further. This settles A1's form only;
-       the choice between the faithful options (A1n, B, the two arms) is still open.
+       the choice between the faithful options followed on 2026-11-26: A1n, at every site (RJ-36; §7, 16:47 and
+       18:42).
 - **A2, the run's other lengths as candidates (judge; A1's window in the rules path).** The judge adds the run's
   lengths one unit shorter and longer as candidates; a read that ties the ALT with one is depth only (RJ-23's tie
   rule, at every site). A read past the run with another length falls to that candidate. Above the field's
@@ -641,6 +642,37 @@ Read with the options (written down at the approval, 2026-11-24, before any buil
   (15,914), mean |VAF - 1|: 0.0324, 0.0324, 0.0320, 0.0321, 0.0308, 0.0321. At het SNVs a run holds (20,920) SNVn
   takes RD down 7.8% and AD down 5.7% (pooled VAF 0.458 to 0.463), and mean |VAF - 0.5| goes from 0.1485 to 0.1505;
   at hom ones (13,156) from 0.0104 to 0.0088. No option moves a truth row that is not beside a run.
+- 2026-11-26 16:05: the patient and FORTE batch for both arms on A1 narrowed (the operator: "Send it and run for
+  both"; 16 jobs, all COMPLETED 0:0, no task log with an error; `d334/pat334_arms.log`, `d334/forte334_arms.log`,
+  aggregates only). The record so far is committed on `docs/335-source-fixes` (f5b7c260, d590bd89; gate passed).
+  Patients (pat334): the sets hold DELINS and MNV rows only, so the SNV arm equals A1n in every cell, and the patients
+  cannot measure it. The MNV arm against A1n changes MNV calls only. Oracle-ALT reads credited ALT (rules / judge):
+  IMPACT tumour somatic -3,335 / -8,778 (of 113,083 / 120,819), ACCESS tumour somatic -1,707 / -3,674 (of 58,535 /
+  60,442), germline -66 to -178. "Either" reads credited ALT: -220 / -291 and -39 / -123. Oracle-REF reads credited
+  ALT: 4 to 0 (IMPACT tumour somatic). Partner false ALT: at most 14 fewer (ACCESS tumour base, rules -16 against
+  A1n's -2). FORTE: MNVn equals A1n in every stratum (both aggregate tables byte-identical). SNVn against develop
+  (148 strata differ from A1n): truth-REF rows with ALT 1+ at DP 10+ 20,314 to 18,143 (-2,171), ALT 2+ 9,012 to
+  7,897; het rows with ALT 1+ 98,989 to 97,943 (-1,046); ALT reads at hets -4.1%; wrong-allele rows with ALT 1+
+  7,312 to 6,750 (A1n 7,288); no count-relation failure. FORTE CPU: develop 7,336 s, A1n 7,888 (1.08x), MNVn 8,160
+  (1.11x), SNVn 26,598 (3.63x). All four options (B, A1n, SNVn, MNVn) are now measured on every data type the plan
+  names; the operator chooses.
+- 2026-11-26 16:47: the operator: "A1n". A1 narrowed is the rule for this class; B and the two arms are not taken.
+  Before the register entry, the one existing test A1n changes (the 4 Rust geometry tests were approved on
+  2026-11-25, "Approve all 4"): `tests/test_haplotype_judge_contract.py::test_reads_ending_inside_a_delins_count_
+  alike_on_either_allele`. It asserts that the judge counts the 10 REF and 10 ALT reads ending 3 bases into a 24>6
+  delins by the bases they hold: (rd, ad) = (20, 20). Under A1n: (10, 10), those 20 reads depth only. The test's
+  "unique sequence" holds a GG doublet at the reads' end, a run by the decided definition. But the same case with a
+  run-free stretch (`d334/delins_probe/probe.py`, built from a square-free word) gives develop rules (10, 10),
+  develop judge (20, 20), A1n rules (10, 10), A1n judge (10, 10). So the change is not the class: it is A1n's judge
+  holding the rules path's window at every site (clarification 2), the open choice of 2026-11-25 15:01 ("every
+  site" or "only rows with a run"). On real data the two differ little: HG002, 0 of 9 rows with no run change in
+  either path (13 reads at no-run sites in the review of 2026-11-25 16:10). Asked of the operator.
+- 2026-11-26 18:42: the operator: "Every site" (the question named the test change to (10, 10)). The judge holds
+  the rules path's windows at every complex site, also where no run lies, and the test's expectation changes with
+  the code. Recorded as RJ-36 in `docs/reference/read-judgment.md` (rule, the options not taken, and an evidence
+  paragraph with the four data types); the register's Open bullet for this class is replaced by the class that
+  stays open, RJ-23's guard credit for a read that carries another allele beside the event (18:11). Next: land
+  A1n's code on a feature branch from develop, with the test change and an outside review measured before any PR.
 
 ## 8. Cost log
 

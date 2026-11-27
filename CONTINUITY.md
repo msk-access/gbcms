@@ -6,13 +6,14 @@
 
 _Last updated: 2026-11-16_
 
-## Resume here — #334 (2026-11-26 14:30)
+## Resume here — #334 (2026-11-26 18:42)
 
-#334/#333, reads that end inside a run: read `docs/harness/plans/334-run-length-reads.md` §7 from its last entry.
-A1's form is settled as A1 narrowed (memory `run-length-reads`); the SNV and MNV arms are being rebuilt on it
-(worktrees `334-snvn`, `334-mnvn`), then measured on HG002 DNA here and on HPC (pat334, HG002 RNA, FORTE). Then the
-operator chooses between the faithful options. Tools: `~/test/gbcms/harness/d334/bin/` (measurement-harness.md,
-"Known effects"). Nothing of #334 is committed.
+#334/#333, reads that end inside a run: DECIDED as RJ-36 (`docs/reference/read-judgment.md`): A1 narrowed, at
+every site (operator, 2026-11-26: "A1n", "Every site"; memory `run-length-reads`). Next: land A1n's code from
+worktree `agent-a3f063e0f69b90fd5` (patch `hpc/stage/inputs/builds_patches/o334a1n.patch` in the harness) on a
+feature branch from develop, with the approved test change ((20, 20) to (10, 10)) and an outside review measured
+before any PR. Plan: `docs/harness/plans/334-run-length-reads.md` §7, last entry. Tools:
+`~/test/gbcms/harness/d334/bin/` (measurement-harness.md, "Known effects").
 
 ## Resume here (2026-11-18 21:55, before a machine restart)
 

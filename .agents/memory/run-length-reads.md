@@ -1,33 +1,29 @@
 ---
 name: run-length-reads
-description: "#334/#333 (reads that end inside a run beside or inside the change): A1's form is SETTLED as A1 narrowed (2026-11-26; do not re-measure A1 as built); an SNV row that moves only in RD or antisense depth beside a changed cis delins row is the multi-allelic REF guard, a known effect (do not re-trace)."
+description: "#334/#333 (reads that end inside a run beside or inside the change): DECIDED 2026-11-26 as RJ-36, A1 narrowed at every site (do not re-measure B, A2, the SNV or MNV arm, or A1 as built); an SNV row that moves only in RD or antisense depth beside a changed cis delins row is the multi-allelic REF guard, a known effect (do not re-trace)."
 metadata:
   type: project
 ---
 
-The plan is `docs/harness/plans/334-run-length-reads.md` (§3 A1 scope item 6; §7 from 2026-11-25 22:43). The
-register's Open list (`docs/reference/read-judgment.md`) holds the class until it is decided.
+The rule is RJ-36 in `docs/reference/read-judgment.md` (with its evidence paragraph). The plan, with every run,
+build and trace, is `docs/harness/plans/334-run-length-reads.md` (§3; §7 from 2026-11-25).
 
-## Settled: A1's form is A1 narrowed (operator, 2026-11-26: "Ok lets go with A1 narrowed")
+## Decided: A1 narrowed, at every site (operator, 2026-11-26: "A1n", then "Every site")
 
-The run-next rule fires unless the read's confident base at Q (the first base where "one more unit of the run"
-and "the guard's change at the masked base" differ) shows the change, so RJ-23's guard credit stays as decided.
-A1 as built (build o334a1, `.so` 1e30c02b) cut more false ALT only by overriding RJ-23 next to runs, a class of its
-own. Evidence (HG002 RNA: change against develop; HG002 DNA: counts):
+- Complex windows grow through every run (1 to 6 base unit, 2+ copies, doublets count) on either allele that
+  overlaps or touches the change, to one base past its far end; a read short of it is depth only.
+- The run-next rule spares a read whose confident base at Q shows the change, so RJ-23's guard credit stays as
+  decided (A1 as built overrode it; that class stays open in the register, "RJ-23's guard credit").
+- Every site: the judge holds the rules path's windows also where no run lies. The one existing test this changes,
+  approved with the choice: `test_reads_ending_inside_a_delins_count_alike_on_either_allele`, (20, 20) to (10, 10)
+  (the rules path already gave (10, 10)). The 4 Rust geometry tests were approved on 2026-11-25.
+- Not taken, all measured on every data type: B, A2 (fails the speed floor), the SNV arm (3.6x to 4.7x CPU, FN +68
+  on HG002 RNA past A1n), the MNV arm (loses oracle-ALT reads at MNV calls), A1 as built.
 
-| Data | Measure | A1 as built | A1 narrowed |
-|:--|:--|--:|--:|
-| HG002 RNA | truth-ALT rows with ALT 0 (FN) | +46 | +18 |
-| HG002 RNA | truth-REF rows with ALT 1+ (FP) | -31 | -9 |
-| HG002 DNA | base partners, false ALT reads (rules; develop 726) | 399 | 671 |
-
-On patients (pat334) the two forms differ by 4 reads in all.
-
-**Why:** each form was built and measured on every data type (about a day of builds, an HPC batch and a trace).
-**How to apply:** build later options (the SNV arm `snvn`, the MNV arm `mnvn`) on A1 narrowed (worktree
-`agent-a3f063e0f69b90fd5`; its patch is kept in the harness, `hpc/stage/inputs/builds_patches/o334a1n.patch`). Re-open the form only if
-the operator asks. Still open: the choice between the faithful options (A1n, B, the two arms). The two arms on A1n,
-HG002 RNA against develop (plan §7 15:08): SNVn FN +86, FP1 -321, 4.67x CPU; MNVn FN +30, FP1 -9, 1.09x CPU. RNA VAF
+**Why:** the options took two days of builds, HPC batches and traces; the numbers are in RJ-36's evidence.
+**How to apply:** land A1n's code from worktree `agent-a3f063e0f69b90fd5` (patch
+`hpc/stage/inputs/builds_patches/o334a1n.patch` in the harness) on a feature branch from develop, with the test
+change above and an outside review measured before any PR. Re-open an option only if the operator asks. RNA VAF
 is read with `d334/bin/rna_vaf334.py` (AD/(RD+AD)), never the scorer's ALT/DP `vaf_med`.
 
 ## Known effect: SNV rows move through the multi-allelic REF guard
