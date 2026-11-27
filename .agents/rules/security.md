@@ -142,7 +142,10 @@ incomplete denies every ssh, scp, rsync and sftp. Every list in the hook is an a
   these commands when the operator sets `allow_in_remote_roots: true` in the local settings. Patient
   data inside the work folders still asks: the local `ask_patterns` (regular expressions on the
   remote paths, for example the patient and production inputs and per-sample data files) keep a
-  matching command at "ask", as do globs and recursive reads while any pattern is set.
+  matching command at "ask", as do globs, recursive reads and recursive copies from HPC while any
+  pattern is set. A job is allowed only with a working folder in the work folders (`--chdir`, or a
+  `cd` into them before `sbatch`); without one it runs, and writes its default log, in the home
+  folder. A copy that reads its file list from a file (`--files-from`) always asks.
   Copies between the work folders and this machine, in either direction, need no approval
   (2026-11-20; from patient runs only aggregates and sanitized logs come back); a copy that
   stays inside HPC (from a snapshot or another HPC folder into the work folders, or between HPC

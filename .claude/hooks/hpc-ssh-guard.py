@@ -34,10 +34,14 @@ mkdir or sbatch is allowed instead when every remote path it names lies in the w
 (remote_roots, not read_roots, and no snapshot folder), every part of it is one of those, and
 it has no command substitution, no list of files read from a file, no relative sbatch path
 option and no local sed or sort; a copy also goes between HPC and this machine (one that stays
-inside HPC asks); scancel always asks. `ask_patterns` (regular expressions,
-default none) keep asking for paths in the work folders that hold patient data: a path that
-matches one, and, once any is set, a glob or a read that goes below the folders it names
-(find, du without -s, ls -R, grep -r). They change nothing while allow_in_remote_roots is off.
+inside HPC asks); an sbatch also sets a working folder in the work folders (--chdir, or a cd
+into one before it), because a job runs and writes its default log in the folder sbatch is run
+from, the home folder unless a cd comes first; scancel always asks. `ask_patterns` (regular
+expressions, default none) keep asking for paths in the work folders that hold patient data:
+a path that matches one, and, once any is set, a glob, a read that goes below the folders it
+names (find, du without -s, ls -R, grep -r), and a recursive copy from HPC (rsync -r or -a,
+scp -r); a copy to HPC is checked by every name it writes there, read from this machine's
+files. They change nothing while allow_in_remote_roots is off.
 Paths are compared as normalized text: a symlink in the work folders is not followed. The hook
 reads the command line only: it is a guard, not a sandbox (see the rules).
 FAIL-CLOSED for a command that names the HPC or runs ssh, scp, rsync or sftp (a parse error
@@ -733,9 +737,10 @@ def parse_options(words, values, flags, long_flags, stop):
     return opts, args
 
 
-def check_sbatch(words):
-    """Check a submission; return False when a path option's value is relative, or a word of
-    its options or arguments matches an ask pattern (a.bam names a file without a slash)."""
+def check_sbatch(words, cwd=None):
+    """Check a submission; return False when a path option's value is relative, a word of its
+    options or arguments matches an ask pattern (a.bam names a file without a slash), or it
+    sets no working folder in the work folders (--chdir, or `cwd`, a cd before it)."""
     opts, args = parse_options(
         words, SBATCH_VALUES, SBATCH_FLAGS, SBATCH_LONG_FLAGS | {"wrap"}, stop=True
     )
@@ -772,7 +777,11 @@ def check_sbatch(words):
     paths = [v for n, v in opts.items() if any(p.startswith(n) for p in SBATCH_PATH_OPTIONS)]
     parts = [p for w in list(opts.values()) + args for p in re.split(r"[,:=]", w)]
     named = any(pat.search(p) for pat in ASK_PATTERNS for p in parts)
-    return all(v.startswith("/") for v in paths) and not named
+    # The job runs, and writes slurm-%j.out by default, in its working folder: --chdir, else the
+    # folder sbatch is run from (the home folder, unless a cd into the work folders comes first).
+    chdir = any(len(n) >= 2 and "chdir".startswith(n) for n in opts)
+    in_folder = chdir or (cwd is not None and inside(cwd, REMOTE_ROOTS))
+    return in_folder and all(v.startswith("/") for v in paths) and not named
 
 
 def check_scancel(words):
@@ -826,7 +835,7 @@ def check_remote(command):
             check_words(verb, args, cwd, REMOTE_ROOTS)
         elif verb == "sbatch":
             level = "ask"
-            known = check_sbatch(args)
+            known = check_sbatch(args, cwd)
             placed = placed and known
         elif verb == "scancel":
             level = "ask"
@@ -933,7 +942,8 @@ def check_copy(words):
         deny("this copy names a protected path (cBioPortal)")
     problems, settings, lists, logs, positionals = [], [], [], [], []
     flags, values = (RSYNC_FLAGS, "e") if tool == "rsync" else (SCP_FLAGS, "lo")
-    rsh, i = None, 1
+    recurse = "ra" if tool == "rsync" else "r"  # rsync -a implies -r
+    rsh, i, recursive, file_list = None, 1, False, False
     while i < len(words):
         w = words[i]
         if tool == "rsync" and w.startswith("--") and len(w) > 2:
@@ -946,13 +956,17 @@ def check_copy(words):
                     rsh = value
                 elif name in RSYNC_LIST_FILES:
                     lists.append(value)
+                    file_list = file_list or name == "files-from"
                 elif name == "log-file":
                     logs.append(value)
             elif eq or name not in RSYNC_LONG_FLAGS:
                 problems.append(f"rsync option --{name} is not on the HPC list")
+            elif name in ("archive", "recursive"):
+                recursive = True
         elif w.startswith("-") and len(w) > 1:
             for j, c in enumerate(w[1:], 1):
                 if c in flags:
+                    recursive = recursive or c in recurse
                     continue
                 if c not in values:
                     problems.append(f"{tool} option -{c} is not on the HPC list")
@@ -999,7 +1013,46 @@ def check_copy(words):
     # Only a copy between HPC and this machine: one that stays inside HPC always asks.
     up = bool(REMOTE_SPEC.match(positionals[-1]))
     crosses = all(bool(REMOTE_SPEC.match(w)) != up for w in positionals[:-1])
-    return "work" if crosses and in_work_folders(NAMED[start:]) else "ask"
+    if file_list:
+        return "ask"  # it copies the files a list names, which the guard does not read
+    written = []
+    if ASK_PATTERNS and crosses:
+        if not up and recursive:
+            return "ask"  # it copies what the folders it names hold, where patient data may lie
+        if up:
+            dest = posixpath.normpath(REMOTE_SPEC.match(positionals[-1]).group(2))
+            written = upload_names(positionals[:-1], dest, recursive, tool)
+            if written is None:
+                return "ask"
+    return "work" if crosses and in_work_folders(NAMED[start:] + written) else "ask"
+
+
+UPLOAD_NAME_CAP = 20000  # past this many names, a copy to HPC asks rather than list them all
+
+
+def upload_names(sources, dest, recursive, tool):
+    """Every remote name a copy to HPC can write under `dest`, from this machine's files: each
+    source as `dest/<its name>`, and with recursion each name below it both as `dest/<rel>`
+    and as `dest/<its name>/<rel>` (a trailing slash, or a destination that does not yet
+    exist, decides which). None when they cannot all be listed: too many, or a folder link,
+    which scp -r follows."""
+    names = []
+    for src in sources:
+        local = os.path.normpath(os.path.expanduser(src))
+        base = posixpath.join(dest, os.path.basename(local))
+        names.append(base)
+        if not (recursive and os.path.isdir(local)):
+            continue
+        for root, dirs, files in os.walk(local):
+            rel = os.path.relpath(root, local)
+            for name in dirs + files:
+                if tool == "scp" and name in dirs and os.path.islink(os.path.join(root, name)):
+                    return None
+                part = name if rel == "." else posixpath.join(*rel.split(os.sep), name)
+                names += [posixpath.join(dest, part), posixpath.join(base, part)]
+            if len(names) > UPLOAD_NAME_CAP:
+                return None
+    return names
 
 
 def names_hpc(text):

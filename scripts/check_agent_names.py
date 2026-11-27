@@ -74,9 +74,11 @@ EXTERNAL = {
     "--body-file",
     "--require-hashes",
     "--no-deps",
-    # SLURM's own names (the HPC rules in security.md and their guard hook).
+    # SLURM's and rsync's own names (the HPC rules in security.md and their guard hook).
     "--wrap",
     "--time",
+    "--chdir",
+    "--files-from",
     # A gitignored directory that `git worktree add` creates.
     ".claude/worktrees/",
     # Exists only on checkpoint-wheels/* branches, where the pre-commit hook admits it.

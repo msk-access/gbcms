@@ -388,7 +388,7 @@ IN_WORK = [
         f" --chdir={WORK}/runs --dependency=afterok:123:456",
         f"{WORK}/kit/a.sbatch {WORK}/kit/in.tsv {TMP}/out label 5",
     ),
-    sbatch(f"-J {PREFIX}t -p {SHORT} -t 179 -o {TMP}/t.out"),
+    sbatch(f"-J {PREFIX}t -p {SHORT} -t 179 -D {TMP} -o {TMP}/t.out"),
     # Copies up and down.
     f"{RSYNC} {LOCAL}/kit/ {HOST}:{WORK}/kit/",
     f"{RSYNC} {HOST}:{WORK}/runs/x/summary.tsv {LOCAL}/out/",
@@ -544,7 +544,7 @@ def test_a_non_boolean_setting_denies_every_ssh(value, tmp_path):
 
 # ask_patterns: with allow_in_remote_roots on, patient data in the work folders still asks.
 
-JOB = f"--job-name={PREFIX}a --partition={SHORT} --time=60"
+JOB = f"--job-name={PREFIX}a --partition={SHORT} --time=60 --chdir={WORK}/runs"
 
 PATIENT_ASK = [
     # A patient folder or file named by path, by a cd, or relative to one.
@@ -574,7 +574,7 @@ PATIENT_ASK = [
 
 PATIENT_ALLOW = [
     f"{SSH} 'tail -n 50 {WORK}/runs/_slurm/{PREFIX}a-123.out'",  # a job log
-    f"{RSYNC} {HOST}:{WORK}/runs/p1/summary.tsv {LOCAL}/out/",  # an aggregate copied back
+    f'rsync -t -e "ssh -a -x" {HOST}:{WORK}/runs/p1/summary.tsv {LOCAL}/out/',  # an aggregate back
     f"{RSYNC} {LOCAL}/kit/ {HOST}:{WORK}/kit/",
     f"{SSH} 'ls {WORK}/inputs'",  # the folder's names, not what the patient folders hold
     f"{SSH} 'du -sh {WORK}/runs'",
@@ -613,3 +613,104 @@ def test_bad_ask_patterns_deny_every_ssh(value, tmp_path):
     assert decision(f"{SSH} 'ls {WORK}'", env) == "deny"
     assert "ask_patterns" in reason or "ask pattern" in reason
     assert decision("ls -la", env) == "pass"
+
+
+# What a command reaches without naming it: a job's working folder, the files a copy lists,
+# what a recursive copy holds below the folders it names (the review of PR 446).
+
+NO_FOLDER = f"--job-name={PREFIX}a --partition={SHORT} --time=30"
+
+UNNAMED_ASK = [
+    # A job with no working folder runs, and writes slurm-%j.out, in the home folder.
+    sbatch(f"{NO_FOLDER} --output={WORK}/logs/a.out"),
+    sbatch(f"-J {PREFIX}t -p {SHORT} -t 179 -o {TMP}/t.out"),
+    f"{SSH} 'cd {TEST} && sbatch {NO_FOLDER} {WORK}/kit/a.sbatch'",
+    f"{SSH} 'cd {WORK}/runs; sbatch {NO_FOLDER} {WORK}/kit/a.sbatch'",  # runs if the cd failed
+    # A copy of the files a list names, down or up: the guard does not read the list.
+    f"{RSYNC} --files-from={LOCAL}/list {HOST}:{WORK}/runs/ {LOCAL}/out/",
+    f"{RSYNC} --files-from={LOCAL}/list {LOCAL}/kit/ {HOST}:{WORK}/kit/",
+]
+
+WORKING_FOLDER = [
+    sbatch(f"{NO_FOLDER} --chdir={WORK}/runs"),
+    sbatch(f"-J {PREFIX}t -p {SHORT} -t 179 -D {TMP} -o {TMP}/t.out"),
+    f"{SSH} 'cd {WORK}/runs && sbatch {NO_FOLDER} {WORK}/kit/a.sbatch'",
+]
+
+RECURSIVE_DOWN = [
+    f"{RSYNC} {HOST}:{WORK}/inputs/ {LOCAL}/out/",  # the patient folders below it come too
+    f"{RSYNC} {HOST}:{WORK}/runs/p1/summary.tsv {LOCAL}/out/",  # -a: a file or a folder, unseen
+    f"scp -r {HOST}:{WORK}/runs {LOCAL}/out/",
+    f'rsync --recursive -e "ssh -a -x" {HOST}:{WORK}/runs/ {LOCAL}/out/',
+]
+
+
+@pytest.mark.parametrize("command", UNNAMED_ASK)
+def test_what_a_command_reaches_unnamed_still_asks(command, env, on_env):
+    assert decision(command, env) == "ask"
+    assert decision(command, on_env) == "ask"
+
+
+@pytest.mark.parametrize("command", WORKING_FOLDER)
+def test_a_job_with_a_working_folder_in_the_work_folders_is_allowed(command, env, on_env):
+    assert decision(command, env) == "ask"
+    assert decision(command, on_env) == "allow"
+
+
+@pytest.mark.parametrize("command", RECURSIVE_DOWN)
+def test_ask_patterns_keep_a_recursive_copy_from_hpc_asking(command, on_env, phi_env):
+    """The guard cannot see what a folder on HPC holds, so with patterns set it asks."""
+    assert decision(command, on_env) == "allow"
+    assert decision(command, phi_env) == "ask"
+
+
+def test_ask_patterns_allow_a_copy_from_hpc_that_names_each_file(phi_env):
+    files = f"{HOST}:{WORK}/runs/p1/summary.tsv {HOST}:{WORK}/runs/p1/n.tsv"
+    assert decision(f'rsync -t -e "ssh -a -x" {files} {LOCAL}/out/', phi_env) == "allow"
+
+
+@pytest.fixture(scope="module")
+def upload(tmp_path_factory):
+    """Local folders to copy up, and settings with them as the local folder: with the patient
+    patterns, and without them."""
+    local = tmp_path_factory.mktemp("upload")
+    for path in ("clean/kit/a.sbatch", "tree/inputs/patient/a.txt", "bams/x.bam", "x.maf"):
+        (local / path).parent.mkdir(parents=True, exist_ok=True)
+        (local / path).write_text("")
+    (local / "linked").mkdir()
+    (local / "linked" / "kit").symlink_to(local / "clean" / "kit")
+    base = {**CONFIG, "local_roots": [str(local)], "allow_in_remote_roots": True}
+    on = settings_env(tmp_path_factory, "upload_on", base)
+    phi = settings_env(tmp_path_factory, "upload_phi", {**base, "ask_patterns": PATIENT})
+    return local, on, phi
+
+
+def test_a_copy_to_hpc_is_checked_by_every_name_it_writes(upload):
+    """A copy up asks when a name it writes on HPC matches a pattern, though the folder it
+    names does not; scp -r follows a folder link, so a source that holds one asks."""
+    local, on, phi = upload
+    asks = [
+        f"{RSYNC} {local}/tree/ {HOST}:{WORK}/",  # writes {WORK}/inputs/patient/a.txt
+        f"{RSYNC} {local}/tree {HOST}:{WORK}/",  # writes {WORK}/tree/inputs/patient/a.txt
+        f"{RSYNC} {local}/bams/ {HOST}:{WORK}/kit/",
+        f"scp {local}/x.maf {HOST}:{WORK}/runs/",
+        f"scp -r {local}/linked {HOST}:{WORK}/kit/",
+    ]
+    allows = [
+        f"{RSYNC} {local}/clean/ {HOST}:{WORK}/",
+        f"{RSYNC} {local}/linked/ {HOST}:{WORK}/kit/",  # rsync -a copies the link, not its folder
+        f"scp -r {local}/clean {HOST}:{WORK}/",
+    ]
+    assert [decision(c, on) for c in asks + allows] == ["allow"] * 8
+    assert [decision(c, phi) for c in asks] == ["ask"] * 5
+    assert [decision(c, phi) for c in allows] == ["allow"] * 3
+
+
+def test_a_copy_to_hpc_with_too_many_names_asks(guard, tmp_path, monkeypatch):
+    for k in range(5):
+        (tmp_path / f"f{k}").write_text("")
+    monkeypatch.setattr(guard, "UPLOAD_NAME_CAP", 3)
+    assert guard.upload_names([str(tmp_path)], WORK, True, "rsync") is None
+    monkeypatch.setattr(guard, "UPLOAD_NAME_CAP", 100)
+    names = guard.upload_names([f"{tmp_path}/"], WORK, True, "rsync")
+    assert f"{WORK}/f0" in names and f"{WORK}/{tmp_path.name}/f0" in names
