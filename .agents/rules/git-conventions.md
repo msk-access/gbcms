@@ -105,6 +105,11 @@ bot's comments: read them with `gh` first, and if none is posted yet, say so wit
   a worktree. After any workflow check `git status`, `git stash list` and `git branch
   --show-current` (empty means detached), and verify a push by comparing `git ls-remote` with
   `HEAD`, not by push's exit code.
+- **An `isolation: 'worktree'` agent starts from `origin/main`, not develop.** A #334 build
+  (2026-11-25) started from the 6.7.0 release merge, 42 commits behind develop, and its report said
+  "from develop 6ffde565"; a review found it from `_rs.build_commit()`. The brief's first step is
+  `git checkout -b <branch> <develop sha>` in the new worktree, before any edit, and the report
+  gives `git log -1 --format=%h`; every review checks `gbcms._rs.build_commit()` against that sha.
 - **Concurrent sessions write `.agents/memory/`** (the Claude recall directory is a symlink to
   it), so `git add -A` sweeps another session's in-flight memory edits into your commit. Stage
   explicit paths only; leave `.agents/memory/` changes you did not make unstaged.

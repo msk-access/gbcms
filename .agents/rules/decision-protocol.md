@@ -43,9 +43,21 @@ A rule ported from one judge to another is re-derived on the target's own inputs
 guard's germline-run masking, ported as-is into the junction guard, masked another breakpoint's run
 as background (47 WES reads turned REF).
 
+A row that changes outside the class: first check `docs/harness/measurement-harness.md`, "Known effects"
+(the multi-allelic REF guard moves a neighbour's REF; BH q-values move with the row set). Trace only what
+those leave unexplained. When a trace explains a new effect, add it there and to the check that sorts the
+rows, in the same turn (operator, 2026-11-26, after a trace explained 92 SNV rows as the REF guard: "i think
+we should record this somehow so we dont need to do all these work again").
+
 ## 3. Fix the class, not the row
 
 The full text is in `read-judgment.md`. Additions:
+- One class gets one decision, across tickets and data types (operator, 2026-11-24: "But this brings back the
+  question that we are solving DNA and RNA is in limbo"). Before you frame a decision, search every open plan
+  (`docs/harness/plans/`, `CONTINUITY.md`) for an open decision of the same class. Frame them as one decision,
+  and measure it on every data type those plans reach. The DNA check's "either" reads and the RNA judge's cause 1
+  are one class (the judge credits a read that cannot tell the ALT from another length of the run); framed as a
+  new DNA question, the plan measured DNA only.
 - Treat a revert, or a narrowing made to pass a bar, as a signal that the mechanism was wrong. Ask
   that before you narrow further. (The judge's second fix round: 3 of 6 fixes reverted, a tie rule
   narrowed to substitution rows and reverted anyway, a 20 bp cut placed where the measurements
@@ -92,7 +104,9 @@ The evidence column of every decision table lists what each surveyed tool does.
 ## 5. The standard is a floor, not a ceiling
 
 Where the tools disagree, document nothing, or none handles the case, or measurement shows a rule
-better than the field's, propose the better rule with the measurement (operator, 2026-10-04). Show
+better than the field's, propose the better rule with the measurement (operator, 2026-10-04; again
+2026-11-17: "we dont just hold to community standards we try to go above it as we can test with the
+data at hand"). Name the data that tests it. Show
 the field's practice beside the rule the measurements support, say plainly that it departs from
 practice and why, and still measure the cost (real carriers lost, truth rows moved) and survey
 first. (Example: no surveyed tool confirms a junction-adjacent base against the next exon; judging
@@ -138,6 +152,10 @@ one truth source (operator, 2026-10-12):
   normals (hom-REF) every time. Where no truth exists, build it (spike-ins). DNA and RNA may need
   different rules where their reads differ (splices, clips holding the next exon); say so in the
   rule.
+- A part that several data types will share is designed and measured for every data type it is
+  planned to serve, not only those it serves today (operator, 2026-11-17: "Judge is eventually shared
+  by both so if the optimization plan dont include RNA its twice the effort"). A design for one type
+  alone is built twice.
 
 **Parameters are user-settable** (operator, 2026-10-26). `--min-baseq`, `--min-mapq`, the gap
 penalties and every margin exposed as a flag are user settings; their defaults are only defaults.
@@ -164,6 +182,10 @@ presentation bring:
   mirror a real library (both pair orientations, errors, low depth and depth), or an option keyed on
   that feature is not measured at all. (On #294 only the current guard option was measured; measuring
   the others reversed one recommendation and exposed a simulator that used one pair orientation.)
+- a coverage check before the page goes out: each option against each row set the recommended
+  option ran on. A built option missing from one of those sets runs first. A recommendation that
+  reads "after one arm more" means the page is not ready (operator, 2026-11-19, #333 D2: "we should
+  measure if we already built").
 - the decided-rule contract tests the change must keep, beside the arms. A pre-registered bar names
   both: an arm-only bar would have removed the judge's found alleles away from the site, because no
   arm moved, while six contract tests of a decided rule failed without them.

@@ -29,7 +29,21 @@ Every list here is an allow-list: what is not on it is denied.
 
 Decisions: allow connection and job status (`-O check`, squeue, sacct, sinfo, hostname,
 whoami, pwd); ask the operator for every read, copy, mkdir, sbatch and scancel; deny the
-rest. The hook reads the command line only: it is a guard, not a sandbox (see the rules).
+rest. With `"allow_in_remote_roots": true` in the settings (default false), a read, copy,
+mkdir or sbatch is allowed instead when every remote path it names lies in the work folders
+(remote_roots, not read_roots, and no snapshot folder), every part of it is one of those, and
+it has no command substitution, no list of files read from a file, no relative sbatch path
+option and no local sed or sort; a copy also goes between HPC and this machine (one that stays
+inside HPC asks); an sbatch also sets a working folder in the work folders (--chdir, or a cd
+into one before it), because a job runs and writes its default log in the folder sbatch is run
+from, the home folder unless a cd comes first; scancel always asks. `ask_patterns` (regular
+expressions, default none) keep asking for paths in the work folders that hold patient data:
+a path that matches one, and, once any is set, a glob, a read that goes below the folders it
+names (find, du without -s, ls -R, grep -r), and a recursive copy from HPC (rsync -r or -a,
+scp -r); a copy to HPC is checked by every name it writes there, read from this machine's
+files. They change nothing while allow_in_remote_roots is off.
+Paths are compared as normalized text: a symlink in the work folders is not followed. The hook
+reads the command line only: it is a guard, not a sandbox (see the rules).
 FAIL-CLOSED for a command that names the HPC or runs ssh, scp, rsync or sftp (a parse error
 or a fault in the hook denies it); fail-open otherwise. Wire on PreToolUse / Bash.
 """
@@ -53,6 +67,8 @@ KEYS = {
     "job_prefix",
     "max_array_tasks",
     "deny_patterns",
+    "allow_in_remote_roots",
+    "ask_patterns",
 }
 
 
@@ -66,7 +82,8 @@ def _problem(cfg):
     for key in ("host", "job_prefix", "short_partition", "long_partition"):
         if not isinstance(cfg.get(key), str) or not cfg[key].strip():
             return f"'{key}' must be a non-empty string"
-    for key in ("remote_roots", "local_roots", "read_roots", "hpc_names", "deny_patterns"):
+    lists = ("remote_roots", "local_roots", "read_roots", "hpc_names", "deny_patterns")
+    for key in lists + ("ask_patterns",):
         value = cfg.get(key, [])
         if not isinstance(value, list) or not all(isinstance(v, str) and v for v in value):
             return f"'{key}' must be a list of non-empty strings"
@@ -82,11 +99,14 @@ def _problem(cfg):
         value = cfg.get(key, 1)
         if type(value) is not int or value < 1:
             return f"'{key}' must be a whole number of 1 or more"
-    for pattern in cfg.get("deny_patterns", []):
-        try:
-            re.compile(pattern)
-        except re.error:
-            return f"deny pattern '{pattern}' is not a valid regular expression"
+    if type(cfg.get("allow_in_remote_roots", False)) is not bool:
+        return "'allow_in_remote_roots' must be true or false"
+    for key, kind in (("deny_patterns", "deny"), ("ask_patterns", "ask")):
+        for pattern in cfg.get(key, []):
+            try:
+                re.compile(pattern)
+            except re.error:
+                return f"{kind} pattern '{pattern}' is not a valid regular expression"
     return None
 
 
@@ -127,6 +147,14 @@ SHORT_LIMIT_MIN = CFG.get("short_limit_minutes", 180)  # longer jobs go to the l
 JOB_PREFIX = CFG.get("job_prefix", "")
 MAX_ARRAY_TASKS = CFG.get("max_array_tasks", 20)
 DENY_PATTERNS = [re.compile(p, re.I) for p in CFG.get("deny_patterns", [])]
+# Opt-in: allow, without asking, what stays in the work folders (see the module docstring).
+ALLOW_IN_REMOTE_ROOTS = CFG.get("allow_in_remote_roots", False) is True
+# Every remote path the checks have placed, in order; a check reads the ones it added.
+NAMED = []
+SNAPSHOT_DIRS = {".snapshots", ".snapshot"}  # a read there is a restore: it always asks
+# Paths in the work folders that still ask (patient data): searched on each normalized path.
+ASK_PATTERNS = [re.compile(p, re.I) for p in CFG.get("ask_patterns", [])]
+GLOB = re.compile(r"[*?[]")  # with ask patterns set, a glob may name a path they would match
 
 # Remote commands, called by name. Status needs no approval; the others ask the operator.
 STATUS = {"squeue", "sacct", "sinfo", "hostname", "whoami", "pwd", "true"}
@@ -224,6 +252,16 @@ FIND_VALUE_TESTS = {
 FIND_PATH_TESTS = {"-newer", "-anewer", "-cnewer", "-samefile", "-files0-from"}
 FIND_ACTIONS = {"-delete", "-exec", "-execdir", "-ok", "-okdir", "-fprint", "-fprint0"}
 FIND_ACTIONS |= {"-fprintf", "-fls"}
+# Options that make a read open the files listed inside another file (short letters, long
+# names): the guard cannot see those names, so such a read always asks.
+FILE_LISTS = {
+    "sha256sum": ("c", ("check",)),
+    "md5sum": ("c", ("check",)),
+    "file": ("f", ("files-from",)),
+    "sort": ("", ("files0-from",)),
+    "wc": ("", ("files0-from",)),
+    "du": ("", ("files0-from",)),
+}
 
 
 def _letter_map(pairs):
@@ -248,6 +286,8 @@ SBATCH_LONG_FLAGS = set(SBATCH_FLAGS.values()) | {
     "use-min-nodes",
 }
 SBATCH_READ_OPTIONS = {"export", "input"}  # their paths are inputs; every other path is written
+# Options whose value is a path; a relative one resolves in the job's folder, unseen here.
+SBATCH_PATH_OPTIONS = {"output", "error", "input", "chdir", "nodefile"}
 SCANCEL_VALUES = _letter_map(
     "A=account M=clusters n=name p=partition q=qos R=reservation s=signal t=state u=user"
     " w=nodelist"
@@ -368,6 +408,32 @@ def deny(reason):
 
 def inside(path, roots):
     return any(path == r or path.startswith(r + "/") for r in roots)
+
+
+def in_work_folders(paths):
+    """Whether every remote path lies in the work folders (REMOTE_ROOTS), none in a snapshot,
+    none matching an ask pattern, and (with ask patterns set) none a glob."""
+    return all(
+        inside(p, REMOTE_ROOTS)
+        and not SNAPSHOT_DIRS & set(p.split("/"))
+        and not any(pat.search(p) for pat in ASK_PATTERNS)
+        and not (ASK_PATTERNS and GLOB.search(p))
+        for p in paths
+    )
+
+
+def descends(verb, words):
+    """Whether a read goes below the folders it names, where a patient folder may lie."""
+    if verb == "find":
+        return True
+    if verb == "du":
+        return not has_option(verb, words, "s", ("summarize",))
+    if verb == "ls":
+        return has_option(verb, words, "R", ("recursive",))
+    if verb == "grep":
+        longs = ("recursive", "dereference-recursive", "directories")
+        return has_option(verb, words, "rR", longs) or any("recurse" in w for w in words)
+    return False
 
 
 def tokens(cmd):
@@ -517,6 +583,7 @@ def remote_path(part, cwd, roots):
     if not inside(path, roots):
         where = "working" if roots == REMOTE_ROOTS else "readable"
         deny(f"remote path outside the {where} folders: {path}")
+    NAMED.append(path)
     return path
 
 
@@ -604,6 +671,8 @@ def has_option(verb, words, letters, longs):
 
 
 def check_read(verb, words, cwd):
+    """Check a remote read; return False when it opens files listed inside another file, or
+    (with ask patterns set) goes below the folders it names."""
     if verb == "find" and FIND_ACTIONS & set(words):
         deny(f"find may not use {sorted(FIND_ACTIONS & set(words))}: they delete, write or run")
     if verb == "sort" and has_option(
@@ -621,6 +690,9 @@ def check_read(verb, words, cwd):
     files = [n for n in names if n != "-"]
     if cwd is None and not files and (verb in ("ls", "du", "find") or recursive):
         deny(f"{verb} with no path reads the home folder; give a path in the allowed folders")
+    letters, longs = FILE_LISTS.get(verb, ("", ()))
+    lists = has_option(verb, words, letters, longs) or (verb == "find" and "-files0-from" in words)
+    return not lists and not (ASK_PATTERNS and descends(verb, words))
 
 
 def check_cd(words, cwd):
@@ -665,7 +737,10 @@ def parse_options(words, values, flags, long_flags, stop):
     return opts, args
 
 
-def check_sbatch(words):
+def check_sbatch(words, cwd=None):
+    """Check a submission; return False when a path option's value is relative, a word of its
+    options or arguments matches an ask pattern (a.bam names a file without a slash), or it
+    sets no working folder in the work folders (--chdir, or `cwd`, a cd before it)."""
     opts, args = parse_options(
         words, SBATCH_VALUES, SBATCH_FLAGS, SBATCH_LONG_FLAGS | {"wrap"}, stop=True
     )
@@ -698,6 +773,15 @@ def check_sbatch(words):
         for part in re.split(r"[,:=]", word):
             if path_like(part):
                 remote_path(part, None, READ_ROOTS)
+    # sbatch takes a unique prefix of a long option (--out=): match it the same way.
+    paths = [v for n, v in opts.items() if any(p.startswith(n) for p in SBATCH_PATH_OPTIONS)]
+    parts = [p for w in list(opts.values()) + args for p in re.split(r"[,:=]", w)]
+    named = any(pat.search(p) for pat in ASK_PATTERNS for p in parts)
+    # The job runs, and writes slurm-%j.out by default, in its working folder: --chdir, else the
+    # folder sbatch is run from (the home folder, unless a cd into the work folders comes first).
+    chdir = any(len(n) >= 2 and "chdir".startswith(n) for n in opts)
+    in_folder = chdir or (cwd is not None and inside(cwd, REMOTE_ROOTS))
+    return in_folder and all(v.startswith("/") for v in paths) and not named
 
 
 def check_scancel(words):
@@ -709,7 +793,11 @@ def check_scancel(words):
 
 
 def check_remote(command):
-    """Return 'allow' or 'ask' for a remote command; raise for a denial."""
+    """Return 'allow', 'work' or 'ask' for a remote command; raise for a denial.
+
+    'work' is an 'ask' whose every part is a read, mkdir or sbatch, every path it names in the
+    work folders: allow_in_remote_roots decides between them.
+    """
     if not command.strip():
         deny("no interactive shell; give a command")
     if any(pat.search(command) for pat in DENY_PATTERNS):
@@ -723,6 +811,7 @@ def check_remote(command):
             " what the remote shell runs"
         )
     level, cwd, before = "allow", None, None
+    start, placed = len(NAMED), True
     for words, after in segments(stripped, joins=True):
         if after is not None and after not in REMOTE_JOINS:
             deny(f"join remote commands with &&, ; or | only, not {after!r}")
@@ -739,19 +828,24 @@ def check_remote(command):
             check_words(verb, args, cwd, READ_ROOTS)
         elif verb in READ:
             level = "ask"
-            check_read(verb, args, cwd)
+            known = check_read(verb, args, cwd)
+            placed = placed and known
         elif verb == "mkdir":
             level = "ask"
             check_words(verb, args, cwd, REMOTE_ROOTS)
         elif verb == "sbatch":
             level = "ask"
-            check_sbatch(args)
+            known = check_sbatch(args, cwd)
+            placed = placed and known
         elif verb == "scancel":
             level = "ask"
+            placed = False  # cancelling a job always asks
             check_scancel(args)
         else:
             deny(f"remote command '{verb}' is not on the HPC list")
         before = after
+    if level == "ask" and placed and in_work_folders(NAMED[start:]):
+        return "work"
     return level
 
 
@@ -840,13 +934,16 @@ def check_rsh(rsh):
 
 
 def check_copy(words):
-    """Check an rsync or scp call; None when it names no remote host (a local copy)."""
+    """Check an rsync or scp call: 'work' when its remote side is in the work folders, else
+    'ask'; None when it names no remote host (a local copy)."""
+    start = len(NAMED)
     tool = os.path.basename(words[0])
     if any(pat.search(" ".join(words)) for pat in DENY_PATTERNS):
         deny("this copy names a protected path (cBioPortal)")
     problems, settings, lists, logs, positionals = [], [], [], [], []
     flags, values = (RSYNC_FLAGS, "e") if tool == "rsync" else (SCP_FLAGS, "lo")
-    rsh, i = None, 1
+    recurse = "ra" if tool == "rsync" else "r"  # rsync -a implies -r
+    rsh, i, recursive, file_list = None, 1, False, False
     while i < len(words):
         w = words[i]
         if tool == "rsync" and w.startswith("--") and len(w) > 2:
@@ -859,13 +956,17 @@ def check_copy(words):
                     rsh = value
                 elif name in RSYNC_LIST_FILES:
                     lists.append(value)
+                    file_list = file_list or name == "files-from"
                 elif name == "log-file":
                     logs.append(value)
             elif eq or name not in RSYNC_LONG_FLAGS:
                 problems.append(f"rsync option --{name} is not on the HPC list")
+            elif name in ("archive", "recursive"):
+                recursive = True
         elif w.startswith("-") and len(w) > 1:
             for j, c in enumerate(w[1:], 1):
                 if c in flags:
+                    recursive = recursive or c in recurse
                     continue
                 if c not in values:
                     problems.append(f"{tool} option -{c} is not on the HPC list")
@@ -909,12 +1010,61 @@ def check_copy(words):
         check_local(value)
     if tool == "rsync":
         check_rsh(rsh)
-    return "ask"
+    # Only a copy between HPC and this machine: one that stays inside HPC always asks.
+    up = bool(REMOTE_SPEC.match(positionals[-1]))
+    crosses = all(bool(REMOTE_SPEC.match(w)) != up for w in positionals[:-1])
+    if file_list:
+        return "ask"  # it copies the files a list names, which the guard does not read
+    written = []
+    if ASK_PATTERNS and crosses:
+        if not up and recursive:
+            return "ask"  # it copies what the folders it names hold, where patient data may lie
+        if up:
+            dest = posixpath.normpath(REMOTE_SPEC.match(positionals[-1]).group(2))
+            written = upload_names(positionals[:-1], dest, recursive, tool)
+            if written is None:
+                return "ask"
+    return "work" if crosses and in_work_folders(NAMED[start:] + written) else "ask"
+
+
+UPLOAD_NAME_CAP = 20000  # past this many names, a copy to HPC asks rather than list them all
+
+
+def upload_names(sources, dest, recursive, tool):
+    """Every remote name a copy to HPC can write under `dest`, from this machine's files: each
+    source as `dest/<its name>`, and with recursion each name below it both as `dest/<rel>`
+    and as `dest/<its name>/<rel>` (a trailing slash, or a destination that does not yet
+    exist, decides which). None when they cannot all be listed: too many, or a folder link,
+    which scp -r follows."""
+    names = []
+    for src in sources:
+        local = os.path.normpath(os.path.expanduser(src))
+        base = posixpath.join(dest, os.path.basename(local))
+        names.append(base)
+        if not (recursive and os.path.isdir(local)):
+            continue
+        for root, dirs, files in os.walk(local):
+            rel = os.path.relpath(root, local)
+            for name in dirs + files:
+                if tool == "scp" and name in dirs and os.path.islink(os.path.join(root, name)):
+                    return None
+                part = name if rel == "." else posixpath.join(*rel.split(os.sep), name)
+                names += [posixpath.join(dest, part), posixpath.join(base, part)]
+            if len(names) > UPLOAD_NAME_CAP:
+                return None
+    return names
 
 
 def names_hpc(text):
     low = text.lower()
     return any(n in low for n in HPC_NAMES)
+
+
+RANK = {None: 0, "allow": 1, "work": 2, "ask": 3}
+
+
+def stricter(a, b):
+    return a if RANK[a] >= RANK[b] else b
 
 
 def evaluate(cmd, depth=0):
@@ -926,7 +1076,7 @@ def evaluate(cmd, depth=0):
             deny("could not parse this command, and it names the HPC or runs ssh, scp or rsync")
         return None
     hpc = hpc or any(names_hpc(w) for words in segs for w in words)  # names split by quotes
-    level, saw = None, False
+    level, saw, runs_input = None, False, False
     for words in segs:
         k = 0
         while k < len(words) and ASSIGNMENT.match(words[k]):
@@ -944,6 +1094,7 @@ def evaluate(cmd, depth=0):
                 " tool such as grep; not through a shell, interpreter, wrapper or other transport"
             )
         if tool not in TRANSPORT:
+            runs_input = runs_input or tool in EXECUTORS  # sed and sort can run a program
             continue
         if k:
             deny("no variable assignments before ssh, scp or rsync")
@@ -951,17 +1102,34 @@ def evaluate(cmd, depth=0):
         if lv is None:
             continue
         saw = True
-        level = "ask" if "ask" in (lv, level) else "allow"
-    for body in substitutions(cmd) if depth < 4 else ():
+        level = stricter(level, lv)
+    bodies = substitutions(cmd)
+    for body in bodies if depth < 4 else ():
         lv = evaluate(body, depth + 1)  # a substitution runs as a command of its own
         if lv is not None:
             saw = True
-            level = "ask" if "ask" in (lv, level) else "allow"
+            level = stricter(level, lv)
     if saw and hpc:
         rest = strip_benign(cmd)
         if ">" in rest or "<" in rest:
             deny("no redirect in an HPC command; copy with rsync or scp so each copy is approved")
+    if level == "work" and (bodies or runs_input):
+        level = "ask"  # what a substitution prints, or what sed or sort runs, is not placed
     return level
+
+
+def answer(kind, reason):
+    print(
+        json.dumps(
+            {
+                "hookSpecificOutput": {
+                    "hookEventName": "PreToolUse",
+                    "permissionDecision": kind,
+                    "permissionDecisionReason": "HPC rules: " + reason,
+                }
+            }
+        )
+    )
 
 
 def main():
@@ -982,18 +1150,13 @@ def main():
         level = None
         if names_hpc(cmd) or TRANSPORT_CALL.search(cmd):
             level, reason = "deny", f"the guard could not check this command ({type(e).__name__})"
+    if level == "work":  # an "ask" whose every path lies in the work folders
+        if ALLOW_IN_REMOTE_ROOTS:
+            answer("allow", "inside the work folders (allow_in_remote_roots)")
+            sys.exit(0)
+        level = "ask"
     if level in ("deny", "ask"):
-        print(
-            json.dumps(
-                {
-                    "hookSpecificOutput": {
-                        "hookEventName": "PreToolUse",
-                        "permissionDecision": level,
-                        "permissionDecisionReason": "HPC rules: " + reason,
-                    }
-                }
-            )
-        )
+        answer(level, reason)
         sys.exit(2 if level == "deny" else 0)
     sys.exit(0)
 

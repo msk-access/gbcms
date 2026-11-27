@@ -59,6 +59,14 @@ reference data where available. Cross-platform agreement is secondary. When the 
 not known, measure it on that matrix and survey community practice before deciding
 (`.agents/rules/decision-protocol.md`). The caveats are in `docs/reference/bam-evidence-caveats.md`.
 
+**Scores take truth from the reads, not from the sample** (operator, 2026-11-24: "its just an
+assumption its a FLASE ALT, i agree for 2, but the point is to measure what we see in BAM we are not
+modelling error rate CH, etc"). An ALT read in a matched normal at a somatic site is not false ALT by
+assumption: clonal haematopoiesis, tumour in the normal and sequencing errors all put real ALT bases in
+reads, and gbcms does not model them. A read is false ALT only when its own bases do not carry the ALT,
+as an independent oracle decides. A germline call's het or hom in the normal is accepted as its stratum
+(point 2 of that exchange).
+
 ## The identity band (CIGAR fallback only)
 
 The 90% insert-identity band, once the primary tolerance for an ALT string that was itself imperfect,

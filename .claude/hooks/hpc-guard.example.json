@@ -9,5 +9,7 @@
   "short_limit_minutes": 180,
   "job_prefix": "myproj-",
   "max_array_tasks": 20,
-  "deny_patterns": ["cbio"]
+  "deny_patterns": ["cbio"],
+  "allow_in_remote_roots": false,
+  "ask_patterns": []
 }

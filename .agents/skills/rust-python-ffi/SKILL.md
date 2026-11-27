@@ -38,6 +38,17 @@ maturin develop   # fast, unoptimized: for iterating; use --release for tests an
   the PEP 735 `dev` group: `test`, `docs` and the lint tools, unpinned, so CI's versions), then
   the build line above from the worktree root, then
   `$SP/venv/bin/python -c "import gbcms; print(gbcms.__file__)"` must print the worktree path.
+- **One Rust target shared by several worktrees can give a build another worktree's code.** Cargo
+  judges freshness by file times. When another worktree built into the same `CARGO_TARGET_DIR` after
+  your last edit, cargo can call your build fresh: `maturin develop` then installs the other
+  worktree's library, and `cargo test` runs its test binary (it happened, 2026-11-25: 578 tests ran
+  instead of 576, and a build's new tests had no effect). With a shared target, run
+  `find rust/src -name '*.rs' -exec touch {} +` before each build and each `cargo test`, and check
+  that each worktree's `src/gbcms/_rs.abi3.so` has a sha256 of its own. `build_commit()` cannot show
+  it: it names the commit, not the uncommitted change. Touching does not stop two builds that run at
+  the same time: cargo and maturin's copy can interleave, and a build touched first still installed
+  another tree's library (2026-11-25). Run such builds one at a time, or give each worktree its own
+  target when the disk allows (about 8 GB each).
 - **Scratchpad venvs rot after a few days** (macOS purges `/private/tmp`; `maturin develop` then
   fails with "externally-managed-environment" or "Failed to read metadata"). Rebuild, don't
   repair: a fresh `uv venv`, the same install and build.

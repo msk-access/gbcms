@@ -116,12 +116,22 @@ found alleles) earns its place is being measured, pre-registered on #304.
 - **6.7.0** ships the judge opt-in (#304).
 - **6.8.0** only makes it the default, "meticulously and systematically": parent #331, with sub-issues
   - #332 tests and every output path,
-  - #333 RNA,
+  - #333 RNA (moved to 6.9.0, see the amendment below),
   - #334 acceptance and the `--min-baseq` sweep,
   - #335 speed,
   - #336 the HPC gate,
   - #337 the switch-over.
 - **6.9.0** takes the SV/fusion work (#322–#327) and retiring the rules judge (#328).
+- **Amended (operator, 2026-11-12, D3-B in `docs/harness/plans/420-cycle-order.md`):** DNA flips to the
+  judge in 6.8.0; RNA stays on the rules path until #333, now in 6.9.0 (the judge still refuses RNA,
+  `engine.rs:444`). A change to the judge's caches in 6.8.0 is DNA only; #333 owns RNA's reuse of one
+  call across the main counts, per-transcript counts and ASJD (`335-source-fixes.md` §4.2).
+- **Operator, 2026-11-17:** "Judge is eventually shared by both so if the optimization plan dont include
+  RNA its twice the effort". #335's speed work therefore includes RNA under the judge: a speed design
+  for the shared scorer is built and measured for DNA and RNA together. Where RNA's default sits in
+  6.8.0 is a separate fork (`335-phase2.md`, "RNA in the speed work"). **Decided the same day ("R1 (a),
+  R2 (c)"):** #333 back in 6.8.0 as an opt-in, RNA's default decided at the freeze by DNA's bars; the
+  scorer's speed items go on, built and tested on graphs with splice edges.
 - The integration round (`src_c53d`) is pushed as branch `feature/c46-haplotype-judge`, with no PR yet. Its
   re-score on the corrected checks is recorded on #304.
 
@@ -131,6 +141,20 @@ found alleles) earns its place is being measured, pre-registered on #304.
 - **xs stays.** Scaled's 162 extra REF reads were reads the engine never counts.
 - **HG002 bars** (truth v2d): score only inside the benchmark regions; score long deletions on the reads the engine counts; compare homozygous rows with REF.
 - **GATK's read evaluation** (the PairHMM, shared with its `--alleles` mode) is the fair comparator for read rules. Its discovery step, and its decision whether a variant is present, are not.
+
+**The switch's purpose (operator, 2026-11-23):** "We know that we do well for those in rules and judge,
+the point to switch to judge was the hope to be better at mnvs and complex events". Both paths already do
+well at clean rows (HG002 exome, hom MNV and complex rows: equal). So a check on the switch leads with the
+MNV and complex rows where the two paths can differ (het, reads that carry part of the allele, alleles the
+aligner writes another way, events in repeats or beside other variants), for missed and false ALT. A score
+that cannot separate the paths there does not test the switch. Open record: at `--min-baseq` 20 the judge's
+classes over the wrong-call bar on the patient arms were delins and MNVs (sweep, 2026-10-29); the MNV and
+delins family (#410, #364, #414, #397) is #420 stage 2.4.
+The germline check (HG002 exome, v5.0q phased truth, 2026-11-23; `docs/harness/plans/334-germline-check.md`):
+the judge lowers missed ALT and false REF in every MNV and DELINS het, hom and multi stratum. It raises false
+ALT on complex alleles one deleted base from the truth (2+ ALT on 90 of 418 clean rows against 69). So by the
+operator's policy the judge does not yet pass for complex events; the near-miss credit (a read nearer the ALT
+than REF, whose bases do not carry it) is the class to fix.
 
 **How to apply:** package 2 (#304 widened) is this judge. #246's prototype (c45c,
 worktree c38, uncommitted; patch + README in harness plan670/parked_246) was parked for

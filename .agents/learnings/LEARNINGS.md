@@ -33,6 +33,305 @@ regenerating a section.
 
 ---
 
+## [LRN-20261126-003] rule-trigger | the #334 tools, patches and venvs were kept in the session scratchpad
+- **Status:** closed.
+- **Cause:** rule-trigger. `docs/harness/measurement-harness.md`, "Rules for running", puts tools, gate scripts and
+  venvs under `~/test/gbcms/harness`, never in the scratchpad, which a restart empties (it did on 2026-11-05). The rule
+  did not fire: the session default for new files is the scratchpad, and the memory index's line for that page names
+  long runs, the head node and cleanup, not where tools live. For #334 the trace scripts, the RNA no-run check, the old
+  SNV and MNV arm patches, the earlier A1 snapshots and the option venvs were all in the scratchpad (found 2026-11-26
+  while recording the A1 decision).
+- **Promotion target:** `.agents/memory/MEMORY.md`, the standing-rule line for `docs/harness/measurement-harness.md`:
+  add "tools, patches and venvs under ~/test/gbcms/harness, never the scratchpad". Done. The tools and patches are now in
+  `d334/bin/` and `d334/patches/`; the two new arm builds put their venvs and logs under `d334/`.
+
+## [LRN-20261126-002] rule-body | an explained change outside the class had no home, so it would be traced again
+- **Status:** closed.
+- **Cause:** rule-body. The decision protocol and the harness page send a change outside the class to the operator and
+  to a trace, but neither had a place for what a trace explains. The 2026-11-26 trace (an HPC job and an afternoon)
+  explained 92 changed SNV rows on HG002 RNA as the multi-allelic REF guard. The result lived only in plan 334 §7 and a
+  scratchpad log, and the no-run check still called such rows outside the class, so the next build (the SNV and MNV
+  arms) or the next plan would stop and trace them again. The operator: "i think we should record this somehow so we
+  dont need to do all these work again".
+- **Promotion target:** `docs/harness/measurement-harness.md`, a new section "Known effects" (done);
+  `.agents/rules/decision-protocol.md` §2, a paragraph: check "Known effects" before a trace, and add each newly
+  explained effect there and to its check in the same turn (done); the check itself, `d334/bin/norun334.py`, sorts
+  each changed no-run row into qval-only, ref-guard or unexplained (done; checked against the traced rows).
+
+## [LRN-20261126-001] rule-trigger | a `find` from the harness root went into patient folders
+- **Status:** open. The promotion needs the operator: it is a change to a guard hook.
+- **Cause:** rule-trigger. `.agents/rules/security.md` says never to list a patient folder with `ls`, `find` or `tree`. Looking for
+  the public HG002 RNA row list (2026-11-26), I ran `find ~/test/gbcms/harness -maxdepth 6 -name rows.tsv` and excluded only
+  `cbio/` and `hpc/out/`. It printed the paths of `scratch_kept/c49/truth/{gatex,across,wes}/rows.tsv`, and the header line and
+  row count of two patient-derived truth tables (`scratch_kept/xdata/truth_c50/gatex`, `scratch_kept/oraclev3/.../gatex`). It
+  showed no ID, position or value: folder labels, column names and a count (2,881). The rule was right; nothing fired, because the
+  guard that refuses an `ls` of the lanes does not see a `find` rooted above them.
+- **Promotion target:** the guard hook that refused the lanes' `ls` on 2026-11-05: also refuse an `ls -R`, `find` or `tree` whose
+  root is `~/test/gbcms/harness` or one of its parents, unless it prunes `hpc/out`, `scratch_kept`, `cbio`, `across`, `wes`, `germ`
+  and `xdata`. Meanwhile, I search only named public folders (`hpc/pub`, `hpc/stage/public`, `hpc/kit`).
+
+## [LRN-20261125-002] rule-body | four #334 option builds shared one Rust target, and cargo reused another worktree's build
+- **Status:** closed. The skill is changed; the running builds were told to touch their sources and report the
+  `.so` hash.
+- **Cause:** rule-body. My shared brief for the four option builds (2026-11-25) told every worktree to build into
+  one `CARGO_TARGET_DIR`, to save disk. The `rust-python-ffi` skill covers a worktree's venv but not a shared
+  target. Cargo judges freshness by file times, so a build whose sources were older than another worktree's last
+  build was called fresh. The A1 judge build ran another build's test binary (578 tests, not 576), and the SNV build
+  saw its new tests have no effect, until each touched its sources and rebuilt. `build_commit()` showed the same
+  commit for all of them.
+- **Promotion target:** `.agents/skills/rust-python-ffi/SKILL.md` "Build & environment": a new bullet. With a
+  shared target, touch the sources before each build and each `cargo test`, and check that each worktree's `.so`
+  has a sha256 of its own. Done. Amended the same day: the MNV arm's build, touched first, still installed
+  another tree's library while other builds ran, so the bullet now also says to run such builds one at a time
+  or give each worktree its own target.
+
+## [LRN-20261125-001] environment | the #334 run-window build started from origin/main, 42 commits behind develop
+- **Status:** closed. The rule is changed; the build is moved onto develop 6ffde565.
+- **Cause:** environment. An agent started with `isolation: 'worktree'` gets a worktree at `origin/main` (0f5c1f0b,
+  the 6.7.0 release merge), not at the session's develop. My brief said "from develop 6ffde565" and did not tell the
+  builder to check out that commit; the builder's report repeated it. The Opus review of the second build found it
+  from `_rs.build_commit()`. Both builds and the first review ran on the old base; the judge comparisons were against
+  develop's frozen build, so 6 differences came from the 42 commits, not the change.
+- **Promotion target:** `.agents/rules/git-conventions.md` "Shared checkout hazards": a new bullet. The brief's
+  first step checks out the develop sha in the new worktree; the report gives `git log -1`; every review checks
+  `gbcms._rs.build_commit()`. Done.
+
+## [LRN-20261124-002] rule-trigger | the #334 "either" question was framed as new, apart from #333's cause 1
+- **Status:** closed. The rule and the memory index are changed; the #334 plan names the shared class.
+- **Cause:** rule-trigger. The operator, 2026-11-24: "But this brings back the question that we are solving DNA and
+  RNA is in limbo". `decision-protocol.md` §7 asks for every data type, and §3 for the class, but nothing told me to
+  look for the same class in the other open plans. #333's plan (`333-rna-judge.md` §7, "Next") holds an open
+  decision on its cause 1, the same class: the judge credits a read that cannot tell the ALT from another length of
+  the run. I framed the DNA check's "either" reads as a new question and planned the measurement on HG002, IMPACT
+  and ACCESS only.
+- **Promotion target:** `.agents/rules/decision-protocol.md` §3, a first bullet: before you frame a decision, search
+  every open plan for an open decision of the same class; frame them as one decision; measure it on every data type
+  those plans reach. Done, with the `MEMORY.md` line for the protocol.
+
+## [LRN-20261124-001] rule-body | the #334 patient score took a somatic call's absence from the normal as truth
+- **Status:** closed. The rule, the memory and the kit's score are changed (the score counts only; the patient
+  oracle, `kit/pat334_oracle.py`, judges each read by its own bases).
+- **Cause:** rule-body. The operator, 2026-11-24: "its just an assumption its a FLASE ALT, i agree for 2, but the
+  point is to measure what we see in BAM we are not modelling error rate CH, etc". `measurement-harness.md`
+  §"Oracles and truths" said a count is judged by the reads' own bases, never by the aligner's placement. It
+  named placement only, not what a sample is expected to hold, so it did not stop me. `pat334_score.py` (the
+  docstring's "Expected allele" list and `expected_alt`) expects REF for a somatic call in the normal and for
+  every partner, and counts each ALT read there as false ALT. I repeated it to the operator ("any ALT read … in
+  the normal at a somatic site is a false ALT") and proposed to keep clonal haematopoiesis and tumour-in-normal
+  rows apart, which models the sample instead of counting the BAM.
+- **Promotion target:** `docs/harness/measurement-harness.md` §"Oracles and truths" — `DONE:` a score takes
+  truth from the reads' bases or from a truth of the germline genome, never from what a sample is expected to
+  hold. `.agents/memory/genotyper-not-caller.md` — `DONE:` a "Scores" paragraph.
+  `~/test/gbcms/harness/hpc/kit/pat334_score.py` — `DONE:` the role-based expected allele is gone; the operator
+  chose "both patient oracle and counts" (2026-11-24), the score counts only, and the selftest changes were told
+  to the operator first.
+- **Related:** [[genotyper-not-caller]]; LRN-20260928-001 (the BAM is not the truth either);
+  `docs/harness/plans/334-germline-check.md` §"Next" item 2.
+
+## [LRN-20261123-004] rule-body | the #334 selection took germline samples outside IMPACT and ACCESS (CMO IDs)
+- **Status:** both fixes written (local harness, not in git); the selection ran again (2026-11-24, exit 0) into
+  `cbio/out/select334_dmp/`. `cbio/out/select334_idforms.txt` still says which study folder the first run's C-*
+  samples came from.
+- **Cause:** rule-body. The operator, 2026-11-23: "They should not have any cmo ids, are these from WES repo or
+  Forte?". `select334_cbio.py` reads every study folder under the protected roots, research studies included. Its
+  somatic part keeps only the IMPACT and ACCESS families and one sample per patient. Its germline part did
+  neither, although the docstring said "one sample per patient per family" and "OTHER (not selected)". The
+  selftest had no germline row outside IMPACT and no patient with two germline samples, so it could not see this.
+- **Promotion target:** `~/test/gbcms/harness/hpc/kit/local/select334_cbio.py` — `DONE:` the germline part loops
+  over IMPACT and ACCESS, keeps one sample per patient per family (a sample already chosen for its somatic calls
+  first), and caps per family; a second selftest block (a WES study, two germline samples of one patient) that
+  the first code fails 3 ways and the fixed code passes. `DONE:` (2026-11-24) the second fix: only a DMP ID can
+  be IMPACT or ACCESS, so a research sample with an IMPACT or ACCESS panel is OTHER; a third selftest block (a
+  CMO ID with an IMPACT panel) that the first code fails.
+- **Related:** [[msk-assay-facts]] (IMPACT and ACCESS samples have DMP IDs only);
+  `docs/harness/plans/334-germline-check.md` §"Next" item 2.
+
+## [LRN-20261123-003] rule-trigger | the main session listed a patient lane clone (plan670/germ/), the fourth listing
+- **Status:** promotion written, not yet committed (the operator, 2026-11-23: "Do this task here"): branch
+  `feature/lane-listing-guard` adds `.claude/hooks/block-lane-listing.py`, its tests
+  (`tests/test_block_lane_listing_hook.py`, 86 cases on a made-up tree), the `.claude/settings.json` wiring,
+  and the never-list bullet's "Enforced by" line in `.agents/rules/security.md`.
+- **Cause:** rule-trigger. Looking for how the earlier germline lane was built, I ran `ls plan670/ | head -80;
+  ls plan670/germ/ | head -5`. security.md names `germ/` as a patient folder (a lane clone). The five names it
+  printed were script and log names (`choose_germ.py`, `germ_rows.tsv`, `germ_run.py`, `germ_summary.py`,
+  `oracle_c40h.log`); no sample ID, BAM name or position. No hook refused it: protect-cbioportal guards only the
+  cBio roots, and the earlier refusals (2026-11-03, 2026-11-05) came from the auto-mode check, not a hook.
+- **Pattern:** the fourth lane listing (LRN-20261103-001, LRN-20261116-001, LRN-20261116-002, this one). Each time
+  the rule was in prose and the listing came from a search for "how was this built". Prose does not stop it.
+- **Promotion target:** `.claude/hooks/` — a new guard (with `tests/` cases and `.claude/settings.json` wiring)
+  that refuses `ls`, `find`, `tree`, `du` and the Glob tool on the copy-back lanes and their clones
+  (`hpc/out/`, `plan670/out_*`, `across/`, `wes/`, `germ/`, `xdata/gatex/`) while still allowing a named file
+  inside them to be read and the ledger's rsync copy-backs to write there. Proposed as its own session.
+- **Related:** LRN-20261103-001, LRN-20261116-001, LRN-20261116-002; `.agents/rules/security.md` (the
+  never-list bullet).
+
+## [LRN-20261123-002] rule-body | the cBio summary script printed a matrix file's sample IDs
+- **Status:** resolved (the script fixed and tested on made-up IDs; the operator told).
+- **Cause:** rule-body. `~/test/gbcms/harness/cbio/cbio_summary.py`, the one console channel for cBioPortal
+  files, printed every column name as "the schema". A matrix file (columns named by sample) made those names
+  sample IDs, and `--all` printed them into the session. Its own docstring promised that IDs never print; no test
+  held it to that with an ID-named column.
+- **Promotion target:** `~/test/gbcms/harness/cbio/cbio_summary.py` — `DONE:` ID-like column names, counted
+  values and file names print hidden (with a count), key-value files print keys only; test
+  `scratchpad/test_cbio_summary.py` on made-up IDs passes 6 of 6. `.agents/rules/security.md` (cBioPortal) —
+  `DONE:` the summary line says so.
+- **Related:** the PHI rules in `.agents/rules/security.md`.
+
+## [LRN-20261123-001] rule-body | my judge checks did not aim at MNVs and complex events, the switch's purpose
+- **Status:** open (the next measurement is the operator's choice).
+- **Cause:** rule-body. The judge memory listed its evidence by class (#246 pairs, repeat indels, SVs) but not
+  the purpose the operator holds for the switch: to be better at MNVs and complex events. So I aimed the HG002
+  DNA score's read check at the classes where that score moved (one-base slips at REF tracts), and then proposed
+  false-ALT rows for MNVs and complex events where the operator already knows both paths do well. The
+  measurement harness says nothing about what a check on the judge must lead with.
+- **Promotion target:** `.agents/memory/universal-haplotype-judge.md` — `DONE:` "The switch's purpose" paragraph
+  (the operator's words, what a check must lead with, the open record). `docs/harness/measurement-harness.md`,
+  "Oracles and truths" — `DONE:` one paragraph: a check on the judge leads with the MNV and complex rows where
+  the two paths can differ.
+- **Related:** [[universal-haplotype-judge]]; `docs/harness/plans/420-cycle-order.md` stage 2.4.
+
+## [LRN-20261120-004] rule-body | the HPC delete list held run folders that live jobs read as inputs (#333's DNA truth)
+- **Status:** open (the restore or the rebuild is the operator's choice).
+- **Cause:** rule-body. I sorted run folders into "old, ticket closed" by date and ticket, and checked the kit's
+  references to `inputs/` only, never to `runs/`. `runs/p292b` (each pair's DNA-check rows and the matched IMPACT
+  DNA counts) and `runs/p292c` (each slice's indel rows and their DNA counts) came from the closed ticket #292, but
+  #333's arm, aggregate, bins and DNA tumour jobs read them as inputs. The operator deleted them on my list. M-H's
+  last slice array, started after the deletion, ran without its indel set and still ended exit 0 (`rows=missing`);
+  the M-H aggregate cannot build its labels. A cross-reference script found the class at once, after the fact.
+- **Fix now:** before any delete list, scan every kit script for each candidate path (`runs/<label>`,
+  `inputs/<name>`, builds) and keep every folder a script reads, whatever its ticket or date. A job whose input row
+  list is missing must fail, not skip with exit 0 (the arm script's skip is the class's other half: to fix at the
+  source in `rna333m_arms.sbatch`, with the operator's yes).
+- **Promotion target:** the local HPC notes `hpc/README.md` (a delete-list step) and `user-hpc-jobs.md`. Done.
+
+## [LRN-20261120-003] rule-body | "no gbcms job is running" came from a state filter that missed a running task
+- **Status:** resolved (the check lists every job without a state filter).
+- **Cause:** rule-body. Before I put `/scratch/shahr2/gbcms_tmp` on the operator's delete list, I checked for running
+  jobs with `sacct -X -s PD,R,RQ,S -S 2026-11-15`. It printed nothing, and I reported "No gbcms job is running or
+  waiting". One task was running (12340216_26, 11 hours in), and one array and one aggregate were waiting on it. The
+  operator emptied `gbcms_tmp`, which held that task's temporary folder. The task timed out at its 12-hour limit an
+  hour later, so it needs a rerun in any case. I had not checked the filter against a job known to be running, and
+  I listed the whole temporary folder, not only the folders of jobs that had ended.
+- **Fix now:** the status check lists every job since a date with no state filter (`sacct -X -n -P -S DATE
+  --format=JobID,JobName,State`) and counts the states here. A delete list names only the per-job folders
+  (`gbcms_tmp/job_<id>*`) of jobs whose every task has ended.
+- **Promotion target:** the local HPC notes `hpc/README.md` (step 5) and the memory note `user-hpc-jobs.md`. Done.
+
+## [LRN-20261120-002] rule-body | a delete command for the operator relied on bash globbing, and the operator's shell is zsh
+- **Status:** resolved (the rest is listed as exact paths).
+- **Cause:** rule-body. I gave the operator `... | while read -r p; do rm -rf $p; done` for an HPC delete list with 59
+  `*` glob lines. The command needs bash, where an unquoted variable is glob-expanded. The operator's HPC shell is zsh,
+  which does not expand a glob held in a variable, so `rm -rf` got the literal names and silently removed nothing for
+  those lines. The second inventory found all 59 left: 159 build archives, 7 failed build folders and 1 vendor
+  archive. The exact-path lines all worked.
+- **Fix now:** the 59 globs became 167 exact paths (`hpc/cleanup_20261120b.txt`). The command quotes `"$p"`, so it
+  works the same in zsh and bash.
+- **Promotion target:** the local HPC memory note `user-hpc-jobs.md`: "a list or command for the operator holds exact
+  paths only, quoted, so it works in zsh and bash". Done.
+
+## [LRN-20261120-001] rule-body | a tool probe looked only at the node's PATH and modules, and the report said "no tabix"
+- **Status:** resolved (the tool paths are in the kit's settings).
+- **Cause:** rule-body. The download job's probe looked for tabix, bgzip and samtools on the compute node's PATH and
+  in lmod only. The kit's settings file (`site.sh`) already names the operator's micromamba environments as the
+  home of the operator's tools, and the probe did not look there. My report said "There is no tabix program on the
+  compute nodes" and proposed to rewrite the row maker for pysam. The operator showed `which tabix` in the
+  operator's samtools environment.
+- **Fix now:** `site.sh` sets SAMTOOLS, TABIX and BGZIP from that environment; the row maker takes `--tabix` (default
+  `$TABIX`); the inventory job checks the three tools on a compute node. A probe report now says "not on the PATH"
+  instead of "none".
+- **Promotion target:** the local kit's `site.sh` (done) and the local HPC memory note `user-hpc-jobs.md` (done).
+
+## [LRN-20261119-003] rule-body | a typo read as a data-set name, and a question that left out the data in hand
+- **Status:** resolved (working agreement added).
+- **Cause:** rule-body. The operator wrote "we have ebooks data" (a typo of "enough"). I read "ebooks" as the
+  name of a data set and asked which one was meant. All three options were data sets I guessed (exomes, more FORTE
+  BAMs with panel labels, HG002). The plain reading ("we have enough data") was not an option, and neither was the
+  data in hand used in a new way (the 50 FORTE BAMs, whole-transcriptome, labelled without DNA). The operator chose
+  HG002, and a Fable survey and a local HG002 count started on that choice. The operator: "*enough What about the
+  50 forte bams dont they have enough data? They might not be with impact but on their own". No rule covered a
+  word that names nothing.
+- **Fix now:** the FORTE BAMs on their own were sized and designed first. The HG002 work was kept as the second
+  set, for the classes FORTE cannot label (public data, nothing downloaded).
+- **Promotion target:** `.agents/memory/working-agreements.md`: "Read an unknown word as a typo first". Done.
+
+## [LRN-20261119-002] rule-trigger | a decision page asked for D2 while a built option was unmeasured on the main row sets
+- **Status:** resolved (rule promoted; the missing arms submitted as M-G).
+- **Cause:** rule-trigger. `.agents/rules/decision-protocol.md` §8 already says "every option measured, not
+  estimated: ... run it on the same sets and truth arm as the recommended one". The #333 decisions page
+  (2026-11-19) still recommended clip read `edge` "after one arm more": `edge` against `unread` was measured only
+  under `clean:0` and on the DNA-check rows, never on M-A or M-B, where the recommended set ran. The rule did not
+  fire because nothing in §8 asks for a check of options against row sets before the page goes out. The operator:
+  "Why not also measure D2 first and then we decide what to keep i feel we should measure if we already built".
+- **Fix now:** M-G submitted (jobs 12328727-12329014): one rule out of the recommended set at a time (clip read,
+  clip admission, both, the mirror, the edge rule) on the slices, M-B, M-A and the DNA-check rows, and D2's timing.
+- **Promotion target:** `.agents/rules/decision-protocol.md` §8: a coverage check (each option against each row set
+  the recommended option ran on; a built option missing from one runs first; "after one arm more" means the page is
+  not ready). Done.
+
+## [LRN-20261119-001] rule-trigger | HPC batches ran 40-60 array tasks at once, and subagents ran the HPC commands
+- **Status:** open (the operator decides the hook change).
+- **Cause:** rule-trigger. `.agents/rules/security.md` ("HPC") says "an array runs at most 20 tasks at once (`%20`)"
+  and "Only the main session runs HPC commands. Subagents write job scripts locally for review". The guard
+  (`.claude/hooks/hpc-ssh-guard.py` with `~/.claude/hpc-guard.json`) checks that an array has a `%N` limit and at most
+  300 tasks, but not N, and cannot tell a subagent from the main session; the #333 briefs (M14, M16, M18) told Opus
+  agents to run ssh, rsync and sbatch themselves. M14 ran `%56`, M16 `%60` and `%40`, and the main session's own M17
+  submissions on 2026-11-19 `%60` and `%40`. No harm found (no failed or cancelled task from load), but the rule was
+  broken on every #333 batch. Found by the main session on 2026-11-19 while checking M-A's data rules.
+- **Fix now:** the M18 agent was told to stop HPC commands and hand back scripts and commands; the next script agent
+  (M-B, M-C, M-E, M-F) writes scripts only, with `%20`; the main session runs every HPC step.
+- **Promotion target:** `.claude/hooks/hpc-ssh-guard.py`: deny an `sbatch --array` whose `%N` is above 20 (or the value
+  in `hpc-guard.json`, a new `max_array_concurrency: 20`), with a test in `tests/test_hpc_ssh_guard.py`; and, if the
+  hook input names a subagent, deny HPC commands from it. Proposed to the operator, not edited: it changes a safety hook.
+
+## [LRN-20261117-003] rule-trigger | the #333 plan stopped at the community standard where our data could test more
+- **Status:** resolved (rule promoted).
+- **Cause:** rule-trigger.
+- **Summary:** The #333 plan recommended the field's practice wherever no outside tool goes further:
+  unspliced short overhangs judged on the genome "as today" (E3), no rule for base quality near
+  junctions, editing sites flagged only, each because the survey found no tool doing more. The
+  operator: "Remember we dont just hold to community standards we try to go above it as we can test
+  with the data at hand". The rule exists (`.agents/rules/decision-protocol.md` §5, "The standard is a
+  floor, not a ceiling", 2026-10-04), but `plan-first.md` §3 lists what each option must show and never
+  asks for an option above the standard, so it did not fire when the options were written. The data to
+  test more was at hand: 40 FORTE slices with matched IMPACT DNA (#292), FORTE truth, the oracle.
+- **Promotion target:** `docs/harness/plan-first.md` §3 — `DONE:` each class gets, beside the field's
+  practice, an option above it wherever the data at hand can test it, naming that data.
+  `.agents/rules/decision-protocol.md` §5 — `DONE:` the operator's 2026-11-17 words and "name the data
+  that tests it". `docs/harness/plans/333-rna-judge.md` — `DONE:` E3, E8 and E9 aim above the standard,
+  with matched DNA as a truth source.
+- **Related:** [[working-agreements]].
+
+## [LRN-20261117-002] rule-body | the speed plan scoped a shared part to the data types it serves today
+- **Status:** resolved (rule promoted).
+- **Cause:** rule-body.
+- **Summary:** #335's speed work optimizes the sequence judge, which counts DNA in 6.8.0 and RNA from
+  #333. I applied the decision protocol's "every data type it reaches" to the data types the judge
+  reaches today and recommended keeping RNA out of this cycle ("validate what ships"). The operator:
+  "Judge is eventually shared by both so if the optimization plan dont include RNA its twice the
+  effort". A speed design built for linear DNA haplotypes (S3b's certificate, the SIMD fill K, faster
+  walks W) would be redone once spliced reads enter the judge's graph.
+- **Promotion target:** `.agents/rules/decision-protocol.md` §7 — `DONE:` a part that several data
+  types will share is designed and measured for every data type it is planned to serve, not only those
+  it serves today. `docs/harness/plan-first.md` §4 (the data types) — `DONE:` the same, as a question the
+  plan answers. `docs/harness/plans/335-phase2.md` — `DONE:` RNA under the judge is in scope (§ "RNA in
+  the speed work"); the forks go to the operator.
+- **Related:** [[universal-haplotype-judge]], [[speed-floor]].
+
+## [LRN-20261117-001] rule-body | plans capped testing (builds, reviews, HPC batches)
+- **Status:** resolved (rule promoted).
+- **Cause:** rule-body.
+- **Summary:** `plan-first.md` §5 told each plan to cap review rounds and HPC batches, and the plans
+  added build caps (#335 phase 2: 9 builds, 5 reviews, 3 batches). When two source fixes came up, I
+  asked the operator to raise the caps. The operator: "why do we have limits, we should sumbit to HPC
+  as required, I am ok to raise it but testing is core part so we should not limit it". The caps were
+  meant as check-in points against endless build-and-measure loops, but they limited testing itself.
+- **Promotion target:** `docs/harness/plan-first.md` §5 and its skeleton's header line — `DONE:`
+  testing is counted, not capped; the stop rule is by content (an output difference not accepted, more
+  new conditions than declared, a change of design or decision). `docs/harness/plans/335-phase2.md`
+  header and §5 — `DONE:` the same. Memory `working-agreements` — `DONE:` "Testing is never capped".
+  Finished plans keep their record as written.
+- **Related:** [[working-agreements]].
+
 ## [LRN-20261116-002] rule-trigger | a code-only agent listed the HPC copy-back folders to find a measured fact
 - **Status:** resolved (rule promoted).
 - **Cause:** rule-trigger.

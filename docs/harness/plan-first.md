@@ -41,14 +41,20 @@ plain meaning. Each section is short; a section that does not apply says "none" 
    - the invariant check, invariant 7 ("input taken as correct") first: pass or fail, and why;
    - binning invariance, the one quality contract, and whether both paths judge it the same way;
    - the conditions it adds (a number), and what it will not handle (the named limit).
+   Beside the field's practice, give an option above it wherever the data at hand can test it, and
+   name that data (protocol section 5: the standard is a floor, not a ceiling).
 4. **Measurement, fixed before the runs.** Give:
    - the class-level metric and its bar (rows are checks, not reasons);
-   - the data types and truth sources (protocol section 7), and which of them are missing;
+   - the data types and truth sources (protocol section 7), and which of them are missing; for a part
+     several data types will share, every type it is planned to serve, not only today's;
    - what the measurement cannot see (protocol section 6);
    - the contract tests the change must keep, and the HPC batches planned (how many, how large).
-5. **Budget and stop rule.** At most two review rounds. At most the number of new conditions that
-   the chosen option declares. Past either limit, stop: the work goes back to the operator as a class
-   question with one class-level option. HPC batches: the planned number, plus one rerun.
+5. **Budget and stop rule.** Testing is not capped (operator, 2026-11-17: "testing is core part so
+   we should not limit it"; "we should submit to HPC as required"). Builds for testing, review rounds
+   and HPC test batches run as the work needs them; the cost log counts them. The stop rule is by
+   content, not by count: stop and take the work back to the operator on an output difference the
+   plan did not accept, on more new conditions than the chosen option declares, or on a change of
+   design or of a decision. The work then goes back as a class question with one class-level option.
 6. **Work and models.** Use the cheapest layer first:
    - scripts and the code graph (`graphify`, code only), which cost no model tokens;
    - Sonnet to sort, build and test; Haiku for scans;
@@ -128,12 +134,12 @@ are not visible.
   every builds bar failed. So an option whose effect follows exactly from existing arms (its
   rule changes one test, read by read) is emulated, not built. The scorers' tokens are reported apart.
 - **Bar, per item:**
-  1. at most two review rounds;
+  1. at most two review rounds (from 2026-11-17 counted, not capped: section 5);
   2. no condition added and later removed, no decision reversed; the chosen option's declared
      conditions are the ceiling;
   3. builds: at most the options that cannot be emulated, plus one final build; the final build
-     equals the emulation on the emulated arms;
-  4. at most 4 HPC batches;
+     equals the emulation on the emulated arms (from 2026-11-17 counted, not capped);
+  4. at most 4 HPC batches (from 2026-11-17 counted, not capped);
   5. at most 2.4 M agent tokens (`baseline.py`'s method), the scorers' tokens reported apart;
   6. the operator reads the page in five minutes: a yes or no at the approval;
   7. the option table holds only measured or exactly emulated numbers.
@@ -169,7 +175,7 @@ audit, `explain` and `path` helped; the broad `query` did not. Before it is wire
 ```markdown
 # <ticket>: <short name>
 Status: draft | approved <date> | building | measured | decided <date>
-Rounds: 0 of 2 · New conditions: 0 of <n> · HPC batches: 0 of <n>
+Reviews: 0 · New conditions: 0 of <n> · Builds: 0 · HPC batches: 0 (testing is counted, not capped)
 
 ## 1. The class
 ## 2. What already touches it

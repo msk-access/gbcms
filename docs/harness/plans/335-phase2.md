@@ -2,8 +2,8 @@
 
 Status: approved 2026-11-16 (operator: "Approve as drafted": the options, the order and the budget; D2 decided (a), accept S5's log change; D3 open) · plan-first (`plan-first.md`); Stage 3 of the 6.8.0 order (`420-cycle-order.md`) ·
 base develop 473e8920 (S1 #439 and S4 #440, #441 merged) · phase 1: `335-exact-speedups.md`
-Rounds: 2 of 5 (one review per option; S2's, S3a's) · New count conditions: 0 (speed changes add none) · Builds: 3 of 9 (`fin473`, `s2`, `s3a`) ·
-HPC batches: 0 of 3 · Reruns: 0 of 1 (phase 1's reserved rerun for M2's two IMPACT cells moves here)
+Reviews: 3 (S2's, S3a's, S5's) · New count conditions: 0 (speed changes add none) · Builds: 5 (`fin473`, `s2`, `s3a`, M4's counter build `m4`, `s5`) ·
+HPC batches: 1 (M4, with phase 1's reserved rerun of M2's two IMPACT cells) · testing is counted, not capped (operator, 2026-11-17; §5)
 
 ## 1. The class
 
@@ -145,7 +145,10 @@ HPC batches: 0 of 3 · Reruns: 0 of 1 (phase 1's reserved rerun for M2's two IMP
 - **The log changes (D2, decided 2026-11-16: (a); the operator: "accept the S5 log change (a)"):**
   1. the DEBUG line per bin, "Bin tid=... : N reads cached (M filtered ...)": the counts of the regions;
   2. the WARN lines per BAM that count records with no bases or no qualities: records outside every row's
-     reach are no longer counted. Today these counts depend on the bin geometry; with S5 they do not;
+     reach are no longer counted. These counts depend on the bin geometry today and still do with S5:
+     two rows' pieces merge into one region only inside one bin, so a record between two rows is read
+     when they share a bin and not when they do not (S5's review, 2026-11-17; this page said "with S5
+     they do not", which was wrong);
   3. `--trace`: fewer filter and clip lines;
   4. a corrupt record outside every row's reach no longer stops the run (develop stops with an error).
 - **Worked example:** two rows 6,000 bases apart share one bin (`BIN_WINDOW` is 10,000, `engine.rs:108`),
@@ -192,6 +195,80 @@ X-drop, Z-drop; a band cap without proof; 8- or 16-bit cells without a bound; to
 score that a reader reads later; interval indexes that lose the cache order; J2's cut 4; reusing
 site-build scores; WFA or bit-parallel distance as the scorer; any floating-point reordering.
 
+### 3.9 RNA in the speed work (operator, 2026-11-17)
+
+**The direction:** "Judge is eventually shared by both so if the optimization plan dont include RNA its
+twice the effort." The judge counts DNA in 6.8.0 and RNA from #333 (spliced reads judged on their spliced
+reference; the per-transcript counts and ASJD following the verdict). A speed design for the shared
+scorer is built once, for both (decision protocol §7).
+
+| Item | Touches the shared scorer | For RNA |
+|:--|:--|:--|
+| S2 (merged), S5, source fix A | no | already gated on RNA: the RNA tier's 33 runs, the RNA fill-out, the FORTE arms; A's census holds the 10 FORTE BAMs |
+| D9, the spliced cache (`335-source-fixes.md` §4.2) | no (the rules path) | RNA only: fixed and measured on the RNA arms in this cycle |
+| S3a (merged) | yes | its cuts are checked again once the judge reads RNA, in #333's gate |
+| Source fix B (F2-a) | yes | DNA now; RNA calls each record up to 3 times per row (main, per-transcript, ASJD): the pure per-record reuse is designed with #333, once |
+| S3b, S3c, K | yes | designed after #333 fixes how a spliced read enters the judge's graph, and measured on DNA and RNA arms together |
+
+**New measurement M12 (before S3b's design):** #333's design spike (Opus): how a spliced read enters the
+graph (a spliced linear reference per set of junctions, as the rules path builds, or splice edges in the
+site's graph, which the graph was laid out to take); and the size of RNA's judge work on FORTE: reads per
+row, the share spliced across a row, junction sets per row (counts only; the local FORTE arms and the 10
+FORTE BAMs on HPC).
+
+**Forks for the operator:**
+- **R1, scope.** (a, recommended) Build #333 in this cycle with RNA under the judge as an opt-in, so the
+  scorer's speed work is built once and measured on both; RNA's default is decided at the freeze by the
+  same bars as DNA (every arm, PHI included, the speed floor, the HPC gate). This amends D3-B of
+  2026-11-12: #333 moves back to 6.8.0, and RNA's default stays the rules path unless it passes. (b) Make
+  the judge RNA's default in 6.8.0 now: D3-B reversed in full, and the release waits for #333.
+- **R2, order.** The scorer is already a graph DP in which a splice is one more edge (`graph.rs:8-11`:
+  "a splice (RNA) or a breakend junction (an SV) is one more edge"), S3b's certificate is written over a
+  cell's predecessors in that graph (`s3b/DESIGN.md` §2, `PRE0`, `PRE4`), and K's fill takes "the same
+  graph for all lanes" (§3.6); each node's band of read rows is placed by genome coordinate
+  (`graph.rs:462-484`), which a spliced read's bases follow across its `N`. So the speed designs do not
+  assume a straight haplotype. (c, recommended, 2026-11-17) Go on with S3b, S3c and K now, with their
+  proofs and tests built on graphs with splice edges (made-up spliced sites) from the start; S3b already
+  waits for fix B and D7. M12 then checks the one geometric assumption (the band's placement across a
+  long jump, `graph.rs:462-484`) and sizes RNA's work on FORTE. (a) Pause S3b, S3c and K until M12
+  reports. (b) Go on with S3b on DNA alone and adapt it in #333 (the double effort).
+- Either way, moving #333's milestone and the text of #331 and #333 are public-repo changes: drafted for
+  the operator first ("send it").
+
+**Decided (operator, 2026-11-17: "R1 (a), R2 (c)").** #333 is built in this cycle, RNA under the judge
+opt-in, its default decided at the freeze by DNA's bars; S3b, S3c and K go on, their proofs and tests
+on graphs with splice edges from the start; M12 checks the band across a long jump and sizes RNA's
+work on FORTE.
+
+### 3.10 M12's result: how a spliced read enters the judge (2026-11-17)
+
+M12 (Opus; `scratchpad/speed2/m12/`, probe `probe_graph_splice.rs`, results `probe3.log`; made-up exons of
+220 bases, introns of 60 to 5,000, 80-base reads of five kinds, brute force on every haplotype as the
+oracle):
+- **Splice edges in the site's graph (shape a) break the band's shortcut.** The full programme over every
+  base is exact (1,656 of 1,656 reads), but the stand test (`stand_floor`, `score.rs:535-548`) assumes
+  that leaving the band costs an indel, and a splice edge moves the coordinate by the whole intron at no
+  cost: at intron 60, 7 of 36 reads (and 55 of 144 state scores in the read call) stand with a wrong
+  score (e.g. brute force -8, the band -21). At introns of 100 or more, the band's rows on the two sides of
+  the junction share none (about 20 rows apart), so every spliced read goes to the full programme over a
+  reach that holds the intron: 6x to 114x the cells (20.7k-420.7k against 3.2k-3.7k). The reach is a
+  coordinate interval (`graph.rs:1341-1346`), so a read whose positions do not follow the junction cannot
+  reach the other exon. DNA is not affected (a deletion's jump widens the band, `graph.rs:1350-1359`).
+  The comment at `graph.rs:8-11` ("a splice is one more edge") is true of the graph, not of the band.
+- **One spliced reference per junction set (shape b), as the rules path builds (`carrier.rs:1531-1612`),
+  is exact at DNA's cost:** 1,656 of 1,656 reads equal brute force; the narrow band decides all but 2, at
+  3.1k-3.8k cells. Under it S3b, S3c and K hold as for DNA; their test sets add spliced frames (the frame's
+  tandem tracts and masks computed on the spliced reference; K's lanes share one frame).
+- **Its limit:** a short overhang the aligner did not splice (3-8 bases into the intron, or clipped) is
+  judged on the genome, as the rules path does today; judging it on the junction's frame too is a count
+  rule for #333's decisions.
+- **FORTE, local** (the tier's 33 FORTE runs, 94 rows, 46,787 reads at the rows; counts only, through the
+  sanitizer): 41.3% of the reads are spliced near their row; junction sets per row median 1-2, at most 10
+  (187 over 94 rows, so about 2 spliced frames per row); unspliced short overhangs 3.3%.
+
+**Decision D10 (#333's site shape):** (b), recommended; (a) only with a new stand test and an
+edge-following reach, at up to 114x the cells per spliced read.
+
 ## 4. Measurement, fixed before the runs
 
 - **M0, the reference files (blocked 2026-11-16):** from this session, reads of `~/Downloads/genome.fa`
@@ -227,12 +304,15 @@ site-build scores; WFA or bit-parallel distance as the scorer; any floating-poin
 
 ## 5. Budget and stop rule
 
-- **Builds: 9 at most:** the develop baseline (`fin473`), M4's counter build, S2, S3a, S3b, S3c, S5, one
-  combined, and one spare for a fix (phase 1 needed two).
-- **Reviews: 5 at most:** one adversarial review (Fable) of each option's diff against its proof.
-- **HPC: 3 batches** (M4, pf77, pf78) plus one rerun.
-- An option with any output difference is dropped, not mended by accepting the difference. Past any
-  limit, stop and bring it back to you. K, and any option not listed here, needs its own page.
+- **Testing is not capped** (operator, 2026-11-17: "why do we have limits, we should sumbit to HPC as
+  required ... testing is core part so we should not limit it"; `plan-first.md` §5). Builds, reviews and
+  HPC test batches run as the work needs them, and the cost log counts them. Until then the plan held 9
+  builds, 5 reviews and 3 batches plus one rerun.
+- **Every option still gets:** its own build, the gate, and one adversarial review (Fable) of its diff
+  against its proof; each kept option is timed on HPC (pf77, pf78).
+- **The stop rule, by content:** an option with any output difference the plan did not accept is
+  dropped, not mended by accepting the difference. A change of design or of a decision comes back to
+  you. K, and any option not listed here, needs its own page.
 
 ## 6. Work and models
 

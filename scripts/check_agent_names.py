@@ -50,6 +50,7 @@ EXTERNAL = {
     "OPENSSL_NO_VENDOR",
     "VIRTUAL_ENV",
     "CONDA_PREFIX",
+    "CARGO_TARGET_DIR",
     "RUST_LOG",
     "NXF_VER",
     "pyo3-log",
@@ -73,17 +74,26 @@ EXTERNAL = {
     "--body-file",
     "--require-hashes",
     "--no-deps",
-    # SLURM's own names (the HPC rules in security.md and their guard hook).
+    # SLURM's and rsync's own names (the HPC rules in security.md and their guard hook).
     "--wrap",
     "--time",
+    "--chdir",
+    "--files-from",
     # A gitignored directory that `git worktree add` creates.
     ".claude/worktrees/",
     # Exists only on checkpoint-wheels/* branches, where the pre-commit hook admits it.
     "scripts/regression_panel/checkpoints.tsv",
 }
 
-#: Extra directories searched for a skill whose names live outside src/ and rust/src/.
-EXTRA_ROOTS = {"nextflow-pipeline": ["nextflow"], "read-filters-qc": ["nextflow"]}
+#: Extra directories searched for a skill whose names live outside src/ and rust/src/ (keyed by the
+#: file's folder: a skill's own folder, or "rules" for every rule). The rules describe the guard
+#: hooks that enforce them (security.md names the HPC guard's settings keys), so their names may
+#: live in .claude/hooks/.
+EXTRA_ROOTS = {
+    "nextflow-pipeline": ["nextflow"],
+    "read-filters-qc": ["nextflow"],
+    "rules": [".claude/hooks"],
+}
 #: Files that exist but are not module-map entries (every package has them).
 MAP_IGNORED = {"__init__.py", "__main__.py", "py.typed", "mod.rs"}
 #: A path-like span starts with one of these top-level names, or ends in a file suffix.
